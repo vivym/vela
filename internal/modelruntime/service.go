@@ -59,15 +59,16 @@ type Service struct {
 	cancelTimeout time.Duration
 	maxClockSkew  time.Duration
 
-	operationMu sync.Mutex
-	mu          sync.Mutex
-	active      *activeExecution
-	sealed      map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt
-	sealedOrder [][sha256.Size]byte
-	generation  uint64
-	closed      chan struct{}
-	closeOnce   sync.Once
-	closeErr    error
+	operationMu              sync.Mutex
+	mu                       sync.Mutex
+	active                   *activeExecution
+	highestExecutionSequence int64
+	sealed                   map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt
+	sealedOrder              [][sha256.Size]byte
+	generation               uint64
+	closed                   chan struct{}
+	closeOnce                sync.Once
+	closeErr                 error
 }
 
 const maxSealedReceiptReplay = 256
@@ -78,6 +79,7 @@ type activeExecution struct {
 	workerReusable bool
 	startedAt      time.Time
 	timer          Timer
+	timerCancel    chan struct{}
 	receipt        *velav1.LocalMaterializationReceipt
 }
 
@@ -157,9 +159,8 @@ func (service *Service) Shutdown() error {
 	service.closeOnce.Do(func() {
 		close(service.closed)
 		service.mu.Lock()
-		if service.active != nil && service.active.timer != nil {
-			service.active.timer.Stop()
-		}
+		service.cancelWatchdogLocked()
+		service.generation++
 		service.mu.Unlock()
 		if closer, ok := service.backend.(interface{ Close() error }); ok {
 			service.closeErr = closer.Close()
@@ -563,20 +564,19 @@ func (service *Service) installOrRenew(
 ) (bool, error) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	if service.active == nil {
-		service.active = &activeExecution{
-			verified: verified,
-			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
-		}
-		service.resetWatchdogLocked(verified)
-		return false, nil
+	sequence := verified.Authority.GetExecutionSequence()
+	if sequence <= 0 {
+		return false, errors.New("ModelRuntime execution requires ordered StageAuthority schema v2")
 	}
-	if service.active.workerReusable &&
+	if service.active == nil || service.active.workerReusable &&
 		(service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 			service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED) {
-		if service.active.timer != nil {
-			service.active.timer.Stop()
+		if sequence <= service.highestExecutionSequence {
+			return false, errors.New("StageAllocation execution sequence is retired")
 		}
+		service.cancelWatchdogLocked()
+		// Consume the order before backend.Prepare; failure cannot reopen this attempt.
+		service.highestExecutionSequence = sequence
 		service.active = &activeExecution{
 			verified: verified,
 			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
@@ -623,20 +623,36 @@ func (service *Service) renewActiveLocked(
 }
 
 func (service *Service) resetWatchdogLocked(verified stageauthority.Verified) {
-	if service.active.timer != nil {
-		service.active.timer.Stop()
-	}
+	service.cancelWatchdogLocked()
 	service.generation++
 	generation := service.generation
 	timer := service.clock.NewTimer(verified.MonotonicValidFor)
+	canceled := make(chan struct{})
 	service.active.timer = timer
+	service.active.timerCancel = canceled
 	go func() {
 		select {
 		case <-timer.C():
 			service.expire(generation)
+		case <-canceled:
 		case <-service.closed:
 		}
 	}()
+}
+
+// Timer.Stop does not close C, so each replaced watcher also needs cancellation.
+func (service *Service) cancelWatchdogLocked() {
+	if service.active == nil {
+		return
+	}
+	if service.active.timer != nil {
+		service.active.timer.Stop()
+		service.active.timer = nil
+	}
+	if service.active.timerCancel != nil {
+		close(service.active.timerCancel)
+		service.active.timerCancel = nil
+	}
 }
 
 func (service *Service) expire(generation uint64) {
@@ -766,9 +782,7 @@ func (service *Service) clearActive(digest [32]byte) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == digest {
-		if service.active.timer != nil {
-			service.active.timer.Stop()
-		}
+		service.cancelWatchdogLocked()
 		service.generation++
 		service.active = nil
 	}
@@ -778,8 +792,7 @@ func (service *Service) stopWatchdog(digest [32]byte) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == digest && service.active.timer != nil {
-		service.active.timer.Stop()
-		service.active.timer = nil
+		service.cancelWatchdogLocked()
 		service.generation++
 	}
 }

@@ -322,6 +322,8 @@ func verifyStageWorkerControlPrivileges(
 			"vela_read_stage_assignment_execution(uuid,uuid)",
 			"vela_complete_stage_worker_acquire(jsonb)",
 			"vela_read_stage_authority_snapshot(uuid,bigint)",
+			"vela_read_stage_allocation_execution_sequence(uuid,uuid)",
+			"vela_is_stage_failure_authority_replayable(jsonb)",
 			"vela_read_stage_authority_member_epochs(uuid)",
 			"vela_start_stage_worker_command(jsonb)",
 			"vela_heartbeat_stage_worker_command(jsonb)",
@@ -696,6 +698,13 @@ func verifyRetentionPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_complete_content_deletion_target(uuid,uuid,uuid,text,text)",
 			"vela_retry_content_deletion_target(uuid,uuid,integer,text)",
 			"vela_enqueue_expired_content_deletions(integer)",
+			"vela_prepare_stage_artifact_lifecycle(integer)",
+			"vela_stage_publication_deletion_identity(uuid)",
+			"vela_claim_stage_artifact_deletion(uuid,integer)",
+			"vela_finish_stage_artifact_deletion(uuid,uuid,boolean,integer)",
+			"vela_claim_stage_materialization_deletion(uuid,integer)",
+			"vela_resolve_stage_materialization_deletion(uuid,uuid,text)",
+			"vela_finish_stage_materialization_deletion(uuid,uuid,boolean,integer)",
 		},
 	})
 }

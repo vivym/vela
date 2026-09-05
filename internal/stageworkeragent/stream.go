@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"slices"
 	"strings"
@@ -29,7 +30,7 @@ type ControlClient interface {
 		context.Context,
 		*velav1.StageWorkerControlServiceConnectRequest,
 	) (*velav1.StageWorkerControlServiceConnectResponse, error)
-	Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse
+	NextCommand(context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error)
 }
 
 type StreamAgent struct {
@@ -39,6 +40,8 @@ type StreamAgent struct {
 	materialization   *streamMaterialization
 	materializationMu sync.Mutex
 	assignmentMu      sync.Mutex
+	runtimeMu         sync.Mutex
+	startingAuthority *velav1.StageAuthority
 	mu                sync.Mutex
 	active            *velav1.StageAuthority
 }
@@ -95,11 +98,17 @@ func NewMaterializingStreamAgent(
 	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
 		return nil, errors.New("stage worker materialization clock skew is invalid")
 	}
+	if (config.ScratchRetirer != nil && config.OutputOwnershipContract != AttemptOwnedFilesystemScratchV1) ||
+		(config.ScratchRetirer == nil && config.OutputOwnershipContract != "") {
+		return nil, errors.New("scratch retirement requires an explicit supported output ownership contract")
+	}
 	agent.materialization = &streamMaterialization{
 		validator: config.Validator, source: config.Source,
 		publisher: config.Publisher, journal: config.Journal,
-		sourceLossEvidence: config.SourceLossEvidence,
-		maxClockSkew:       config.MaxClockSkew,
+		scratchRetirer:          config.ScratchRetirer,
+		outputOwnershipContract: config.OutputOwnershipContract,
+		sourceLossEvidence:      config.SourceLossEvidence,
+		maxClockSkew:            config.MaxClockSkew,
 	}
 	return agent, nil
 }
@@ -125,26 +134,44 @@ func (agent *StreamAgent) RunControlCommands(ctx context.Context) error {
 	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
 		return errors.New("missing configured Stage Worker command consumer")
 	}
-	commands := agent.control.Commands()
-	if commands == nil {
-		return errors.New("missing Stage Worker control command stream")
-	}
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case command, open := <-commands:
-			if !open {
-				return nil
-			}
-			if command == nil || command.GetRequestId() != "" || command.GetStopStage() == nil {
-				return errors.New("invalid unsolicited Stage Worker control command")
-			}
-			if _, err := agent.handleStop(ctx, command.GetStopStage()); err != nil {
-				return fmt.Errorf("handle unsolicited StopStage: %w", err)
-			}
+		command, err := agent.control.NextCommand(ctx)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if command == nil || command.GetRequestId() != "" || command.GetStopStage() == nil {
+			return errors.New("invalid unsolicited Stage Worker control command")
+		}
+		if err := agent.handleUnsolicitedStop(ctx, command.GetStopStage()); err != nil {
+			return fmt.Errorf("handle unsolicited StopStage: %w", err)
 		}
 	}
+}
+
+func (agent *StreamAgent) handleUnsolicitedStop(ctx context.Context, stop *velav1.StopStage) error {
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
+	stopDigest, err := stageauthority.Digest(stop.GetAuthority())
+	if err != nil || stop.GetReason() == velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_UNSPECIFIED {
+		return errors.New("invalid Stage Worker StopStage command")
+	}
+	active := agent.runtimeAuthority()
+	if active == nil {
+		return nil
+	}
+	activeDigest, err := stageauthority.Digest(active)
+	if err != nil {
+		return err
+	}
+	// A command admitted before a renewal or new assignment can arrive late.
+	if activeDigest != stopDigest {
+		return nil
+	}
+	_, err = agent.handleStop(ctx, stop)
+	return err
 }
 
 func (agent *StreamAgent) ExecuteAssignment(
@@ -174,11 +201,15 @@ func (agent *StreamAgent) ExecuteAssignment(
 			return result, fmt.Errorf("resolve StageAssignment inputs: %w", err)
 		}
 	}
+	agent.runtimeMu.Lock()
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)
 	result.StartBarrierResult = barrier
 	if err != nil {
+		agent.runtimeMu.Unlock()
 		return result, err
 	}
+	agent.startingAuthority = proto.Clone(assignment.GetAuthority()).(*velav1.StageAuthority)
+	agent.runtimeMu.Unlock()
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_StartStage{
 			StartStage: &velav1.StartStageRequest{
@@ -187,6 +218,11 @@ func (agent *StreamAgent) ExecuteAssignment(
 			},
 		},
 	})
+	agent.runtimeMu.Lock()
+	defer func() {
+		agent.startingAuthority = nil
+		agent.runtimeMu.Unlock()
+	}()
 	if err != nil {
 		acknowledged, cancelErr := agent.cancelAfterControlStartFailure(
 			ctx, assignment.GetAuthority(), err,
@@ -237,11 +273,14 @@ func (agent *StreamAgent) Heartbeat(
 	if agent == nil || sequence <= 0 {
 		return nil, errors.New("invalid Stage Worker heartbeat sequence")
 	}
+	agent.runtimeMu.Lock()
 	authority := agent.activeAuthority()
 	if authority == nil {
+		agent.runtimeMu.Unlock()
 		return nil, errors.New("missing active StageAuthority on Stage Worker")
 	}
 	statusResult, err := agent.runtime.Status(ctx, authority)
+	agent.runtimeMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -263,6 +302,11 @@ func (agent *StreamAgent) Heartbeat(
 	})
 	if err != nil {
 		return nil, err
+	}
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
+	if agent.startingAuthority != nil || !proto.Equal(agent.activeAuthority(), authority) {
+		return nil, errors.New("StageAuthority changed while heartbeat response was pending")
 	}
 	if stop := response.GetStopStage(); stop != nil {
 		_, cancelErr := agent.handleStop(ctx, stop)
@@ -301,11 +345,14 @@ func (agent *StreamAgent) Fail(
 	}
 	failure.Authority = authority
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		RequestId: uuid.NewSHA1(uuid.NameSpaceOID, []byte("vela/stage-worker/fail/"+authority.GetStageAttemptId())).String(),
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_FailStage{FailStage: failure},
 	})
 	if err != nil {
 		return nil, err
 	}
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
 	if stop := response.GetStopStage(); stop != nil {
 		_, cancelErr := agent.handleStop(ctx, stop)
 		return nil, errors.Join(errors.New("control stopped StageAttempt during failure report"), cancelErr)
@@ -425,8 +472,13 @@ func (agent *StreamAgent) Reattach(
 		(len(localReceiptDigest) != 0 && len(localReceiptDigest) != 32) {
 		return result, errors.New("invalid Stage Worker reattach authority")
 	}
+	agent.assignmentMu.Lock()
+	defer agent.assignmentMu.Unlock()
+	agent.runtimeMu.Lock()
+	initialActive := agent.activeAuthority()
 	statusResult, err := agent.runtime.Status(ctx, authority)
 	if err != nil {
+		agent.runtimeMu.Unlock()
 		return result, fmt.Errorf("resident runtime rejected reattach authority: %w", err)
 	}
 	var expectedReceipt *LocalReceipt
@@ -436,9 +488,12 @@ func (agent *StreamAgent) Reattach(
 		}
 	}
 	if err := matchLocalReceipts(statusResult, expectedReceipt); err != nil {
+		agent.runtimeMu.Unlock()
 		return result, err
 	}
 	result.Status = statusResult
+	agent.startingAuthority = proto.Clone(authority).(*velav1.StageAuthority)
+	agent.runtimeMu.Unlock()
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{
 			ReattachStage: &velav1.ReattachStageRequest{
@@ -448,8 +503,16 @@ func (agent *StreamAgent) Reattach(
 			},
 		},
 	})
+	agent.runtimeMu.Lock()
+	defer func() {
+		agent.startingAuthority = nil
+		agent.runtimeMu.Unlock()
+	}()
 	if err != nil {
 		return result, err
+	}
+	if !proto.Equal(agent.activeAuthority(), initialActive) {
+		return result, errors.New("StageAuthority changed while reattach response was pending")
 	}
 	if stop := response.GetStopStage(); stop != nil {
 		_, cancelErr := agent.handleStop(ctx, stop)
@@ -471,6 +534,11 @@ func (agent *StreamAgent) HandleStop(
 	ctx context.Context,
 	stop *velav1.StopStage,
 ) (CancellationResult, error) {
+	if agent == nil {
+		return CancellationResult{}, errors.New("missing Stage Worker stream Agent")
+	}
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
 	return agent.handleStop(ctx, stop)
 }
 
@@ -482,7 +550,7 @@ func (agent *StreamAgent) handleStop(
 		stop.GetReason() == velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_UNSPECIFIED {
 		return CancellationResult{}, errors.New("invalid Stage Worker StopStage command")
 	}
-	active := agent.activeAuthority()
+	active := agent.runtimeAuthority()
 	if active != nil {
 		activeDigest, activeErr := stageauthority.Digest(active)
 		stopDigest, stopErr := stageauthority.Digest(stop.GetAuthority())
@@ -495,6 +563,14 @@ func (agent *StreamAgent) handleStop(
 		stop.GetAuthority(),
 		velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
 	)
+}
+
+// The caller holds runtimeMu. Runtime may accept authority before control ACKs it.
+func (agent *StreamAgent) runtimeAuthority() *velav1.StageAuthority {
+	if agent.startingAuthority != nil {
+		return agent.startingAuthority
+	}
+	return agent.activeAuthority()
 }
 
 func (agent *StreamAgent) cancelAfterControlStartFailure(

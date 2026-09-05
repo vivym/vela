@@ -215,7 +215,8 @@ func (replicator *Replicator) copy(
 			fmt.Errorf("read Artifact backup source version: %w", err)
 	}
 	defer func() { _ = source.Close() }()
-	if source.ObjectKey != claimed.objectKey || source.VersionID != claimed.objectVersionID ||
+	if artifactstore.IsPublicationFence(source.ObjectVersion) ||
+		source.ObjectKey != claimed.objectKey || source.VersionID != claimed.objectVersionID ||
 		source.SizeBytes != claimed.sizeBytes || source.ContentType != claimed.contentType {
 		return artifactstore.ObjectVersion{}, "SOURCE_IDENTITY_MISMATCH",
 			errors.New("artifact backup source identity does not match committed metadata")

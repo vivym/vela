@@ -3,7 +3,10 @@ package stageworkeragent_test
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -30,6 +33,7 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 		MaterializationAuthority: &velav1.MaterializationAuthority{SchemaVersion: 1},
 		ObjectVersion:            "l2-version-before-restart",
 		CommittedAt:              committedAt,
+		ConfirmedDisposition:     stageworkeragent.MaterializationCommitted,
 	}
 	root := t.TempDir()
 	journal, err := stageworkeragent.NewFileMaterializationJournal(root, 1)
@@ -38,6 +42,55 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 	}
 	if err := journal.Put(context.Background(), record); err != nil {
 		t.Fatalf("Put: %v", err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("journal entries: %v %v", entries, err)
+	}
+	encoded, err := os.ReadFile(filepath.Join(root, entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &document); err != nil {
+		t.Fatal(err)
+	}
+	if string(document["schema_version"]) != "2" {
+		t.Fatalf("new journal format = %s", document["schema_version"])
+	}
+	for _, confirmed := range []bool{false, true} {
+		t.Run("schema1 confirmed="+map[bool]string{false: "false", true: "true"}[confirmed], func(t *testing.T) {
+			legacyRoot := t.TempDir()
+			legacy := make(map[string]json.RawMessage, len(document))
+			for field, value := range document {
+				legacy[field] = value
+			}
+			legacy["schema_version"] = json.RawMessage("1")
+			if !confirmed {
+				delete(legacy, "confirmed_disposition")
+			}
+			legacyBytes, err := json.Marshal(legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(legacyRoot, entries[0].Name()), legacyBytes, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			legacyJournal, err := stageworkeragent.NewFileMaterializationJournal(legacyRoot, 1)
+			if confirmed {
+				if err == nil {
+					t.Fatal("schema 1 accepted schema 2 confirmation state")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			legacyRecords, err := legacyJournal.List(context.Background())
+			if err != nil || len(legacyRecords) != 1 || legacyRecords[0].ConfirmedDisposition != "" {
+				t.Fatalf("legacy unconfirmed recovery: %+v %v", legacyRecords, err)
+			}
+		})
 	}
 	if err := journal.EnsureCapacity(context.Background()); !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) {
 		t.Fatalf("full file journal capacity error = %v", err)
@@ -55,6 +108,27 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 		records[0].ObjectVersion != record.ObjectVersion ||
 		!records[0].CommittedAt.Equal(committedAt) {
 		t.Fatalf("restarted List = %#v error=%v", records, err)
+	}
+	if records[0].ConfirmedDisposition != stageworkeragent.MaterializationCommitted {
+		t.Fatalf("confirmed disposition lost on restart: %+v", records[0])
+	}
+	for _, mutation := range []string{"missing version", "missing commit time", "source loss without evidence", "unknown disposition"} {
+		t.Run(mutation, func(t *testing.T) {
+			invalid := record
+			switch mutation {
+			case "missing version":
+				invalid.ObjectVersion = ""
+			case "missing commit time":
+				invalid.CommittedAt = time.Time{}
+			case "source loss without evidence":
+				invalid.ConfirmedDisposition = stageworkeragent.MaterializationSourceLost
+			case "unknown disposition":
+				invalid.ConfirmedDisposition = "UNKNOWN"
+			}
+			if err := restarted.Put(context.Background(), invalid); err == nil {
+				t.Fatal("invalid confirmed materialization disposition was persisted")
+			}
+		})
 	}
 	if err := restarted.EnsureCapacity(context.Background()); !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) {
 		t.Fatalf("restarted full file journal capacity error = %v", err)

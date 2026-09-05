@@ -1,0 +1,58 @@
+{
+  "schema": "vela-local-cpu-member-validation-v1",
+  "completed_at": "2026-09-05T05:05:00Z",
+  "result": "PASS",
+  "scope": "disposable-fake-runtime-cross-node-member-transport",
+  "production_gate": false,
+  "gpu": false,
+  "dra": false,
+  "baseline_commit": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+  "source_state": "DIRTY_WORKTREE_NONCANONICAL_LOCAL_BUILD",
+  "image_digest": "sha256:5631b0a2f6646afb83b630041ff4cd63c773d8750e5cc23f98f421719fbd530f",
+  "image_platform": "linux/arm64",
+  "command": "make test-h3-disposable-member-campaign",
+  "environment_note": "Used a temporary anonymous Docker client config against the existing local Docker Desktop socket; existing login configuration was preserved.",
+  "cluster_name": "vela-h3-disposable-1788584590641",
+  "leader_node": "k3d-vela-h3-disposable-1788584590641-agent-0",
+  "follower_node": "k3d-vela-h3-disposable-1788584590641-agent-1",
+  "cluster_removed": true,
+  "private_work_directory_removed": true,
+  "evidence_directory": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-h3-disposable-evidence.hcg3W0",
+  "receipts": [
+    {
+      "phase": "normal",
+      "exercise_id": "370eb8cf-e6ff-40dc-93e0-55c9425a2457",
+      "outcome": "PASS",
+      "prepared_members": 2,
+      "started_members": 2,
+      "all_stopped": true,
+      "sha256": "1a0db21dcf001ebc6408d7746deef3c759aa715072a3aad8f56f4fc595f5a07c"
+    },
+    {
+      "phase": "follower_removed_after_prepare",
+      "exercise_id": "efa2f7ba-b88a-4dc0-bc1f-061c6e2303ca",
+      "outcome": "FAULT_REJECTED",
+      "prepared_members": 2,
+      "started_members": 1,
+      "all_stopped": false,
+      "local_member_stopped": true,
+      "remote_member_unavailable": true,
+      "sha256": "819f2149190b6a5f912b7fb6241d62e343e7af9a1641ab8e3ea2874a6b74ae00"
+    },
+    {
+      "phase": "recovery",
+      "exercise_id": "9833f691-5ea9-4f39-9227-5fa2e33a741d",
+      "outcome": "PASS",
+      "prepared_members": 2,
+      "started_members": 2,
+      "all_stopped": true,
+      "sha256": "79e7dbd0f72bc5395572f1c4abba3793681f367e8bbef8d9dabd0faa5101e85e"
+    }
+  ],
+  "summary_sha256": "6287b2ad3be502de3772935d0f5bd114694fed8e1639c03a3ceec50e5e501b8e",
+  "limitations": [
+    "No PostgreSQL Stage graph, Admission, customer Charge or sustained load is exercised by this member-transport campaign.",
+    "A missing remote member is not reported as confirmed stopped.",
+    "The baseline revision label is not a claim that the dirty local build is a canonical release."
+  ]
+}

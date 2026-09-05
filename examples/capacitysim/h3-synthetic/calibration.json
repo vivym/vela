@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "revision": "synthetic-h3-calibration-v1",
+  "revision": "synthetic-h3-calibration-v2",
   "provenance": {
     "source_kind": "SYNTHETIC",
     "collection_window": "not-a-calibration-window",
@@ -192,8 +192,8 @@
       "concurrency_limit": 8,
       "failure_rate_ppm": 0,
       "outage": false,
-      "object_read_micro_units": 1,
-      "object_write_micro_units": 1,
+      "object_read_micro_units": 0,
+      "object_write_micro_units": 0,
       "provenance": {
         "source_kind": "SYNTHETIC",
         "collection_window": "not-a-network-measurement",

@@ -191,7 +191,7 @@ func writeCapacitySimulatorFixture(t *testing.T, directory string) (string, stri
 			MaxStorageBytes: 1 << 20, MaxCacheEntries: 4, MaxCacheBytes: 1 << 20,
 		},
 		Policy: capacitysim.Policy{
-			SchedulerRevision: "scheduler-v1", CachePolicyRevision: "cache-v1",
+			SchedulerRevision: capacitysim.SchedulerRevision, CachePolicyRevision: "cache-v1",
 			MaxRetriesPerStage: 1, CacheEnabled: true, CacheTTLNS: 1_000,
 			FinalizationDurationNS: 5, ProposalCooldownNS: 100, ProposalExpiryNS: 500,
 		},

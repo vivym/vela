@@ -98,6 +98,23 @@ func (validator *Validator) ValidateWithClockSkew(
 	authority *velav1.MaterializationAuthority,
 	maxFutureSkew time.Duration,
 ) (Verified, error) {
+	return validator.validate(authority, maxFutureSkew, false)
+}
+
+// ValidateForReplay permits expiry only. Callers must still require a matching
+// durable terminal command receipt before accepting the operation.
+func (validator *Validator) ValidateForReplay(
+	authority *velav1.MaterializationAuthority,
+	maxFutureSkew time.Duration,
+) (Verified, error) {
+	return validator.validate(authority, maxFutureSkew, true)
+}
+
+func (validator *Validator) validate(
+	authority *velav1.MaterializationAuthority,
+	maxFutureSkew time.Duration,
+	allowExpired bool,
+) (Verified, error) {
 	if validator == nil {
 		return Verified{}, errors.New("MaterializationAuthority validator is not configured")
 	}
@@ -129,7 +146,7 @@ func (validator *Validator) ValidateWithClockSkew(
 	canonical.Token = token
 	now := validator.now().UTC()
 	if now.Add(maxFutureSkew).Before(canonical.GetIssuedAt().AsTime().UTC()) ||
-		!now.Before(canonical.GetExpiresAt().AsTime().UTC()) {
+		(!allowExpired && !now.Before(canonical.GetExpiresAt().AsTime().UTC())) {
 		return Verified{}, ErrStale
 	}
 	digest, err := Digest(canonical)

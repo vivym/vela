@@ -3838,11 +3838,12 @@ func (ns NullUsageAttribution) Value() (driver.Value, error) {
 type UsageResourceKind string
 
 const (
-	UsageResourceKindGPUNANOSECOND   UsageResourceKind = "GPU_NANOSECOND"
-	UsageResourceKindCPUNANOSECOND   UsageResourceKind = "CPU_NANOSECOND"
-	UsageResourceKindBYTENANOSECOND  UsageResourceKind = "BYTE_NANOSECOND"
-	UsageResourceKindBYTE            UsageResourceKind = "BYTE"
-	UsageResourceKindOBJECTOPERATION UsageResourceKind = "OBJECT_OPERATION"
+	UsageResourceKindGPUNANOSECOND        UsageResourceKind = "GPU_NANOSECOND"
+	UsageResourceKindCPUNANOSECOND        UsageResourceKind = "CPU_NANOSECOND"
+	UsageResourceKindBYTENANOSECOND       UsageResourceKind = "BYTE_NANOSECOND"
+	UsageResourceKindBYTE                 UsageResourceKind = "BYTE"
+	UsageResourceKindOBJECTOPERATION      UsageResourceKind = "OBJECT_OPERATION"
+	UsageResourceKindALLOCATIONNANOSECOND UsageResourceKind = "ALLOCATION_NANOSECOND"
 )
 
 func (e *UsageResourceKind) Scan(src interface{}) error {
@@ -5964,6 +5965,32 @@ type RateCardRevision struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type RecoveryAdmissionControl struct {
+	Singleton        bool          `db:"singleton" json:"singleton"`
+	DatabaseIdentity uuid.UUID     `db:"database_identity" json:"database_identity"`
+	Generation       int64         `db:"generation" json:"generation"`
+	AdmissionOpen    bool          `db:"admission_open" json:"admission_open"`
+	OperationID      uuid.NullUUID `db:"operation_id" json:"operation_id"`
+}
+
+type RecoveryOperation struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	DatabaseIdentity uuid.UUID          `db:"database_identity" json:"database_identity"`
+	Generation       int64              `db:"generation" json:"generation"`
+	SystemIdentifier string             `db:"system_identifier" json:"system_identifier"`
+	DatabaseName     string             `db:"database_name" json:"database_name"`
+	DatabaseOid      pgtype.Uint32      `db:"database_oid" json:"database_oid"`
+	Actor            string             `db:"actor" json:"actor"`
+	ClosedAt         pgtype.Timestamptz `db:"closed_at" json:"closed_at"`
+	ReopenedAt       pgtype.Timestamptz `db:"reopened_at" json:"reopened_at"`
+}
+
+type RecoveryQuiescenceReceipt struct {
+	OperationID uuid.UUID          `db:"operation_id" json:"operation_id"`
+	Receipt     []byte             `db:"receipt" json:"receipt"`
+	SealedAt    pgtype.Timestamptz `db:"sealed_at" json:"sealed_at"`
+}
+
 type RemediationExecutionClaim struct {
 	OperationID         uuid.UUID          `db:"operation_id" json:"operation_id"`
 	ClaimID             uuid.UUID          `db:"claim_id" json:"claim_id"`
@@ -6179,6 +6206,7 @@ type StageAllocation struct {
 	ReleasedAt          pgtype.Timestamptz   `db:"released_at" json:"released_at"`
 	ReleaseReason       *string              `db:"release_reason" json:"release_reason"`
 	CreatedAt           pgtype.Timestamptz   `db:"created_at" json:"created_at"`
+	ExecutionSequence   *int64               `db:"execution_sequence" json:"execution_sequence"`
 }
 
 type StageArtifact struct {
@@ -6214,6 +6242,17 @@ type StageArtifactCommand struct {
 	RequestDigest  []byte             `db:"request_digest" json:"request_digest"`
 	Result         []byte             `db:"result" json:"result"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageArtifactDeletion struct {
+	StageArtifactID uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	Reason          string             `db:"reason" json:"reason"`
+	RequestedAt     pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+	ClaimID         uuid.NullUUID      `db:"claim_id" json:"claim_id"`
+	ClaimExpiresAt  pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
+	RetryAt         pgtype.Timestamptz `db:"retry_at" json:"retry_at"`
+	AttemptCount    int32              `db:"attempt_count" json:"attempt_count"`
+	CompletedAt     pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 }
 
 type StageArtifactInput struct {
@@ -6617,6 +6656,18 @@ type StageLease struct {
 	RevokedAt           pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 	RevokeReason        *string            `db:"revoke_reason" json:"revoke_reason"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageMaterializationDeletion struct {
+	MaterializationLeaseID uuid.UUID          `db:"materialization_lease_id" json:"materialization_lease_id"`
+	RequestedAt            pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+	ObjectVersion          *string            `db:"object_version" json:"object_version"`
+	Resolved               bool               `db:"resolved" json:"resolved"`
+	ClaimID                uuid.NullUUID      `db:"claim_id" json:"claim_id"`
+	ClaimExpiresAt         pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
+	RetryAt                pgtype.Timestamptz `db:"retry_at" json:"retry_at"`
+	AttemptCount           int32              `db:"attempt_count" json:"attempt_count"`
+	CompletedAt            pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 }
 
 type StageMaterializationLease struct {

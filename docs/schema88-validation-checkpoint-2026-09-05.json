@@ -1,0 +1,853 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "result": "CHECKS_PASS_WITH_OPEN_LIFECYCLE_FINDINGS",
+  "production_gate": false,
+  "source": {
+    "head": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+    "branch": "feature/vela-mock-hardening",
+    "includes_uncommitted_changes": true,
+    "migration": 88,
+    "source_tree_sha256": "54a961e7f3d5c8a8b5479ce9fafce013912f183ee7b4231d3f35061399f711a7",
+    "source_file_count": 628,
+    "source_manifest_path": "/Users/viv/projs/vela/docs/cpu-mock-schema88-evidence-2026-09-05.json",
+    "source_manifest_sha256": "d5d4bf996afcf86c4d6d6ff7cf2ca812ba9cf33b54725c8a40a258ecae222535",
+    "verification_input_sha256": {
+      "Makefile": "a9b5d9ce17d60b459cf25ffbe0155f805d836f9bcc8cb5f7ae32a1b692077ab5",
+      "hack/test-integration-shard.sh": "df97416516539933c0e175cc4e3bb2de07dde8e7ea8c53bbf17af1fa2491e8a2",
+      "hack/test-cnpg-failover.sh": "7b390e856dfdc68c477cf0fd69b27f4f8bbfe85b34cea024cf32881f60c39fe9",
+      "proto/vela/v1/stage_authority.proto": "7f64d9199a82142406b90934014ae5e1b553e69d15424b6b097c317f2583bbaa",
+      "api/gen/vela.gen.go": "b0bc9ef33b43e909f9aa61081638a52317a585050abc2e51c330f6187506d824"
+    }
+  },
+  "ordinary_unit_tests": {
+    "command": "go test ./...",
+    "log_path": "/tmp/vela-schema88-final-unit.log",
+    "log_sha256": "24a92824117184e356698ebdcd355148ad1f20b489c3da09fedfb9216c46669b",
+    "exit_code": 0,
+    "package_results": [
+      {
+        "package": "github.com/vivym/vela/internal/legacyh3reachability",
+        "result": "ok",
+        "seconds": 3.347
+      },
+      {
+        "package": "github.com/vivym/vela/internal/modelruntime",
+        "result": "ok",
+        "seconds": 5.082
+      }
+    ],
+    "go_cache_permitted": true
+  },
+  "quality": {
+    "command": "make lint test-cross validate-deployment",
+    "log_path": "/tmp/vela-schema88-final-quality.log",
+    "log_sha256": "168cae06bf02668eee2fbd597e0837ef45b01fb22a040da34dd86c40b7856507",
+    "exit_code": 0,
+    "package_results": [
+      {
+        "package": "github.com/vivym/vela/cmd/vela-capacity-sim",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-catalog-promoter",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-control",
+        "result": "ok",
+        "seconds": 0.014
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-fleet-controller",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-h3-evidence",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-h3-member-campaign",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-h3-reachability",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-h3-stage-mock",
+        "result": "ok",
+        "seconds": 0.01
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-lab-assets",
+        "result": "ok",
+        "seconds": 0.015
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+        "result": "ok",
+        "seconds": 0.014
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-lab-cpu-thumbnail-mock",
+        "result": "ok",
+        "seconds": 0.015
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-lab-smoke",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-model-runtime",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-node-agent",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-release-bundle",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-stage-cutover",
+        "result": "ok",
+        "seconds": 0.013
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-stage-worker-agent",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/cmd/vela-verify-launch",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/hack",
+        "result": "ok",
+        "seconds": 0.021
+      },
+      {
+        "package": "github.com/vivym/vela/internal/artifactcleanup",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/artifactreplication",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/artifactstore",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/artifactvalidator",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/authoritypolicy",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/billingexport",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/capacitysim",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/catalogpromotion",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/cpumedia",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/database",
+        "result": "ok",
+        "seconds": 0.013
+      },
+      {
+        "package": "github.com/vivym/vela/internal/debugdump",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/eventstream",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/executiongraph",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/financereconciliation",
+        "result": "ok",
+        "seconds": 0.019
+      },
+      {
+        "package": "github.com/vivym/vela/internal/fleetadmission",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/fleetcontroller",
+        "result": "ok",
+        "seconds": 0.012
+      },
+      {
+        "package": "github.com/vivym/vela/internal/fleettransport",
+        "result": "ok",
+        "seconds": 0.017
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3campaignevidence",
+        "result": "ok",
+        "seconds": 0.04
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3campaignrunner",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3faultevidence",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3launchevidence",
+        "result": "ok",
+        "seconds": 0.013
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3membercampaign",
+        "result": "ok",
+        "seconds": 0.012
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3mockbackend",
+        "result": "ok",
+        "seconds": 0.02
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3preflight",
+        "result": "ok",
+        "seconds": 0.048
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3request",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3stage",
+        "result": "ok",
+        "seconds": 0.018
+      },
+      {
+        "package": "github.com/vivym/vela/internal/h3stagemock",
+        "result": "ok",
+        "seconds": 0.012
+      },
+      {
+        "package": "github.com/vivym/vela/internal/httpapi",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/identity",
+        "result": "ok",
+        "seconds": 0.003
+      },
+      {
+        "package": "github.com/vivym/vela/internal/imageref",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/inbox",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/labv2contract",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/legacyh3reachability",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/legalhold",
+        "result": "ok",
+        "seconds": 0.021
+      },
+      {
+        "package": "github.com/vivym/vela/internal/materializationauthority",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/internal/modelruntime",
+        "result": "ok",
+        "seconds": 0.009
+      },
+      {
+        "package": "github.com/vivym/vela/internal/modelruntimetransport",
+        "result": "ok",
+        "seconds": 0.015
+      },
+      {
+        "package": "github.com/vivym/vela/internal/natsauth",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/nodeagent",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/noncontentexpiry",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/productiongates",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/recovery",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/releaseartifacts",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/releasebundle",
+        "result": "ok",
+        "seconds": 0.021
+      },
+      {
+        "package": "github.com/vivym/vela/internal/remediation",
+        "result": "ok",
+        "seconds": 0.009
+      },
+      {
+        "package": "github.com/vivym/vela/internal/retention",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/securefile",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/slo",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/sloevidence",
+        "result": "ok",
+        "seconds": 0.015
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageartifact",
+        "result": "ok",
+        "seconds": 0.013
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageassignment",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageauthority",
+        "result": "ok",
+        "seconds": 0.015
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stagecache",
+        "result": "ok",
+        "seconds": 0.014
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageprotocol",
+        "result": "ok",
+        "seconds": 0.012
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stagescheduler",
+        "result": "ok",
+        "seconds": 0.012
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageworkeragent",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageworkercontrol",
+        "result": "ok",
+        "seconds": 0.006
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageworkermembertransport",
+        "result": "ok",
+        "seconds": 0.01
+      },
+      {
+        "package": "github.com/vivym/vela/internal/stageworkertransport",
+        "result": "ok",
+        "seconds": 0.004
+      },
+      {
+        "package": "github.com/vivym/vela/internal/supplychain",
+        "result": "ok",
+        "seconds": 0.005
+      },
+      {
+        "package": "github.com/vivym/vela/internal/telemetry",
+        "result": "ok",
+        "seconds": 0.008
+      },
+      {
+        "package": "github.com/vivym/vela/internal/usagecostledger",
+        "result": "ok",
+        "seconds": 0.009
+      },
+      {
+        "package": "github.com/vivym/vela/internal/webhook",
+        "result": "ok",
+        "seconds": 0.007
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 1.289
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 0.495
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 0.344
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 0.438
+      },
+      {
+        "package": "github.com/vivym/vela/internal/deploymentcontract",
+        "result": "ok",
+        "seconds": 0.356
+      }
+    ],
+    "lint_issues": 0
+  },
+  "generation": {
+    "command": "make generate",
+    "log_path": "/tmp/vela-schema88-final-generate.log",
+    "log_sha256": "e8ff3899029741b26d8414b06a97542fa8cd41b6d4bb69c05e80aaf821ae412f",
+    "exit_code": 0,
+    "package_results": [],
+    "files": 23,
+    "generated_manifest_sha256": "0f83ff500e618e412ee941116f14b61e64374ab284fc7e303f6001ec9eb8c7af",
+    "before_after_equal": true
+  },
+  "integration": {
+    "command": "sh hack/test-integration-shard.sh INDEX 4",
+    "count": 1,
+    "scope": "Go build-selected integration package/test pairs, including bootstrap; opt-in external campaigns retain their normal skip behavior.",
+    "shards": [
+      {
+        "index": 0,
+        "log_path": "/tmp/vela-schema88-final-integration-0.log",
+        "log_sha256": "f771a1c10d1fa0dec0719a58fce5727b0863b46c70a61f66099e8c20132a4e5b",
+        "exit_code": 0,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 4.681
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "ok",
+            "seconds": 388.353
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "log_path": "/tmp/vela-schema88-final-integration-1.log",
+        "log_sha256": "6227bdbaaf17ac46d79de7d24f3c57c91230630198a332dec099589c376c5b7a",
+        "exit_code": 0,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 0.389
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "ok",
+            "seconds": 424.509
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "log_path": "/tmp/vela-schema88-final-integration-2.log",
+        "log_sha256": "7da7e553299c24b1637ef6b6490ec923290b903366454c135c10088abf85356c",
+        "exit_code": 0,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 0.47
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "ok",
+            "seconds": 347.599
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "log_path": "/tmp/vela-schema88-final-integration-3.log",
+        "log_sha256": "0684d26e1d690c9a09fba8bf52cf49b0316bb8f0e03fc192aa9005dbf4d70f1f",
+        "exit_code": 0,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 0.387
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "ok",
+            "seconds": 406.914
+          }
+        ]
+      }
+    ]
+  },
+  "regressions": {
+    "authority_signature_red": {
+      "log_path": "/tmp/vela-execution-sequence-authority-red.log",
+      "log_sha256": "59c5362a6386a725d3a67e9cf3347ca079e070c8ce0f243e1e7a0b80f8d0655d",
+      "exit_code": 1,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/stageauthority",
+          "result": "FAIL",
+          "seconds": 0.624
+        }
+      ]
+    },
+    "authority_signature_race": {
+      "log_path": "/tmp/vela-execution-sequence-authority-green.log",
+      "log_sha256": "fc53b9bbae7ee1d8ab1a946999efb4d4853578ae98cbc2907f5594d45ccc89d4",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/stageauthority",
+          "result": "ok",
+          "seconds": 1.681
+        }
+      ]
+    },
+    "runtime_behavioral_red": {
+      "log_path": "/tmp/vela-execution-sequence-runtime-red2.log",
+      "log_sha256": "dae4a33de1b592ebdf335dfaae84603174bbe1088e784b3e8f948c069d2616c2",
+      "exit_code": 1,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/modelruntime",
+          "result": "FAIL",
+          "seconds": 0.798
+        }
+      ]
+    },
+    "runtime_agent_race": {
+      "log_path": "/tmp/vela-execution-sequence-runtime-full-race.log",
+      "log_sha256": "949faec4feabc2a2f31bebf2dc8bb05ea7386eefb49fdabf3c5d46771bec1f2c",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/modelruntime",
+          "result": "ok",
+          "seconds": 8.68
+        },
+        {
+          "package": "github.com/vivym/vela/internal/stageauthority",
+          "result": "ok",
+          "seconds": 1.71
+        },
+        {
+          "package": "github.com/vivym/vela/internal/stageworkeragent",
+          "result": "ok",
+          "seconds": 3.069
+        },
+        {
+          "package": "github.com/vivym/vela/cmd/vela-stage-worker-agent",
+          "result": "ok",
+          "seconds": 3.767
+        }
+      ]
+    },
+    "database_missing_sequence_red": {
+      "log_path": "/tmp/vela-execution-sequence-database-red.log",
+      "log_sha256": "5d2a16dcebb62322479b3349f141def56e492a6eddee93216d2d6684b8aefd44",
+      "exit_code": 1,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "FAIL",
+          "seconds": 3.939
+        }
+      ]
+    },
+    "authorizer_mutation_red": {
+      "log_path": "/tmp/vela-ordered-authority-mutation-red.log",
+      "log_sha256": "6c084b564f3eb2f4cb79ddf5208b8a0ea68141dd3a1d361ef0ac142074416d2b",
+      "exit_code": 1,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "FAIL",
+          "seconds": 4.647
+        }
+      ]
+    },
+    "durable_order_authorizer_race": {
+      "log_path": "/tmp/vela-ordered-authority-green.log",
+      "log_sha256": "84b0d59b04d973a75966ec9ec4f01884b06d2ab21106cab16283ac68fd240aa1",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "ok",
+          "seconds": 6.174
+        }
+      ]
+    },
+    "downgrade_rollback_gap_red": {
+      "log_path": "/tmp/vela-execution-sequence-downgrade-gap-red.log",
+      "log_sha256": "fcc04cfc10d10db4e07e2b9d5164daf2bc557786b6ac78da66096072dcb5ed63",
+      "exit_code": 1,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "FAIL",
+          "seconds": 4.119
+        }
+      ]
+    },
+    "final_database_sequence_race": {
+      "log_path": "/tmp/vela-execution-sequence-database-final-race.log",
+      "log_sha256": "e818fa15e330b1de4e0b9e51a09a23b5f8ed7f56f998eebcf753778b18be9965",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "ok",
+          "seconds": 27.82
+        }
+      ]
+    },
+    "legacy_terminal_replay": {
+      "log_path": "/tmp/vela-schema88-historical-replay-compatibility.log",
+      "log_sha256": "f501f79825291c7fdbcba9c30a2c073e219612ab1e28a5e9acb4f4ea32a26ce8",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "ok",
+          "seconds": 73.403
+        }
+      ]
+    },
+    "legacy_idle_blocked_replay": {
+      "log_path": "/tmp/vela-schema88-idle-blocked-exact-wire.log",
+      "log_sha256": "c9e01d13e5db27aa21a0c73bcd8b0f6e9d6ef82eb44e657e322145e8694d57bb",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "ok",
+          "seconds": 14.766
+        }
+      ]
+    },
+    "legacy_storage_capacity_transfer": {
+      "log_path": "/tmp/vela-schema88-storage-capacity-transfer-compatibility.log",
+      "log_sha256": "8e9447639a5a82e86fe79c0fa139562a4afedd15d5819cafc316158e3c89bffb",
+      "exit_code": 0,
+      "package_results": [
+        {
+          "package": "github.com/vivym/vela/internal/integration",
+          "result": "ok",
+          "seconds": 16.479
+        }
+      ]
+    }
+  },
+  "synchronous_failover": {
+    "log_path": "/tmp/vela-schema88-cnpg-failover.log",
+    "log_sha256": "264fbb17c8c41a8fe7880760d3dcf0f80145c11e45cbc39c1caef5b0935aee11",
+    "exit_code": 0,
+    "package_results": [
+      {
+        "package": "github.com/vivym/vela/internal/integration",
+        "result": "ok",
+        "seconds": 108.85
+      }
+    ],
+    "observations": [
+      "cnpg_failover_test.go:98: CNPG initial placement=vela-postgres-1@vela-cnpg-failover-worker3,vela-postgres-2@vela-cnpg-failover-worker,vela-postgres-3@vela-cnpg-failover-worker2",
+      "cnpg_failover_test.go:117: CNPG failover old_primary=vela-postgres-1 old_node=vela-cnpg-failover-worker3 new_primary=vela-postgres-2 elapsed=50.157767334s authority_sha256=91239447e403abff41b1eed0210a4a53f419d478ecec174be148984e42239c6b",
+      "cnpg_failover_test.go:162: CNPG no-quorum admission_status=500 admission_elapsed=144.265ms admission_error=<nil> stage_sqlstate=55000 stage_elapsed=13.533667ms stage_error=begin durable Stage Worker acquire: ERROR: synchronous replication quorum is unavailable (SQLSTATE 55000) final_placement=vela-postgres-1@vela-cnpg-failover-worker3,vela-postgres-2@vela-cnpg-failover-worker,vela-postgres-3@vela-cnpg-failover-worker2 authority_sha256=91239447e403abff41b1eed0210a4a53f419d478ecec174be148984e42239c6b"
+    ],
+    "scope": "Local disposable CNPG cluster: current V2 assignment, renewal and full allocation rows survive automatic synchronous failover, with exact wire replay; no-quorum new writes reject. Does not test PITR epoch cutover or descendant stop proof."
+  },
+  "cpu_campaign": {
+    "evidence_path": "/Users/viv/projs/vela/docs/cpu-mock-schema88-evidence-2026-09-05.json",
+    "evidence_sha256": "d5d4bf996afcf86c4d6d6ff7cf2ca812ba9cf33b54725c8a40a258ecae222535",
+    "extended_load_package_seconds": 121.436,
+    "exact_cache_package_seconds": 9.776
+  },
+  "compatibility_diagnostics": {
+    "final_acceptance": false,
+    "source_frozen": false,
+    "explanation": "First full run exposed historical fixtures using the new producer or crossing schema88 Down after issuance. Those fixtures were repaired and the final frozen-source run is separate.",
+    "logs": [
+      {
+        "log_path": "/tmp/vela-schema88-integration-first-0.log",
+        "log_sha256": "d722d860d08cfb2458be4620b07a5a6e8c0f88bcbc8c7251a9444d40f56cbf37",
+        "exit_code": 1,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 3.585
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "FAIL",
+            "seconds": 397.374
+          }
+        ]
+      },
+      {
+        "log_path": "/tmp/vela-schema88-integration-first-1.log",
+        "log_sha256": "8cb041b36176e14798d4c17a8e0a4b84049620cf2e9eb18968fa29163e5fa0c7",
+        "exit_code": 1,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 0.811
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "FAIL",
+            "seconds": 392.219
+          }
+        ]
+      },
+      {
+        "log_path": "/tmp/vela-schema88-integration-first-2.log",
+        "log_sha256": "76203d6a84edfa5a51cbe9d848ea968f9df45e461ca80b7f63040b16cdef2667",
+        "exit_code": 1,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 1.191
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "FAIL",
+            "seconds": 394.269
+          }
+        ]
+      },
+      {
+        "log_path": "/tmp/vela-schema88-integration-first-3.log",
+        "log_sha256": "f1f0a013b4b43ea5de1792d28921884d231ebe834f6f9118cb29b3719ad46365",
+        "exit_code": 0,
+        "package_results": [
+          {
+            "package": "github.com/vivym/vela/cmd/vela-lab-bootstrap",
+            "result": "ok",
+            "seconds": 1.03
+          },
+          {
+            "package": "github.com/vivym/vela/internal/integration",
+            "result": "ok",
+            "seconds": 401.906
+          }
+        ]
+      }
+    ]
+  },
+  "findings": {
+    "total": 38,
+    "fixed": 34,
+    "false_positive": 1,
+    "partially_fixed": 2,
+    "open": 1
+  },
+  "limits": [
+    "Runtime RPC reentry is repaired; Worker namespace gating, resolver/download drain, complete process stop proof, historical terminal disposition and durable cleanup intent remain open.",
+    "PITR or data-loss restore must advance and re-register affected Runtime epochs before signing resumes; unseen old high-number envelopes are not detected by observed numeric watermarks.",
+    "Full physical cost telemetry, inactive Worker history lifecycle, production scheduler calibration and full external service composition remain separate.",
+    "Schema87 receipts remain immutable historical evidence; no commit, push, remote rollout or GPU use occurred for this checkpoint."
+  ]
+}

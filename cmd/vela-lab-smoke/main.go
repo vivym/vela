@@ -43,6 +43,7 @@ type options struct {
 	projectID      uuid.UUID
 	pollInterval   time.Duration
 	timeout        time.Duration
+	seed           int64
 }
 
 type smokeClient struct {
@@ -93,7 +94,7 @@ func run(ctx context.Context, arguments []string, output io.Writer) error {
 	runContext, cancel := context.WithTimeout(ctx, configuration.timeout)
 	defer cancel()
 
-	job, err := client.submitJob(runContext, configuration.projectID)
+	job, err := client.submitJob(runContext, configuration.projectID, configuration.seed)
 	if err != nil {
 		return err
 	}
@@ -143,6 +144,7 @@ func parseOptions(arguments []string) (options, error) {
 	flags.StringVar(&projectID, "project-id", defaultProjectID, "lab Project id")
 	flags.DurationVar(&configuration.pollInterval, "poll-interval", time.Second, "Job polling interval")
 	flags.DurationVar(&configuration.timeout, "timeout", 6*time.Minute, "overall smoke timeout")
+	flags.Int64Var(&configuration.seed, "seed", 17, "exact H3 request seed")
 	if err := flags.Parse(arguments); err != nil {
 		return options{}, err
 	}
@@ -154,6 +156,9 @@ func parseOptions(arguments []string) (options, error) {
 		return options{}, errors.New("--project-id must be a non-zero UUID")
 	}
 	configuration.projectID = parsedProjectID
+	if configuration.seed < 0 {
+		return options{}, errors.New("--seed must be non-negative")
+	}
 	if configuration.pollInterval <= 0 || configuration.pollInterval > time.Minute ||
 		configuration.timeout <= configuration.pollInterval || configuration.timeout > 15*time.Minute {
 		return options{}, errors.New("lab smoke polling interval or timeout is invalid")
@@ -200,11 +205,12 @@ func newSmokeClient(configuration options) (*smokeClient, error) {
 	return &smokeClient{baseURL: baseURL, token: token, client: httpClient}, nil
 }
 
-func (client *smokeClient) submitJob(ctx context.Context, projectID uuid.UUID) (api.Job, error) {
+func (client *smokeClient) submitJob(ctx context.Context, projectID uuid.UUID, seed int64) (api.Job, error) {
 	request := api.SubmitJobRequest{
 		Model: "h3-mock", GenerationPreset: api.Balanced, ServiceClass: api.Standard,
 		OutputSpec: "mock-video-1080p-5s-24fps", GenerationCount: 1,
 		Prompt: "Vela non-production lab Stage graph smoke",
+		H3:     &api.H3Request{Seed: &seed},
 	}
 	body, err := json.Marshal(request)
 	if err != nil {

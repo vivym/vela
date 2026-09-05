@@ -48,6 +48,37 @@ func TestMaterializerRetriesL2WithoutReissuingComputeAuthority(t *testing.T) {
 	}
 }
 
+func TestMaterializerBoundsPublicationByLeaseExpiry(t *testing.T) {
+	now := time.Now().UTC()
+	payload := []byte("bounded publication")
+	lease := testMaterializationLease(now, sha256.Sum256(payload), int64(len(payload)))
+	lease.ExpiresAt = now.Add(25 * time.Millisecond)
+	store := &deadlinePublicationStore{VersionedStore: artifactstore.NewLocal()}
+	committer := &recordingCommitter{}
+	materializer, err := NewMaterializer(store, committer, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = materializer.Materialize(context.Background(), lease, bytes.NewReader(payload))
+	if !errors.Is(err, context.DeadlineExceeded) || !store.bounded || committer.calls != 0 {
+		t.Fatalf("unbounded expired publication: bounded=%v commits=%d err=%v", store.bounded, committer.calls, err)
+	}
+}
+
+type deadlinePublicationStore struct {
+	artifactstore.VersionedStore
+	bounded bool
+}
+
+func (store *deadlinePublicationStore) PutIfAbsent(ctx context.Context, _ string, _ string, _ io.Reader, _ int64, _ [sha256.Size]byte) (artifactstore.ObjectVersion, error) {
+	_, store.bounded = ctx.Deadline()
+	if !store.bounded {
+		return artifactstore.ObjectVersion{}, errors.New("publication has no deadline")
+	}
+	<-ctx.Done()
+	return artifactstore.ObjectVersion{}, ctx.Err()
+}
+
 func TestMaterializerReconcilesUploadBeforeDatabaseCommit(t *testing.T) {
 	now := time.Date(2026, time.August, 30, 11, 0, 0, 0, time.UTC)
 	payload := []byte("sealed dit latent")

@@ -235,6 +235,7 @@ func validateCommitStageMaterialization(
 ) error {
 	value := request.GetCommitStageMaterialization()
 	if authorities.Materialization == nil || strings.TrimSpace(value.GetObjectVersion()) == "" ||
+		value.GetObjectVersion() != strings.TrimSpace(value.GetObjectVersion()) ||
 		!validTimestamp(value.GetCommittedAt()) {
 		return errors.New("stage materialization commit evidence is invalid")
 	}
@@ -247,6 +248,7 @@ func validateFailStage(
 ) error {
 	value := request.GetFailStage()
 	if authorities.Stage == nil || strings.TrimSpace(value.GetFailureClass()) == "" ||
+		value.GetFailureClass() != strings.TrimSpace(value.GetFailureClass()) ||
 		len(value.GetFailureClass()) > 100 || len(value.GetFailureFingerprint()) != sha256.Size ||
 		value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetFailedAt()) ||
 		!validTimestamp(value.GetRetryAt()) ||

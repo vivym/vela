@@ -29,17 +29,20 @@ type FileMaterializationJournal struct {
 }
 
 type fileMaterializationRecordV1 struct {
-	SchemaVersion            int    `json:"schema_version"`
-	ID                       string `json:"id"`
-	StageAuthority           []byte `json:"stage_authority"`
-	LocalReceipt             []byte `json:"local_receipt"`
-	MaterializationAuthority []byte `json:"materialization_authority,omitempty"`
-	ObjectVersion            string `json:"object_version,omitempty"`
-	CommittedAt              string `json:"committed_at,omitempty"`
-	SourceLossFingerprint    []byte `json:"source_loss_fingerprint,omitempty"`
-	SourceLossResourceUnits  int64  `json:"source_loss_resource_units,omitempty"`
-	SourceLostAt             string `json:"source_lost_at,omitempty"`
-	SourceRetryAt            string `json:"source_retry_at,omitempty"`
+	SchemaVersion            int                        `json:"schema_version"`
+	ID                       string                     `json:"id"`
+	StageAuthority           []byte                     `json:"stage_authority"`
+	LocalReceipt             []byte                     `json:"local_receipt"`
+	MaterializationAuthority []byte                     `json:"materialization_authority,omitempty"`
+	ObjectVersion            string                     `json:"object_version,omitempty"`
+	CommittedAt              string                     `json:"committed_at,omitempty"`
+	SourceLossFingerprint    []byte                     `json:"source_loss_fingerprint,omitempty"`
+	SourceLossResourceUnits  int64                      `json:"source_loss_resource_units,omitempty"`
+	SourceLostAt             string                     `json:"source_lost_at,omitempty"`
+	SourceRetryAt            string                     `json:"source_retry_at,omitempty"`
+	ConfirmedDisposition     MaterializationDisposition `json:"confirmed_disposition,omitempty"`
+	CommitCommandID          string                     `json:"commit_command_id,omitempty"`
+	SourceLossCommandID      string                     `json:"source_loss_command_id,omitempty"`
 }
 
 func NewFileMaterializationJournal(
@@ -263,8 +266,10 @@ func encodeFileMaterializationRecord(record PendingMaterialization) ([]byte, err
 		}
 	}
 	diskRecord := fileMaterializationRecordV1{
-		SchemaVersion: 1, ID: record.ID, StageAuthority: stage, LocalReceipt: receipt,
+		SchemaVersion: 2, ID: record.ID, StageAuthority: stage, LocalReceipt: receipt,
 		MaterializationAuthority: authority, ObjectVersion: record.ObjectVersion,
+		ConfirmedDisposition: record.ConfirmedDisposition,
+		CommitCommandID:      record.CommitCommandID, SourceLossCommandID: record.SourceLossCommandID,
 	}
 	if !record.CommittedAt.IsZero() {
 		diskRecord.CommittedAt = record.CommittedAt.UTC().Format(time.RFC3339Nano)
@@ -301,13 +306,17 @@ func decodeFileMaterializationRecord(document []byte) (PendingMaterialization, e
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return PendingMaterialization{}, errors.New("materialization journal contains trailing data")
 	}
-	if decoded.SchemaVersion != 1 || decoded.ID == "" || len(decoded.StageAuthority) == 0 ||
+	if (decoded.SchemaVersion != 1 && decoded.SchemaVersion != 2) ||
+		(decoded.SchemaVersion == 1 && (decoded.ConfirmedDisposition != "" || decoded.CommitCommandID != "" || decoded.SourceLossCommandID != "")) ||
+		decoded.ID == "" || len(decoded.StageAuthority) == 0 ||
 		len(decoded.LocalReceipt) == 0 {
 		return PendingMaterialization{}, errors.New("materialization journal fields are incomplete")
 	}
 	record := PendingMaterialization{
 		ID: decoded.ID, StageAuthority: &velav1.StageAuthority{},
 		LocalReceipt: &velav1.LocalMaterializationReceipt{}, ObjectVersion: decoded.ObjectVersion,
+		ConfirmedDisposition: decoded.ConfirmedDisposition,
+		CommitCommandID:      decoded.CommitCommandID, SourceLossCommandID: decoded.SourceLossCommandID,
 	}
 	if decoded.CommittedAt != "" {
 		committedAt, err := time.Parse(time.RFC3339Nano, decoded.CommittedAt)

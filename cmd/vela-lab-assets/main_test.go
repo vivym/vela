@@ -52,6 +52,7 @@ func TestGenerateCreatesProtectedCompleteAssets(t *testing.T) {
 		"pki/stage-worker-thumbnail.crt",
 		"pki/fleet-client.crt", "pki/fleet-admission.crt", "pki/minio-server.crt",
 		"control/lease.json", "control/webhook.json", "control/model-runtime-verifier.json",
+		"control/h3-cache-projects.json",
 		"control/stage-worker-identity-key", "stage/worker-1-launch.json",
 		"stage/worker-2-launch.json", "stage/worker-thumbnail-launch.json",
 		"env/stage-worker-1.env", "env/stage-worker-2.env", "env/stage-worker-thumbnail.env",
@@ -85,6 +86,18 @@ func TestGenerateCreatesProtectedCompleteAssets(t *testing.T) {
 	}
 	if len(manifest.Files) < 30 {
 		t.Fatalf("manifested asset file count = %d, want complete generated set", len(manifest.Files))
+	}
+	cacheKeysBytes, err := os.ReadFile(filepath.Join(output, "control/h3-cache-projects.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cacheKeys map[string]string
+	if err := json.Unmarshal(cacheKeysBytes, &cacheKeys); err != nil {
+		t.Fatal(err)
+	}
+	cacheKey, err := base64.StdEncoding.DecodeString(cacheKeys["84000000-0000-0000-0000-000000000002"])
+	if err != nil || len(cacheKey) != 32 || len(cacheKeys) != 1 {
+		t.Fatal("cache keyring must contain one strong Project-scoped key")
 	}
 	certificate := readCertificate(t, filepath.Join(output, "pki", "stage-worker-1.crt"))
 	if len(certificate.URIs) != 1 || certificate.URIs[0].String() != stageWorkerSPIFFEIdentity(worker1MemberID) {

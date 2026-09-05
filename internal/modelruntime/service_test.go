@@ -453,6 +453,7 @@ func TestModelRuntimeReusesResidentBackendAfterCanceledStageStops(t *testing.T) 
 	secondUnsigned.StageLeaseId = "11000000-0000-0000-0000-000000000026"
 	secondUnsigned.StageFence++
 	secondUnsigned.StageVersion++
+	secondUnsigned.ExecutionSequence++
 	secondUnsigned.ExecutionNonce = bytes.Repeat([]byte{0x75}, 32)
 	secondUnsigned.Signature = nil
 	second, err := signer.Sign(secondUnsigned)
@@ -683,6 +684,7 @@ func TestModelRuntimeSealReplayReturnsReceiptAfterComputeAuthorityRelease(t *tes
 	secondUnsigned.StageLeaseId = "11000000-0000-0000-0000-000000000016"
 	secondUnsigned.StageFence++
 	secondUnsigned.StageVersion++
+	secondUnsigned.ExecutionSequence++
 	secondUnsigned.ExecutionNonce = bytes.Repeat([]byte{0x74}, 32)
 	secondUnsigned.Signature = nil
 	second, err := signer.Sign(secondUnsigned)
@@ -841,7 +843,8 @@ func signRuntimeAuthorityForEpoch(
 		t.Fatalf("ExecutionSpecDigest: %v", err)
 	}
 	authority := &velav1.StageAuthority{
-		SchemaVersion:     1,
+		SchemaVersion:     2,
+		ExecutionSequence: 1,
 		JobId:             "11000000-0000-0000-0000-000000000001",
 		AttemptId:         "11000000-0000-0000-0000-000000000002",
 		StageRunId:        "11000000-0000-0000-0000-000000000003",

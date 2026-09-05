@@ -18,6 +18,7 @@ import (
 
 const (
 	SchemaVersionV1      = 1
+	SchemaVersionV2      = 2
 	minSigningKeyBytes   = 32
 	maxAuthorityValidity = 7 * 24 * time.Hour
 	maxValidationSkew    = time.Minute
@@ -225,6 +226,28 @@ func (validator *Validator) ValidateEnvelopeWithClockSkew(
 	return verified, nil
 }
 
+// ValidateEnvelopeForReplay permits elapsed deadlines, but still rejects an
+// authority issued beyond the clock-skew bound. It grants no execution time.
+func (validator *Validator) ValidateEnvelopeForReplay(
+	authority *velav1.StageAuthority,
+	maxFutureSkew time.Duration,
+) (Verified, error) {
+	if validator == nil {
+		return Verified{}, errors.New("StageAuthority validator is not configured")
+	}
+	if maxFutureSkew < 0 || maxFutureSkew > maxValidationSkew {
+		return Verified{}, fmt.Errorf("%w: StageAuthority clock skew is invalid", ErrInvalid)
+	}
+	verified, err := validator.ValidateEnvelopeSignature(authority)
+	if err != nil {
+		return Verified{}, err
+	}
+	if validator.now().UTC().Add(maxFutureSkew).Before(verified.Authority.GetIssuedAt().AsTime()) {
+		return Verified{}, ErrStale
+	}
+	return verified, nil
+}
+
 // ValidateEnvelopeSignature verifies shape, key, signature, and digest without
 // evaluating temporal validity. Callers must separately enforce a replay bound.
 func (validator *Validator) ValidateEnvelopeSignature(
@@ -417,8 +440,12 @@ func canonicalize(authority *velav1.StageAuthority) (*velav1.StageAuthority, err
 }
 
 func validateShape(authority *velav1.StageAuthority, requireSignature bool) error {
-	if authority.GetSchemaVersion() != SchemaVersionV1 {
+	if authority.GetSchemaVersion() != SchemaVersionV1 && authority.GetSchemaVersion() != SchemaVersionV2 {
 		return fmt.Errorf("%w: unsupported schema version", ErrInvalid)
+	}
+	if (authority.GetSchemaVersion() == SchemaVersionV1 && authority.GetExecutionSequence() != 0) ||
+		(authority.GetSchemaVersion() == SchemaVersionV2 && authority.GetExecutionSequence() <= 0) {
+		return fmt.Errorf("%w: execution sequence does not match schema version", ErrInvalid)
 	}
 	for name, value := range map[string]string{
 		"Job":                  authority.GetJobId(),

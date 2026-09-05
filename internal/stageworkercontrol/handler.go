@@ -140,6 +140,13 @@ func (handler *Handler) Handle(
 			materializationAuthority,
 			handler.maxClockSkew,
 		)
+		if errors.Is(err, materializationauthority.ErrStale) &&
+			(operation == OperationCommitStageMaterialization ||
+				operation == OperationReportMaterializationSourceLost) {
+			verified, err = handler.materializationValidator.ValidateForReplay(
+				materializationAuthority, handler.maxClockSkew,
+			)
+		}
 		if err != nil {
 			return staleResponse(request.GetRequestId(), operation, err.Error()), nil
 		}
@@ -166,6 +173,9 @@ func (handler *Handler) Handle(
 	)
 	if operation == OperationSealStageOutput && errors.Is(err, stageauthority.ErrStale) {
 		verified, err = handler.validator.ValidateEnvelopeSignature(authority)
+	}
+	if operation == OperationFailStage && errors.Is(err, stageauthority.ErrStale) {
+		verified, err = handler.validator.ValidateEnvelopeForReplay(authority, handler.maxClockSkew)
 	}
 	if err != nil {
 		return staleResponse(request.GetRequestId(), operation, err.Error()), nil

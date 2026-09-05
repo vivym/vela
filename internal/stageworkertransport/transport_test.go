@@ -439,13 +439,12 @@ func TestServerPushesStopStageWithoutWaitingForAnotherWorkerRequest(t *testing.T
 		Reason:    velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED,
 		IssuedAt:  timestamppb.Now(),
 	}
-	select {
-	case command := <-client.Commands():
-		if command.GetRequestId() != "" || command.GetStopStage() == nil {
-			t.Fatalf("unsolicited command = %#v", command)
-		}
-	case <-ctx.Done():
-		t.Fatal("StopStage was not pushed without another Worker request")
+	command, err := client.NextCommand(ctx)
+	if err != nil {
+		t.Fatalf("StopStage was not pushed without another Worker request: %v", err)
+	}
+	if command.GetRequestId() != "" || command.GetStopStage() == nil {
+		t.Fatalf("unsolicited command = %#v", command)
 	}
 }
 

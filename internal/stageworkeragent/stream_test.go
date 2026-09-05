@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageartifact"
@@ -152,6 +153,25 @@ func TestStreamAgentAggregatesMemberFailureAndClearsAuthorityOnlyAfterControlAcc
 		},
 	}
 
+	control.err = errors.New("failure response lost")
+	if _, err := streamAgent.Fail(context.Background(), status); err == nil {
+		t.Fatal("lost failure response unexpectedly succeeded")
+	}
+	first := proto.Clone(control.lastRequest).(*velav1.StageWorkerControlServiceConnectRequest)
+	if id, err := uuid.Parse(first.GetRequestId()); err != nil || id == uuid.Nil {
+		t.Fatalf("failure command lacks stable UUID: %v", err)
+	}
+	if _, err := streamAgent.Fail(context.Background(), status); err == nil || !proto.Equal(first, control.lastRequest) {
+		t.Fatalf("failure retry changed exact request: error=%v", err)
+	}
+	originalDetail := status.Failures[fixture.memberIDs[0]].Detail
+	status.Failures[fixture.memberIDs[0]].Detail += " changed"
+	if _, err := streamAgent.Fail(context.Background(), status); err == nil ||
+		control.lastRequest.GetRequestId() != first.GetRequestId() || proto.Equal(first, control.lastRequest) {
+		t.Fatalf("changed failure payload changed command identity: error=%v", err)
+	}
+	status.Failures[fixture.memberIDs[0]].Detail = originalDetail
+	control.err = nil
 	result, err := streamAgent.Fail(context.Background(), status)
 	failure := control.lastRequest.GetFailStage()
 	if err != nil || result.GetDecision() !=
@@ -356,6 +376,59 @@ func TestStreamAgentKeepsControlStreamAfterTerminalStopStage(t *testing.T) {
 	close(commands)
 	if err := streamAgent.RunControlCommands(context.Background()); err != nil {
 		t.Fatalf("RunControlCommands after terminal StopStage: %v", err)
+	}
+}
+
+func TestStreamAgentKeepsCommandConsumerAfterSupersededStop(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{
+			{ID: fixture.memberIDs[0], Client: fixture.clients[0]},
+			{ID: fixture.memberIDs[1], Client: fixture.clients[1]},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed := renewBarrierAuthority(t, fixture.authority)
+	commands := make(chan *velav1.StageWorkerControlServiceConnectResponse, 2)
+	control := &recordingStreamControl{
+		decision:         velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+		renewedAuthority: renewed, commands: commands,
+	}
+	streamAgent, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatal(err)
+	}
+	for _, authority := range []*velav1.StageAuthority{fixture.authority, renewed} {
+		commands <- &velav1.StageWorkerControlServiceConnectResponse{
+			Result: &velav1.StageWorkerControlServiceConnectResponse_StopStage{
+				StopStage: &velav1.StopStage{Authority: authority,
+					Reason: velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED},
+			},
+		}
+	}
+	close(commands)
+	if err := streamAgent.RunControlCommands(context.Background()); err != nil {
+		t.Fatalf("old Stop terminated command consumption: %v", err)
+	}
+	observed, err := runtimeAgent.Status(context.Background(), renewed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for member, state := range observed.States {
+		if state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+			t.Errorf("current Stop was not handled for %s: %s", member, state)
+		}
+	}
+	if _, err := streamAgent.HandleStop(context.Background(), &velav1.StopStage{
+		Authority: fixture.authority,
+		Reason:    velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED,
+	}); err == nil {
+		t.Fatal("synchronous HandleStop accepted superseded authority")
 	}
 }
 
@@ -880,7 +953,8 @@ func newSingleMemberMaterializationFixture(t *testing.T) singleMemberMaterializa
 		t.Fatalf("ExecutionSpecDigest: %v", err)
 	}
 	authority, err := signer.Sign(&velav1.StageAuthority{
-		SchemaVersion:     1,
+		SchemaVersion:     2,
+		ExecutionSequence: 1,
 		JobId:             "12000000-0000-0000-0000-000000000011",
 		AttemptId:         "12000000-0000-0000-0000-000000000012",
 		StageRunId:        "12000000-0000-0000-0000-000000000013",
@@ -1057,8 +1131,8 @@ func newMaterializingStreamControlWithClockSkew(
 	}
 }
 
-func (control *materializingStreamControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return nil
+func (control *materializingStreamControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, nil)
 }
 
 func (control *materializingStreamControl) Exchange(
@@ -1200,8 +1274,20 @@ func testSourceLossEvidenceProvider() stageworkeragent.MaterializationSourceLoss
 	)
 }
 
-func (control *recordingStreamControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return control.commands
+func (control *recordingStreamControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, control.commands)
+}
+
+func nextTestControlCommand(ctx context.Context, commands <-chan *velav1.StageWorkerControlServiceConnectResponse) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case command, open := <-commands:
+		if !open {
+			return nil, io.EOF
+		}
+		return command, nil
+	}
 }
 
 func (control *recordingStreamControl) Exchange(

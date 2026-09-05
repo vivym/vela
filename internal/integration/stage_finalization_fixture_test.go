@@ -95,7 +95,7 @@ func validInspectionForRequest(
 	}
 }
 
-func visibleCompletionService(t *testing.T, dsn string) *stagefinalization.Service {
+func visibleCompletionService(t *testing.T, dsn string, objectStore artifactstore.VersionedStore) *stagefinalization.Service {
 	return stageGraphVisibleCompletionService(
 		t,
 		dsn,
@@ -105,5 +105,6 @@ func visibleCompletionService(t *testing.T, dsn string) *stagefinalization.Servi
 		) (stagefinalization.ArtifactInspection, error) {
 			return validInspectionForRequest(request), nil
 		}),
+		objectStore,
 	)
 }

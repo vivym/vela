@@ -67,19 +67,19 @@ func priorityFor(kind eventKind) int {
 	case eventExpiry:
 		return 10
 	case eventArrival:
-		return 20
+		return 50
 	case eventResidencyReady:
 		return 30
 	case eventTransferComplete:
-		return 40
-	case eventStageReady:
-		return 50
-	case eventStageComplete:
 		return 60
-	case eventRetryReady:
+	case eventStageReady:
 		return 70
-	case eventFinalizationComplete:
+	case eventStageComplete:
+		return 40
+	case eventRetryReady:
 		return 80
+	case eventFinalizationComplete:
+		return 20
 	default:
 		return 100
 	}

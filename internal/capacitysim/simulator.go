@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 )
 
@@ -16,6 +17,7 @@ type jobRuntime struct {
 	terminalKind          string
 	finalizationScheduled bool
 	completedStages       map[string]bool
+	consumedDependencies  map[string]bool
 	attempts              map[string]int
 	outputs               map[string]*stageOutput
 }
@@ -26,6 +28,7 @@ type stageOutput struct {
 	cacheKey           string
 	cached             bool
 	fromCache          bool
+	cachePinHeld       bool
 }
 
 type queuedStage struct {
@@ -90,21 +93,22 @@ type simulationState struct {
 	failed              int
 	expired             int
 	storageBytes        int64
-	storageByteNS       int64
+	storageByteNS       big.Int
 	lastStorageAt       int64
-	cacheByteNS         int64
+	cacheByteNS         big.Int
 	lastCacheAt         int64
 	bufferItems         int
 	bufferBytes         int64
 	bufferMetrics       BufferMetrics
 	cacheMetrics        CacheMetrics
 	failureMetrics      FailureMetrics
-	transferBytes       int64
-	directGPUCost       int64
-	directCPUCost       int64
-	memoryCost          int64
-	scratchCost         int64
-	retryCost           int64
+	transferBytes       big.Int
+	transferScalePPM    int64
+	directGPUCost       big.Int
+	directCPUCost       big.Int
+	memoryCost          big.Int
+	scratchCost         big.Int
+	retryCost           big.Int
 	organizationService map[string]int64
 	organizationMaxWait map[string]int64
 	dropped             []InputDisposition
@@ -118,7 +122,7 @@ func Simulate(
 	if err := Validate(scenario, workload, calibration); err != nil {
 		return SimulationReceipt{}, err
 	}
-	receipt, err := simulateCore(scenario, workload, calibration)
+	receipt, err := simulateCore(scenario, workload, calibration, 1_000_000)
 	if err != nil {
 		return SimulationReceipt{}, err
 	}
@@ -137,14 +141,8 @@ func Simulate(
 		candidate.ConnectorModels = append([]ConnectorModel(nil), calibration.ConnectorModels...)
 		for index := range candidate.ConnectorModels {
 			candidate.ConnectorModels[index].Outage = sensitivity.outage
-			if !sensitivity.outage {
-				candidate.ConnectorModels[index].PayloadBytesPerSecond = multiplyDivide(
-					candidate.ConnectorModels[index].PayloadBytesPerSecond,
-					int64(sensitivity.scale), 1_000_000,
-				)
-			}
 		}
-		candidateReceipt, runErr := simulateCore(scenario, workload, candidate)
+		candidateReceipt, runErr := simulateCore(scenario, workload, candidate, int64(sensitivity.scale))
 		if runErr != nil {
 			return SimulationReceipt{}, fmt.Errorf("simulate %s sensitivity: %w", sensitivity.name, runErr)
 		}
@@ -169,8 +167,10 @@ func simulateCore(
 	scenario ScenarioRevision,
 	workload WorkloadTrace,
 	calibration CalibrationBundle,
+	transferScalePPM int64,
 ) (SimulationReceipt, error) {
 	state := newSimulationState(scenario, workload, calibration)
+	state.transferScalePPM = transferScalePPM
 	if err := state.initialize(); err != nil {
 		return SimulationReceipt{}, err
 	}
@@ -331,11 +331,14 @@ func (state *simulationState) processArrival(event simulationEvent) error {
 	}
 	job := &jobRuntime{
 		record: record, completedStages: make(map[string]bool), attempts: make(map[string]int),
-		outputs: make(map[string]*stageOutput),
+		outputs: make(map[string]*stageOutput), consumedDependencies: make(map[string]bool),
 	}
 	state.jobs[record.TraceID] = job
 	state.accepted++
 	state.activeJobs++
+	if _, exists := state.organizationService[record.OrganizationCohort]; !exists {
+		state.organizationService[record.OrganizationCohort] = 0
+	}
 	if err := state.schedule(simulationEvent{
 		timeNS: record.JobExpiryOffsetNS, kind: eventExpiry,
 		entityKey: "job/" + record.TraceID, jobID: record.TraceID,
@@ -446,7 +449,9 @@ func (state *simulationState) dispatch(stageID string) error {
 		}
 		index := state.pickQueued(queue)
 		candidate := queue[index]
-		pool := state.pools[candidate.poolID]
+		// Pool capacity is selected at dispatch because equal-time READY events
+		// have not reserved a worker and may all name the same initially idle pool.
+		pool := state.pools[state.choosePool(stageID, state.nowNS)]
 		if pool == nil || !pool.warm {
 			return nil
 		}
@@ -473,15 +478,19 @@ func (state *simulationState) dispatch(stageID string) error {
 			candidate.jobID+"/"+stageID+fmt.Sprintf("/%d/materialize", attempt))
 		outputBytes := sampleDistribution(model.OutputBytes, state.scenario.Seed,
 			candidate.jobID+"/"+stageID+fmt.Sprintf("/%d/output", attempt))
-		duration := service + seal + materialize
+		duration := boundedSum(service, seal, materialize)
 		pool.workers[worker] = true
-		pool.busyUntil[worker] = state.nowNS + duration
+		pool.busyUntil[worker] = boundedSum(state.nowNS, duration)
+		observedDuration := min(duration, state.scenario.WindowDurationNS-state.nowNS)
+		pool.busyNS += observedDuration
+		state.accountDirectCost(observedDuration, model)
+		state.organizationService[job.record.OrganizationCohort] += min(service, observedDuration)
 		metric := state.metric(stage, job.record.RequestCohort)
 		metric.starts++
 		metric.queue = append(metric.queue, state.nowNS-candidate.readyAtNS)
 		metric.transfer = append(metric.transfer, candidate.transferNS)
 		metric.service = append(metric.service, service)
-		metric.materialization = append(metric.materialization, seal+materialize)
+		metric.materialization = append(metric.materialization, boundedSum(seal, materialize))
 		metric.outputBytes = append(metric.outputBytes, outputBytes)
 		if candidate.retry {
 			metric.retries++
@@ -495,10 +504,10 @@ func (state *simulationState) dispatch(stageID string) error {
 			candidate.jobID+"/"+stageID+fmt.Sprintf("/%d/failure", attempt),
 		)
 		if err := state.schedule(simulationEvent{
-			timeNS: state.nowNS + duration, kind: eventStageComplete,
+			timeNS: boundedSum(state.nowNS, duration), kind: eventStageComplete,
 			entityKey: candidate.jobID + "/" + stageID, jobID: candidate.jobID,
 			stageID: stageID, poolID: pool.spec.ID, workerIndex: worker,
-			attempt: attempt, serviceNS: service, materializeNS: seal + materialize,
+			attempt: attempt, serviceNS: service, materializeNS: boundedSum(seal, materialize),
 			outputBytes: outputBytes, failed: failed,
 		}); err != nil {
 			return err
@@ -511,16 +520,14 @@ func (state *simulationState) processStageComplete(event simulationEvent) error 
 	if pool == nil || event.workerIndex < 0 || event.workerIndex >= len(pool.workers) {
 		return errors.New("stage completion references an invalid complete DeviceSet")
 	}
-	duration := event.serviceNS + event.materializeNS
+	duration := boundedSum(event.serviceNS, event.materializeNS)
 	pool.workers[event.workerIndex] = false
-	pool.busyNS += duration
 	job := state.jobs[event.jobID]
 	stage := state.stages[event.stageID]
 	model := StageRuntimeModel{}
 	if job != nil {
 		model = state.stageModel(stage, job.record.RequestCohort)
 	}
-	state.accountDirectCost(duration, model)
 	if job == nil || job.terminal {
 		return state.dispatch(event.stageID)
 	}
@@ -530,28 +537,21 @@ func (state *simulationState) processStageComplete(event simulationEvent) error 
 		state.failureMetrics.StageFailures++
 		waste := duration * int64(pool.spec.DeviceCount)
 		state.failureMetrics.RetryWasteDeviceNS += waste
-		wasteCost := int64(0)
 		if stage.ResourceKind == "GPU" {
-			wasteCost = multiplyDivide(
-				waste, state.scenario.CostModel.GPUMicroUnitsPerSecond, 1_000_000_000,
-			)
+			addProduct(&state.retryCost, waste, state.scenario.CostModel.GPUMicroUnitsPerSecond, 1_000)
 		} else {
-			wasteCost = multiplyDivide(
-				duration*model.CPUMilli, state.scenario.CostModel.CPUMicroUnitsPerSecond,
-				1_000_000_000*1_000,
-			)
+			addProduct(&state.retryCost, duration, model.CPUMilli, state.scenario.CostModel.CPUMicroUnitsPerSecond)
 		}
-		state.retryCost += wasteCost
 		if event.attempt <= state.scenario.Policy.MaxRetriesPerStage {
 			recovery := sampleDistribution(model.RecoveryTime, state.scenario.Seed,
 				event.jobID+"/"+event.stageID+fmt.Sprintf("/%d/recovery", event.attempt))
-			if state.nowNS+recovery < job.record.JobExpiryOffsetNS {
+			if boundedSum(state.nowNS, recovery) < job.record.JobExpiryOffsetNS {
 				state.failureMetrics.Retries++
 				if err := state.schedule(simulationEvent{
-					timeNS: state.nowNS + recovery, kind: eventRetryReady,
+					timeNS: boundedSum(state.nowNS, recovery), kind: eventRetryReady,
 					entityKey: event.jobID + "/" + event.stageID,
 					jobID:     event.jobID, stageID: event.stageID, poolID: event.poolID,
-					readyAtNS: state.nowNS + recovery, attempt: event.attempt,
+					readyAtNS: boundedSum(state.nowNS, recovery), attempt: event.attempt,
 				}); err != nil {
 					return err
 				}
@@ -564,7 +564,6 @@ func (state *simulationState) processStageComplete(event simulationEvent) error 
 	}
 	metric.seals++
 	metric.completions++
-	state.organizationService[job.record.OrganizationCohort] += event.serviceNS
 	if err := state.materializeOutput(job, stage, event.outputBytes); err != nil {
 		state.terminalize(job, "STORAGE_LIMIT")
 		state.failed++
@@ -584,9 +583,10 @@ func (state *simulationState) completeStageFromCache(
 	entry *cacheEntry,
 ) error {
 	job.completedStages[stage.ID] = true
+	state.consumeDependencies(job, stage.ID)
 	job.outputs[stage.ID] = &stageOutput{
 		bytes: entry.bytes, remainingConsumers: max(1, len(state.dependents[stage.ID])),
-		cacheKey: entry.key, cached: true, fromCache: true,
+		cacheKey: entry.key, cached: true, fromCache: true, cachePinHeld: true,
 	}
 	state.addBuffer(entry.bytes)
 	return state.advance(job, stage)
@@ -615,6 +615,8 @@ func (state *simulationState) materializeOutput(
 		if state.admitCache(key, stage.ID, bytes) && !alreadyCached {
 			output.cacheKey = key
 			output.cached = true
+			output.cachePinHeld = true
+			state.cache[key].pins++
 		}
 	}
 	job.outputs[stage.ID] = output
@@ -648,10 +650,10 @@ func (state *simulationState) advance(job *jobRuntime, stage StageSpec) error {
 			return nil
 		}
 		if err := state.schedule(simulationEvent{
-			timeNS: state.nowNS + transferNS, kind: eventTransferComplete,
+			timeNS: boundedSum(state.nowNS, transferNS), kind: eventTransferComplete,
 			entityKey: job.record.TraceID + "/" + dependentID,
 			jobID:     job.record.TraceID, stageID: dependentID, poolID: poolID,
-			readyAtNS: state.nowNS, transferNS: transferNS,
+			readyAtNS: boundedSum(state.nowNS, transferNS), transferNS: transferNS,
 		}); err != nil {
 			return err
 		}
@@ -659,7 +661,7 @@ func (state *simulationState) advance(job *jobRuntime, stage StageSpec) error {
 	if state.allLeavesComplete(job) && !job.finalizationScheduled {
 		job.finalizationScheduled = true
 		return state.schedule(simulationEvent{
-			timeNS: state.nowNS + state.scenario.Policy.FinalizationDurationNS,
+			timeNS: boundedSum(state.nowNS, state.scenario.Policy.FinalizationDurationNS),
 			kind:   eventFinalizationComplete, entityKey: "job/" + job.record.TraceID,
 			jobID: job.record.TraceID,
 		})
@@ -693,24 +695,23 @@ func (state *simulationState) reserveTransfer(revision string, bytes int64, key 
 	if connector.available[index] > start {
 		start = connector.available[index]
 	}
-	payloadNS := ceilDivide(bytes*1_000_000_000, connector.model.PayloadBytesPerSecond)
-	duration := connector.model.SetupLatencyNS + payloadNS
-	connector.available[index] = start + duration
-	state.transferBytes += bytes
+	payloadNS := transferPayloadNS(bytes, connector.model.PayloadBytesPerSecond, state.transferScalePPM)
+	duration := boundedSum(connector.model.SetupLatencyNS, payloadNS)
+	connector.available[index] = boundedSum(start, duration)
+	addProduct(&state.transferBytes, bytes)
 	return connector.available[index] - state.nowNS, false
 }
 
 func (state *simulationState) choosePool(stageID string, at int64) string {
 	poolIDs := state.poolsByStage[stageID]
 	best := poolIDs[0]
-	bestAt := earliestPoolAvailability(state.pools[best])
+	bestAt := max(at, earliestPoolAvailability(state.pools[best]))
 	for _, poolID := range poolIDs[1:] {
-		candidateAt := earliestPoolAvailability(state.pools[poolID])
+		candidateAt := max(at, earliestPoolAvailability(state.pools[poolID]))
 		if candidateAt < bestAt || candidateAt == bestAt && poolID < best {
 			best, bestAt = poolID, candidateAt
 		}
 	}
-	_ = at
 	return best
 }
 
@@ -745,6 +746,10 @@ func (state *simulationState) pickQueued(queue []queuedStage) int {
 }
 
 func (state *simulationState) consumeDependencies(job *jobRuntime, stageID string) {
+	if job.consumedDependencies[stageID] {
+		return
+	}
+	job.consumedDependencies[stageID] = true
 	for _, dependency := range state.stages[stageID].Dependencies {
 		output := job.outputs[dependency]
 		if output == nil || output.remainingConsumers <= 0 {
@@ -753,7 +758,6 @@ func (state *simulationState) consumeDependencies(job *jobRuntime, stageID strin
 		output.remainingConsumers--
 		if output.remainingConsumers == 0 {
 			state.removeBuffer(output.bytes)
-			state.releaseCachePin(output)
 		}
 	}
 }
@@ -765,6 +769,18 @@ func (state *simulationState) terminalize(job *jobRuntime, kind string) {
 	job.terminal = true
 	job.terminalKind = kind
 	state.activeJobs--
+	for stageID, queue := range state.queues {
+		live := queue[:0]
+		for _, candidate := range queue {
+			if candidate.jobID != job.record.TraceID {
+				live = append(live, candidate)
+			} else {
+				cohort := job.record.OrganizationCohort
+				state.organizationMaxWait[cohort] = max(state.organizationMaxWait[cohort], state.nowNS-candidate.readyAtNS)
+			}
+		}
+		state.queues[stageID] = live
+	}
 	for _, output := range job.outputs {
 		if output.remainingConsumers > 0 {
 			state.removeBuffer(output.bytes)
@@ -778,20 +794,22 @@ func (state *simulationState) terminalize(job *jobRuntime, kind string) {
 }
 
 func (state *simulationState) releaseCachePin(output *stageOutput) {
-	if output == nil || output.cacheKey == "" || !output.fromCache {
+	if output == nil || output.cacheKey == "" || !output.cachePinHeld {
 		return
 	}
 	entry := state.cache[output.cacheKey]
 	if entry != nil && entry.pins > 0 {
 		entry.pins--
-		state.cacheMetrics.PinReleases++
+		if output.fromCache {
+			state.cacheMetrics.PinReleases++
+		}
 	}
-	output.fromCache = false
+	output.cachePinHeld = false
 }
 
 func (state *simulationState) admitCache(key, stageID string, bytes int64) bool {
 	if existing := state.cache[key]; existing != nil {
-		existing.expiresAt = state.nowNS + state.scenario.Policy.CacheTTLNS
+		existing.expiresAt = boundedSum(state.nowNS, state.scenario.Policy.CacheTTLNS)
 		existing.lastUsedAt = state.nowNS
 		return true
 	}
@@ -805,7 +823,7 @@ func (state *simulationState) admitCache(key, stageID string, bytes int64) bool 
 	}
 	entry := &cacheEntry{
 		key: key, stageID: stageID, bytes: bytes,
-		expiresAt:  state.nowNS + state.scenario.Policy.CacheTTLNS,
+		expiresAt:  boundedSum(state.nowNS, state.scenario.Policy.CacheTTLNS),
 		lastUsedAt: state.nowNS,
 	}
 	state.accountCacheUntil(state.nowNS)
@@ -853,22 +871,13 @@ func (state *simulationState) addBuffer(bytes int64) {
 }
 
 func (state *simulationState) removeBuffer(bytes int64) {
-	if state.bufferItems > 0 {
-		state.bufferItems--
-	}
-	if bytes <= state.bufferBytes {
-		state.bufferBytes -= bytes
-	} else {
-		state.bufferBytes = 0
-	}
+	state.bufferItems--
+	state.bufferBytes -= bytes
 }
 
 func (state *simulationState) changeStorage(delta int64) {
 	state.accountStorageUntil(state.nowNS)
 	state.storageBytes += delta
-	if state.storageBytes < 0 {
-		state.storageBytes = 0
-	}
 	if state.storageBytes > state.bufferMetrics.PeakStorageBytes {
 		state.bufferMetrics.PeakStorageBytes = state.storageBytes
 	}
@@ -879,11 +888,7 @@ func (state *simulationState) accountStorageUntil(at int64) {
 		return
 	}
 	duration := at - state.lastStorageAt
-	if state.storageBytes > 0 && duration <= math.MaxInt64/state.storageBytes {
-		state.storageByteNS += state.storageBytes * duration
-	} else if state.storageBytes > 0 {
-		state.storageByteNS = math.MaxInt64
-	}
+	addProduct(&state.storageByteNS, state.storageBytes, duration)
 	state.lastStorageAt = at
 }
 
@@ -892,11 +897,7 @@ func (state *simulationState) accountCacheUntil(at int64) {
 		return
 	}
 	duration := at - state.lastCacheAt
-	if state.cacheMetrics.Bytes > 0 && duration <= math.MaxInt64/state.cacheMetrics.Bytes {
-		state.cacheByteNS += state.cacheMetrics.Bytes * duration
-	} else if state.cacheMetrics.Bytes > 0 {
-		state.cacheByteNS = math.MaxInt64
-	}
+	addProduct(&state.cacheByteNS, state.cacheMetrics.Bytes, duration)
 	state.lastCacheAt = at
 }
 
@@ -904,20 +905,10 @@ func (state *simulationState) accountDirectCost(
 	duration int64,
 	model StageRuntimeModel,
 ) {
-	gpuDeviceNS := duration * int64(model.GPUCount)
-	state.directGPUCost += multiplyDivide(
-		gpuDeviceNS, state.scenario.CostModel.GPUMicroUnitsPerSecond, 1_000_000_000,
-	)
-	cpuMilliNS := duration * model.CPUMilli
-	state.directCPUCost += multiplyDivide(
-		cpuMilliNS, state.scenario.CostModel.CPUMicroUnitsPerSecond, 1_000_000_000*1_000,
-	)
-	state.memoryCost += resourceTimeCost(
-		model.MemoryBytes, duration, state.scenario.CostModel.MemoryMicroUnitsPerGBSecond,
-	)
-	state.scratchCost += resourceTimeCost(
-		model.ScratchBytes, duration, state.scenario.CostModel.ScratchMicroUnitsPerGBSecond,
-	)
+	addProduct(&state.directGPUCost, duration, int64(model.GPUCount), state.scenario.CostModel.GPUMicroUnitsPerSecond)
+	addProduct(&state.directCPUCost, duration, model.CPUMilli, state.scenario.CostModel.CPUMicroUnitsPerSecond)
+	addProduct(&state.memoryCost, duration, model.MemoryBytes, state.scenario.CostModel.MemoryMicroUnitsPerGBSecond)
+	addProduct(&state.scratchCost, duration, model.ScratchBytes, state.scenario.CostModel.ScratchMicroUnitsPerGBSecond)
 }
 
 func (state *simulationState) receipt() (SimulationReceipt, error) {
@@ -950,7 +941,10 @@ func (state *simulationState) receipt() (SimulationReceipt, error) {
 		conservation.Accepted == conservation.VisibleCompletions+conservation.Failed+
 			conservation.Expired+conservation.Unfinished && state.bufferItems >= 0 &&
 		state.bufferBytes >= 0 && state.storageBytes >= 0 &&
-		state.eventsProcessed <= state.scenario.Limits.MaxEvents
+		state.eventsProcessed <= state.scenario.Limits.MaxEvents && state.storageConserved()
+	if !conservation.Valid {
+		return SimulationReceipt{}, errors.New("simulation violated job, storage, buffer, or pin conservation")
+	}
 	stageMetrics := make([]StageMetrics, 0, len(state.stageMetrics))
 	for _, metric := range state.stageMetrics {
 		stageMetrics = append(stageMetrics, metric.receipt())
@@ -961,29 +955,36 @@ func (state *simulationState) receipt() (SimulationReceipt, error) {
 		return leftKey < rightKey
 	})
 	poolMetrics, sharedCost := state.poolReceipts()
-	transferCost := multiplyDivide(
-		state.transferBytes, state.scenario.CostModel.NetworkMicroUnitsPerGB, 1_000_000_000,
+	transferCost := multiplyQuantityDivide(
+		&state.transferBytes, state.scenario.CostModel.NetworkMicroUnitsPerGB, 1_000_000_000,
 	)
-	storageCost := multiplyDivide(
-		state.storageByteNS, state.scenario.CostModel.StorageMicroUnitsPerGBSecond,
+	storageCost := multiplyQuantityDivide(
+		&state.storageByteNS, state.scenario.CostModel.StorageMicroUnitsPerGBSecond,
 		1_000_000_000_000_000_000,
 	)
-	cacheCost := multiplyDivide(
-		state.cacheByteNS, state.scenario.CostModel.StorageMicroUnitsPerGBSecond,
+	cacheCost := multiplyQuantityDivide(
+		&state.cacheByteNS, state.scenario.CostModel.StorageMicroUnitsPerGBSecond,
 		1_000_000_000_000_000_000,
 	)
-	directStageCost := state.directGPUCost + state.directCPUCost +
-		state.memoryCost + state.scratchCost
-	totalCost := directStageCost + sharedCost + transferCost + storageCost
+	gpuCost := divideQuantity(&state.directGPUCost, 1_000_000_000)
+	cpuCost := divideQuantity(&state.directCPUCost, 1_000_000_000_000)
+	memoryCost := divideQuantity(&state.memoryCost, 1_000_000_000_000_000_000)
+	scratchCost := divideQuantity(&state.scratchCost, 1_000_000_000_000_000_000)
+	retryCost := divideQuantity(&state.retryCost, 1_000_000_000_000)
+	directStageCost := boundedSum(gpuCost, cpuCost, memoryCost, scratchCost)
+	totalCost := boundedSum(directStageCost, sharedCost, transferCost, storageCost)
+	if totalCost == math.MaxInt64 || retryCost == math.MaxInt64 || cacheCost == math.MaxInt64 {
+		return SimulationReceipt{}, errors.New("simulated cost exceeds the int64 receipt range")
+	}
 	cost := CostMetrics{
-		DirectGPUMicroUnits:       state.directGPUCost,
-		DirectCPUMicroUnits:       state.directCPUCost,
-		MemoryMicroUnits:          state.memoryCost,
-		ScratchMicroUnits:         state.scratchCost,
+		DirectGPUMicroUnits:       gpuCost,
+		DirectCPUMicroUnits:       cpuCost,
+		MemoryMicroUnits:          memoryCost,
+		ScratchMicroUnits:         scratchCost,
 		DirectStageMicroUnits:     directStageCost,
 		SharedResidencyMicroUnits: sharedCost,
 		TransferMicroUnits:        transferCost, StorageMicroUnits: storageCost,
-		RetryWasteMicroUnits: state.retryCost, CacheMicroUnits: cacheCost,
+		RetryWasteMicroUnits: retryCost, CacheMicroUnits: cacheCost,
 		TotalMicroUnits: totalCost,
 	}
 	if state.visible > 0 {
@@ -997,11 +998,17 @@ func (state *simulationState) receipt() (SimulationReceipt, error) {
 	completion.ThroughputPerSecondPPM = multiplyDivide(
 		int64(state.visible), 1_000_000_000_000_000, state.scenario.WindowDurationNS,
 	)
+	if completion.ThroughputPerSecondPPM == math.MaxInt64 {
+		return SimulationReceipt{}, errors.New("simulated throughput exceeds the int64 receipt range")
+	}
 	receipt := SimulationReceipt{
 		SchemaVersion: SchemaVersion, SimulatorRevision: AlgorithmRevision,
 		Seed: state.scenario.Seed, ScenarioDigest: scenarioDigest, TraceDigest: traceDigest,
 		CalibrationDigest: calibrationDigest, WindowDurationNS: state.scenario.WindowDurationNS,
-		InputEvidence: state.inputEvidence(), Validation: ValidationResult{Valid: true},
+		InputEvidence: state.inputEvidence(), Validation: ValidationResult{Valid: true, UnsupportedInputs: []string{
+			"PRODUCTION_SCHEDULER_DECISION_REPLAY", "DOMAIN_DEPENDENT_PLACEMENT",
+			"CORRELATED_NODE_FAILURES", "OBJECT_OPERATION_COST", "WARMUP_RESOURCE_COST",
+		}},
 		Admission: AdmissionMetrics{
 			Accepted: state.accepted, Rejected: state.rejected,
 			ReasonCounts: reasonCounts(state.admissionReasons),
@@ -1016,6 +1023,46 @@ func (state *simulationState) receipt() (SimulationReceipt, error) {
 	return receipt, nil
 }
 
+func (state *simulationState) storageConserved() bool {
+	var expectedStorage, expectedBufferBytes int64
+	var expectedBufferItems int
+	expectedPins := make(map[string]int)
+	for key, entry := range state.cache {
+		expectedStorage = boundedSum(expectedStorage, entry.bytes)
+		expectedPins[key] = 0
+	}
+	if expectedStorage != state.cacheMetrics.Bytes {
+		return false
+	}
+	for _, job := range state.jobs {
+		if job.terminal {
+			continue
+		}
+		for _, output := range job.outputs {
+			if !output.cached && !output.fromCache {
+				expectedStorage = boundedSum(expectedStorage, output.bytes)
+			}
+			if output.remainingConsumers > 0 {
+				expectedBufferItems++
+				expectedBufferBytes = boundedSum(expectedBufferBytes, output.bytes)
+			}
+			if output.cachePinHeld {
+				if state.cache[output.cacheKey] == nil {
+					return false
+				}
+				expectedPins[output.cacheKey]++
+			}
+		}
+	}
+	for key, expected := range expectedPins {
+		if state.cache[key].pins != expected {
+			return false
+		}
+	}
+	return expectedStorage == state.storageBytes && expectedBufferBytes == state.bufferBytes &&
+		expectedBufferItems == state.bufferItems
+}
+
 func (state *simulationState) poolReceipts() ([]PoolMetrics, int64) {
 	ids := make([]string, 0, len(state.pools))
 	for poolID := range state.pools {
@@ -1023,7 +1070,7 @@ func (state *simulationState) poolReceipts() ([]PoolMetrics, int64) {
 	}
 	sort.Strings(ids)
 	result := make([]PoolMetrics, 0, len(ids))
-	var sharedCost int64
+	var sharedCost big.Int
 	for _, poolID := range ids {
 		pool := state.pools[poolID]
 		warmup := min(pool.spec.WarmReadyOffsetNS, state.scenario.WindowDurationNS) * int64(pool.spec.WorkerCount)
@@ -1036,13 +1083,9 @@ func (state *simulationState) poolReceipts() ([]PoolMetrics, int64) {
 		busyDeviceNS := pool.busyNS * int64(pool.spec.DeviceCount)
 		idleDeviceNS := idle * int64(pool.spec.DeviceCount)
 		if state.stages[pool.spec.StageID].ResourceKind == "GPU" {
-			sharedCost += multiplyDivide(
-				idleDeviceNS, state.scenario.CostModel.GPUMicroUnitsPerSecond, 1_000_000_000,
-			)
+			addProduct(&sharedCost, idleDeviceNS, state.scenario.CostModel.GPUMicroUnitsPerSecond)
 		} else {
-			sharedCost += multiplyDivide(
-				idle, state.scenario.CostModel.CPUMicroUnitsPerSecond, 1_000_000_000,
-			)
+			addProduct(&sharedCost, idle, state.scenario.CostModel.CPUMicroUnitsPerSecond)
 		}
 		result = append(result, PoolMetrics{
 			PoolID: poolID, StageID: pool.spec.StageID,
@@ -1052,10 +1095,16 @@ func (state *simulationState) poolReceipts() ([]PoolMetrics, int64) {
 			LoadActuations: pool.loadActuations, ReleaseActuations: 0,
 		})
 	}
-	return result, sharedCost
+	return result, divideQuantity(&sharedCost, 1_000_000_000)
 }
 
 func (state *simulationState) fairnessReceipts() []FairnessMetrics {
+	for _, queue := range state.queues {
+		for _, candidate := range queue {
+			cohort := state.jobs[candidate.jobID].record.OrganizationCohort
+			state.organizationMaxWait[cohort] = max(state.organizationMaxWait[cohort], state.scenario.WindowDurationNS-candidate.readyAtNS)
+		}
+	}
 	cohorts := make([]string, 0, len(state.organizationService))
 	var total int64
 	for cohort, service := range state.organizationService {
@@ -1067,7 +1116,7 @@ func (state *simulationState) fairnessReceipts() []FairnessMetrics {
 	for _, cohort := range cohorts {
 		shareError := 0
 		if total > 0 && len(cohorts) > 0 {
-			attained := state.organizationService[cohort] * 1_000_000 / total
+			attained := multiplyDivide(state.organizationService[cohort], 1_000_000, total)
 			target := int64(1_000_000 / len(cohorts))
 			difference := attained - target
 			if difference < 0 {
@@ -1193,10 +1242,12 @@ func (state *simulationState) arrival(traceID string) (TraceRecord, bool) {
 
 func calibrationErrors(workload WorkloadTrace, stages []StageMetrics) []CalibrationError {
 	observed := make(map[string][]int64)
+	identities := make(map[string]ObservedStageTiming)
 	for _, record := range workload.Records {
 		for _, stage := range record.ObservedStages {
 			key := modelKey(stage.StageID, stage.ProfileRevision, stage.RequestCohort)
 			observed[key] = append(observed[key], stage.ServiceNS)
+			identities[key] = stage
 		}
 	}
 	predicted := make(map[string]StageMetrics, len(stages))
@@ -1216,6 +1267,16 @@ func calibrationErrors(workload WorkloadTrace, stages []StageMetrics) []Calibrat
 		observedP50 := percentile(values, 50)
 		observedP95 := percentile(values, 95)
 		observedP99 := percentile(values, 99)
+		if stage.Service.Count == 0 {
+			identity := identities[key]
+			result = append(result, CalibrationError{
+				StageID: identity.StageID, ProfileRevision: identity.ProfileRevision,
+				RequestCohort: identity.RequestCohort, SampleCount: len(values),
+				ObservedP50NS: observedP50, ObservedP95NS: observedP95, ObservedP99NS: observedP99,
+				Status: "NO_PREDICTED_SAMPLES",
+			})
+			continue
+		}
 		result = append(result, CalibrationError{
 			StageID: stage.StageID, ProfileRevision: stage.ProfileRevision,
 			RequestCohort: stage.RequestCohort, SampleCount: len(values),
@@ -1275,7 +1336,7 @@ func interpolate(low, high int64, numerator uint64, denominator uint64) int64 {
 	if high <= low || denominator == 0 {
 		return low
 	}
-	return low + int64(uint64(high-low)*numerator/denominator)
+	return low + multiplyDivide(high-low, int64(numerator), int64(denominator))
 }
 
 func modelKey(stageID, profile, cohort string) string {
@@ -1310,11 +1371,4 @@ func earliestPoolAvailability(pool *poolRuntime) int64 {
 		}
 	}
 	return earliest
-}
-
-func ceilDivide(numerator, denominator int64) int64 {
-	if numerator <= 0 || denominator <= 0 {
-		return 0
-	}
-	return 1 + (numerator-1)/denominator
 }

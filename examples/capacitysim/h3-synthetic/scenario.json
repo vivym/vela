@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "revision": "synthetic-h3-disaggregated-v1",
-  "algorithm_revision": "capacity-sim-v1",
+  "revision": "synthetic-h3-disaggregated-v2",
+  "algorithm_revision": "capacity-sim-v2",
   "seed": 20260831,
   "graph_revision": "synthetic-h3-encoder-dit-vae-v1",
   "window_duration_ns": 3600000000000,
@@ -94,7 +94,7 @@
     "max_cache_bytes": 4294967296
   },
   "policy": {
-    "scheduler_revision": "synthetic-stage-scheduler-v1",
+    "scheduler_revision": "reserved-service-v1",
     "cache_policy_revision": "synthetic-exact-cache-v1",
     "max_retries_per_stage": 1,
     "cache_enabled": true,

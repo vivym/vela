@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestBootstrapDatabaseAppliesSchema67AndReplaysStageFixture(t *testing.T) {
+func TestBootstrapDatabaseAppliesCurrentSchemaAndReplaysStageFixture(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -70,8 +71,26 @@ func TestBootstrapDatabaseAppliesSchema67AndReplaysStageFixture(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	version, err := goose.GetDBVersion(database)
-	if err != nil || version != 67 {
-		t.Fatalf("migration version = %d error=%v, want 67", version, err)
+	migrations, migrationErr := goose.CollectMigrations(repositoryRoot(t, "db", "migrations"), 0, math.MaxInt64)
+	if migrationErr != nil || len(migrations) == 0 {
+		t.Fatalf("collect shipped migrations: %v", migrationErr)
+	}
+	if err != nil || version != migrations[len(migrations)-1].Version {
+		t.Fatalf("migration version = %d error=%v, want all shipped migrations applied", version, err)
+	}
+	var cacheEnabled bool
+	var cacheEntries, cacheBytes, cacheVersion int64
+	if err := database.QueryRowContext(ctx, `
+		SELECT enabled, max_entries, max_bytes, version
+		FROM project_stage_cache_controls
+		WHERE organization_id = $1 AND project_id = $2
+		  AND cache_policy_revision_id = '84000000-0000-0000-0000-000000000520'
+	`, organizationID, projectID).Scan(&cacheEnabled, &cacheEntries, &cacheBytes, &cacheVersion); err != nil {
+		t.Fatalf("read Project exact-cache control: %v", err)
+	}
+	if !cacheEnabled || cacheEntries != 128 || cacheBytes != 1<<30 || cacheVersion != 1 {
+		t.Fatalf("replayed Project cache control = enabled:%t entries:%d bytes:%d version:%d",
+			cacheEnabled, cacheEntries, cacheBytes, cacheVersion)
 	}
 	var graphState string
 	var topologicalOrderJSON string

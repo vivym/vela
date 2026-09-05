@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -269,6 +270,12 @@ func validateScenario(scenario ScenarioRevision) error {
 	if policy.CacheEnabled && policy.CacheTTLNS <= 0 {
 		return errors.New("cache TTL must be bounded when cache is enabled")
 	}
+	if policy.SchedulerRevision != SchedulerRevision {
+		return errors.New("only the simulator reserved-service scheduler is supported; production decision replay is unavailable")
+	}
+	if policy.JobResourceMultiplierPPM != 0 && policy.JobResourceMultiplierPPM != 1_000_000 {
+		return errors.New("job resource multiplier is not modeled")
+	}
 	if err := validateCostModel(scenario.CostModel); err != nil {
 		return err
 	}
@@ -327,6 +334,7 @@ func validateScenario(scenario ScenarioRevision) error {
 	}
 	poolsPerStage := make(map[string]int)
 	poolIDs := make(map[string]bool)
+	var totalDeviceNS int64
 	for _, pool := range scenario.Pools {
 		stage, ok := stageByID[pool.StageID]
 		if !validToken(pool.ID) || poolIDs[pool.ID] || !ok ||
@@ -338,6 +346,11 @@ func validateScenario(scenario ScenarioRevision) error {
 			pool.WorkerCount > pool.MaxCount {
 			return fmt.Errorf("resident pool %q is invalid", pool.ID)
 		}
+		workersAndDevices := int64(pool.WorkerCount) * int64(pool.DeviceCount)
+		if scenario.WindowDurationNS > (math.MaxInt64-totalDeviceNS)/workersAndDevices {
+			return errors.New("resident resource-time exceeds the int64 nanosecond receipt range")
+		}
+		totalDeviceNS += scenario.WindowDurationNS * workersAndDevices
 		poolIDs[pool.ID] = true
 		poolsPerStage[pool.StageID]++
 	}
@@ -433,6 +446,9 @@ func validateCalibration(calibration CalibrationBundle) error {
 		}
 		if err := validateProvenance(connector.Provenance); err != nil {
 			return fmt.Errorf("connector model %q provenance: %w", connector.Revision, err)
+		}
+		if connector.ObjectReadMicroUnits != 0 || connector.ObjectWriteMicroUnits != 0 {
+			return errors.New("connector object-operation cost is not modeled")
 		}
 		seenConnectors[connector.Revision] = true
 	}

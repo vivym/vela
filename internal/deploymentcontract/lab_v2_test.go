@@ -2,6 +2,7 @@ package deploymentcontract
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -224,6 +225,15 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	if !ok || controlRuntime.Data["VELA_LEASE_ACTIVE_KEY_ID"] != labv2contract.StageAuthorityKeyID {
 		t.Fatalf("control Lease active key ID = %q, want %q",
 			controlRuntime.Data["VELA_LEASE_ACTIVE_KEY_ID"], labv2contract.StageAuthorityKeyID)
+	}
+	for key, expected := range map[string]string{
+		"VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE":               "/etc/vela-lab-control/h3-cache-projects.json",
+		"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID": "84000000-0000-0000-0000-000000000522",
+		"VELA_H3_EXACT_CACHE_SEED_RNG_REVISION":                  "vela-lab-h3-exact-v1",
+	} {
+		if controlRuntime.Data[key] != expected {
+			t.Fatalf("lab cache configuration %s = %q, want %q", key, controlRuntime.Data[key], expected)
+		}
 	}
 	for index := 1; index <= 2; index++ {
 		name := "vela-lab-stage-worker-" + string(rune('0'+index))
@@ -553,6 +563,7 @@ func TestLabV2SmokeCapacityGateControlsJobCreation(t *testing.T) {
 	fakes := map[string]string{
 		"id": "#!/bin/sh\n[ \"${1:-}\" = -u ] || exit 1\nprintf '0\\n'\n",
 		"jq": `#!/bin/sh
+if [ -n "${REAL_JQ:-}" ]; then exec "$REAL_JQ" "$@"; fi
 payload=$(/bin/cat)
 case "$*" in
 	*Complete*)
@@ -582,7 +593,15 @@ case "${1:-}" in
 			*) printf '%s\n' "$READY_CAPACITY_ROUTES" ;;
 		esac
 		;;
-	create) printf 'job.batch/vela-lab-smoke-test\n' ;;
+	create)
+		case "$*" in
+			*--dry-run=client*) printf '{"spec":{"template":{"spec":{"containers":[{"args":["--project-id","preserved"]}]}}}}\n' ;;
+			*)
+				case "$*" in *'-f - '*) /bin/cat > "$KUBECTL_INPUT" ;; esac
+				printf 'job.batch/vela-lab-smoke-test\n'
+				;;
+		esac
+		;;
 	logs) printf '{"status":"LAB VERIFIED","final_state":"SUCCEEDED","artifact_count":2,"artifact_kinds":["VIDEO","THUMBNAIL"]}\n' ;;
 	*) exit 1 ;;
 esac
@@ -602,20 +621,35 @@ esac
 		wantOK     bool
 		wantCreate bool
 		wantError  string
+		seed       string
 	}{
 		{name: "missing Admission route", admission: "0", ready: "4", wantError: "active routes=0 expected=1"},
 		{name: "missing capacity route", admission: "1", ready: "3", wantError: "ready routes=3 expected=4"},
 		{name: "failed Job", admission: "1", ready: "4", jobPhase: "failed", wantCreate: true, wantError: "end-to-end smoke Job failed"},
 		{name: "all routes ready", admission: "1", ready: "4", jobPhase: "complete", wantOK: true, wantCreate: true},
+		{name: "explicit semantic seed", admission: "1", ready: "4", jobPhase: "complete", wantOK: true, wantCreate: true, seed: "104729"},
+		{name: "invalid seed", admission: "1", ready: "4", jobPhase: "complete", wantError: "seed must be a non-negative integer", seed: "invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			logPath := filepath.Join(t.TempDir(), "kubectl.log")
 			command := exec.Command(filepath.Join(directory, "smoke.sh"), manifests, "--apply")
+			inputPath := filepath.Join(t.TempDir(), "submitted.json")
+			realJQ := ""
+			if test.seed != "" {
+				var err error
+				realJQ, err = exec.LookPath("jq")
+				if err != nil {
+					t.Skip("jq is required to verify the seed manifest transformation")
+				}
+				command.Args = append(command.Args, test.seed)
+			}
 			command.Env = append(os.Environ(),
 				"PATH="+fakeBin+":"+os.Getenv("PATH"),
 				"KUBECTL_BIN="+filepath.Join(fakeBin, "kubectl"),
 				"KUBECONFIG="+kubeconfig,
 				"KUBECTL_LOG="+logPath,
+				"KUBECTL_INPUT="+inputPath,
+				"REAL_JQ="+realJQ,
 				"ADMISSION_ROUTES="+test.admission,
 				"READY_CAPACITY_ROUTES="+test.ready,
 				"JOB_PHASE="+test.jobPhase,
@@ -634,6 +668,28 @@ esac
 			created := strings.Contains("\n"+string(calls), "\ncreate ")
 			if created != test.wantCreate {
 				t.Fatalf("kubectl calls=%q create=%t want=%t", calls, created, test.wantCreate)
+			}
+			if test.seed != "" && test.wantOK {
+				payload, err := os.ReadFile(inputPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var document struct {
+					Spec struct {
+						Template struct {
+							Spec struct {
+								Containers []struct{ Args []string }
+							}
+						}
+					}
+				}
+				if err := json.Unmarshal(payload, &document); err != nil {
+					t.Fatal(err)
+				}
+				containers := document.Spec.Template.Spec.Containers
+				if len(containers) != 1 || !equalStrings(containers[0].Args, []string{"--project-id", "preserved", "--seed", test.seed}) {
+					t.Fatalf("seed override changed the submitted arguments: %s", payload)
+				}
 			}
 		})
 	}

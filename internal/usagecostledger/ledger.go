@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,6 +45,9 @@ const (
 	ResourceByteNanosecond  ResourceKind = "BYTE_NANOSECOND"
 	ResourceByte            ResourceKind = "BYTE"
 	ResourceObjectOperation ResourceKind = "OBJECT_OPERATION"
+	// ResourceAllocationNanosecond measures exclusive logical allocation time,
+	// including pre-start waits. It does not measure physical GPU or CPU use.
+	ResourceAllocationNanosecond ResourceKind = "ALLOCATION_NANOSECOND"
 )
 
 type SourceKind string
@@ -199,18 +203,24 @@ func (ledger *UsageCostLedger) Summarize(
 			bucket.UnvaluedRecordCount < 0 {
 			return OperatorSummary{}, errors.New("Usage/Cost summary contains a negative counter")
 		}
+		var total *int64
 		switch bucket.Attribution {
 		case AttributionDirect:
-			summary.DirectCostMicroUnits += bucket.CostMicroUnits
+			total = &summary.DirectCostMicroUnits
 		case AttributionShared:
-			summary.SharedCostMicroUnits += bucket.CostMicroUnits
+			total = &summary.SharedCostMicroUnits
 		case AttributionCounterfactual:
-			summary.CounterfactualAvoidedCostMicroUnits += bucket.CostMicroUnits
+			total = &summary.CounterfactualAvoidedCostMicroUnits
 		default:
 			return OperatorSummary{}, fmt.Errorf(
 				"Usage/Cost summary contains unknown attribution %q", bucket.Attribution,
 			)
 		}
+		if *total > math.MaxInt64-bucket.CostMicroUnits ||
+			summary.UnvaluedRecordCount > math.MaxInt64-bucket.UnvaluedRecordCount {
+			return OperatorSummary{}, errors.New("Usage/Cost summary exceeds int64 bounds")
+		}
+		*total += bucket.CostMicroUnits
 		summary.UnvaluedRecordCount += bucket.UnvaluedRecordCount
 	}
 	return summary, nil
@@ -286,7 +296,7 @@ func validSourceKind(value SourceKind) bool {
 func validResourceKind(value ResourceKind) bool {
 	switch value {
 	case ResourceGPUNanosecond, ResourceCPUNanosecond, ResourceByteNanosecond,
-		ResourceByte, ResourceObjectOperation:
+		ResourceByte, ResourceObjectOperation, ResourceAllocationNanosecond:
 		return true
 	default:
 		return false

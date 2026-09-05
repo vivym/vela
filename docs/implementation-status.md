@@ -63,7 +63,27 @@ capacity changes. Migration `00068` permits exact certified input Connector
 revisions in `CERTIFIED` and `CANARY` as well as the existing active states.
 Migration `00069` revalidates TransferTicket expiry and live capacity against a
 post-lock PostgreSQL server-clock sample, preventing lock waits and host-clock
-skew from extending transfer authority. The current schema is version `00069`.
+skew from extending transfer authority. The handoff/deployed baseline remains
+schema `00069`; the uncommitted local hardening branch now contains migrations
+through `00088`. Its scoped repair and verification status is tracked in
+[Mock Hardening Validation](mock-hardening-validation-2026-09-05.md), including
+same-source native exact-cache and 512-Job CPU load evidence. It has not been
+committed, pushed or deployed to the remote lab, and terminal scratch lifecycle
+work remains open. Final local unit, four-shard integration, lint, cross-build,
+deployment and generated-output checks pass on schema-87 source. A subsequent
+public-gRPC counterexample nevertheless restarted the same still-valid authority
+after Seal or STOPPED. Schema 88 now prevents this RPC reentry with signed,
+immutable allocation sequences and a per-Runtime-epoch watermark; signature,
+public-gRPC/race, durable order and migration regressions pass. The separate
+[Schema-88 Checkpoint](schema88-validation-checkpoint-2026-09-05.json) records
+passing unit, four-shard integration, lint, cross-build, deployment, generation
+and current V2 CNPG failover checks. Its source-bound 512-Job CPU load and
+independent exact-cache run pass in 121.436 / 9.776 package seconds. These are
+new receipts, separate from the historical source-87 evidence.
+Successful scratch retirement is only partially closed until Worker input writers
+are excluded and backend descendant quiescence is established. The
+[Schema-87 Checkpoint](schema87-validation-checkpoint-2026-09-05.json) records both
+the passing checks and that open correctness finding.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
@@ -121,12 +141,19 @@ reachable machine-level H3 Assignment path. Repository tests and the separate
 non-production RKE2 mock campaign are not production evidence or a Launch
 Receipt.
 
-The production Stage Worker no-work poll defaults to `5s`, reducing the former
-`250ms` append-only acquire intent/result rate by 20x. An always-idle Worker can
-still create 17,280 polling cycles and 34,560 immutable rows per day; eight such
-Workers can create about 276,480 rows per day. A wakeup/long-poll path or an
-auditable retention policy remains production follow-up, and the current poll
-has up to `5s` idle assignment-discovery latency.
+The Stage Worker no-work poll defaults to `5s`. Before migration `00078`, each
+ordinary empty poll appended an intent, result and scheduler snapshot: three
+rows, or 51,840 rows per Worker per day at that interval. Migration `00078`
+uses the same authority readers for a read-only empty-queue probe when the Worker
+has no active allocation. That advisory `NoWork` response creates no execution
+authority and requires no durable command identity. Any existing intent still
+uses exact durable replay; nonempty or contended queues use the full scheduler.
+The probe is enabled by an optional retry hint in the existing begin interface,
+so prior clients retain their previous behavior and runtime role grants stay
+unchanged. Local integration observed 64 idle polls append zero rows, versus
+192 at baseline. Capacity observations and nonempty scheduling history retain
+their own lifecycle; this does not establish bounded total database growth.
+The polling path still has up to `5s` idle assignment-discovery latency.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |

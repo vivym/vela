@@ -529,6 +529,9 @@ func seedLabFixture(
 	if err := seedStageCatalog(ctx, transaction, runtimeImageDigest, thumbnailRuntimeImageDigest); err != nil {
 		return err
 	}
+	if err := seedProjectCacheControl(ctx, transaction); err != nil {
+		return err
+	}
 	if err := seedStageCutover(ctx, transaction, runtimeImageDigest, thumbnailRuntimeImageDigest); err != nil {
 		return err
 	}
@@ -668,6 +671,29 @@ func labWorkerProfiles() ([]labWorkerProfile, error) {
 		})
 	}
 	return profiles, nil
+}
+
+func seedProjectCacheControl(ctx context.Context, transaction *sql.Tx) error {
+	// Bootstrap initializes this policy once; replay preserves operator changes.
+	_, err := transaction.ExecContext(ctx, `
+		SELECT control.version
+		FROM vela_set_project_stage_cache_control(jsonb_build_object(
+			'organization_id', $1::uuid,
+			'project_id', $2::uuid,
+			'cache_policy_revision_id', '84000000-0000-0000-0000-000000000520',
+			'enabled', true, 'max_entries', 128, 'max_bytes', 1073741824,
+			'updated_at', clock_timestamp()
+		)) AS control
+		WHERE NOT EXISTS (
+			SELECT 1 FROM project_stage_cache_controls
+			WHERE organization_id = $1 AND project_id = $2
+			  AND cache_policy_revision_id = '84000000-0000-0000-0000-000000000520'
+		)
+	`, organizationID, projectID)
+	if err != nil {
+		return fmt.Errorf("initialize Project exact-cache control: %w", err)
+	}
+	return nil
 }
 
 func seedStageCatalog(ctx context.Context, transaction *sql.Tx, runtimeImageDigest, thumbnailRuntimeImageDigest string) error {

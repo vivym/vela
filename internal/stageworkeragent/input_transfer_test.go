@@ -363,8 +363,8 @@ type transferControl struct {
 	consumeFailures int
 }
 
-func (control *transferControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return nil
+func (control *transferControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, nil)
 }
 
 func (control *transferControl) Exchange(

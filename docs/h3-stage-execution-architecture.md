@@ -478,6 +478,7 @@ The compute StageLease binds:
 - attempt and stage fences;
 - WorkerInstance, WorkerInstance epoch, membership digest, and DeviceSet digest;
 - ModelRuntime epoch and StageProfileRevision;
+- immutable PostgreSQL allocation execution sequence in StageAuthority V2;
 - exact input StageArtifact versions;
 - issued and expiry times plus a signed token digest.
 
@@ -503,6 +504,17 @@ cannot extend a Lease while the control plane is unavailable.
 `model_runtime_epoch` changes only when the model process, GPU context,
 DeviceSet, or resident model identity changes. Old StageLeases never survive a
 ModelRuntime epoch change.
+
+Schema 88 orders new physical allocations after the Worker serialization lock.
+StageAuthority V2 signs that immutable sequence, and renewals retain it. Each
+resident Runtime keeps one highest installed sequence per epoch: terminal
+cleanup cannot make the same allocation executable again, even after sealed
+receipt eviction. A failed Prepare consumes its allocation; a new StageAttempt
+requires a larger sequence. Persistent epoch advancement fences pre-restart
+envelopes. Historical V1 authority remains readable for recovery but cannot
+start execution in the new Runtime. See [Ordered physical execution](runtime-execution-order-2026-09-05.md)
+for upgrade, downgrade and database-restore constraints. This RPC fence does not
+establish local writer quiescence for scratch deletion.
 
 ## 10. Worker, Device, and residency model
 
@@ -658,6 +670,15 @@ Admission also creates a durable, risk-adjusted StageStorageReservation using
 the per-stage p99 size and hard maximum. Cache hits pinned to existing objects do
 not reserve duplicate payload bytes. Buffer credit controls live WIP;
 StageStorageReservation guarantees L2 capacity for Accepted Jobs.
+
+The reservation is `RESERVED` while the graph can commit more StageArtifacts.
+Successful Visible Completion changes it to `CONSUMED` in the same transaction;
+failed or canceled graphs use `RELEASED`. These terminal states end the execution
+budget, preserve both `reserved_bytes` and cumulative `consumed_bytes`, and do not
+delete retained objects or Usage records. Physical storage remains governed by
+StageArtifact pins, retention, and exact-version deletion. Migration 82 backfills
+only reservations with matching completed Visible Completion evidence; rollback
+preserves their terminal state instead of recreating active capacity demand.
 
 ## 12. StageArtifact, transfer, cache, and checkpoint
 

@@ -1,5 +1,11 @@
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_recovery') THEN
+        CREATE ROLE vela_recovery NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_recovery_owner') THEN
+        CREATE ROLE vela_recovery_owner NOLOGIN BYPASSRLS;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_request') THEN
         CREATE ROLE vela_request NOLOGIN;
     END IF;
@@ -285,3 +291,6 @@ ALTER ROLE vela_stage_scheduler_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 
 GRANT pg_read_all_stats TO vela_quorum_guard_owner;
+ALTER ROLE vela_recovery NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_recovery_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+GRANT EXECUTE ON FUNCTION pg_catalog.pg_control_system() TO vela_recovery_owner;

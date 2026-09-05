@@ -103,22 +103,52 @@ func multiplyDivide(value, multiplier, divisor int64) int64 {
 	if value <= 0 || multiplier <= 0 || divisor <= 0 {
 		return 0
 	}
-	if value > math.MaxInt64/multiplier {
-		return math.MaxInt64
-	}
-	return value * multiplier / divisor
+	var product big.Int
+	addProduct(&product, value, multiplier)
+	return divideQuantity(&product, divisor)
 }
 
-func resourceTimeCost(bytes, durationNS, microUnitsPerGBSecond int64) int64 {
-	if bytes <= 0 || durationNS <= 0 || microUnitsPerGBSecond <= 0 {
-		return 0
+func addProduct(total *big.Int, factors ...int64) {
+	product := big.NewInt(1)
+	for _, factor := range factors {
+		product.Mul(product, big.NewInt(factor))
 	}
-	value := new(big.Int).SetInt64(bytes)
-	value.Mul(value, new(big.Int).SetInt64(durationNS))
-	value.Mul(value, new(big.Int).SetInt64(microUnitsPerGBSecond))
-	value.Div(value, new(big.Int).SetInt64(1_000_000_000_000_000_000))
+	total.Add(total, product)
+}
+
+func divideQuantity(quantity *big.Int, divisor int64) int64 {
+	value := new(big.Int).Quo(quantity, big.NewInt(divisor))
 	if !value.IsInt64() {
 		return math.MaxInt64
 	}
 	return value.Int64()
+}
+
+func multiplyQuantityDivide(quantity *big.Int, multiplier, divisor int64) int64 {
+	value := new(big.Int).Mul(quantity, big.NewInt(multiplier))
+	return divideQuantity(value, divisor)
+}
+
+func boundedSum(values ...int64) int64 {
+	var sum int64
+	for _, value := range values {
+		if value > math.MaxInt64-sum {
+			return math.MaxInt64
+		}
+		sum += value
+	}
+	return sum
+}
+
+func transferPayloadNS(bytes, bytesPerSecond, scalePPM int64) int64 {
+	var numerator, denominator big.Int
+	addProduct(&numerator, bytes, 1_000_000_000, 1_000_000)
+	addProduct(&denominator, bytesPerSecond, scalePPM)
+	numerator.Add(&numerator, &denominator)
+	numerator.Sub(&numerator, big.NewInt(1))
+	numerator.Quo(&numerator, &denominator)
+	if !numerator.IsInt64() {
+		return math.MaxInt64
+	}
+	return numerator.Int64()
 }

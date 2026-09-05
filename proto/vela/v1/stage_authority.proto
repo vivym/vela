@@ -51,4 +51,6 @@ message StageAuthority {
   bytes signature = 29;
   bytes execution_spec_digest = 30;
   int64 model_runtime_barrier_generation = 31;
+  // Schema v2: immutable database-assigned order of physical allocations.
+  int64 execution_sequence = 32;
 }

@@ -16,6 +16,10 @@ func ProposeResidency(
 		!receipt.Conservation.Valid {
 		return ResidencyProposal{}, errors.New("SimulationReceipt is not valid planning evidence")
 	}
+	scenarioDigest, err := digestValue(scenario)
+	if err != nil || receipt.ScenarioDigest != scenarioDigest {
+		return ResidencyProposal{}, errors.New("SimulationReceipt does not bind this exact scenario")
+	}
 	metrics := make(map[string]PoolMetrics, len(receipt.Pools))
 	for _, metric := range receipt.Pools {
 		metrics[metric.PoolID] = metric
@@ -29,7 +33,7 @@ func ProposeResidency(
 		CooldownNS:       scenario.Policy.ProposalCooldownNS,
 		BudgetMicroUnits: receipt.Cost.TotalMicroUnits,
 		ReasonCodes:      []string{"FIXED_LAYOUT_REPLAY", "NO_HEALTHY_RESIDENCY_RELEASE"},
-		UnresolvedRisks:  []string{"NO_PRODUCTION_SOAK", "NO_LAUNCH_RECEIPT"},
+		UnresolvedRisks:  []string{"NO_PRODUCTION_SOAK", "NO_LAUNCH_RECEIPT", "SIMPLIFIED_SCHEDULER_MODEL"},
 	}
 	if scenario.Provenance.SourceKind != "MEASURED" {
 		proposal.UnresolvedRisks = append(proposal.UnresolvedRisks, "NON_MEASURED_SCENARIO_INPUT")
@@ -38,7 +42,7 @@ func ProposeResidency(
 		desired := pool.WorkerCount
 		metric := metrics[pool.ID]
 		capacityNS := metric.ResidencyNS
-		if capacityNS > 0 && metric.BusyNS*1_000_000/capacityNS >= 800_000 && desired < pool.MaxCount {
+		if capacityNS > 0 && multiplyDivide(metric.BusyNS, 1_000_000, capacityNS) >= 800_000 && desired < pool.MaxCount {
 			desired++
 			proposal.ReasonCodes = append(proposal.ReasonCodes, "HIGH_UTILIZATION:"+pool.ID)
 		}

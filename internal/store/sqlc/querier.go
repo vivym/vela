@@ -35,7 +35,7 @@ type Querier interface {
 	InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error
 	InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error
 	InsertStageGraphVisibleCompletion(ctx context.Context, arg InsertStageGraphVisibleCompletionParams) error
-	InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) error
+	InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) (int64, error)
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
 	InsertVisibleCompletionOutboxEvent(ctx context.Context, arg InsertVisibleCompletionOutboxEventParams) error

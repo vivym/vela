@@ -252,14 +252,15 @@ path applies when the bootstrap-bound `RUNTIME_IMAGE` or `BOOTSTRAP_IMAGE`
 A control, Fleet controller, or Worker Agent image change alone does not require
 database replacement.
 
-The repository does not yet provide a tested `vela-lab-v2` operator command that
-atomically closes Admission and emits a quiescence receipt. Until it does, do
-not use this checklist or `rollback.sh` to replace a retained database. The
-required command must close Admission before its consistent database snapshot,
-bind both actions into one success receipt, and require zero Jobs, StageRuns,
-and StageAttempts outside their terminal states plus zero `ACTIVE` StageLeases.
-An unreachable source, concurrent Admission, stale snapshot, or nonzero count
-must fail closed.
+Migration `00072` and `cmd/vela-lab-recovery` now provide a repository-tested
+Admission gate, database-issued quiescence receipt, consistent snapshot, and
+actual isolated PostgreSQL 17 restore drill. Follow the exact identities and
+commands in [Lab Database Recovery](runbooks/lab-database-recovery.md). The
+operator checks nonterminal execution and storage authority, preserves the
+closed gate on failure, and binds the dump to its exported database snapshot.
+An unreachable source, mismatched source identity, reopened gate, stale snapshot,
+or nonzero authority count fails closed. This has not been run against the
+retained three-host lab database; `rollback.sh` is still not a recovery operator.
 
 After that receipt exists, use `umask 077` to create a root-owned raw evidence
 directory at mode `0700` and retain files at mode `0600`; never commit the raw

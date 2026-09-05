@@ -674,7 +674,17 @@ func (store *S3) DeleteExactVersion(
 	if err := validateExactVersion(objectKey, versionID); err != nil {
 		return err
 	}
-	_, err := store.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	object, err := store.headExactVersion(ctx, objectKey, versionID)
+	if err != nil {
+		if isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion", "NotFound", "404") {
+			return nil
+		}
+		return err
+	}
+	if IsPublicationFence(object) {
+		return nil
+	}
+	_, err = store.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket:    aws.String(store.bucket),
 		Key:       aws.String(objectKey),
 		VersionId: aws.String(versionID),
@@ -700,8 +710,9 @@ func (store *S3) PurgeObjectVersions(
 	}
 
 	type versionIdentity struct {
-		key       string
-		versionID string
+		key          string
+		versionID    string
+		deleteMarker bool
 	}
 	identities := make([]versionIdentity, 0, 1)
 	paginator := s3.NewListObjectVersionsPaginator(store.client, &s3.ListObjectVersionsInput{
@@ -720,7 +731,7 @@ func (store *S3) PurgeObjectVersions(
 			if *version.Key != objectKey {
 				continue
 			}
-			identities = append(identities, versionIdentity{*version.Key, *version.VersionId})
+			identities = append(identities, versionIdentity{key: *version.Key, versionID: *version.VersionId})
 		}
 		for _, marker := range page.DeleteMarkers {
 			if marker.Key == nil || marker.VersionId == nil || *marker.VersionId == "" {
@@ -729,7 +740,7 @@ func (store *S3) PurgeObjectVersions(
 			if *marker.Key != objectKey {
 				continue
 			}
-			identities = append(identities, versionIdentity{*marker.Key, *marker.VersionId})
+			identities = append(identities, versionIdentity{key: *marker.Key, versionID: *marker.VersionId, deleteMarker: true})
 		}
 		if len(identities) > maxObjectVersionsToPurge {
 			return ObjectVersionsPurgeResult{}, errors.New("too many S3 backup object versions")
@@ -738,6 +749,18 @@ func (store *S3) PurgeObjectVersions(
 
 	removed := 0
 	for _, identity := range identities {
+		if !identity.deleteMarker {
+			object, err := store.headExactVersion(ctx, identity.key, identity.versionID)
+			if err != nil {
+				if isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion", "NotFound", "404") {
+					continue
+				}
+				return ObjectVersionsPurgeResult{PurgedVersionCount: removed}, err
+			}
+			if IsPublicationFence(object) {
+				continue
+			}
+		}
 		_, err := store.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 			Bucket:    aws.String(store.bucket),
 			Key:       aws.String(identity.key),
@@ -748,6 +771,9 @@ func (store *S3) PurgeObjectVersions(
 				fmt.Errorf("delete exact S3 backup object version: %w", err)
 		}
 		removed++
+	}
+	if err := FenceConditionalPublication(ctx, store, objectKey, 0, [sha256.Size]byte{}); err != nil {
+		return ObjectVersionsPurgeResult{PurgedVersionCount: removed}, err
 	}
 	return ObjectVersionsPurgeResult{PurgedVersionCount: removed}, nil
 }

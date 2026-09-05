@@ -49,6 +49,9 @@ type StageGraphFinalizationSource struct {
 	SHA256                   [sha256.Size]byte
 	SizeBytes                int64
 	ExpiresAt                time.Time
+	publicArtifactID         uuid.UUID
+	publicObjectKey          string
+	publicExpiresAt          time.Time
 }
 
 type StageGraphFinalizationClaim struct {
@@ -86,6 +89,16 @@ func (s *Service) ClaimNextStageGraphFinalization(
 	if !validPrintableText(finalizer.ID, 500) {
 		return StageGraphFinalizationClaim{}, errors.New("authenticated Finalizer identity is invalid")
 	}
+	maintenanceQueries := store.New(s.pool)
+	maintenanceTime, err := postgresTime(ctx, maintenanceQueries)
+	if err != nil {
+		return StageGraphFinalizationClaim{}, err
+	}
+	// Expire claims in their own transaction before acquiring any Job authority.
+	if err := maintenanceQueries.ExpireStageGraphFinalizationClaims(ctx,
+		pgtype.Timestamptz{Time: maintenanceTime, Valid: true}); err != nil {
+		return StageGraphFinalizationClaim{}, fmt.Errorf("expire Stage graph finalization claims: %w", err)
+	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return StageGraphFinalizationClaim{}, fmt.Errorf("begin Stage graph finalization claim: %w", err)
@@ -97,8 +110,11 @@ func (s *Service) ClaimNextStageGraphFinalization(
 		return StageGraphFinalizationClaim{}, err
 	}
 	observedAt := pgtype.Timestamptz{Time: now, Valid: true}
-	if err := queries.ExpireStageGraphFinalizationClaims(ctx, observedAt); err != nil {
-		return StageGraphFinalizationClaim{}, fmt.Errorf("expire Stage graph finalization claims: %w", err)
+	if _, err := tx.Exec(ctx, `SELECT job.id FROM jobs AS job
+		JOIN stage_graph_finalization_claims AS claim ON claim.job_id = job.id
+		WHERE claim.owner_id = $1 AND claim.state = 'ACTIVE'
+		FOR UPDATE OF job`, finalizer.ID); err != nil {
+		return StageGraphFinalizationClaim{}, fmt.Errorf("lock Stage graph finalization replay Job: %w", err)
 	}
 
 	active, err := queries.FindActiveStageGraphFinalizationClaim(
@@ -142,6 +158,11 @@ func (s *Service) ClaimNextStageGraphFinalization(
 		return StageGraphFinalizationClaim{}, err
 	}
 	primary := sources[0]
+	now, err = postgresTime(ctx, queries)
+	if err != nil {
+		return StageGraphFinalizationClaim{}, err
+	}
+	observedAt = pgtype.Timestamptz{Time: now, Valid: true}
 	expiresAt := now.Add(s.leaseTTL)
 	for _, ceiling := range []time.Time{
 		candidate.FinalizationDeadlineAt.Time,
@@ -216,6 +237,15 @@ func (s *Service) ClaimNextStageGraphFinalization(
 	return claim, nil
 }
 
+func lockStageGraphFinalizationJob(ctx context.Context, tx pgx.Tx, claimID uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `SELECT job.id FROM jobs AS job
+		JOIN stage_graph_finalization_claims AS claim ON claim.job_id = job.id
+		WHERE claim.id = $1 FOR UPDATE OF job`, claimID); err != nil {
+		return fmt.Errorf("lock Stage graph finalization parent Job: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) replayStageGraphFinalizationClaim(
 	ctx context.Context,
 	queries *store.Queries,
@@ -224,6 +254,13 @@ func (s *Service) replayStageGraphFinalizationClaim(
 	if !row.IssuedAt.Valid || !row.ExpiresAt.Valid || !row.FinalizationStartedAt.Valid ||
 		!row.FinalizationDeadlineAt.Valid || len(row.OutputSetDigest) != sha256.Size {
 		return StageGraphFinalizationClaim{}, errors.New("persisted Stage graph finalization claim is incomplete")
+	}
+	now, err := postgresTime(ctx, queries)
+	if err != nil {
+		return StageGraphFinalizationClaim{}, err
+	}
+	if !now.Before(row.ExpiresAt.Time) || !now.Before(row.FinalizationDeadlineAt.Time) {
+		return StageGraphFinalizationClaim{Decision: StageGraphFinalizationNoWork}, nil
 	}
 	sources, outputSetDigest, err := loadStageGraphFinalizationClaimSources(ctx, queries, row.ClaimID)
 	if err != nil {

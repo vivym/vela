@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/artifactstore"
 	store "github.com/vivym/vela/internal/store/sqlc"
 )
 
@@ -18,6 +19,7 @@ type Config struct {
 	ActiveLeaseKeyID  string
 	LeaseKeys         map[string][]byte
 	ArtifactInspector ArtifactInspector
+	ArtifactStore     artifactstore.VersionedStore
 }
 
 type Service struct {
@@ -26,6 +28,7 @@ type Service struct {
 	activeLeaseKeyID  string
 	leaseKeys         map[string][]byte
 	artifactInspector ArtifactInspector
+	artifactStore     artifactstore.VersionedStore
 }
 
 func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Service, error) {
@@ -55,6 +58,7 @@ func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Servic
 		pool: pool, leaseTTL: config.LeaseTTL,
 		activeLeaseKeyID: config.ActiveLeaseKeyID, leaseKeys: keys,
 		artifactInspector: config.ArtifactInspector,
+		artifactStore:     config.ArtifactStore,
 	}, nil
 }
 

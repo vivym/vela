@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -59,6 +60,7 @@ type durableStageAuthority struct {
 	runtimeIdentity               string
 	residencyState                string
 	capacityObservationOK         bool
+	failureReplay                 bool
 	members                       []durableMember
 	devices                       []durableDevice
 }
@@ -120,12 +122,61 @@ func (authorizer *PostgresAuthorizer) IsActive(
 	if err != nil {
 		return false, err
 	}
+	if verified.Authority.GetSchemaVersion() == stageauthority.SchemaVersionV2 {
+		var sequence sql.NullInt64
+		if err := tx.QueryRow(ctx, `SELECT vela_read_stage_allocation_execution_sequence($1, $2)`,
+			leaseID, verified.Authority.GetStageAllocationId()).Scan(&sequence); err != nil {
+			return false, fmt.Errorf("read durable execution sequence: %w", err)
+		}
+		if !sequence.Valid || sequence.Int64 != verified.Authority.GetExecutionSequence() {
+			return false, nil
+		}
+	}
+	if operation == OperationFailStage {
+		if snapshot.leaseState == "REVOKED" && snapshot.stageAttemptState == "FAILED" {
+			snapshot.failureReplay, err = readDurableStageFailureReplay(ctx, tx, sessionEpoch, verified)
+			if err != nil {
+				return false, err
+			}
+		}
+		if verified.MonotonicValidFor <= 0 && !snapshot.failureReplay {
+			return false, nil
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit StageAuthority snapshot: %w", err)
 	}
 	return matchesDurableStageAuthority(
 		snapshot, identity, sessionEpoch, operation, verified.Authority,
 	), nil
+}
+
+func readDurableStageFailureReplay(ctx context.Context, tx pgx.Tx, sessionEpoch int64, verified stageauthority.Verified) (bool, error) {
+	var available bool
+	if err := tx.QueryRow(ctx, `SELECT to_regprocedure('public.vela_is_stage_failure_authority_replayable(jsonb)') IS NOT NULL`).Scan(&available); err != nil {
+		return false, fmt.Errorf("check Stage failure replay capability: %w", err)
+	}
+	if !available {
+		return false, nil
+	}
+	authority := verified.Authority
+	tokenDigest := sha256.Sum256(authority.GetLeaseToken())
+	payload, err := json.Marshal(map[string]any{
+		"stage_lease_id": authority.GetStageLeaseId(), "stage_allocation_id": authority.GetStageAllocationId(),
+		"attempt_id": authority.GetAttemptId(), "stage_run_id": authority.GetStageRunId(), "stage_attempt_id": authority.GetStageAttemptId(),
+		"attempt_fence": authority.GetAttemptFence(), "stage_fence": authority.GetStageFence(), "stage_version": authority.GetStageVersion(),
+		"worker_instance_id": authority.GetWorkerInstanceId(), "worker_instance_epoch": authority.GetWorkerInstanceEpoch(),
+		"control_session_epoch": sessionEpoch, "token_digest": hex.EncodeToString(tokenDigest[:]),
+		"authority_digest": hex.EncodeToString(verified.Digest[:]),
+	})
+	if err != nil {
+		return false, fmt.Errorf("encode Stage failure replay claim: %w", err)
+	}
+	var replayable bool
+	if err := tx.QueryRow(ctx, `SELECT vela_is_stage_failure_authority_replayable($1::jsonb)`, payload).Scan(&replayable); err != nil {
+		return false, fmt.Errorf("read durable Stage failure replay: %w", err)
+	}
+	return replayable, nil
 }
 
 func readDurableStageAuthority(
@@ -233,8 +284,8 @@ func matchesDurableStageAuthority(
 		snapshot.stageAttemptID != physicalID || snapshot.stageAllocationID != allocationID ||
 		snapshot.stageLeaseID != leaseID || snapshot.workerInstanceID != workerID ||
 		snapshot.modelResidencyID != residencyID || snapshot.stageProfileID != profileID ||
-		snapshot.attemptFence != authority.GetAttemptFence() ||
-		snapshot.stageFence != authority.GetStageFence() ||
+		(!snapshot.failureReplay && (snapshot.attemptFence != authority.GetAttemptFence() ||
+			snapshot.stageFence != authority.GetStageFence())) ||
 		snapshot.workerInstanceEpoch != authority.GetWorkerInstanceEpoch() ||
 		snapshot.modelRuntimeBarrierGeneration != authority.GetModelRuntimeBarrierGeneration() ||
 		snapshot.modelRuntimeBarrierGeneration <= 0 || snapshot.controlSessionEpoch != sessionEpoch ||
@@ -265,6 +316,9 @@ func matchesDurableOperationState(
 	operation Operation,
 	signedStageVersion int64,
 ) bool {
+	if operation == OperationFailStage && snapshot.failureReplay {
+		return true
+	}
 	if operation == OperationSealStageOutput &&
 		snapshot.stageVersion == signedStageVersion+1 &&
 		snapshot.attemptState == "RUNNING" && snapshot.stageRunState == "MATERIALIZING" &&

@@ -13,7 +13,7 @@ func TestStrictInputsRejectCustomerContentAndMissingBounds(t *testing.T) {
 	encodedScenario := []byte(`{
 		"schema_version":1,
 		"revision":"scenario-v1",
-		"algorithm_revision":"capacity-sim-v1",
+		"algorithm_revision":"capacity-sim-v2",
 		"seed":7,
 		"graph_revision":"h3-graph-v1",
 		"window_duration_ns":1000,
@@ -230,7 +230,7 @@ func fixedPipelineFixture() (
 			MaxStorageBytes: 1 << 24, MaxCacheEntries: 16, MaxCacheBytes: 1 << 20,
 		},
 		Policy: capacitysim.Policy{
-			SchedulerRevision: "scheduler-v1", CachePolicyRevision: "cache-v1",
+			SchedulerRevision: capacitysim.SchedulerRevision, CachePolicyRevision: "cache-v1",
 			MaxRetriesPerStage: 1, CacheEnabled: true, CacheTTLNS: 10_000,
 			FinalizationDurationNS: 5, ReleaseHealthyResidency: false,
 			ProposalCooldownNS: 100, ProposalExpiryNS: 500,

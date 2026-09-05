@@ -1124,8 +1124,8 @@ type auxProductionControl struct {
 	capacities    []*velav1.ReportStageCapacityObservationRequest
 }
 
-func (control *auxProductionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return make(chan *velav1.StageWorkerControlServiceConnectResponse)
+func (control *auxProductionControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, nil)
 }
 
 func (control *auxProductionControl) Exchange(
@@ -1313,8 +1313,8 @@ func (control *sealedReplaySessionControl) Exchange(
 	return control.productionExecutionControl.Exchange(ctx, request)
 }
 
-func (control *productionExecutionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return control.commands
+func (control *productionExecutionControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, control.commands)
 }
 
 func (control *productionExecutionControl) Exchange(
@@ -1426,8 +1426,8 @@ func (control *productionControl) CurrentControlSessionEpoch() int64 {
 	return control.controlSessionEpoch
 }
 
-func (control *productionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	return make(chan *velav1.StageWorkerControlServiceConnectResponse)
+func (control *productionControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	return nextTestControlCommand(ctx, nil)
 }
 
 func (control *productionControl) Exchange(

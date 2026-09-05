@@ -388,6 +388,10 @@ func (s *Service) Submit(
 		JobLifetimeSeconds:                        jobLifetimeSeconds,
 	})
 	if err != nil {
+		var postgresError *pgconn.PgError
+		if errors.As(err, &postgresError) && postgresError.ConstraintName == "recovery_admission_closed" {
+			return Job{}, failure(FailureCodeCapacityUnavailable, "Admission is temporarily closed for recovery", defaultCapacityRetryAfter)
+		}
 		return Job{}, fmt.Errorf("insert Accepted Job: %w", err)
 	}
 	if err := queries.InsertRetryRuntimeState(ctx, store.InsertRetryRuntimeStateParams{

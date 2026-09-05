@@ -157,6 +157,20 @@ func (r *Reconciler) ReconcileBatch(ctx context.Context) (ReconcileResult, error
 		return ReconcileResult{}, fmt.Errorf("commit retained Customer Content enqueue: %w", err)
 	}
 	var reconcileErrors []error
+	stageResult, stageErr := r.reconcileStageArtifacts(ctx)
+	result.Claimed += stageResult.Claimed
+	result.Completed += stageResult.Completed
+	result.Failed += stageResult.Failed
+	if stageErr != nil {
+		reconcileErrors = append(reconcileErrors, stageErr)
+	}
+	materializationResult, materializationErr := r.reconcileStageMaterializations(ctx)
+	result.Claimed += materializationResult.Claimed
+	result.Completed += materializationResult.Completed
+	result.Failed += materializationResult.Failed
+	if materializationErr != nil {
+		reconcileErrors = append(reconcileErrors, materializationErr)
+	}
 	for range r.batchSize {
 		current, err := r.reconcileOne(ctx)
 		result.Claimed += current.Claimed
@@ -233,6 +247,9 @@ func (r *Reconciler) reconcileOne(ctx context.Context) (ReconcileResult, error) 
 	}
 	result := ReconcileResult{Claimed: 1}
 	execution, operationErr := r.execute(ctx, claim)
+	if operationErr == nil && claim.publicationSize > 0 {
+		operationErr = r.fencePublication(ctx, claim.objectKey, claim.publicationSize, claim.publicationDigest)
+	}
 	if operationErr != nil {
 		result.Failed = 1
 		errorCode := "STORAGE_OPERATION_FAILED"
@@ -284,6 +301,11 @@ func (r *Reconciler) claim(ctx context.Context) (deletionTargetClaim, bool, erro
 	claim.action = deletionTargetAction(action)
 	if objectVersionID.Valid {
 		claim.objectVersionID = objectVersionID.String
+	}
+	err = r.pool.QueryRow(ctx, `SELECT sha256,size_bytes FROM vela_stage_publication_deletion_identity($1)`,
+		claim.targetID).Scan(&claim.publicationDigest, &claim.publicationSize)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return deletionTargetClaim{}, false, fmt.Errorf("read public content deletion identity: %w", err)
 	}
 	return claim, true, nil
 }
@@ -339,6 +361,9 @@ func (r *Reconciler) execute(
 		}
 		if version.ObjectKey != claim.objectKey || version.VersionID == "" {
 			return deletionExecutionResult{}, errStorageIdentityInvalid
+		}
+		if claim.publicationSize > 0 && artifactstore.IsPublicationFence(version) {
+			return deletionExecutionResult{outcome: storageOutcomeAlreadyAbsent}, nil
 		}
 		if err := r.store.DeleteExactVersion(
 			ctx,
@@ -483,11 +508,13 @@ func (r *Reconciler) markCompleted(
 }
 
 type deletionTargetClaim struct {
-	targetID        uuid.UUID
-	claimID         uuid.UUID
-	action          deletionTargetAction
-	objectKey       string
-	objectVersionID string
+	targetID          uuid.UUID
+	claimID           uuid.UUID
+	action            deletionTargetAction
+	objectKey         string
+	objectVersionID   string
+	publicationDigest []byte
+	publicationSize   int64
 }
 
 func exactDurationSeconds(duration, maximum time.Duration) (int32, bool) {

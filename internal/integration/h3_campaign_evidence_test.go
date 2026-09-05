@@ -459,9 +459,11 @@ func bundleImageWithName(t *testing.T, bundle releasebundle.Bundle, marker strin
 
 type h3CampaignEvidenceFixture struct {
 	database       testDatabase
+	sourceJobID    uuid.UUID
 	sameNodeJobID  uuid.UUID
 	crossNodeJobID uuid.UUID
 	cacheJobID     uuid.UUID
+	objectStore    *artifactstore.Local
 }
 
 func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
@@ -471,7 +473,8 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	)
 	seedWorkerRegistryPlan(t, database.Admin)
 	seedH3CampaignResidencyPlan(t, database)
-	finalizer := visibleCompletionService(t, database.DSN)
+	objectStore := artifactstore.NewLocal()
+	finalizer := visibleCompletionService(t, database.DSN, objectStore)
 
 	registry, err := fleet.NewService(newRolePool(
 		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
@@ -530,7 +533,7 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 		)
 		_ = startH3IntegrationStage(t, database, assignment, authority)
 		_ = materializeH3IntegrationStage(
-			t, artifacts, artifactstore.NewLocal(), sourceAttemptID, stageRunID,
+			t, artifacts, objectStore, sourceAttemptID, stageRunID,
 			assignment, sourceStages[index],
 			[]byte("campaign reusable "+sourceStages[index].key+" output"),
 			[]byte(`{"kind":"`+sourceStages[index].key+`","campaign":"cache-source"}`),
@@ -604,7 +607,7 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	authority := signedAssignedStageAuthority(t, database, cacheJob, assignment, vaeVersion+1)
 	_ = startH3IntegrationStage(t, database, assignment, authority)
 	_ = materializeH3IntegrationStage(
-		t, artifacts, artifactstore.NewLocal(), cacheAttemptID, vaeRunID,
+		t, artifacts, objectStore, cacheAttemptID, vaeRunID,
 		assignment, vae, []byte("campaign cache VAE output"),
 		[]byte(`{"kind":"video","campaign":"cache"}`),
 	)
@@ -617,18 +620,19 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 		"h3-campaign-same-node", map[string]string{"encoder": "image/webp"}, 0xc0,
 		uuid.MustParse(campaignResidencyPlanID),
 	)
-	completeH3CampaignGraph(t, finalizer, same.jobID)
+	completeH3CampaignGraph(t, visibleCompletionService(t, database.DSN, same.objectStore), same.jobID)
 	cross := runSplitH3StageGraphInEnvironmentWithContentTypes(
 		t, database, coordinator, serverURL,
 		[]string{"campaign-node-b", "campaign-node-c", "campaign-node-d"},
 		"h3-campaign-cross-node", map[string]string{"encoder": "image/webp"}, 0xd0,
 		uuid.MustParse(campaignResidencyPlanID),
 	)
-	completeH3CampaignGraph(t, finalizer, cross.jobID)
+	completeH3CampaignGraph(t, visibleCompletionService(t, database.DSN, cross.objectStore), cross.jobID)
 
 	return h3CampaignEvidenceFixture{
-		database: database, sameNodeJobID: same.jobID,
+		database: database, sourceJobID: uuid.MustParse(sourceJob.JobID), sameNodeJobID: same.jobID,
 		crossNodeJobID: cross.jobID, cacheJobID: cacheJobID,
+		objectStore: objectStore,
 	}
 }
 

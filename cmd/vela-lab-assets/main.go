@@ -355,6 +355,11 @@ func generate(configuration options) error {
 	if err != nil {
 		return err
 	}
+	cacheProjectKey, err := randomBytes(32)
+	if err != nil {
+		return err
+	}
+	defer clear(cacheProjectKey)
 	stageWorkerIdentityKey, err := randomBytes(32)
 	if err != nil {
 		return err
@@ -423,6 +428,9 @@ func generate(configuration options) error {
 	keyrings := map[string]map[string]string{
 		"lease.json":   {labv2contract.StageAuthorityKeyID: base64.StdEncoding.EncodeToString(leaseKey)},
 		"webhook.json": {"lab-webhook-v1": base64.StdEncoding.EncodeToString(webhookKey)},
+		"h3-cache-projects.json": {
+			"84000000-0000-0000-0000-000000000002": base64.StdEncoding.EncodeToString(cacheProjectKey),
+		},
 		"model-runtime-verifier.json": {
 			labv2contract.StageAuthorityKeyID: base64.StdEncoding.EncodeToString(
 				verifierKeyring[labv2contract.StageAuthorityKeyID],

@@ -130,6 +130,41 @@ func TestMaterializationAuthorityAllowsOnlyConfiguredFutureClockSkew(t *testing.
 	}
 }
 
+func TestMaterializationAuthorityReplayStillChecksSignatureAndFutureIssueTime(t *testing.T) {
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	keys := map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0xa6}, 32)}
+	signer, err := materializationauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validator, err := materializationauthority.NewValidator(keys, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired, err := signer.Sign(materializationAuthority(now.Add(-time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := validator.ValidateForReplay(expired, 0)
+	if err != nil || !proto.Equal(verified.Authority, expired) {
+		t.Fatalf("validate expired replay: %v", err)
+	}
+	expired.Token[0] ^= 0xff
+	if _, err := validator.ValidateForReplay(expired, 0); !errors.Is(err, materializationauthority.ErrInvalidSignature) {
+		t.Fatalf("tampered expired replay: %v", err)
+	}
+	future, err := signer.Sign(materializationAuthority(now.Add(20 * time.Millisecond)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validator.ValidateForReplay(future, 10*time.Millisecond); !errors.Is(err, materializationauthority.ErrStale) {
+		t.Fatalf("future-issued replay: %v", err)
+	}
+	if _, err := validator.ValidateForReplay(future, 20*time.Millisecond); err != nil {
+		t.Fatalf("replay skew boundary: %v", err)
+	}
+}
+
 func materializationAuthority(now time.Time) *velav1.MaterializationAuthority {
 	return &velav1.MaterializationAuthority{
 		SchemaVersion:               1,

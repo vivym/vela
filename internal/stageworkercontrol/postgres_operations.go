@@ -271,6 +271,11 @@ func (backend *PostgresOperationBackend) FailStage(
 	if err != nil {
 		return CommandResult{}, err
 	}
+	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(request)
+	if err != nil {
+		return CommandResult{}, fmt.Errorf("encode Stage Worker failure request: %w", err)
+	}
+	requestDigest := sha256.Sum256(wire)
 	decision, err := backend.stageAttempts.Apply(ctx, attemptcoordinator.FailStageCommand{
 		CommandID: command.CommandID, AttemptID: uuid.MustParse(stage.GetAttemptId()),
 		StageRunID:           uuid.MustParse(stage.GetStageRunId()),
@@ -279,7 +284,8 @@ func (backend *PostgresOperationBackend) FailStage(
 		ExpectedAttemptFence: stage.GetAttemptFence(), ExpectedStageFence: stage.GetStageFence(),
 		ExpectedStageVersion: stage.GetStageVersion(), FailureClass: strings.TrimSpace(request.GetFailureClass()),
 		FailureFingerprint: request.GetFailureFingerprint(), ConsumedResourceUnits: request.GetConsumedResourceUnits(),
-		FailedAt: request.GetFailedAt().AsTime().UTC(), RetryAt: request.GetRetryAt().AsTime().UTC(),
+		WorkerRequestDigest: requestDigest[:],
+		FailedAt:            request.GetFailedAt().AsTime().UTC(), RetryAt: request.GetRetryAt().AsTime().UTC(),
 	})
 	if err != nil {
 		if negative, mapped := mapOperationCommandError(err); mapped {
@@ -288,7 +294,8 @@ func (backend *PostgresOperationBackend) FailStage(
 		return CommandResult{}, fmt.Errorf("fail Stage Worker execution: %w", err)
 	}
 	if decision.StageRunID.String() != stage.GetStageRunId() ||
-		decision.StageAttemptID.String() != stage.GetStageAttemptId() || decision.State != "READY" ||
+		decision.StageAttemptID.String() != stage.GetStageAttemptId() ||
+		(decision.State != "RETRY_WAIT" && decision.State != "FAILED") ||
 		decision.StageVersion <= stage.GetStageVersion() {
 		return CommandResult{}, errors.New("AttemptCoordinator returned mismatched Stage failure")
 	}
@@ -337,7 +344,8 @@ func (backend *PostgresOperationBackend) ReportMaterializationSourceLost(
 		}
 		return CommandResult{}, fmt.Errorf("report lost StageArtifact source: %w", err)
 	}
-	if decision.StageRunID == uuid.Nil || decision.State != "READY" || decision.StageFence <= 0 ||
+	if decision.StageRunID == uuid.Nil ||
+		(decision.State != "RETRY_WAIT" && decision.State != "FAILED") || decision.StageFence <= 0 ||
 		decision.StageVersion <= 0 {
 		return CommandResult{}, errors.New("StageArtifact repository returned mismatched source-loss decision")
 	}

@@ -116,6 +116,7 @@ func (backend *PostgresAssignmentBackend) AcquireStage(
 		"model_runtime_epoch":           request.GetModelRuntimeEpoch(),
 		"stage_profile_revision_id":     profileID,
 		"spiffe_id_digest":              hex.EncodeToString(spiffeDigest[:]),
+		"idle_retry_after_ms":           backend.noWorkRetry.Milliseconds(),
 	})
 	if err != nil {
 		return AcquireResult{}, fmt.Errorf("encode Stage Worker acquire intent: %w", err)
@@ -208,9 +209,14 @@ func (backend *PostgresAssignmentBackend) begin(
 	var result beginAcquireResult
 	var kind, detail sql.NullString
 	var retry sql.NullInt64
+	// Older schemas hash the entire payload, so keep the advisory hint out of
+	// their durable command identity during rolling upgrades and rollback.
 	if err := backend.pool.QueryRow(ctx, `
 		SELECT requested_at, result_kind, assignment_wire, retry_after_ms, detail
-		FROM vela_begin_stage_worker_acquire($1::jsonb)
+		FROM vela_begin_stage_worker_acquire(CASE
+			WHEN to_regprocedure('public.vela_stage_worker_acquire_queue_empty(jsonb)') IS NULL
+			THEN $1::jsonb - 'idle_retry_after_ms'
+			ELSE $1::jsonb END)
 	`, payload).Scan(
 		&result.requestedAt, &kind, &result.wire, &retry, &detail,
 	); err != nil {
@@ -335,6 +341,7 @@ type assignmentExecutionSnapshot struct {
 	StageVersion                  int64                              `json:"stage_version"`
 	StageAttemptID                uuid.UUID                          `json:"stage_attempt_id"`
 	StageAllocationID             uuid.UUID                          `json:"stage_allocation_id"`
+	ExecutionSequence             int64                              `json:"execution_sequence"`
 	StageLeaseID                  uuid.UUID                          `json:"stage_lease_id"`
 	StageProfileRevisionID        uuid.UUID                          `json:"stage_profile_revision_id"`
 	WorkerInstanceID              uuid.UUID                          `json:"worker_instance_id"`
@@ -470,8 +477,9 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 		})
 	}
 	authority, err := backend.authoritySigner.Sign(&velav1.StageAuthority{
-		SchemaVersion: stageauthority.SchemaVersionV1,
-		JobId:         snapshot.JobID.String(), AttemptId: snapshot.AttemptID.String(),
+		SchemaVersion:     stageauthority.SchemaVersionV2,
+		ExecutionSequence: snapshot.ExecutionSequence,
+		JobId:             snapshot.JobID.String(), AttemptId: snapshot.AttemptID.String(),
 		StageRunId: snapshot.StageRunID.String(), StageAttemptId: snapshot.StageAttemptID.String(),
 		StageAllocationId: snapshot.StageAllocationID.String(), StageLeaseId: snapshot.StageLeaseID.String(),
 		AttemptFence: snapshot.AttemptFence, StageFence: snapshot.StageFence, StageVersion: snapshot.StageVersion,
@@ -663,7 +671,7 @@ func validateAcquireAuthority(authority acquireAuthoritySnapshot) error {
 
 func validateExecutionSnapshot(snapshot assignmentExecutionSnapshot) error {
 	if snapshot.JobID == uuid.Nil || snapshot.AttemptID == uuid.Nil || snapshot.StageRunID == uuid.Nil ||
-		snapshot.StageAttemptID == uuid.Nil || snapshot.StageAllocationID == uuid.Nil ||
+		snapshot.StageAttemptID == uuid.Nil || snapshot.StageAllocationID == uuid.Nil || snapshot.ExecutionSequence <= 0 ||
 		snapshot.StageLeaseID == uuid.Nil || snapshot.StageProfileRevisionID == uuid.Nil ||
 		snapshot.WorkerInstanceID == uuid.Nil || snapshot.ModelResidencyID == uuid.Nil ||
 		snapshot.AttemptFence <= 0 || snapshot.StageFence <= 0 || snapshot.StageVersion <= 0 ||

@@ -608,6 +608,15 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 	if connectorState != "CERTIFIED" {
 		t.Fatalf("DiT TransferTicket Connector state = %s, want CERTIFIED", connectorState)
 	}
+}
+
+func TestStageTransferServerClockMigrationDownSerializesConcurrentWriter(t *testing.T) {
+	outcome := runCPUMediaH3GraphAtSchema(t, "transfer-clock-migration", 69)
+	database := outcome.database
+	var ticketID uuid.UUID
+	if err := database.Admin.QueryRow(`SELECT id FROM transfer_tickets ORDER BY id LIMIT 1`).Scan(&ticketID); err != nil {
+		t.Fatal(err)
+	}
 
 	writer, err := database.Admin.Begin()
 	if err != nil {
@@ -628,7 +637,7 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 		       destination_model_runtime_epoch, connector_revision_id,
 		       decode(repeat('ef', 32), 'hex'), issued_at, expires_at
 		FROM transfer_tickets WHERE id = $2
-	`, uuid.New(), claims.TicketID); err != nil {
+	`, uuid.New(), ticketID); err != nil {
 		t.Fatalf("write concurrent TransferTicket evidence: %v", err)
 	}
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
@@ -724,6 +733,17 @@ func TestPostgresAssignmentBackendDoesNotAssignFirstStageAtProjectRunningLimit(t
 	if err != nil || result.Assignment != nil || result.Command != nil ||
 		result.RetryAfter != 250*time.Millisecond {
 		t.Fatalf("AcquireStage at Project limit = %#v error=%v", result, err)
+	}
+	var advisoryTraces int
+	if err := fixture.database.Admin.QueryRow(`SELECT count(*) FROM stage_scheduler_snapshot_traces`).Scan(&advisoryTraces); err != nil {
+		t.Fatal(err)
+	}
+	if advisoryTraces != 0 {
+		t.Fatal("blocked advisory acquisition persisted a scheduler trace")
+	}
+	// An explicit diagnostic capture still preserves the same filter evidence.
+	if _, err := fixture.repository.Capture(context.Background(), fixture.authority, fixture.observation); err != nil {
+		t.Fatalf("capture Project-capacity scheduling evidence: %v", err)
 	}
 
 	var attempts, allocations int

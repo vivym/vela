@@ -433,8 +433,9 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	)
 	authority := signedAssignedStageAuthority(t, database, sourceJob, assignment, 3)
 	_ = startH3IntegrationStage(t, database, assignment, authority)
+	objectStore := artifactstore.NewLocal()
 	sourceArtifact := materializeH3IntegrationStage(
-		t, artifacts, artifactstore.NewLocal(), sourceAttemptID, sourceVAERunID,
+		t, artifacts, objectStore, sourceAttemptID, sourceVAERunID,
 		assignment, vae, []byte("exact reusable VAE video"),
 		[]byte(`{"kind":"video","cache":"exact"}`),
 	)
@@ -517,7 +518,7 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 		)
 	}
 
-	finalizerService := visibleCompletionService(t, database.DSN)
+	finalizerService := visibleCompletionService(t, database.DSN, objectStore)
 	var targetClaim stagefinalization.StageGraphFinalizationClaim
 	for index := 0; index < 2; index++ {
 		claim, err := finalizerService.ClaimNextStageGraphFinalization(
@@ -649,18 +650,28 @@ func TestStageCacheDeletionWaitsForExactExecutionPin(t *testing.T) {
 	})
 	assertPostgresConstraint(t, err, "stage_cache_pin_release_stale")
 	if _, err := fixture.database.Admin.Exec(`
-		UPDATE stage_artifact_pins
-		SET state = 'RELEASED', released_at = $2,
-		    release_reason = 'SOURCE_GRAPH_CLEANUP'
-		WHERE id = $1 AND state = 'ACTIVE'
-	`, sourcePinID, releasedAt.Add(3*time.Millisecond)); err != nil {
-		t.Fatalf("simulate source graph pin cleanup: %v", err)
+		UPDATE credentials SET scopes = array_append(scopes, 'jobs:cancel') WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatal(err)
+	}
+	for _, jobID := range []uuid.UUID{fixture.sourceJobID, fixture.targetJobID} {
+		canceled := cancelJob(t, fixture.serverURL, testProjectID, jobID.String(), testBearerCredential())
+		if canceled.StatusCode != http.StatusOK {
+			t.Fatalf("cancel cache owner Job: %d %s", canceled.StatusCode, canceled.Body)
+		}
+	}
+	deletionStore := &stageDeletionResponseLossStore{Local: fixture.objectStore}
+	if _, err := newStageLifecycleReconciler(t, fixture.database, deletionStore).ReconcileBatch(context.Background()); err != nil {
+		t.Fatalf("reconcile terminal graph pins: %v", err)
+	}
+	if deletionStore.deletes != 0 {
+		t.Fatal("ordinary cache retirement deleted unexpired graph content")
 	}
 	reconciled, err = fixture.cache.ReconcileDeletions(
 		context.Background(), releasedAt.Add(4*time.Millisecond), 100,
 	)
-	if err != nil || reconciled != 1 {
-		t.Fatalf("reconcile unpinned Stage Cache deletion = %d error=%v, want 1", reconciled, err)
+	if err != nil || reconciled != 0 {
+		t.Fatalf("replay unpinned Stage Cache deletion = %d error=%v, want 0", reconciled, err)
 	}
 	var entryState, pinState, exactVersion string
 	if err := fixture.database.Admin.QueryRow(`
@@ -994,6 +1005,7 @@ type pinnedStageCacheFixture struct {
 	targetJobID uuid.UUID
 	targetRunID uuid.UUID
 	hit         stagecache.HitDecision
+	objectStore *artifactstore.Local
 }
 
 func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedStageCacheFixture {
@@ -1040,8 +1052,9 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 	)
 	authority := signedAssignedStageAuthority(t, database, sourceJob, assignment, 2)
 	_ = startH3IntegrationStage(t, database, assignment, authority)
+	objectStore := artifactstore.NewLocal()
 	sourceArtifact := materializeH3IntegrationStage(
-		t, artifacts, artifactstore.NewLocal(), sourceAttemptID, sourceRunID,
+		t, artifacts, objectStore, sourceAttemptID, sourceRunID,
 		assignment, encoder, []byte("pinned exact encoder conditioning"),
 		[]byte(`{"kind":"conditioning","cache":"pinned"}`),
 	)
@@ -1092,6 +1105,7 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 		database: database, coordinator: coordinator, serverURL: serverURL, cache: cache,
 		sourceJobID: uuid.MustParse(sourceJob.JobID), entryID: entryID, cacheKey: cacheKey,
 		targetJobID: uuid.MustParse(targetJob.JobID), targetRunID: targetRunID, hit: hit,
+		objectStore: objectStore,
 	}
 }
 

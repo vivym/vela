@@ -56,7 +56,8 @@ test:
 	go test ./...
 
 test-integration:
-	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
+	INTEGRATION_TEST_TIMEOUT="$(INTEGRATION_TEST_TIMEOUT)" \
+		sh ./hack/test-integration-shard.sh 0 1
 
 test-integration-shard:
 	@test -n "$(INTEGRATION_TEST_SHARD_INDEX)" || \

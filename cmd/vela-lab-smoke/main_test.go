@@ -52,6 +52,9 @@ func TestRunSubmitsPollsAndVerifiesCommittedArtifacts(t *testing.T) {
 				submitted.ServiceClass != "standard" || submitted.GenerationCount != 1 {
 				t.Fatalf("submit request = %#v", submitted)
 			}
+			if submitted.H3 == nil || submitted.H3.Seed == nil || *submitted.H3.Seed != 17 {
+				t.Fatal("smoke request must freeze an explicit reproducible seed")
+			}
 			writer.WriteHeader(http.StatusAccepted)
 			_ = json.NewEncoder(writer).Encode(api.Job{
 				JobId: jobID, ProjectId: projectID, State: api.JobStateQUEUED,

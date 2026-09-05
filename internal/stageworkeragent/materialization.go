@@ -21,14 +21,17 @@ import (
 
 var ErrMaterializationJournalFull = errors.New("StageArtifact materialization journal is full")
 var ErrMaterializationSourceLostReported = errors.New("local StageArtifact source loss reported")
+var ErrLegacyMaterializationCommandIdentity = errors.New("unconfirmed legacy materialization lacks its original control command ID")
 
 type MaterializationConfig struct {
-	Validator          *materializationauthority.Validator
-	Source             stageartifact.LocalOutputSource
-	Publisher          stageartifact.Publisher
-	Journal            MaterializationJournal
-	SourceLossEvidence MaterializationSourceLossEvidenceProvider
-	MaxClockSkew       time.Duration
+	Validator               *materializationauthority.Validator
+	Source                  stageartifact.LocalOutputSource
+	Publisher               stageartifact.Publisher
+	Journal                 MaterializationJournal
+	ScratchRetirer          ScratchRetirer
+	OutputOwnershipContract string
+	SourceLossEvidence      MaterializationSourceLossEvidenceProvider
+	MaxClockSkew            time.Duration
 }
 
 type MaterializationSourceLossEvidence struct {
@@ -62,7 +65,17 @@ type PendingMaterialization struct {
 	ObjectVersion            string
 	CommittedAt              time.Time
 	SourceLoss               *MaterializationSourceLossEvidence
+	ConfirmedDisposition     MaterializationDisposition
+	CommitCommandID          string
+	SourceLossCommandID      string
 }
+
+type MaterializationDisposition string
+
+const (
+	MaterializationCommitted  MaterializationDisposition = "COMMITTED"
+	MaterializationSourceLost MaterializationDisposition = "SOURCE_LOST"
+)
 
 type MaterializationJournal interface {
 	EnsureCapacity(context.Context) error
@@ -186,13 +199,27 @@ func (agent *StreamAgent) SealAndMaterialize(
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()
+	record, result, err := agent.sealActiveOutput(ctx)
+	if err != nil {
+		return result, err
+	}
+	advanced, err := agent.advancePendingMaterialization(ctx, record)
+	advanced.LocalSealed = true
+	advanced.GPUReleased = true
+	return advanced, err
+}
+
+func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterialization, MaterializationResult, error) {
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
+	result := MaterializationResult{}
 	authority := agent.activeAuthority()
 	if authority == nil {
-		return result, errors.New("missing active StageAuthority to seal")
+		return PendingMaterialization{}, result, errors.New("missing active StageAuthority to seal")
 	}
 	receipt, err := agent.runtime.SealOutput(ctx, authority)
 	if err != nil {
-		return result, err
+		return PendingMaterialization{}, result, err
 	}
 	result.PendingID = receipt.GetReceiptId()
 	result.LocalSealed = true
@@ -200,14 +227,11 @@ func (agent *StreamAgent) SealAndMaterialize(
 		ID: receipt.GetReceiptId(), StageAuthority: authority, LocalReceipt: receipt,
 	}
 	if err := agent.materialization.journal.Put(ctx, record); err != nil {
-		return result, fmt.Errorf("persist sealed local output before releasing StageAuthority: %w", err)
+		return record, result, fmt.Errorf("persist sealed local output before releasing StageAuthority: %w", err)
 	}
 	agent.clearActive(authority)
 	result.GPUReleased = true
-	advanced, err := agent.advancePendingMaterialization(ctx, record)
-	advanced.LocalSealed = true
-	advanced.GPUReleased = true
-	return advanced, err
+	return record, result, nil
 }
 
 func (agent *StreamAgent) ResumeMaterializations(
@@ -235,12 +259,14 @@ func (agent *StreamAgent) ResumeMaterializations(
 }
 
 type streamMaterialization struct {
-	validator          *materializationauthority.Validator
-	source             stageartifact.LocalOutputSource
-	publisher          stageartifact.Publisher
-	journal            MaterializationJournal
-	sourceLossEvidence MaterializationSourceLossEvidenceProvider
-	maxClockSkew       time.Duration
+	validator               *materializationauthority.Validator
+	source                  stageartifact.LocalOutputSource
+	publisher               stageartifact.Publisher
+	journal                 MaterializationJournal
+	scratchRetirer          ScratchRetirer
+	outputOwnershipContract string
+	sourceLossEvidence      MaterializationSourceLossEvidenceProvider
+	maxClockSkew            time.Duration
 }
 
 func (agent *StreamAgent) advancePendingMaterialization(
@@ -248,8 +274,24 @@ func (agent *StreamAgent) advancePendingMaterialization(
 	record PendingMaterialization,
 ) (MaterializationResult, error) {
 	result := MaterializationResult{PendingID: record.ID}
+	if agent.materialization.outputOwnershipContract == AttemptOwnedFilesystemScratchV1 {
+		manifest, err := stageartifact.ParseLocalOutputManifestV1(record.LocalReceipt.GetOutputManifestJson())
+		if err != nil {
+			return result, err
+		}
+		if err := validateAttemptOwnedScratchManifest(manifest); err != nil {
+			return result, fmt.Errorf("validate %s before materialization authority: %w", AttemptOwnedFilesystemScratchV1, err)
+		}
+	}
+	if record.ConfirmedDisposition == MaterializationCommitted {
+		return agent.finishCommittedMaterialization(ctx, record)
+	}
+	if record.SourceLoss != nil {
+		return agent.reportMaterializationSourceLost(ctx, record, stageartifact.ErrLocalOutputSourceLost)
+	}
 	if record.MaterializationAuthority == nil {
 		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: materializationCommandID(record.ID, "seal"),
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_SealStageOutput{
 				SealStageOutput: &velav1.SealStageOutputRequest{
 					Authority: record.StageAuthority, LocalReceipt: record.LocalReceipt,
@@ -319,11 +361,16 @@ func (agent *StreamAgent) advancePendingMaterialization(
 	}
 	if record.CommittedAt.IsZero() {
 		record.CommittedAt = time.Now().UTC()
+		record.CommitCommandID = materializationCommandID(record.ID, "commit")
 		if err := agent.materialization.journal.Put(ctx, record); err != nil {
 			return result, fmt.Errorf("persist StageArtifact commit time: %w", err)
 		}
 	}
+	if record.CommitCommandID == "" {
+		return result, ErrLegacyMaterializationCommandIdentity
+	}
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		RequestId: record.CommitCommandID,
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization{
 			CommitStageMaterialization: &velav1.CommitStageMaterializationRequest{
 				MaterializationAuthority: record.MaterializationAuthority,
@@ -341,6 +388,31 @@ func (agent *StreamAgent) advancePendingMaterialization(
 		(command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
 			command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
 		return result, errors.New("control rejected StageArtifact materialization commit")
+	}
+	record.ConfirmedDisposition = MaterializationCommitted
+	if err := agent.materialization.journal.Put(ctx, record); err != nil {
+		return result, fmt.Errorf("persist confirmed StageArtifact commit before scratch retirement: %w", err)
+	}
+	return agent.finishCommittedMaterialization(ctx, record)
+}
+
+func (agent *StreamAgent) finishCommittedMaterialization(ctx context.Context, record PendingMaterialization) (MaterializationResult, error) {
+	result := MaterializationResult{PendingID: record.ID, L2Published: true}
+	if agent.materialization.scratchRetirer != nil {
+		manifest, err := stageartifact.ParseLocalOutputManifestV1(record.LocalReceipt.GetOutputManifestJson())
+		if err != nil {
+			return result, err
+		}
+		lease, err := materializationLease(record.MaterializationAuthority)
+		if err != nil {
+			return result, err
+		}
+		if err := agent.materialization.scratchRetirer.RetireCommitted(ctx, manifest, stageartifact.Artifact{
+			ID: lease.ArtifactID, ObjectKey: lease.ObjectKey, ObjectVersion: record.ObjectVersion,
+			SHA256: lease.SHA256, SizeBytes: lease.SizeBytes, CommittedAt: record.CommittedAt,
+		}); err != nil {
+			return result, fmt.Errorf("retire committed Stage scratch before clearing recovery journal: %w", err)
+		}
 	}
 	if err := agent.materialization.journal.Delete(ctx, record.ID); err != nil {
 		return result, fmt.Errorf("clear committed materialization journal record: %w", err)
@@ -373,6 +445,7 @@ func (agent *StreamAgent) reportMaterializationSourceLost(
 			return result, errors.Join(sourceErr, err)
 		}
 		record.SourceLoss = &evidence
+		record.SourceLossCommandID = materializationCommandID(record.ID, "source-lost")
 		if err := agent.materialization.journal.Put(ctx, record); err != nil {
 			return result, errors.Join(
 				sourceErr,
@@ -381,32 +454,45 @@ func (agent *StreamAgent) reportMaterializationSourceLost(
 		}
 	}
 	evidence := record.SourceLoss
-	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
-		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost{
-			ReportMaterializationSourceLost: &velav1.ReportMaterializationSourceLostRequest{
-				MaterializationAuthority: record.MaterializationAuthority,
-				FailureFingerprint:       append([]byte(nil), evidence.FailureFingerprint[:]...),
-				ConsumedResourceUnits:    evidence.ConsumedResourceUnits,
-				LostAt:                   timestamppb.New(evidence.LostAt),
-				RetryAt:                  timestamppb.New(evidence.RetryAt),
+	if record.ConfirmedDisposition != MaterializationSourceLost {
+		if record.SourceLossCommandID == "" {
+			return result, ErrLegacyMaterializationCommandIdentity
+		}
+		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: record.SourceLossCommandID,
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost{
+				ReportMaterializationSourceLost: &velav1.ReportMaterializationSourceLostRequest{
+					MaterializationAuthority: record.MaterializationAuthority,
+					FailureFingerprint:       append([]byte(nil), evidence.FailureFingerprint[:]...),
+					ConsumedResourceUnits:    evidence.ConsumedResourceUnits,
+					LostAt:                   timestamppb.New(evidence.LostAt),
+					RetryAt:                  timestamppb.New(evidence.RetryAt),
+				},
 			},
-		},
-	})
-	if err != nil {
-		return result, errors.Join(
-			sourceErr,
-			fmt.Errorf("report materialization source loss: %w", err),
-		)
+		})
+		if err != nil {
+			return result, errors.Join(sourceErr, fmt.Errorf("report materialization source loss: %w", err))
+		}
+		command := response.GetStageCommandResult()
+		if command == nil || command.GetOperation() !=
+			velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST ||
+			(command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
+				command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
+			return result, errors.Join(sourceErr, errors.New("control rejected materialization source loss"))
+		}
+		record.ConfirmedDisposition = MaterializationSourceLost
+		if err := agent.materialization.journal.Put(ctx, record); err != nil {
+			return result, fmt.Errorf("persist confirmed source loss before scratch retirement: %w", err)
+		}
 	}
-	command := response.GetStageCommandResult()
-	if command == nil || command.GetOperation() !=
-		velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST ||
-		(command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
-			command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
-		return result, errors.Join(
-			sourceErr,
-			errors.New("control rejected materialization source loss"),
-		)
+	if agent.materialization.scratchRetirer != nil {
+		manifest, err := stageartifact.ParseLocalOutputManifestV1(record.LocalReceipt.GetOutputManifestJson())
+		if err != nil {
+			return result, err
+		}
+		if err := agent.materialization.scratchRetirer.RetireSourceLost(ctx, manifest, *evidence); err != nil {
+			return result, fmt.Errorf("retire confirmed lost Stage output before clearing recovery journal: %w", err)
+		}
 	}
 	if err := agent.materialization.journal.Delete(ctx, record.ID); err != nil {
 		return result, fmt.Errorf("clear source-loss journal record: %w", err)
@@ -494,14 +580,44 @@ func validatePendingMaterialization(record PendingMaterialization) error {
 		return errors.New("StageArtifact commit time lacks published object version")
 	}
 	if record.SourceLoss != nil {
-		if record.MaterializationAuthority == nil {
-			return errors.New("source-loss evidence lacks MaterializationAuthority")
+		if record.MaterializationAuthority == nil || record.ObjectVersion != "" || !record.CommittedAt.IsZero() {
+			return errors.New("source-loss evidence lacks exclusive MaterializationAuthority")
 		}
 		if err := validateSourceLossEvidence(*record.SourceLoss); err != nil {
 			return err
 		}
 	}
+	for _, commandID := range []string{record.CommitCommandID, record.SourceLossCommandID} {
+		if commandID == "" {
+			continue
+		}
+		parsed, err := uuid.Parse(commandID)
+		if err != nil || parsed == uuid.Nil || parsed.String() != commandID {
+			return errors.New("materialization control command ID is invalid")
+		}
+	}
+	if (record.CommitCommandID != "" && record.CommittedAt.IsZero()) ||
+		(record.SourceLossCommandID != "" && record.SourceLoss == nil) {
+		return errors.New("materialization control command ID lacks its request evidence")
+	}
+	switch record.ConfirmedDisposition {
+	case "":
+	case MaterializationCommitted:
+		if record.ObjectVersion == "" || record.CommittedAt.IsZero() || record.SourceLoss != nil {
+			return errors.New("confirmed materialization lacks exclusive commit evidence")
+		}
+	case MaterializationSourceLost:
+		if record.SourceLoss == nil {
+			return errors.New("confirmed materialization source loss lacks evidence")
+		}
+	default:
+		return errors.New("confirmed materialization disposition is invalid")
+	}
 	return nil
+}
+
+func materializationCommandID(pendingID, operation string) string {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("vela:stage-materialization:"+operation+":"+pendingID)).String()
 }
 
 func validateSourceLossEvidence(evidence MaterializationSourceLossEvidence) error {

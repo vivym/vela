@@ -4,6 +4,7 @@ set -eu
 
 manifests=${1:-}
 apply=${2:-}
+seed=${3:-}
 namespace=vela-lab-v2
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 kubectl_bin=${KUBECTL_BIN:-/var/lib/rancher/rke2/bin/kubectl}
@@ -51,7 +52,17 @@ ready_capacity_routes=$(query_database "$(cat "$ready_capacity_query")")
 [ "$ready_capacity_routes" = 4 ] ||
 	fail "Stage capacity authority is incomplete: ready routes=$ready_capacity_routes expected=4"
 
-job=$($kubectl_bin create -f "$manifests/60-smoke.yaml" -o name)
+if [ -n "$seed" ]; then
+	case "$seed" in *[!0-9]*) fail "seed must be a non-negative integer" ;; esac
+	job_manifest=$($kubectl_bin create --dry-run=client -f "$manifests/60-smoke.yaml" -o json)
+	job_manifest=$(printf '%s\n' "$job_manifest" | jq --arg seed "$seed" '
+	  .spec.template.spec.containers[0].args =
+	    ((.spec.template.spec.containers[0].args // []) + ["--seed", $seed])
+	')
+	job=$(printf '%s\n' "$job_manifest" | "$kubectl_bin" create -f - -o name)
+else
+	job=$($kubectl_bin create -f "$manifests/60-smoke.yaml" -o name)
+fi
 case "$job" in
 	job.batch/vela-lab-smoke-*) ;;
 	*) fail "unexpected smoke Job identity $job" ;;
@@ -93,4 +104,4 @@ production_gate_receipts=$(query_database 'SELECT count(*) FROM production_gate_
 [ "$production_gate_receipts" = 0 ] || fail "lab created Production Gate receipts"
 
 printf '%s\n' "$receipt"
-printf 'schema=vela-lab-smoke-wrapper-v1 job=%s result=PASS production_gates=0/9\n' "$job"
+printf 'schema=vela-lab-smoke-wrapper-v1 job=%s result=PASS production_gates=0/9\n' "$job" >&2

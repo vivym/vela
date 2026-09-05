@@ -235,7 +235,7 @@ func (q *Queries) FindActiveStageGraphFinalizationClaim(ctx context.Context, arg
 }
 
 const getPostgresTime = `-- name: GetPostgresTime :one
-SELECT transaction_timestamp()::timestamptz AS transaction_time
+SELECT clock_timestamp()::timestamptz AS transaction_time
 `
 
 func (q *Queries) GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error) {
@@ -583,7 +583,7 @@ func (q *Queries) InsertStageGraphVisibleCompletion(ctx context.Context, arg Ins
 	return err
 }
 
-const insertVerifiedStageGraphArtifact = `-- name: InsertVerifiedStageGraphArtifact :exec
+const insertVerifiedStageGraphArtifact = `-- name: InsertVerifiedStageGraphArtifact :execrows
 INSERT INTO artifacts (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
     kind, ordinal, object_key, expected_content_type, object_version_id,
@@ -600,6 +600,18 @@ INSERT INTO artifacts (
     $17, $14, 'VERIFIED',
     $18, $19, $14
 )
+ON CONFLICT (id) DO UPDATE SET
+    object_version_id = EXCLUDED.object_version_id,
+    size_bytes = EXCLUDED.size_bytes, sha256 = EXCLUDED.sha256,
+    content_type = EXCLUDED.content_type, uploaded_at = EXCLUDED.uploaded_at,
+    verification_id = EXCLUDED.verification_id,
+    verification_request_hash = EXCLUDED.verification_request_hash,
+    validation_receipt = EXCLUDED.validation_receipt,
+    verified_at = EXCLUDED.verified_at, state = 'VERIFIED', updated_at = EXCLUDED.updated_at
+WHERE artifacts.state = 'STAGING'
+  AND artifacts.job_id = EXCLUDED.job_id
+  AND artifacts.source_stage_artifact_id = EXCLUDED.source_stage_artifact_id
+  AND artifacts.object_key = EXCLUDED.object_key
 `
 
 type InsertVerifiedStageGraphArtifactParams struct {
@@ -624,8 +636,8 @@ type InsertVerifiedStageGraphArtifactParams struct {
 	SourceStageArtifactID   uuid.NullUUID      `db:"source_stage_artifact_id" json:"source_stage_artifact_id"`
 }
 
-func (q *Queries) InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) error {
-	_, err := q.db.Exec(ctx, insertVerifiedStageGraphArtifact,
+func (q *Queries) InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) (int64, error) {
+	result, err := q.db.Exec(ctx, insertVerifiedStageGraphArtifact,
 		arg.ID,
 		arg.OrganizationID,
 		arg.ProjectID,
@@ -646,7 +658,10 @@ func (q *Queries) InsertVerifiedStageGraphArtifact(ctx context.Context, arg Inse
 		arg.ExpiresAt,
 		arg.SourceStageArtifactID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertVisibleCompletion = `-- name: InsertVisibleCompletion :exec
@@ -980,11 +995,12 @@ SELECT
     artifact.size_bytes,
     artifact.expires_at
 FROM stage_graph_finalization_claim_outputs AS output
+JOIN stage_graph_finalization_claims AS claim ON claim.id = output.claim_id
 JOIN stage_artifacts AS artifact
   ON artifact.id = output.stage_artifact_id
  AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
  AND artifact.object_version = output.exact_object_version
- AND artifact.state = 'COMMITTED'
+ AND (artifact.state = 'COMMITTED' OR claim.state = 'COMPLETED')
 WHERE output.claim_id = $1
 ORDER BY output.output_key
 `

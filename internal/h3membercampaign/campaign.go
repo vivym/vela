@@ -357,7 +357,8 @@ func campaignAssignment(
 	deviceSetDigest := sha256.Sum256([]byte("vela-disposable-member-device-set-v1"))
 	membershipDigest := sha256.Sum256([]byte("vela-disposable-member-membership-v1"))
 	unsigned := &velav1.StageAuthority{
-		SchemaVersion:     1,
+		SchemaVersion:     2,
+		ExecutionSequence: 1,
 		JobId:             "49370000-0000-0000-0000-000000000101",
 		AttemptId:         "49370000-0000-0000-0000-000000000102",
 		StageRunId:        "49370000-0000-0000-0000-000000000103",

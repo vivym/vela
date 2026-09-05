@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync"
@@ -36,6 +37,11 @@ type exchangeResult struct {
 	err      error
 }
 
+type controlCommand struct {
+	response   *velav1.StageWorkerControlServiceConnectResponse
+	generation uint64
+}
+
 type Client struct {
 	connection *grpc.ClientConn
 	service    velav1.StageWorkerControlServiceClient
@@ -48,13 +54,14 @@ type Client struct {
 		velav1.StageWorkerControlServiceConnectResponse,
 	]
 	streamEpoch       int64
+	streamCancel      context.CancelFunc
 	epochSource       ControlSessionEpochSource
 	synchronizedEpoch int64
 	generation        uint64
 	pending           map[string]chan exchangeResult
 	closed            bool
 	sendMu            sync.Mutex
-	commands          chan *velav1.StageWorkerControlServiceConnectResponse
+	commands          chan controlCommand
 	closeOnce         sync.Once
 }
 
@@ -99,7 +106,7 @@ func DialClient(ctx context.Context, config ClientConfig) (*Client, error) {
 		streamEpoch: config.InitialControlSessionEpoch,
 		epochSource: config.ControlSessionEpochSource,
 		pending:     make(map[string]chan exchangeResult),
-		commands:    make(chan *velav1.StageWorkerControlServiceConnectResponse, 64),
+		commands:    make(chan controlCommand, 64),
 	}, nil
 }
 
@@ -112,11 +119,16 @@ func (client *Client) Close() error {
 		client.mu.Lock()
 		client.closed = true
 		stream := client.stream
+		streamCancel := client.streamCancel
 		client.stream = nil
+		client.streamCancel = nil
 		pending := client.pending
 		client.pending = make(map[string]chan exchangeResult)
 		client.mu.Unlock()
 		client.cancel()
+		if streamCancel != nil {
+			streamCancel()
+		}
 		if stream != nil {
 			_ = stream.CloseSend()
 		}
@@ -130,11 +142,26 @@ func (client *Client) Close() error {
 	return closeErr
 }
 
-func (client *Client) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
-	if client == nil {
-		return nil
+func (client *Client) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if client == nil || ctx == nil {
+		return nil, errors.New("missing Stage Worker command consumer context")
 	}
-	return client.commands
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-client.ctx.Done():
+			return nil, io.EOF
+		case command := <-client.commands:
+			client.mu.Lock()
+			current := !client.closed && client.stream != nil &&
+				client.generation == command.generation && client.stream.Context().Err() == nil
+			client.mu.Unlock()
+			if current {
+				return command.response, nil
+			}
+		}
+	}
 }
 
 func (client *Client) CurrentControlSessionEpoch() int64 {
@@ -199,7 +226,7 @@ func (client *Client) Exchange(
 	sendErr := stream.Send(message)
 	client.sendMu.Unlock()
 	if sendErr != nil {
-		client.removePending(message.GetRequestId())
+		client.removePending(message.GetRequestId(), waiter)
 		client.failStream(stream, generation, sendErr)
 		return nil, sendErr
 	}
@@ -207,10 +234,12 @@ func (client *Client) Exchange(
 	case result := <-waiter:
 		return result.response, result.err
 	case <-ctx.Done():
-		client.removePending(message.GetRequestId())
+		// The peer remembers request IDs for the lifetime of this stream. An
+		// uncertain outcome must reconnect before the same command can replay.
+		client.failStream(stream, generation, ctx.Err())
 		return nil, ctx.Err()
 	case <-client.ctx.Done():
-		client.removePending(message.GetRequestId())
+		client.removePending(message.GetRequestId(), waiter)
 		return nil, errors.New("closed Stage Worker control client")
 	}
 }
@@ -247,12 +276,15 @@ func (client *Client) ensureStream() (
 			client.streamEpoch = nextEpoch
 		}
 	}
-	stream, err := client.service.Connect(client.ctx)
+	streamContext, streamCancel := context.WithCancel(client.ctx)
+	stream, err := client.service.Connect(streamContext)
 	if err != nil {
+		streamCancel()
 		return nil, 0, 0, fmt.Errorf("open Stage Worker control stream: %w", err)
 	}
 	client.generation++
 	client.stream = stream
+	client.streamCancel = streamCancel
 	generation := client.generation
 	epoch := client.streamEpoch
 	go client.receive(stream, generation)
@@ -276,42 +308,51 @@ func (client *Client) receive(
 			client.failStream(stream, generation, errors.New("malformed Stage Worker control response"))
 			return
 		}
+		client.mu.Lock()
+		if client.stream != stream || client.generation != generation || stream.Context().Err() != nil {
+			client.mu.Unlock()
+			return
+		}
 		if decision := response.GetWorkerReadinessDecision(); decision != nil &&
 			decision.GetControlSessionEpoch() != 0 &&
-			decision.GetControlSessionEpoch() != client.controlSessionEpoch() {
+			decision.GetControlSessionEpoch() != client.streamEpoch {
 			observer, ok := client.epochSource.(controlSessionEpochObserver)
 			if !ok {
+				client.mu.Unlock()
 				client.failStream(stream, generation, errors.New("invalid durable Stage Worker control session epoch"))
 				return
 			}
 			if err := observer.ObserveControlSessionEpoch(
-				client.ctx,
+				stream.Context(),
 				decision.GetControlSessionEpoch(),
 			); err != nil {
+				client.mu.Unlock()
 				client.failStream(stream, generation, fmt.Errorf("persist durable Stage Worker control session epoch: %w", err))
 				return
 			}
-			client.mu.Lock()
-			if client.stream == stream && client.generation == generation {
-				client.synchronizedEpoch = decision.GetControlSessionEpoch()
-			}
+			client.synchronizedEpoch = decision.GetControlSessionEpoch()
 			client.mu.Unlock()
 			client.failStream(stream, generation, errors.New("durable Stage Worker control session synchronized; reconnect required"))
 			return
 		}
 		if response.GetRequestId() == "" {
 			if response.GetStopStage() == nil {
+				client.mu.Unlock()
 				client.failStream(stream, generation, errors.New("unsolicited Stage Worker response is not StopStage"))
 				return
 			}
+			// Admission to the bounded queue is atomic with stream replacement.
+			// A stalled consumer must not hold the connection mutex or receiver.
 			select {
-			case client.commands <- response:
-			case <-client.ctx.Done():
+			case client.commands <- controlCommand{response: response, generation: generation}:
+				client.mu.Unlock()
+			default:
+				client.mu.Unlock()
+				client.failStream(stream, generation, errors.New("stage worker command queue is full"))
 				return
 			}
 			continue
 		}
-		client.mu.Lock()
 		waiter := client.pending[response.GetRequestId()]
 		delete(client.pending, response.GetRequestId())
 		client.mu.Unlock()
@@ -319,12 +360,6 @@ func (client *Client) receive(
 			waiter <- exchangeResult{response: response}
 		}
 	}
-}
-
-func (client *Client) controlSessionEpoch() int64 {
-	client.mu.Lock()
-	defer client.mu.Unlock()
-	return client.streamEpoch
 }
 
 func (client *Client) failStream(
@@ -341,20 +376,27 @@ func (client *Client) failStream(
 		return
 	}
 	client.stream = nil
+	streamCancel := client.streamCancel
+	client.streamCancel = nil
 	if client.epochSource == nil {
 		client.streamEpoch++
 	}
 	pending := client.pending
 	client.pending = make(map[string]chan exchangeResult)
 	client.mu.Unlock()
+	if streamCancel != nil {
+		streamCancel()
+	}
 	_ = stream.CloseSend()
 	for _, waiter := range pending {
 		waiter <- exchangeResult{err: err}
 	}
 }
 
-func (client *Client) removePending(requestID string) {
+func (client *Client) removePending(requestID string, waiter chan exchangeResult) {
 	client.mu.Lock()
-	delete(client.pending, requestID)
+	if client.pending[requestID] == waiter {
+		delete(client.pending, requestID)
+	}
 	client.mu.Unlock()
 }

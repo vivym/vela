@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "scope": "LOCAL_LINUX_ARM64_SANDBOX_AND_CPU_MEDIA_CONFORMANCE",
+  "result": "PASS",
+  "production_gate": false,
+  "production_gates_passed": 0,
+  "baseline_revision": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+  "source_state": "Uncommitted local worktree; tested executable hashes below identify this run.",
+  "environment": {
+    "host": "macOS arm64 with Docker Desktop",
+    "guest": "QEMU TCG arm64, Linux 6.1.0-52-arm64 (Debian 6.1.180-1)",
+    "guest_kernel_sha256": "aa53377c13c58add4178355fc81251a6809d19123c9d4818d87a4cd974c3e331",
+    "guest_initramfs_sha256": "eab937872de0e070d918b60f73a9a41ea99a54591318ad4742501ff09d6a3f8f",
+    "lsm": "lockdown,capability,landlock,yama,apparmor,bpf",
+    "test_uid": 10001,
+    "test_gid": 10001,
+    "network": "Guest NIC absent; outer container network disabled.",
+    "container_image_id": "sha256:8977dfb01365fe9b0bedd4c58ce946b0e257202f08e6459d1ffe13fd13478b99",
+    "container_image_tag": "vela-linux-sandbox-validation:20260905",
+    "guest_and_container_removed": true
+  },
+  "binaries": {
+    "artifactvalidator_tests_sha256": "94f210c62f66832cf08ce3d7c7b67d45e6b4bfc29497f7620978bba9669f85e0",
+    "h3stagemock_tests_sha256": "4b36b956af19b1a59de93eef1f5a12f5ee48cd175e24153e3b196509e3700d0b",
+    "artifact_validator_helper_sha256": "9d7183d4b0d0aac2d4f95aed853dee596eb0c9ec57b6bbc4306183338e1aaa41",
+    "ffprobe_version": "8.0.1",
+    "ffprobe_sha256": "92049296d8de57e8268a3b86d8569be58bf4bea3b8d92e0ddb4b52c52804b77e",
+    "ffmpeg_source_archive_sha256": "05ee0b03119b45c0bdb4df654b96802e909e0a752f72e4fe3794f487229e5a41"
+  },
+  "verification": {
+    "artifactvalidator_exit_status": 0,
+    "h3stagemock_exit_status": 0,
+    "skipped_tests": 0,
+    "landlock_filesystem_restriction": "PASS",
+    "production_sandbox_h264_mp4": "PASS",
+    "production_sandbox_webp": "PASS",
+    "production_sandbox_case_seconds": 0.72,
+    "completion_marker": "VELA_GUEST_COMPLETE"
+  },
+  "local_evidence": {
+    "directory": "/tmp/vela-linux-sandbox.yH2pXy",
+    "log": "/tmp/vela-linux-sandbox.yH2pXy/guest-validation.log",
+    "log_sha256": "08f46027b01d7536833a66f2682fdfaead75fade381e4b685319d2911f062da4",
+    "harness": ["Dockerfile", "init", "drop-identity.c", "run-guest.sh"]
+  },
+  "limitations": [
+    "Docker Desktop LinuxKit lacks Landlock; direct native-container tests skipped that check and cannot establish sandbox conformance.",
+    "The amd64 translated container failed inside Rosetta under production process limits; application restrictions were preserved.",
+    "The passing run is a separate arm64 Linux guest, not the deployed amd64 kernel or a canonical release image.",
+    "The recorded duration is a diagnostic test observation, not a calibrated performance measurement.",
+    "The local harness, logs, and validation image were retained for reproduction; no remote lab was changed."
+  ]
+}

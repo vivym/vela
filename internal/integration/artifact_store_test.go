@@ -279,19 +279,22 @@ func TestS3ArtifactStorePurgesEveryBackupVersionAndDeleteMarker(t *testing.T) {
 	minio := newMinIOFixture(t, "vela-artifact-backup")
 	minio.enableVersioning(t)
 	const objectKey = "artifacts/organization/project/job/attempt/artifact/video.mp4"
+	var contentVersions []string
 
 	for _, body := range [][]byte{[]byte("first backup version"), []byte("second backup version")} {
 		digest := sha256.Sum256(body)
-		if _, err := minio.admin.PutObject(ctx, &s3.PutObjectInput{
+		object, err := minio.admin.PutObject(ctx, &s3.PutObjectInput{
 			Bucket:         aws.String(minio.bucket),
 			Key:            aws.String(objectKey),
 			Body:           bytes.NewReader(body),
 			ContentLength:  aws.Int64(int64(len(body))),
 			ContentType:    aws.String("video/mp4"),
 			ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(digest[:])),
-		}); err != nil {
+		})
+		if err != nil {
 			t.Fatalf("write backup object version: %v", err)
 		}
+		contentVersions = append(contentVersions, aws.ToString(object.VersionId))
 	}
 	if _, err := minio.admin.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(minio.bucket),
@@ -311,16 +314,33 @@ func TestS3ArtifactStorePurgesEveryBackupVersionAndDeleteMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list backup versions after purge: %v", err)
 	}
-	if len(versions.Versions) != 0 || len(versions.DeleteMarkers) != 0 {
+	if len(versions.Versions) != 1 || len(versions.DeleteMarkers) != 0 {
 		t.Fatalf(
-			"backup versions after purge = versions %d delete markers %d, want 0 and 0",
+			"backup versions after purge = versions %d delete markers %d, want one publication fence and no delete markers",
 			len(versions.Versions),
 			len(versions.DeleteMarkers),
 		)
 	}
+	marker, exists, err := minio.store.ResolveCurrentVersion(ctx, objectKey)
+	if err != nil || !exists || !artifactstore.IsPublicationFence(marker) {
+		t.Fatalf("backup publication fence=%+v exists=%t err=%v", marker, exists, err)
+	}
+	for _, version := range contentVersions {
+		if _, err := minio.store.ReadExactVersion(ctx, objectKey, version); !errors.Is(err, artifactstore.ErrObjectVersionNotFound) {
+			t.Fatalf("purged exact Customer Content remains readable: %v", err)
+		}
+	}
+	late := []byte("delayed backup PUT")
+	if _, err := minio.store.PutIfAbsent(ctx, objectKey, "video/mp4", bytes.NewReader(late), int64(len(late)), sha256.Sum256(late)); !errors.Is(err, artifactstore.ErrObjectAlreadyExists) {
+		t.Fatalf("backup publication fence did not reject delayed PUT: %v", err)
+	}
 	result, err = minio.store.PurgeObjectVersions(ctx, objectKey)
 	if err != nil || result.PurgedVersionCount != 0 {
 		t.Fatalf("idempotent backup purge result=%#v error=%v, want 0 and nil", result, err)
+	}
+	after, _, err := minio.store.ResolveCurrentVersion(ctx, objectKey)
+	if err != nil || after.VersionID != marker.VersionID {
+		t.Fatalf("purge replay replaced publication fence: %v", err)
 	}
 }
 

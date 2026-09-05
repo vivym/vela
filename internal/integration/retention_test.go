@@ -1483,28 +1483,112 @@ func TestRetentionMigrationAllowsEmptyDownUpAndRestoresNMinusOneSurface(t *testi
 	if err != nil || version != 16 {
 		t.Fatalf("retention migration version after Down/Up = %d error=%v", version, err)
 	}
-	for _, runtime := range []struct {
-		name     string
-		login    string
-		password string
-		role     veladb.Role
+	if err := veladb.VerifyRole(
+		context.Background(),
+		newRolePool(t, database.DSN, "vela_retention_request_login", "vela-retention-request-password"),
+		veladb.RoleRetentionRequest,
+	); err != nil {
+		t.Fatalf("verify re-expanded retention request role: %v", err)
+	}
+
+	// Schema 16 restores its historical contract; the current Stage Reconciler
+	// requires the additional deletion functions introduced in migrations 71/74.
+	retentionPool := newRolePool(t, database.DSN, "vela_retention_login", "vela-retention-password")
+	var historicalBoundary bool
+	if err := retentionPool.QueryRow(context.Background(), `
+		WITH expected AS (
+			SELECT to_regprocedure(signature)::oid AS oid
+			FROM unnest($1::text[]) AS signature
+		), relations AS (
+			SELECT relation.oid, relation.relkind
+			FROM pg_catalog.pg_class AS relation
+			JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+			WHERE namespace.nspname IN ('public', 'vela_private')
+		)
+		SELECT has_schema_privilege(current_user, 'public', 'USAGE')
+			AND NOT has_schema_privilege(current_user, 'public', 'CREATE')
+			AND NOT has_schema_privilege(current_user, 'vela_private', 'USAGE,CREATE')
+			AND pg_has_role(current_user, 'vela_retention', 'MEMBER')
+			AND NOT EXISTS (
+				SELECT 1 FROM pg_catalog.pg_roles AS role
+				WHERE pg_has_role(current_user, role.oid, 'MEMBER')
+				  AND (role.rolname NOT IN (current_user, 'vela_retention')
+				       OR role.rolsuper OR role.rolcreatedb OR role.rolcreaterole
+				       OR role.rolreplication OR role.rolbypassrls)
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM expected
+				WHERE oid IS NULL OR NOT has_function_privilege(current_user, oid, 'EXECUTE')
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM pg_catalog.pg_proc AS function
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
+				WHERE namespace.nspname IN ('public', 'vela_private')
+				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
+				  AND NOT EXISTS (SELECT 1 FROM expected WHERE expected.oid = function.oid)
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM relations WHERE relkind IN ('r', 'p', 'v', 'm', 'f')
+				  AND (has_table_privilege(current_user, oid,
+				         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+				       OR has_any_column_privilege(current_user, oid, 'SELECT,INSERT,UPDATE,REFERENCES'))
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM relations WHERE relkind = 'S'
+				  AND has_sequence_privilege(current_user, oid, 'SELECT,UPDATE,USAGE')
+			)
+	`, []string{
+		"vela_claim_content_deletion_target(text,uuid,integer)",
+		"vela_complete_content_deletion_target(uuid,uuid,uuid,text,text)",
+		"vela_retry_content_deletion_target(uuid,uuid,integer,text)",
+		"vela_enqueue_expired_content_deletions(integer)",
+	}).Scan(&historicalBoundary); err != nil {
+		t.Fatalf("inspect schema 16 retention role: %v", err)
+	}
+	if !historicalBoundary {
+		t.Fatal("re-expanded schema 16 did not restore the exact historical retention role")
+	}
+	if err := veladb.VerifyRole(context.Background(), retentionPool, veladb.RoleRetention); err == nil {
+		t.Fatal("current Stage Reconciler accepted schema 16 without Stage deletion authority")
+	}
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("upgrade restored retention schema to current: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), retentionPool, veladb.RoleRetention); err != nil {
+		t.Fatalf("verify current retention role after historical Down/Up: %v", err)
+	}
+	for _, test := range []struct {
+		name, mutate, restore string
 	}{
 		{
-			name: "request", login: "vela_retention_request_login",
-			password: "vela-retention-request-password", role: veladb.RoleRetentionRequest,
+			name:    "missing Stage lifecycle execute",
+			mutate:  "REVOKE EXECUTE ON FUNCTION vela_prepare_stage_artifact_lifecycle(integer) FROM vela_retention",
+			restore: "GRANT EXECUTE ON FUNCTION vela_prepare_stage_artifact_lifecycle(integer) TO vela_retention",
 		},
 		{
-			name: "Reconciler", login: "vela_retention_login",
-			password: "vela-retention-password", role: veladb.RoleRetention,
+			name:    "missing public copy execute",
+			mutate:  "REVOKE EXECUTE ON FUNCTION vela_stage_publication_deletion_identity(uuid) FROM vela_retention",
+			restore: "GRANT EXECUTE ON FUNCTION vela_stage_publication_deletion_identity(uuid) TO vela_retention",
+		},
+		{
+			name:    "excess Stage content table access",
+			mutate:  "GRANT SELECT ON stage_artifacts TO vela_retention_login",
+			restore: "REVOKE SELECT ON stage_artifacts FROM vela_retention_login",
 		},
 	} {
-		if err := veladb.VerifyRole(
-			context.Background(),
-			newRolePool(t, database.DSN, runtime.login, runtime.password),
-			runtime.role,
-		); err != nil {
-			t.Fatalf("verify re-expanded retention %s role: %v", runtime.name, err)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := database.Admin.Exec(test.mutate); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := database.Admin.Exec(test.restore); err != nil {
+					t.Fatal(err)
+				}
+			}()
+			if err := veladb.VerifyRole(context.Background(), retentionPool, veladb.RoleRetention); err == nil {
+				t.Fatal("retention role verification accepted a changed privilege boundary")
+			}
+		})
 	}
 }
 

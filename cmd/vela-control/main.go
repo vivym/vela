@@ -2382,6 +2382,7 @@ func openStageFinalizer(
 		ActiveLeaseKeyID:  configuration.leaseActiveKeyID,
 		LeaseKeys:         keyring,
 		ArtifactInspector: inspector,
+		ArtifactStore:     artifactStore,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure Stage finalizer: %w", err)

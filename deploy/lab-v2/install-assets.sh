@@ -55,7 +55,7 @@ for path in \
 	pki/stage-worker-1.crt pki/stage-worker-1.key pki/stage-worker-2.crt pki/stage-worker-2.key \
 	pki/stage-worker-thumbnail.crt pki/stage-worker-thumbnail.key \
 	pki/minio-server.crt pki/minio-server.key \
-	control/lease.json control/webhook.json control/model-runtime-verifier.json \
+	control/lease.json control/webhook.json control/model-runtime-verifier.json control/h3-cache-projects.json \
 	control/stage-worker-identity-key control/minio-access-key control/minio-secret-key \
 	control/invoice-bearer-token control/node-agents.json \
 	stage/worker-1-launch.json stage/worker-2-launch.json stage/worker-thumbnail-launch.json \
@@ -220,6 +220,7 @@ apply_secret vela-lab-control-files \
 	--from-file=stage-worker-identity-key="$assets/control/stage-worker-identity-key" \
 	--from-file=lease.json="$assets/control/lease.json" \
 	--from-file=webhook.json="$assets/control/webhook.json" \
+	--from-file=h3-cache-projects.json="$assets/control/h3-cache-projects.json" \
 	--from-file=invoice-bearer-token="$assets/control/invoice-bearer-token" \
 	--from-file=node-agents.json="$assets/control/node-agents.json"
 apply_secret vela-lab-fleet-files \

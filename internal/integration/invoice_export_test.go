@@ -717,7 +717,7 @@ func newInvoiceExportMigrationFixture(t *testing.T, key string) invoiceExportMig
 func newInvoiceExportChargeFixture(t *testing.T, key string) invoiceExportFixture {
 	t.Helper()
 	outcome := runCPUMediaH3GraphWithKey(t, key)
-	service := visibleCompletionService(t, outcome.database.DSN)
+	service := visibleCompletionService(t, outcome.database.DSN, outcome.objectStore)
 	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/invoice-" + outcome.jobID.String(),
 	}

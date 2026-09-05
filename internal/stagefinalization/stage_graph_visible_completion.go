@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vivym/vela/internal/artifactstore"
 	store "github.com/vivym/vela/internal/store/sqlc"
 )
 
@@ -25,6 +26,7 @@ type inspectedStageGraphArtifact struct {
 	verificationID          uuid.UUID
 	verificationRequestHash [sha256.Size]byte
 	validationReceipt       []byte
+	publication             artifactstore.ObjectVersion
 }
 
 func (s *Service) CompleteStageGraphVisibleCompletion(
@@ -49,8 +51,8 @@ func (s *Service) CompleteStageGraphVisibleCompletion(
 	if err != nil || terminal.Decision != "" {
 		return terminal, err
 	}
-	if s.artifactInspector == nil {
-		return VisibleCompletionResult{}, errors.New("artifact inspector is not configured")
+	if s.artifactInspector == nil || s.artifactStore == nil {
+		return VisibleCompletionResult{}, errors.New("artifact inspector and publication store must be configured")
 	}
 	inspected, err := s.inspectStageGraphVisibleCompletionArtifacts(ctx, authorityRow, sources, normalized)
 	if err != nil {
@@ -63,6 +65,9 @@ func (s *Service) CompleteStageGraphVisibleCompletion(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
+	if err := lockStageGraphFinalizationJob(ctx, tx, credentials.ClaimID); err != nil {
+		return VisibleCompletionResult{}, err
+	}
 	locked, err := queries.LockStageGraphFinalizationCompletionAuthority(
 		ctx,
 		store.LockStageGraphFinalizationCompletionAuthorityParams{
@@ -148,6 +153,10 @@ func (s *Service) preflightStageGraphVisibleCompletion(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
+	if err := lockStageGraphFinalizationJob(ctx, tx, credentials.ClaimID); err != nil {
+		return store.LockStageGraphFinalizationCompletionAuthorityRow{}, nil,
+			normalizedVisibleCompletionCandidate{}, VisibleCompletionResult{}, err
+	}
 	authorityRow, err := queries.LockStageGraphFinalizationCompletionAuthority(
 		ctx,
 		store.LockStageGraphFinalizationCompletionAuthorityParams{
@@ -173,6 +182,23 @@ func (s *Service) preflightStageGraphVisibleCompletion(
 	}
 	if !hmac.Equal(outputSetDigest[:], authorityRow.OutputSetDigest) {
 		return authorityRow, nil, normalizedVisibleCompletionCandidate{}, rejectedVisibleCompletion(), nil
+	}
+	for index := range sources {
+		source := &sources[index]
+		publicID := uuid.NewSHA1(source.StageRunID, []byte("vela-public-artifact-v1/"+source.OutputKey))
+		newPublication := !authorityRow.CompletionID.Valid
+		if !newPublication {
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM artifacts WHERE id = $1 AND job_id = $2)`,
+				publicID, authorityRow.JobID).Scan(&newPublication); err != nil {
+				return authorityRow, nil, normalizedVisibleCompletionCandidate{}, VisibleCompletionResult{}, err
+			}
+		}
+		if newPublication {
+			source.publicArtifactID = publicID
+			source.publicObjectKey = fmt.Sprintf("artifacts/%s/%s/%s/%s", authorityRow.OrganizationID,
+				authorityRow.ProjectID, authorityRow.JobID, source.publicArtifactID)
+			source.publicExpiresAt = authorityRow.FinalizationDeadlineAt.Time
+		}
 	}
 	normalized, valid := normalizeStageGraphVisibleCompletionCandidate(candidate, sources)
 	if !valid {
@@ -216,6 +242,11 @@ func (s *Service) preflightStageGraphVisibleCompletion(
 		return authorityRow, nil, normalized, VisibleCompletionResult{
 			Decision: VisibleCompletionIncompleteArtifact,
 		}, nil
+	}
+	for _, source := range sources {
+		if err := reservePublicStageArtifact(ctx, tx, authorityRow, source); err != nil {
+			return authorityRow, nil, normalized, VisibleCompletionResult{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return authorityRow, nil, normalized, VisibleCompletionResult{},
@@ -278,6 +309,9 @@ func stageGraphVisibleArtifactID(
 	completionID uuid.UUID,
 	source StageGraphFinalizationSource,
 ) uuid.UUID {
+	if source.publicArtifactID != uuid.Nil {
+		return source.publicArtifactID
+	}
 	return uuid.NewSHA1(
 		completionID,
 		[]byte(fmt.Sprintf(
@@ -337,9 +371,13 @@ func (s *Service) inspectStageGraphVisibleCompletionArtifacts(
 		if _, ok := artifactIDs[artifactID]; !ok {
 			return nil, errors.New("stage graph Artifact candidate identity is inconsistent")
 		}
+		publication, err := s.publishStageArtifactCopy(ctx, source)
+		if err != nil {
+			return nil, err
+		}
 		request, err := applyArtifactInspectionExpectations(ArtifactInspectionRequest{
 			ArtifactID: artifactID, Kind: source.ArtifactKind, Ordinal: source.Ordinal,
-			ObjectKey: source.ObjectKey, ObjectVersionID: source.ObjectVersion,
+			ObjectKey: publication.ObjectKey, ObjectVersionID: publication.VersionID,
 			ExpectedSizeBytes: source.SizeBytes, ExpectedSHA256: source.SHA256,
 			ExpectedContentType: source.ContentType,
 		}, artifactInspectionExpectations{
@@ -365,6 +403,7 @@ func (s *Service) inspectStageGraphVisibleCompletionArtifacts(
 			source: source, artifactID: artifactID,
 			verificationID:          uuid.NewSHA1(artifactID, []byte("vela-stage-graph-verification-v1")),
 			verificationRequestHash: requestHash, validationReceipt: receipt,
+			publication: publication,
 		})
 	}
 	return inspected, nil
@@ -382,28 +421,32 @@ func insertVerifiedStageGraphArtifacts(
 		if !artifact.source.ExpiresAt.After(verifiedAt) {
 			return errors.New("stage graph Artifact expired before Visible Completion")
 		}
-		objectVersionID := artifact.source.ObjectVersion
+		objectVersionID := artifact.publication.VersionID
 		sizeBytes := artifact.source.SizeBytes
-		if err := queries.InsertVerifiedStageGraphArtifact(
+		rows, err := queries.InsertVerifiedStageGraphArtifact(
 			ctx,
 			store.InsertVerifiedStageGraphArtifactParams{
 				ID: artifact.artifactID, OrganizationID: authority.OrganizationID,
 				ProjectID: authority.ProjectID, JobID: authority.JobID,
 				AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
 				Kind: store.ArtifactKind(artifact.source.ArtifactKind), Ordinal: artifact.source.Ordinal,
-				ObjectKey: artifact.source.ObjectKey, ContentType: artifact.source.ContentType,
+				ObjectKey: artifact.publication.ObjectKey, ContentType: artifact.source.ContentType,
 				ObjectVersionID: &objectVersionID, SizeBytes: &sizeBytes,
 				Sha256: artifact.source.SHA256[:], VerifiedAt: observedAt,
 				VerificationID:          uuid.NullUUID{UUID: artifact.verificationID, Valid: true},
 				VerificationRequestHash: artifact.verificationRequestHash[:],
 				ValidationReceipt:       artifact.validationReceipt,
-				ExpiresAt:               pgtype.Timestamptz{Time: artifact.source.ExpiresAt, Valid: true},
+				ExpiresAt:               pgtype.Timestamptz{Time: artifact.source.publicExpiresAt, Valid: true},
 				SourceStageArtifactID: uuid.NullUUID{
 					UUID: artifact.source.StageArtifactID, Valid: true,
 				},
 			},
-		); err != nil {
+		)
+		if err != nil {
 			return fmt.Errorf("bind Stage graph output %s as verified Artifact: %w", artifact.source.OutputKey, err)
+		}
+		if rows != 1 {
+			return errors.New("public Stage Artifact reservation is no longer writable")
 		}
 	}
 	return nil

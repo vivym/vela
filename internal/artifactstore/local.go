@@ -160,6 +160,9 @@ func (store *Local) DeleteExactVersion(
 	if versions == nil {
 		return nil
 	}
+	if IsPublicationFence(versions[versionID].metadata) {
+		return nil
+	}
 	delete(versions, versionID)
 	if store.current[objectKey] == versionID {
 		delete(store.current, objectKey)

@@ -1,0 +1,70 @@
+{
+  "schema": "vela-capacity-scientific-validation-v1",
+  "collected_at": "2026-09-05T12:38:39.81456+08:00",
+  "scope": "LOCAL_CPU_SYNTHETIC_MODEL_VALIDATION",
+  "production_gate": false,
+  "measured_hardware_performance": false,
+  "baseline_commit": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+  "algorithm_revision": "capacity-sim-v2",
+  "scheduler_revision": "reserved-service-v1",
+  "go_toolchain": "go1.26.7 darwin/arm64",
+  "source_sha256": {
+    "internal/capacitysim/model.go": "3acda63b663b111289ba187e3a48103aefea14fdda5fca531936b17af8f9c512",
+    "internal/capacitysim/simulator.go": "d2e03442f2df1638d8bb3e4aef06c839bc99c9191111cfe3525510c76de65901",
+    "internal/capacitysim/event.go": "27e7988f6d1915facc9c87b5619b171cff7199d808094fd0bc347f2b1d7dcd14",
+    "internal/capacitysim/metrics.go": "11fc760980e5bbb318899d6c93ba84b83d24ae11926e3dcdbe6f9a5099d48ebf",
+    "internal/capacitysim/planner.go": "d82b57f6968ecca14f793e066190e5cbd5917382eecffab246c8e084f3359756",
+    "internal/capacitysim/validate.go": "965e39b2434c5ddbe3ebb43f27390c1fd9ad915d4a3deb7b459e5683f91d5222",
+    "internal/capacitysim/scientific_oracle_test.go": "f5aae66f5276538ef5ca415fe3a881201f60d9983e2d34b76c3de8c5845b33c0"
+  },
+  "oracle_run": {
+    "command": "go test -json ./internal/capacitysim -run '^TestIndependentOracle' -count=1",
+    "top_level_tests": 18,
+    "failed_tests": 0,
+    "elapsed_seconds": 2.176,
+    "exit_code": 0,
+    "log_path": "/tmp/vela-capacity-v2-YRxLTz/oracle-tests.ndjson",
+    "log_sha256": "465e4b967677f45b75cfeee9978d7080b6a6e383ce4232bc78e038465d6bb770",
+    "projection_method": "Handwritten expected values are checked against public API outputs by the passing tests. Actual values below project those equality assertions, not hardware telemetry.",
+    "default_seed": 7,
+    "parallel_pool_seeds": [0, 7, 982451653],
+    "examples": [
+      {"test": "TestIndependentOracleUsesAllWarmPools", "formula": "10 service + 1 seal + 1 materialize + 1 finalization", "metric": "latency_p99_ns", "expected": 13, "actual_model_output": 13},
+      {"test": "TestIndependentOracleClipsBusyCostAtWindow", "formula": "min(1,000,000,002 ns attempt, 500,000,000 ns window)", "metric": "busy_ns", "expected": 500000000, "actual_model_output": 500000000},
+      {"test": "TestIndependentOracleTransferAndQueueAreDisjoint", "formula": "immediately free worker after completed transfer", "metric": "downstream_queue_max_ns", "expected": 0, "actual_model_output": 0},
+      {"test": "TestIndependentOracleTenGBTransferUsesBytesPerSecond", "formula": "10,000,000,000 B / 10,000,000,000 B/s * 1e9 ns/s", "metric": "transfer_ns", "expected": 1000000000, "actual_model_output": 1000000000},
+      {"test": "TestIndependentOracleStorageIntegratesBeforeUnitConversion", "formula": "10 GB * 2 s * 1 micro-unit/(GB*s)", "metric": "storage_micro_units", "expected": 20, "actual_model_output": 20},
+      {"test": "TestIndependentOracleCostMultipliesWithoutPrematureSaturation", "formula": "(20 s + 2 ns) * 1e9 micro-units/s", "metric": "direct_gpu_micro_units", "expected": 20000000002, "actual_model_output": 20000000002},
+      {"test": "TestIndependentOracleThroughputDividesAfterWideMultiplication", "formula": "10,000 completions / 40,000 ns * 1e9 ns/s * 1e6 ppm", "metric": "throughput_per_second_ppm", "expected": 250000000000000, "actual_model_output": 250000000000000},
+      {"test": "TestIndependentOraclePinnedProducerCannotEvictLiveInput", "formula": "2 live objects * 10 B, one cache entry plus one uncached object", "metric": "storage_bytes", "expected": 20, "actual_model_output": 20}
+    ]
+  },
+  "example_cli_run": {
+    "scenario_revision": "synthetic-h3-disaggregated-v2",
+    "trace_revision": "synthetic-h3-trace-v1",
+    "calibration_revision": "synthetic-h3-calibration-v2",
+    "seed": 20260831,
+    "input_sha256": {
+      "examples/capacitysim/h3-synthetic/scenario.json": "3987bc2319fb5d32e9a24ff65c8daad1337f34683be7e5bfc59f630fae5d58b8",
+      "examples/capacitysim/h3-synthetic/trace.ndjson": "1469384ba3bf6a0ecedafebc15492f49dcce0f3f892bc0673861d127421ced62",
+      "examples/capacitysim/h3-synthetic/calibration.json": "dc17b8fad2be3643cc435e265f55e2dfd608f57345d7d020e10171fe9c04d496"
+    },
+    "exit_code": 0,
+    "visible_completions": 4,
+    "unfinished_jobs": 0,
+    "conservation_valid": true,
+    "receipt_digest": "a90f1f555d675f9704ae16b4a2e0e1b210ebe9b797fd2a8880774c04b274645e",
+    "receipt_path": "/tmp/vela-capacity-v2-YRxLTz/receipt-final.json",
+    "receipt_file_sha256": "c7a8a16326f2c330503e285b0df03d04cc5f674d82520e1de99dffde6bfdcd28",
+    "proposal_path": "/tmp/vela-capacity-v2-YRxLTz/proposal-final.json",
+    "proposal_file_sha256": "63ebbb5b7e1a9e31b87d97067e1388b4056c2408f643d23a183f39221bcba88a",
+    "proposal_auto_apply": false
+  },
+  "unavailable_evidence": [
+    "Production hierarchical scheduler snapshot and decision replay",
+    "Domain-dependent placement, locality and correlated node failure",
+    "Real H3 GPU execution, measured runtime and held-out hardware calibration",
+    "Object-operation cost and warm-up resource cost",
+    "Production SLO, cost recommendation or Launch Receipt"
+  ]
+}

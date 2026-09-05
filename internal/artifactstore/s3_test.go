@@ -16,6 +16,10 @@ import (
 
 func TestS3UsesConfiguredPrivateRootCAWithoutDisablingTLSVerification(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodHead {
+			writePublicationTestMetadata(w, request.URL.Query().Get("versionId"), false)
+			return
+		}
 		if request.Method != http.MethodDelete {
 			t.Fatalf("private S3 request = %s %s", request.Method, request.URL.String())
 		}
@@ -58,6 +62,10 @@ func TestDeleteExactVersionBindsObjectKeyAndVersion(t *testing.T) {
 	)
 	requested := make(chan *http.Request, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodHead {
+			writePublicationTestMetadata(w, versionID, false)
+			return
+		}
 		requested <- request.Clone(request.Context())
 		w.WriteHeader(http.StatusNoContent)
 	}))
@@ -122,7 +130,7 @@ func TestDeleteExactVersionRejectsMissingIdentity(t *testing.T) {
 
 func TestDeleteExactVersionTreatsNoSuchVersionAsAlreadyAbsent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodDelete || request.URL.Query().Get("versionId") == "" {
+		if (request.Method != http.MethodDelete && request.Method != http.MethodHead) || request.URL.Query().Get("versionId") == "" {
 			t.Fatalf("delete absent request = %s %s", request.Method, request.URL.String())
 		}
 		w.Header().Set("Content-Type", "application/xml")
@@ -158,6 +166,15 @@ func TestPurgeObjectVersionsDeletesExactVersionsAndMarkers(t *testing.T) {
 		switch request.Method {
 		case http.MethodGet:
 			writeObjectVersionsResult(w, objectKey, 1, true, true)
+		case http.MethodHead:
+			version := request.URL.Query().Get("versionId")
+			writePublicationTestMetadata(w, version, version == "fence-1")
+		case http.MethodPut:
+			if request.Header.Get("If-None-Match") != "*" {
+				t.Error("purge fence is not a conditional create")
+			}
+			w.Header().Set("x-amz-version-id", "fence-1")
+			w.WriteHeader(http.StatusOK)
 		case http.MethodDelete:
 			deleted <- request.URL.Query().Get("versionId")
 			w.WriteHeader(http.StatusNoContent)
@@ -188,6 +205,10 @@ func TestPurgeObjectVersionsDeletesExactVersionsAndMarkers(t *testing.T) {
 func TestPurgeObjectVersionsReturnsPartialCount(t *testing.T) {
 	const objectKey = "artifacts/org/project/job/attempt/artifact/video.mp4"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodHead {
+			writePublicationTestMetadata(w, request.URL.Query().Get("versionId"), false)
+			return
+		}
 		if request.Method == http.MethodGet {
 			writeObjectVersionsResult(w, objectKey, 2, false, false)
 			return
@@ -210,6 +231,71 @@ func TestPurgeObjectVersionsReturnsPartialCount(t *testing.T) {
 	if err == nil || result.PurgedVersionCount != 1 {
 		t.Fatalf("partial PurgeObjectVersions result=%#v error=%v, want 1 and error", result, err)
 	}
+}
+
+func TestS3ExactDeleteAndVersionPurgePreservePublicationFence(t *testing.T) {
+	const key = "artifacts/stage/test/retired.bin"
+	contentDeleted := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			writeObjectVersionsResult(w, key, 2, false, false)
+		case http.MethodHead:
+			version := request.URL.Query().Get("versionId")
+			if version == "" {
+				version = "version-0"
+			}
+			if version == "version-1" && contentDeleted {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			writePublicationTestMetadata(w, version, version == "version-0")
+		case http.MethodDelete:
+			if request.URL.Query().Get("versionId") != "version-1" {
+				t.Error("cleanup attempted to delete permanent fence")
+			}
+			contentDeleted = true
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodPut:
+			if request.Header.Get("If-None-Match") != "*" {
+				t.Error("fence replay is not conditional")
+			}
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusPreconditionFailed)
+			_, _ = w.Write([]byte(`<Error><Code>PreconditionFailed</Code></Error>`))
+		default:
+			t.Errorf("unexpected fence cleanup request: %s", request.Method)
+		}
+	}))
+	defer server.Close()
+	store := newTestS3Store(t, server.URL)
+	if err := store.DeleteExactVersion(context.Background(), key, "version-0"); err != nil {
+		t.Fatal(err)
+	}
+	for index, want := range []int{1, 0} {
+		result, err := store.PurgeObjectVersions(context.Background(), key)
+		if err != nil || result.PurgedVersionCount != want {
+			t.Fatalf("purge %d=%+v err=%v", index, result, err)
+		}
+	}
+	marker, exists, err := store.ResolveCurrentVersion(context.Background(), key)
+	if err != nil || !exists || !IsPublicationFence(marker) {
+		t.Fatalf("marker=%+v exists=%t err=%v", marker, exists, err)
+	}
+}
+
+func writePublicationTestMetadata(w http.ResponseWriter, version string, fence bool) {
+	w.Header().Set("x-amz-version-id", version)
+	if fence {
+		digest := sha256.Sum256([]byte(publicationFenceBody))
+		w.Header().Set("Content-Length", fmt.Sprint(len(publicationFenceBody)))
+		w.Header().Set("Content-Type", publicationFenceContentType)
+		w.Header().Set("x-amz-checksum-sha256", base64.StdEncoding.EncodeToString(digest[:]))
+	} else {
+		w.Header().Set("Content-Length", "1")
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func TestPurgeObjectVersionsFailsClosedAboveSafetyBound(t *testing.T) {

@@ -36,9 +36,10 @@ and do not replace CloudNativePG with a single PostgreSQL process restart:
    and recovery ConfigMap are the release deployment contract.
 2. Admission is exercised through the authenticated `POST /v1/projects/{id}/jobs`
    HTTP boundary. A `202 Accepted` is the only successful Admission result.
-3. New Assignment is exercised through `scheduler.Service.RunOnce`, including
-   its durable Scheduler claim and production `workercontrol.Service.Acquire`
-   coordinator call.
+3. New Assignment is exercised through
+   `stageworkercontrol.PostgresAssignmentBackend.AcquireStage`, including the
+   current StageScheduler claim, physical StageAttempt, StageLease and signed
+   StageAssignment. Billable Start uses the current Stage execution backend.
 4. CloudNativePG status, Kubernetes Pod placement, the read/write Service, and
    PostgreSQL queries are used only to observe election, synchronous health, and
    the committed business authority produced through seams 2 and 3.
@@ -57,7 +58,10 @@ The Control/Storage base must render exactly three CloudNativePG instances with:
 - recovery declarations for single-node RPO 0, RTO five minutes, automatic
   failover, and no-quorum Admission/Assignment fail-closed behavior.
 
-The repository conformance exercise pins kind, the Kubernetes node image, and
+The repository conformance exercise first requires the exact fault test to
+exist in Go's `integration,cnpg` build selection. Missing tests fail before any
+cluster creation; `go test` returning success with no selected tests is not
+conformance evidence. The exercise pins kind, the Kubernetes node image, and
 the CloudNativePG operator version. A test-only `local-path` StorageClass alias
 uses kind's bundled local-path provisioner. The exercise applies the release
 Cluster manifest itself, then a test-only overlay enables bootstrap superuser
@@ -72,9 +76,11 @@ instead of Kubernetes operator rescheduling. These changes are not production
 credentials or deployment recommendations. The rendered-contract test, not
 this overlay, retains and validates the off-cluster backup configuration.
 
-Migration 00026 owns the no-quorum write fence. Deferred constraint triggers on
-`jobs`, `scheduler_dispatch_intents`, and `attempts` check for a streaming
-synchronous standby immediately before commit. Their `SECURITY DEFINER`
+Migration 00026 owns the no-quorum guard function. Its remaining Admission
+triggers cover new `jobs` and `attempts`; migration 00081 adds current Stage
+acquisition intents, scheduler snapshot/claim inserts, physical `stage_attempts`
+and signed `stage_authority_renewals`. These deferred constraint triggers check
+for a streaming synchronous standby immediately before commit. Their `SECURITY DEFINER`
 function is owned by the non-login, non-superuser `vela_quorum_guard_owner`,
 whose only elevated membership is `pg_read_all_stats`. The guard is active only
 when the explicit custom GUC `vela.require_synchronous_quorum=on` is present;
@@ -82,8 +88,10 @@ the release manifest enables it. Once enabled, an empty
 `synchronous_standby_names` or the absence of a streaming `sync`/`quorum`
 standby fails with SQLSTATE `55000`. Single-node development and test databases
 leave the GUC unset. Because the triggers are database-owned, current Admission
-and Scheduler transaction paths receive the fence after the expand migration,
-independently of process-local health checks.
+and Stage assignment/renewal paths receive the fence after the expand migration,
+independently of process-local health checks. Read-only idle hints and existing
+durable assignment replay remain available without quorum. The new insert
+guards do not cover terminal/expiry maintenance updates.
 
 ## Required Failure Evidence
 
@@ -99,25 +107,29 @@ independently of process-local health checks.
    automatically elects a different primary from a synchronous replica in at
    most five minutes without editing the Cluster or manually promoting a Pod.
 5. After reconnecting through the read/write Service, both Accepted Jobs, their
-   Outbox intents and Credit Reservations, the exact Lease fence, and the Charge
-   remain unchanged. No duplicate authority row appears.
+   Outbox intents and Credit Reservations, physical Stage attempts and leases,
+   signed renewal receipts, allocations, retry budgets, cancellation and the
+   Charge remain unchanged. Durable StageAssignment replay returns identical
+   signed authority. No duplicate authority row appears.
 6. After the old node rejoins and all replicas become current, the two standby
    nodes are stopped while the primary remains reachable. A bounded Admission
-   request does not return `202`, and a bounded `scheduler.Service.RunOnce`
-   returns SQLSTATE `55000` without producing a Scheduler dispatch or Assignment.
+   request does not return `202`, and a bounded current Stage Worker acquisition
+   returns SQLSTATE `55000` without producing an acquisition intent, Scheduler
+   claim or physical Assignment.
 7. After one standby returns and synchronous quorum is restored, no Job,
-   Credit Reservation, Outbox intent, Scheduler dispatch, Attempt, Lease, or
+   Credit Reservation, Outbox intent, Stage acquisition/claim, Attempt, Lease or
    Charge from either rejected no-quorum operation exists. Existing committed
    authority is still unchanged.
 8. The test records the old and new primary identities, distinct node placement,
-   measured failover duration, no-quorum operation results, and final authority
-   counts in the Go test log.
+   measured failover duration, no-quorum operation results, and the selected
+   durable authority SHA-256 in the Go test log.
 
 ## Compatibility And Non-goals
 
-- This slice adds migration 00026 without changing table shape, public API, or
-  event schema. The migration must expand before the binary rollout; contraction
-  removes only the two guards and their function after no prior binary remains.
+- Migrations 00026 and 00081 add deferred guards without changing table shape,
+  public API or event schema. Expand the applicable guards before binary rollout;
+  migration 00081 Down removes only its five Stage triggers and preserves the
+  existing Admission guard function and role boundary.
 - The kind/local-path environment validates operator behavior and Vela's
   transaction boundaries, but it is not evidence for RKE2, physical disk loss,
   production network partitions, operator high availability/rescheduling, or

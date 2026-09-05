@@ -92,11 +92,14 @@ func (publisher *ObjectStorePublisher) Publish(
 	if ctx == nil || source == nil {
 		return PublishedObject{}, errors.New("StageArtifact materialization source is required")
 	}
-	if !publisher.now().UTC().Before(lease.ExpiresAt) {
+	remaining := lease.ExpiresAt.Sub(publisher.now().UTC())
+	if remaining <= 0 {
 		return PublishedObject{}, ErrMaterializationLeaseExpired
 	}
+	publicationCtx, cancel := context.WithTimeout(ctx, remaining)
+	defer cancel()
 	object, err := publisher.store.PutIfAbsent(
-		ctx,
+		publicationCtx,
 		lease.ObjectKey,
 		lease.ContentType,
 		source,
@@ -104,13 +107,16 @@ func (publisher *ObjectStorePublisher) Publish(
 		lease.SHA256,
 	)
 	if errors.Is(err, artifactstore.ErrObjectAlreadyExists) {
-		object, err = publisher.reconcileExisting(ctx, lease)
+		object, err = publisher.reconcileExisting(publicationCtx, lease)
 	}
 	if err != nil {
 		return PublishedObject{}, fmt.Errorf("publish sealed StageArtifact: %w", err)
 	}
-	if err := publisher.verifyExact(ctx, lease, object); err != nil {
+	if err := publisher.verifyExact(publicationCtx, lease, object); err != nil {
 		return PublishedObject{}, err
+	}
+	if !publisher.now().UTC().Before(lease.ExpiresAt) || publicationCtx.Err() != nil {
+		return PublishedObject{}, ErrMaterializationLeaseExpired
 	}
 	return PublishedObject{ObjectKey: object.ObjectKey, ObjectVersion: object.VersionID}, nil
 }

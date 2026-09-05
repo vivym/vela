@@ -503,8 +503,9 @@ func barrierAuthority(
 		panic(err)
 	}
 	return &velav1.StageAuthority{
-		SchemaVersion: 1,
-		JobId:         "12000000-0000-0000-0000-000000000001", AttemptId: "12000000-0000-0000-0000-000000000002",
+		SchemaVersion:     2,
+		ExecutionSequence: 1,
+		JobId:             "12000000-0000-0000-0000-000000000001", AttemptId: "12000000-0000-0000-0000-000000000002",
 		StageRunId: "12000000-0000-0000-0000-000000000003", StageAttemptId: "12000000-0000-0000-0000-000000000004",
 		StageAllocationId: "12000000-0000-0000-0000-000000000005", StageLeaseId: "12000000-0000-0000-0000-000000000006",
 		AttemptFence: 2, StageFence: 3, StageVersion: 4,

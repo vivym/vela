@@ -60,6 +60,7 @@ type splitH3GraphOutcome struct {
 	jobID         uuid.UUID
 	attemptID     uuid.UUID
 	finalArtifact stageartifact.Artifact
+	objectStore   *artifactstore.Local
 }
 
 type runningH3DiT struct {
@@ -118,7 +119,7 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 		t,
 		[]string{"encoder-node-01", "dit-node-09", "vae-node-03"},
 	)
-	service := visibleCompletionService(t, outcome.database.DSN)
+	service := visibleCompletionService(t, outcome.database.DSN, outcome.objectStore)
 	firstFinalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-primary",
 	}
@@ -551,7 +552,7 @@ func runSplitH3StageGraphInEnvironmentWithContentTypes(
 
 		artifact := materializeH3IntegrationStage(
 			t, stageArtifacts, objectStore, attemptID, stageRunID, assignment,
-			stage, payload, sealedOutput.OutputManifestJSON,
+			stage, payload, sealedOutput.OutputManifestJSON, job.JobExpiresAt,
 		)
 		finalArtifact = artifact
 		stageInput = artifact.SHA256[:]
@@ -588,6 +589,7 @@ func runSplitH3StageGraphInEnvironmentWithContentTypes(
 	return splitH3GraphOutcome{
 		database: database, jobID: uuid.MustParse(job.JobID),
 		attemptID: attemptID, finalArtifact: finalArtifact,
+		objectStore: objectStore,
 	}
 }
 
@@ -640,7 +642,11 @@ func assignH3IntegrationStage(
 ) attemptcoordinator.AssignStageCommand {
 	t.Helper()
 	worker := seedH3IntegrationWorker(t, database, registry, stage, identityByte)
-	issuedAt := time.Now().UTC().Truncate(time.Millisecond)
+	// Production acquisition issues authority from PostgreSQL's durable intent clock.
+	var issuedAt time.Time
+	if err := database.Admin.QueryRow("SELECT clock_timestamp()").Scan(&issuedAt); err != nil {
+		t.Fatalf("read %s assignment authority clock: %v", stage.key, err)
+	}
 	leaseTokenDigest := sha256.Sum256(bytes.Repeat([]byte{0xb3}, 32))
 	assignment := attemptcoordinator.AssignStageCommand{
 		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
@@ -980,6 +986,7 @@ func materializeH3IntegrationStage(
 	stage h3IntegrationStage,
 	payload []byte,
 	manifest []byte,
+	deadlines ...time.Time,
 ) stageartifact.Artifact {
 	t.Helper()
 	digest := sha256.Sum256(payload)
@@ -994,6 +1001,12 @@ func materializeH3IntegrationStage(
 		contentType = "application/octet-stream"
 	}
 	objectKey := fmt.Sprintf("artifacts/stage/%s/%s/%s.bin", attemptID, stage.key, artifactID)
+	leaseExpiresAt := now.Add(30 * time.Minute)
+	for _, deadline := range deadlines {
+		if deadline.Before(leaseExpiresAt) {
+			leaseExpiresAt = deadline
+		}
+	}
 	lease, err := repository.Seal(context.Background(), stageartifact.SealCommand{
 		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
 		StageAttemptID: assignment.StageAttemptID, StageAllocationID: assignment.StageAllocationID,
@@ -1004,7 +1017,7 @@ func materializeH3IntegrationStage(
 		LineageDigest: lineageDigest, TokenDigest: tokenDigest, SizeBytes: int64(len(payload)),
 		ArtifactID: artifactID, MaterializationLeaseID: leaseID, ObjectKey: objectKey,
 		ContentType: contentType, SealedAt: now,
-		LeaseExpiresAt: now.Add(30 * time.Minute),
+		LeaseExpiresAt: leaseExpiresAt,
 	})
 	if err != nil {
 		t.Fatalf("seal %s StageArtifact: %v", stage.key, err)
@@ -1047,13 +1060,15 @@ func pullH3IntegrationInput(
 		t.Fatalf("parse upstream StageArtifact identity: %v", err)
 	}
 	var pinID uuid.UUID
+	var artifactExpiresAt time.Time
 	if err := database.Admin.QueryRow(`
-		SELECT id
-		FROM stage_artifact_pins
-		WHERE stage_artifact_id = $1
-		  AND owner_stage_run_id = $2
-		  AND state = 'ACTIVE'
-	`, artifactID, destinationStageRunID).Scan(&pinID); err != nil {
+		SELECT pin.id, artifact.expires_at
+		FROM stage_artifact_pins AS pin
+		JOIN stage_artifacts AS artifact ON artifact.id = pin.stage_artifact_id
+		WHERE pin.stage_artifact_id = $1
+		  AND pin.owner_stage_run_id = $2
+		  AND pin.state = 'ACTIVE'
+	`, artifactID, destinationStageRunID).Scan(&pinID, &artifactExpiresAt); err != nil {
 		t.Fatalf("read downstream StageArtifact pin: %v", err)
 	}
 	destination := stageartifact.TransferDestination{
@@ -1063,12 +1078,19 @@ func pullH3IntegrationInput(
 		ModelRuntimeEpoch:   assignment.ModelRuntimeEpoch,
 		ConnectorRevisionID: connectorID,
 	}
-	now := assignment.IssuedAt.Add(time.Millisecond)
+	var now time.Time
+	if err := database.Admin.QueryRow(`SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatalf("read TransferTicket authority clock: %v", err)
+	}
 	ticketID := uuid.New()
+	ticketExpiresAt := now.Add(5 * time.Minute)
+	if !artifactExpiresAt.After(ticketExpiresAt) {
+		ticketExpiresAt = artifactExpiresAt.Add(-time.Microsecond)
+	}
 	ticket, err := issuer.Issue(context.Background(), stageartifact.IssueTransferRequest{
 		CommandID: uuid.New(), TicketID: ticketID, ArtifactID: artifactID,
 		PinID: pinID, Destination: destination, IssuedAt: now,
-		ExpiresAt: now.Add(5 * time.Minute),
+		ExpiresAt: ticketExpiresAt,
 	})
 	if err != nil {
 		t.Fatalf("issue downstream TransferTicket: %v", err)

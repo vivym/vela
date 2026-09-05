@@ -335,9 +335,6 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 		return errors.New("stage worker production service is not configured")
 	}
 	commandErrors := make(chan error, 1)
-	if agent.control.Commands() == nil {
-		return errors.New("stage worker production command stream is unavailable")
-	}
 	go func() {
 		commandErrors <- agent.stream.RunControlCommands(ctx)
 	}()

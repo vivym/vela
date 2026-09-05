@@ -1766,6 +1766,10 @@ func TestStageWorkerControlSessionCapacityMigrationEmptyDownUp(t *testing.T) {
 func TestStageWorkerControlSessionCapacityMigrationRefusesNonemptyDown(t *testing.T) {
 	database, _, coordinator, _, attemptID, encoderRunID, _ :=
 		newStageGraphCancellationFixture(t, "stage-worker-capacity-down")
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 66); err != nil {
+		t.Fatal(err)
+	}
 	assignment := assignEncoder(
 		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
 	)
@@ -1780,7 +1784,6 @@ func TestStageWorkerControlSessionCapacityMigrationRefusesNonemptyDown(t *testin
 		stageSequence, now, now.Add(time.Minute)); err != nil {
 		t.Fatalf("seed Stage Worker capacity before Down: %v", err)
 	}
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	err := goose.DownTo(database.Admin, migrations, 65)
 	assertPostgresConstraint(t, err, "stage_worker_capacity_rollback_is_unsafe")
 	version, versionErr := goose.GetDBVersion(database.Admin)
@@ -1792,6 +1795,10 @@ func TestStageWorkerControlSessionCapacityMigrationRefusesNonemptyDown(t *testin
 func TestStageWorkerControlSessionCapacityMigrationDownSerializesConcurrentWriter(t *testing.T) {
 	database, _, coordinator, _, attemptID, encoderRunID, _ :=
 		newStageGraphCancellationFixture(t, "stage-worker-capacity-concurrent-down")
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 66); err != nil {
+		t.Fatal(err)
+	}
 	assignment := assignEncoder(
 		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
 	)
@@ -1812,7 +1819,6 @@ func TestStageWorkerControlSessionCapacityMigrationDownSerializesConcurrentWrite
 		t.Fatalf("write concurrent Stage Worker capacity evidence: %v", err)
 	}
 
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	downErrors := make(chan error, 1)
 	go func() {
 		downErrors <- goose.DownTo(database.Admin, migrations, 65)

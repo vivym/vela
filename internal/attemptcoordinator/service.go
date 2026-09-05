@@ -124,6 +124,7 @@ type FailStageCommand struct {
 	ExpectedStageVersion  int64
 	FailureClass          string
 	FailureFingerprint    []byte
+	WorkerRequestDigest   []byte
 	ConsumedResourceUnits int64
 	FailedAt              time.Time
 	RetryAt               time.Time
@@ -364,10 +365,11 @@ func encodeFail(command FailStageCommand) ([]byte, error) {
 		command.ExpectedStageVersion <= 0 || command.ConsumedResourceUnits <= 0 ||
 		command.FailedAt.IsZero() || !command.RetryAt.After(command.FailedAt) ||
 		len(command.FailureFingerprint) != 32 || command.FailureClass == "" ||
-		len(command.FailureClass) > 100 {
+		len(command.FailureClass) > 100 ||
+		(len(command.WorkerRequestDigest) != 0 && len(command.WorkerRequestDigest) != 32) {
 		return nil, errors.New("AttemptCoordinator failure authority is invalid")
 	}
-	return json.Marshal(map[string]any{
+	payload := map[string]any{
 		"schema_version":          1,
 		"command_kind":            "FAIL",
 		"command_id":              command.CommandID,
@@ -383,7 +385,11 @@ func encodeFail(command FailStageCommand) ([]byte, error) {
 		"consumed_resource_units": command.ConsumedResourceUnits,
 		"failed_at":               command.FailedAt.UTC().Format(time.RFC3339Nano),
 		"retry_at":                command.RetryAt.UTC().Format(time.RFC3339Nano),
-	})
+	}
+	if len(command.WorkerRequestDigest) != 0 {
+		payload["worker_request_digest"] = hex.EncodeToString(command.WorkerRequestDigest)
+	}
+	return json.Marshal(payload)
 }
 
 func encodeComplete(command CompleteStageCommand) ([]byte, error) {

@@ -1,7 +1,8 @@
 package capacitysim
 
 const (
-	AlgorithmRevision = "capacity-sim-v1"
+	AlgorithmRevision = "capacity-sim-v2"
+	SchedulerRevision = "reserved-service-v1"
 	SchemaVersion     = 1
 	MaxInputBytes     = 64 << 20
 	MaxTraceRecords   = 1_000_000

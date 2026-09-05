@@ -8,6 +8,13 @@ CLI, comparison receipt, and advisory proposal boundary. Checked-in inputs are
 synthetic; no real H3 calibration, benchmark, shadow result, production
 recommendation, or Launch Receipt exists.
 
+The current implementation is `capacity-sim-v2`. The production-equivalent
+scheduler, domain placement, correlated faults, object-operation costs, and
+warm-up costs described below remain target requirements, not implemented
+capabilities. The exact supported model and accounting conventions are in
+`docs/runbooks/h3-capacity-simulator.md`; receipts explicitly list unsupported
+dimensions.
+
 ## Question answered
 
 The simulator answers: given a versioned workload trace, stage runtime/output
@@ -163,7 +170,8 @@ exactly one GPU per WorkerInstance.
 
 ## Scheduler model
 
-Simulation order matches production semantics:
+The target simulation order for a future production-decision replay matches
+production semantics:
 
 1. Filter hard graph, pin, fence, profile, security, region, residency,
    freshness, connector, capacity, drain, and buffer eligibility.
@@ -173,16 +181,19 @@ Simulation order matches production semantics:
    and age.
 4. Pick with deterministic tie-break.
 
-The simulator records bounded DecisionEvidence compatible with the target
-Scheduler receipt. It must be possible to replay a captured production decision
-and explain divergence by input or algorithm revision.
+The current simulator uses the bounded `reserved-service-v1` equal-share
+Organization model. It has no production deficit snapshot or compatible
+DecisionEvidence. Production decision replay and divergence explanation remain
+unimplemented. A production scheduler revision cannot be selected as though
+that model were available.
 
 ## Cache and Artifact model
 
 - A cache hit removes stage demand only when the exact object is live and a
   simulated strong pin is acquired.
-- Cache admission, eviction, TTL, quota, deletion tombstone, and pin races use
-  the same state transitions as the target StageArtifact Module.
+- Current cache admission, eviction, TTL, quota, and strong-pin transitions are
+  deterministic abstractions. Production tombstone and concurrent pin-race
+  replay remain unimplemented.
 - Execution retry reuse and cross-Job cache are separate statistics.
 - L1 locality reduces transfer according to Connector evidence but never
   removes the authoritative L2 object.

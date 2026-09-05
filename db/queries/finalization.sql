@@ -1,5 +1,5 @@
 -- name: GetPostgresTime :one
-SELECT transaction_timestamp()::timestamptz AS transaction_time;
+SELECT clock_timestamp()::timestamptz AS transaction_time;
 
 -- name: ExpireStageGraphFinalizationClaims :exec
 UPDATE stage_graph_finalization_claims
@@ -111,11 +111,12 @@ SELECT
     artifact.size_bytes,
     artifact.expires_at
 FROM stage_graph_finalization_claim_outputs AS output
+JOIN stage_graph_finalization_claims AS claim ON claim.id = output.claim_id
 JOIN stage_artifacts AS artifact
   ON artifact.id = output.stage_artifact_id
  AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
  AND artifact.object_version = output.exact_object_version
- AND artifact.state = 'COMMITTED'
+ AND (artifact.state = 'COMMITTED' OR claim.state = 'COMPLETED')
 WHERE output.claim_id = sqlc.arg(claim_id)
 ORDER BY output.output_key;
 
@@ -485,7 +486,7 @@ INSERT INTO visible_completions (
     sqlc.arg(completed_at)
 );
 
--- name: InsertVerifiedStageGraphArtifact :exec
+-- name: InsertVerifiedStageGraphArtifact :execrows
 INSERT INTO artifacts (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
     kind, ordinal, object_key, expected_content_type, object_version_id,
@@ -501,7 +502,19 @@ INSERT INTO artifacts (
     sqlc.arg(verification_id), sqlc.arg(verification_request_hash),
     sqlc.arg(validation_receipt), sqlc.arg(verified_at), 'VERIFIED',
     sqlc.arg(expires_at), sqlc.arg(source_stage_artifact_id), sqlc.arg(verified_at)
-);
+)
+ON CONFLICT (id) DO UPDATE SET
+    object_version_id = EXCLUDED.object_version_id,
+    size_bytes = EXCLUDED.size_bytes, sha256 = EXCLUDED.sha256,
+    content_type = EXCLUDED.content_type, uploaded_at = EXCLUDED.uploaded_at,
+    verification_id = EXCLUDED.verification_id,
+    verification_request_hash = EXCLUDED.verification_request_hash,
+    validation_receipt = EXCLUDED.validation_receipt,
+    verified_at = EXCLUDED.verified_at, state = 'VERIFIED', updated_at = EXCLUDED.updated_at
+WHERE artifacts.state = 'STAGING'
+  AND artifacts.job_id = EXCLUDED.job_id
+  AND artifacts.source_stage_artifact_id = EXCLUDED.source_stage_artifact_id
+  AND artifacts.object_key = EXCLUDED.object_key;
 
 -- name: CompleteStageGraphAttemptForVisibleCompletion :one
 SELECT vela_complete_stage_graph_visible_completion_attempt(

@@ -216,6 +216,8 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 		unusedSmokeTCPAddress(t),
 	)
 	var memberClockSkew, inputClockSkew, materializationClockSkew time.Duration
+	var scratchRetirerConfigured bool
+	var outputOwnershipContract string
 	consumers := productionAuthorityConsumers{
 		newMemberServer: func(
 			config stageworkermembertransport.ServerConfig,
@@ -236,6 +238,8 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 			resolver stageworkeragent.InputResolver,
 		) (*stageworkeragent.StreamAgent, error) {
 			materializationClockSkew = config.MaxClockSkew
+			scratchRetirerConfigured = config.ScratchRetirer != nil
+			outputOwnershipContract = config.OutputOwnershipContract
 			return stageworkeragent.NewInputResolvingMaterializingStreamAgent(
 				runtime,
 				control,
@@ -255,6 +259,9 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 			t.Errorf("close production runtime: %v", closeErr)
 		}
 	}()
+	if !scratchRetirerConfigured || outputOwnershipContract != stageworkeragent.AttemptOwnedFilesystemScratchV1 {
+		t.Fatal("production materialization omitted explicit scratch retirement ownership contract")
+	}
 	if memberClockSkew != authoritypolicy.ProductionMaxClockSkew ||
 		inputClockSkew != authoritypolicy.ProductionMaxClockSkew ||
 		materializationClockSkew != authoritypolicy.ProductionMaxClockSkew {

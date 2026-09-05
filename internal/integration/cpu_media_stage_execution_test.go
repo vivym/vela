@@ -38,16 +38,17 @@ const (
 )
 
 type cpuMediaGraphOutcome struct {
-	database  testDatabase
-	jobID     uuid.UUID
-	attemptID uuid.UUID
-	video     stageartifact.Artifact
-	thumbnail stageartifact.Artifact
+	database    testDatabase
+	jobID       uuid.UUID
+	attemptID   uuid.UUID
+	video       stageartifact.Artifact
+	thumbnail   stageartifact.Artifact
+	objectStore *artifactstore.Local
 }
 
 func TestCPUMediaStageWorkersProduceAtomicVisibleCompletionWithoutLegacyLease(t *testing.T) {
 	outcome := runCPUMediaH3Graph(t)
-	service := visibleCompletionService(t, outcome.database.DSN)
+	service := visibleCompletionService(t, outcome.database.DSN, outcome.objectStore)
 	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-cpu-media",
 	}
@@ -152,6 +153,7 @@ func TestStageGraphVisibleCompletionRejectsInspectionMismatchAtomically(t *testi
 			inspection.SHA256[0] ^= 0xff
 			return inspection, nil
 		}),
+		outcome.objectStore,
 	)
 	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-inspection-mismatch",
@@ -174,7 +176,7 @@ func TestStageGraphVisibleCompletionRejectsInspectionMismatchAtomically(t *testi
 
 func TestStageGraphVisibleCompletionRejectsExpiredClaim(t *testing.T) {
 	outcome := runCPUMediaH3Graph(t)
-	service := visibleCompletionService(t, outcome.database.DSN)
+	service := visibleCompletionService(t, outcome.database.DSN, outcome.objectStore)
 	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-expired-claim",
 	}
@@ -238,6 +240,7 @@ func stageGraphVisibleCompletionService(
 	t *testing.T,
 	dsn string,
 	inspector stagefinalization.ArtifactInspector,
+	objectStore artifactstore.VersionedStore,
 ) *stagefinalization.Service {
 	t.Helper()
 	service, err := stagefinalization.NewService(
@@ -249,6 +252,7 @@ func stageGraphVisibleCompletionService(
 				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
 			},
 			ArtifactInspector: inspector,
+			ArtifactStore:     objectStore,
 		},
 	)
 	if err != nil {
@@ -263,7 +267,7 @@ func assertNoStageGraphVisibleCompletionWrites(t *testing.T, outcome cpuMediaGra
 	var artifacts, sets, charges, grants, completions int
 	if err := outcome.database.Admin.QueryRow(`
 		SELECT job.state::text, attempt.state::text, claim.state::text,
-		       (SELECT count(*) FROM artifacts WHERE job_id = job.id),
+		       (SELECT count(*) FROM artifacts WHERE job_id = job.id AND state <> 'STAGING'),
 		       (SELECT count(*) FROM artifact_sets WHERE job_id = job.id),
 		       (SELECT count(*) FROM charges WHERE job_id = job.id),
 		       (SELECT count(*) FROM artifact_access_grants WHERE job_id = job.id),
@@ -294,7 +298,17 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 
 func runCPUMediaH3GraphWithKey(t *testing.T, idempotencyKey string) cpuMediaGraphOutcome {
 	t.Helper()
+	return runCPUMediaH3GraphAtSchema(t, idempotencyKey, 0)
+}
+
+func runCPUMediaH3GraphAtSchema(t *testing.T, idempotencyKey string, schema int64) cpuMediaGraphOutcome {
+	t.Helper()
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
+	if schema > 0 {
+		if err := goose.DownTo(database.Admin, filepath.Join(repositoryRoot(t), "db", "migrations"), schema); err != nil {
+			t.Fatal(err)
+		}
+	}
 	seedCPUMediaExecutionGraph(t, database)
 	seedCPUMediaAdmissionCapacityPath(t, database)
 	activateStageCutoverRevision(
@@ -462,6 +476,7 @@ func runCPUMediaH3GraphWithKey(t *testing.T, idempotencyKey string) cpuMediaGrap
 	return cpuMediaGraphOutcome{
 		database: database, jobID: jobID, attemptID: attemptID,
 		video: artifacts["mux"], thumbnail: artifacts["thumbnail"],
+		objectStore: objectStore,
 	}
 }
 

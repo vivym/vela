@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-05",
+  "result": "CHECKS_PASS_WITH_OPEN_CORRECTNESS_FINDINGS",
+  "production_gate": false,
+  "source": {
+    "head": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+    "branch": "feature/vela-mock-hardening",
+    "includes_uncommitted_changes": true,
+    "migration": 87,
+    "campaign_source_files": 622,
+    "campaign_source_tree_sha256": "8e1a59e2226b2cbb620336aa999702a477d2adb26d4f04a65bf1e640cb864d70",
+    "campaign_evidence_path": "/Users/viv/projs/vela/docs/cpu-mock-load-evidence-2026-09-05.json",
+    "campaign_evidence_sha256": "5606c14acc65251985d430138dba69fe1cb158ab6141f5e35c4cca22020979fe",
+    "verification_input_sha256": {
+      "Makefile": "a9b5d9ce17d60b459cf25ffbe0155f805d836f9bcc8cb5f7ae32a1b692077ab5",
+      "hack/test-integration-shard.sh": "df97416516539933c0e175cc4e3bb2de07dde8e7ea8c53bbf17af1fa2491e8a2",
+      "api/gen/vela.gen.go": "b0bc9ef33b43e909f9aa61081638a52317a585050abc2e51c330f6187506d824"
+    }
+  },
+  "ordinary_unit_tests": {
+    "command": "go test ./...",
+    "exit_code": 0,
+    "go_cache_permitted": true,
+    "log_path": "/tmp/vela-schema87-final-unit.log",
+    "log_sha256": "28517dcbb6337521c8bd635902a2d58251b26b1afa92fa53c805f77c7b0aecf4"
+  },
+  "quality": {
+    "command": "make lint test-cross validate-deployment",
+    "exit_code": 0,
+    "lint_issues": 0,
+    "log_path": "/tmp/vela-schema87-final-quality.log",
+    "log_sha256": "81722bef258cad25fdb09ab843c9710de5f0958a20e29898521d8c5a274d1227"
+  },
+  "integration": {
+    "command": "sh hack/test-integration-shard.sh INDEX 4",
+    "environment": {
+      "DOCKER_CONFIG": "/tmp/vela-mock-public-registry.SUbGtB",
+      "DOCKER_HOST": "unix:///Users/viv/.docker/run/docker.sock",
+      "INTEGRATION_TEST_TIMEOUT": "40m"
+    },
+    "scope": "All packages discovered by Go integration-tag test-file differences, with package/test pairs distributed over four shards and count=1. Environment-gated tests retain their normal skip behavior; these compact logs do not enumerate skips or establish all optional external campaigns.",
+    "shards": [
+      {"index": 0, "exit_code": 0, "bootstrap_seconds": 3.991, "integration_package_seconds": 339.876, "log_path": "/tmp/vela-schema87-final-integration-0.log", "log_sha256": "7a2fe2ee06f4765673e614d8094ec671f6d02902f80805c6a0f8b655dc8a8f0d"},
+      {"index": 1, "exit_code": 0, "bootstrap_seconds": 0.679, "integration_package_seconds": 395.857, "log_path": "/tmp/vela-schema87-final-integration-1.log", "log_sha256": "fff33b58316d07afc8f962cfa5db44b72e2a03f3e8d3902c5daa4a7ccc2b22f0"},
+      {"index": 2, "exit_code": 0, "bootstrap_seconds": 0.754, "integration_package_seconds": 366.349, "log_path": "/tmp/vela-schema87-final-integration-2.log", "log_sha256": "d6e88082904ad2d6ffce1f88461a500c410b85517712f2d1c2fab45c4acafa5c"},
+      {"index": 3, "exit_code": 0, "bootstrap_seconds": 0.355, "integration_package_seconds": 382.674, "log_path": "/tmp/vela-schema87-final-integration-3.log", "log_sha256": "51ddca69c3a1a0875763393f7b462dba0253ee17e15c05101034a0a1b814a4ee"}
+    ]
+  },
+  "generation": {
+    "command": "make generate",
+    "exit_code": 0,
+    "generated_go_files": 23,
+    "comparison": "All regenerated files match the pinned CPU campaign source manifest; api/gen/vela.gen.go, outside that manifest, matches unchanged HEAD. The attempted fresh pre-generation capture used a nonexistent gen directory and failed, so it is not used as baseline evidence.",
+    "manifest_encoding": "compact JSON of lexicographically sorted repository-relative path to SHA-256 for Go files in api/gen, proto/gen and internal/store/sqlc",
+    "generated_manifest_sha256": "abea53a78ecabdda7a26309475760bab0bca805034742f67af52c03f35b7f0e8",
+    "mismatches": [],
+    "log_path": "/tmp/vela-schema87-final-generate.log",
+    "log_sha256": "e8ff3899029741b26d8414b06a97542fa8cd41b6d4bb69c05e80aaf821ae412f"
+  },
+  "campaign_integrity": {
+    "source_inventory_regenerated": true,
+    "source_tree_matches": true,
+    "adjacent_path_sha256_references_checked": 33,
+    "unique_referenced_files": 30,
+    "mismatches": []
+  },
+  "terminal_runtime_counterexample": {
+    "status": "OPEN",
+    "test": "TestModelRuntimeTerminalAuthorityCannotRestartProbe",
+    "command": "go test -race -overlay /tmp/vela-runtime-terminal-reprepare-probe-overlay.json ./internal/modelruntime -run '^TestModelRuntimeTerminalAuthorityCannotRestartProbe$' -count=1",
+    "exit_code": 1,
+    "package_seconds": 0.693,
+    "method": "An additive Go overlay calls the existing public ModelRuntime gRPC interface with a signed, still-valid authority and the fake DiT backend. After SealOutput, or CancelStage followed by confirmed STOPPED Status, it repeats PrepareStage and StartStage with exactly the same authority. No repository source file is changed by the probe.",
+    "cases": [
+      {"terminal": "sealed", "prepare_decision": "ACCEPTED", "prepare_state": "PREPARED", "start_decision": "ACCEPTED", "start_state": "RUNNING"},
+      {"terminal": "stopped", "prepare_decision": "ACCEPTED", "prepare_state": "PREPARED", "start_decision": "ACCEPTED", "start_state": "RUNNING"}
+    ],
+    "probe_path": "/tmp/vela-runtime-terminal-reprepare-probe_test.go",
+    "probe_sha256": "fdc9fec5ad9a0ce7e04081325c6e36cd02c12983871a011a580c56dddec87ea0",
+    "overlay_path": "/tmp/vela-runtime-terminal-reprepare-probe-overlay.json",
+    "overlay_sha256": "d7d4616ebdf33c0e0c5f2800b7cb8e1e5a84723d088687f96ae137b81d17bda4",
+    "log_path": "/tmp/vela-runtime-terminal-reprepare-probe-red.log",
+    "log_sha256": "63724331cfa35ec449ca045f920559ef486209ed8186dc695442421604e8a3fc",
+    "implication": "A historical Seal or STOPPED receipt alone does not prevent a future writer. Successful scratch cleanup observations remain valid for the tested schedules but do not close adversarial retirement correctness. The probe establishes runtime reentry, not an observed filesystem corruption or production incident.",
+    "follow_up": "docs/terminal-scratch-retirement-design-2026-09-05.md"
+  },
+  "limits": [
+    "The original handoff describes historical schema 69; this checkpoint concerns the uncommitted local schema 87 branch.",
+    "Ordinary regression suites and CPU load PASS do not resolve the newly reproduced terminal-runtime reentry or missing failed/canceled/expired input retirement.",
+    "Full physical resource cost telemetry, inactive Worker history retirement, remote exact-cache deployment and production calibration remain separate gaps.",
+    "No GPU execution, remote deployment, commit, push or Production Gate advancement occurred at this checkpoint."
+  ]
+}

@@ -276,7 +276,8 @@ func runtimeServerAuthority(
 	}
 	runtime := manifest.Runtimes[0]
 	authority, err := signer.Sign(&velav1.StageAuthority{
-		SchemaVersion:       1,
+		SchemaVersion:       2,
+		ExecutionSequence:   1,
 		JobId:               "11000000-0000-0000-0000-000000000001",
 		AttemptId:           "11000000-0000-0000-0000-000000000002",
 		StageRunId:          "11000000-0000-0000-0000-000000000003",

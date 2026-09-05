@@ -50,7 +50,9 @@ The repository proves the following contract:
 - PRIMARY exact-version read credentials for replication;
 - backup conditional-write and current-object-head credentials for replication;
   and
-- backup list/delete credentials for retention.
+- backup list/delete and exact-version metadata-read credentials for retention,
+  with restricted conditional writes of permanent publication fence markers as
+  described in [Stage publication retention](../runbooks/stage-publication-retention.md).
 
 The replication database login inherits only `vela_artifact_replication`; the
 retention login inherits only `vela_backup_retention`. Both PRIMARY and backup

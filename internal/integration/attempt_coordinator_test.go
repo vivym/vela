@@ -3473,13 +3473,18 @@ func activateH3ExecutionGraph(t *testing.T, database testDatabase) {
 	}
 	var state string
 	var order []string
+	var stageCount int
+	if err := database.Admin.QueryRow(`SELECT count(*) FROM execution_graph_stages WHERE execution_graph_revision_id = $1`,
+		stageGraphID).Scan(&stageCount); err != nil {
+		t.Fatalf("read H3 graph Stage count: %v", err)
+	}
 	if err := activation.QueryRow(context.Background(), `
 		SELECT state::text, topological_order
 		FROM vela_activate_execution_graph($1, $2)
 	`, stageGraphID, graphDigest).Scan(&state, &order); err != nil {
 		t.Fatalf("activate H3 Stage graph: %v", err)
 	}
-	if state != "ACTIVE" || len(order) != 3 {
+	if state != "ACTIVE" || len(order) != stageCount {
 		t.Fatalf("activated H3 Stage graph state/order = %s/%v", state, order)
 	}
 }

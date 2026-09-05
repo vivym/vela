@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -91,6 +92,25 @@ func TestSummarizeKeepsDirectSharedAndCounterfactualSeparate(t *testing.T) {
 	if summary.DirectCostMicroUnits != 100 || summary.SharedCostMicroUnits != 40 ||
 		summary.CounterfactualAvoidedCostMicroUnits != 70 {
 		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestSummarizeRejectsOverflowAcrossResourceBuckets(t *testing.T) {
+	for _, attribution := range []Attribution{AttributionDirect, AttributionShared, AttributionCounterfactual} {
+		t.Run(string(attribution), func(t *testing.T) {
+			ledger, err := New(&memoryBackend{summary: OperatorSummary{Buckets: []SummaryBucket{
+				{Attribution: attribution, ResourceKind: ResourceByte, CostMicroUnits: math.MaxInt64},
+				{Attribution: attribution, ResourceKind: ResourceObjectOperation, CostMicroUnits: 1},
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if summary, err := ledger.Summarize(context.Background(), SummaryQuery{
+				CostModelRevisionID: uuid.New(), From: time.Unix(100, 0), To: time.Unix(200, 0),
+			}); err == nil {
+				t.Fatalf("unrepresentable cost was reported as %#v", summary)
+			}
+		})
 	}
 }
 

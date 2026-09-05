@@ -1,0 +1,411 @@
+{
+  "status": "open",
+  "scope": {"type": "audit", "value": "."},
+  "baseline": "1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2",
+  "passes": [
+    {"id": "execution", "domains": ["architecture", "database", "backend", "code-quality"], "status": "complete"},
+    {"id": "isolation", "domains": ["security", "api", "data-lifecycle"], "status": "complete"},
+    {"id": "operations", "domains": ["performance", "devops", "recovery", "scientific-validity"], "status": "complete"},
+    {"id": "validation", "domains": ["test-coverage", "runtime-composition"], "status": "running"}
+  ],
+  "items": [
+    {
+      "id": "isolation-successful-stage-storage-budget",
+      "pass": "isolation", "severity": "high", "category": "data-lifecycle", "effort": "medium",
+      "file": "db/migrations/00082_stage_success_storage_completion.sql", "line": 13,
+      "codeQuote": "    SET state = 'CONSUMED', updated_at = p_completed_at",
+      "finding": "Successful Visible Completion left every graph's L2 storage reservation RESERVED. The 16-Job CPU campaign retained 16 active budgets after all Jobs, Stages, transfers and Charges had completed, preventing recovery quiescence.",
+      "fix": "Consume the graph reservation inside the existing successful Attempt completion transaction, preserving byte counters, objects and Usage. Backfill only exact matching Visible Completion and COMPLETED claim evidence. Down restores the prior function but never reactivates completed budgets; no runtime privilege is added.",
+      "status": "fixed",
+      "verification": "Independent successful-graph regression reproduced RESERVED after completion and replay in 3.734 s. Success/replay/quiescence, unchanged StageArtifact and Usage rows, readable exact public versions, single Charge, historical backfill, unfinished-Job exclusion, repeated Down/Up and exact function OID/owner/ACL restoration pass. These plus CPU Visible Completion, public-copy response-loss replay and current role isolation pass together in 16.730 s on the schema containing migration 81/82. Operations will rerun the concurrent CPU campaign."
+    },
+    {
+      "id": "execution-cnpg-failover-empty-selection",
+      "pass": "execution", "severity": "high", "category": "validation", "effort": "medium",
+      "file": "hack/test-cnpg-failover.sh", "line": 58,
+      "codeQuote": "go -C \"$repository_root\" test -tags=integration,cnpg ./internal/integration",
+      "finding": "Legacy contraction 459a199 deleted the CNPG fault test but left its Make selector; Go reported PASS with no tests, falsely implying failover validation.",
+      "fix": "Require the exact build-selected test before cluster creation and replace only the isolated kind harness with current Stage acquire/Start/cancellation, authority snapshot and no-quorum checks.",
+      "status": "fixed",
+      "verification": "Actual absent-test command returned PASS [no tests to run] before repair. Missing and near-match selected names now fail before tool/cluster setup; focused guard tests PASS in 1.125 s. Replacement actual CNPG test executes; its first run exposed the separate Stage quorum rejection gap."
+    },
+    {
+      "id": "execution-stage-quorum-guard",
+      "pass": "execution", "severity": "high", "category": "correctness", "effort": "medium",
+      "file": "db/migrations/00081_stage_assignment_quorum.sql", "line": 6,
+      "codeQuote": "CREATE CONSTRAINT TRIGGER stage_acquire_intents_require_synchronous_quorum",
+      "finding": "The no-quorum guard remained on Admission-era tables after Stage contraction. Actual CNPG acquisition waited for client timeout instead of returning structured SQLSTATE 55000; independent single-PostgreSQL opt-in guard tests allowed all three Stage assignment entry points.",
+      "fix": "Reuse the existing deferred quorum function on new acquire intent, scheduler snapshot/claim, physical StageAttempt and signed renewal inserts. Preserve advisory idle, durable replay and terminal/expiry maintenance updates.",
+      "status": "fixed",
+      "verification": "Logical regression PASS in 17.526 s. Actual repaired CNPG campaign with schema82 PASS in 111.612s: primary replacement preserved authority and exact signed replay, lost quorum rejected Admission and Stage Acquire with SQLSTATE55000, recovery preserved the authority digest, and self-created resources were removed. Three assignment APIs also rejected no-quorum under schema84 in 8.785s."
+    },
+    {
+      "id": "isolation-retention-historical-role-fixture",
+      "pass": "isolation", "severity": "low", "category": "test-compatibility", "effort": "small",
+      "file": "internal/integration/retention_test.go", "line": 1494,
+      "codeQuote": "// Schema 16 restores its historical contract; the current Stage Reconciler",
+      "finding": "The historical 16 -> 15 -> 16 migration test required the current Stage Reconciler role verifier to accept schema 16, which lacks the deletion functions now required by the runtime.",
+      "fix": "Verify schema 16's exact four-function effective privilege boundary directly, assert current Reconciler verification fails closed there, upgrade the restored database to current schema, and verify the current boundary including missing Stage/public-copy execution and excess table-access rejection. Production privilege checks and runtime grants were not relaxed.",
+      "status": "fixed",
+      "verification": "The original test reproduced the reported failure in 2.684 s. After the fixture correction, the historical roundtrip, TestDatabasePoolsFailClosedOnRoleConfusion, retention function-result contracts and StageArtifact lifecycle migration tests passed together in 12.799 s. git diff --check passed."
+    },
+    {
+      "id": "isolation-stage-metadata-expiry-fk",
+      "pass": "isolation", "severity": "none", "category": "data-lifecycle", "effort": "none",
+      "file": "db/migrations/00058_legacy_h3_schema_contraction.sql", "line": 908,
+      "codeQuote": "-- metadata expiry by binding every later foreign key to the immutable roots.",
+      "finding": "Initial Stage CREATE TABLE definitions suggested Job/Attempt metadata expiry would be blocked by later foreign keys; tracing the effective schema disproved this finding.",
+      "fix": "No code change or migration 80. Migration 58 lines 908-1023 already rebinds Stage execution, retry, graph, materialization, cache, finalization and Usage Job/Attempt identities to non_content roots. Physical StageAttempt ancestry remains retained independently, so its Usage foreign key does not block Job/Attempt deletion.",
+      "status": "false_positive",
+      "verification": "TestNonContentExpiryPhysicallyDeletesSourcesAndHonorsPostMetadataHold passed in 3.436 s. A verbose confirmation migrated through schema 79 and actually executed the test (not skipped), PASS in 3.757 s. The fixture runs and finalizes a real CPU Stage graph, then physically removes Job/Attempt sources, preserves financial/root evidence, honors a post-metadata financial legal hold, and expires financial sources after release. Migration 77 records runtime usage into the already root-bound table; the expiry function does not delete Stage or Usage rows. No separate post-expiry Usage equality assertion was added during the source freeze."
+    },
+    {
+      "id": "isolation-stage-content-lifecycle",
+      "pass": "isolation", "severity": "high", "category": "data-lifecycle", "effort": "large",
+      "file": "db/migrations/00071_stage_artifact_lifecycle.sql", "line": 3,
+      "codeQuote": "CREATE TABLE stage_artifact_deletions (",
+      "finding": "Customer deletion and retention omitted intermediate StageArtifacts and uncommitted materialization uploads; terminal execution pins and expired cache entries were not retired.",
+      "fix": "Add durable exact-version cleanup authority, terminal pin/reference release, cache expiry/quota recycling, Customer completion guards and post-lock deletion lease checks.",
+      "status": "fixed",
+      "verification": "Stage lifecycle and publication suite PASS in 33.859 s; consumer pins retain source versions until terminal, deletion response loss replays, orphan versions are fenced, cache quota recycles, and expired deletion claims cannot finish after waiting for a lock. Migration 71/74 and retention function-contract suite PASS in 7.288 s."
+    },
+    {
+      "id": "isolation-public-output-ownership",
+      "pass": "isolation", "severity": "high", "category": "correctness", "effort": "large",
+      "file": "internal/stagefinalization/publication.go", "line": 19,
+      "codeQuote": "func reservePublicStageArtifact(ctx context.Context, tx pgx.Tx, authority store.LockStageGraphFinalizationCompletionAuthorityRow, source StageGraphFinalizationSource) error {",
+      "finding": "Final publication reused a cache source object key and enforced globally unique source provenance; publishing both source and consumer conflicted, and deleting the source could destroy consumer output.",
+      "fix": "Reserve stable Job-owned STAGING objects before upload, copy and verify exact source bytes, retain nonunique immutable provenance and replay completed claims after source cleanup.",
+      "status": "fixed",
+      "verification": "Physical source plus cache consumer both complete with independent final objects. Source content deletion preserves readable exact consumer copies; lost upload response followed by a replacement finalization claim creates one artifact set and Charge; incomplete inspection creates no visible output."
+    },
+    {
+      "id": "isolation-delayed-publication-resurrection",
+      "pass": "isolation", "severity": "high", "category": "data-lifecycle", "effort": "large",
+      "file": "internal/artifactstore/publication_fence.go", "line": 23,
+      "codeQuote": "func FenceConditionalPublication(ctx context.Context, store VersionedStore, key string, size int64, digest [sha256.Size]byte) error {",
+      "finding": "Client upload timeout did not fence a delayed provider-side PUT, so absent-object cleanup could complete before Customer Content appeared; generic all-version purge could also remove a fence.",
+      "fix": "Require a permanent non-content marker under the same conditional-create key before deletion completion. Preserve markers through exact delete, discovery and version purge; backup purge also fences late writes and replication rejects marker sources.",
+      "status": "fixed",
+      "verification": "Race-enabled artifactstore/replication/retention/materializer unit suites PASS. Adversarial ignored-cancellation tests cover marker-first, content-first and lost-marker responses, including real PostgreSQL public-copy deletion. Actual MinIO TestS3ArtifactStore suite PASS in 2.431 s: old exact content versions unreadable, marker retained, delayed conditional PUT rejected and purge replay safe. External lifecycle exclusion and restricted backup retention fence-write capability are documented deployment prerequisites."
+    },
+    {
+      "id": "operations-integration-discovery",
+      "pass": "operations", "severity": "high", "category": "test-coverage", "effort": "small",
+      "file": "hack/test-integration-shard.sh", "line": 27,
+      "codeQuote": "go list -tags=integration -f \"${package_template}\" ./... >\"${work_dir}/integration\"",
+      "finding": "CI selected only internal/integration and omitted integration-tagged command tests, including the stale bootstrap schema assertion.",
+      "fix": "Discover packages from Go build-selected test-file differences and shard globally by package/test pair. Make test-integration uses the same 0/1 path.",
+      "status": "fixed",
+      "verification": "go test ./hack passed: multiple packages, duplicate names, complete shard coverage, invalid input and execution failure propagation. Parent repaired the exposed bootstrap schema assertion."
+    },
+    {
+      "id": "operations-recovery-quiescence",
+      "pass": "operations", "severity": "high", "category": "recovery", "effort": "large",
+      "file": "db/migrations/00072_recovery_quiescence.sql", "line": 92,
+      "codeQuote": "CREATE FUNCTION vela_close_recovery_admission(p_operation_id uuid) RETURNS jsonb",
+      "finding": "No atomic tested Admission-close/drain/snapshot authority existed; a readable pg_dump list and retained directory were incorrectly easy to interpret as recoverability evidence.",
+      "fix": "Add least-privilege database gate and immutable identity/generation-bound quiescence receipts. Capture an exported-snapshot pg_dump and verify real restore in an independent, network-isolated PostgreSQL 17 container before publishing completion.",
+      "status": "fixed",
+      "verification": "All four TestRecovery integration tests passed together in 16.767 s, including actual pg_restore, nonempty data/catalog/ACL/RLS comparison, source-operation fencing, inflight Admission locking, immutable receipt/TRUNCATE denial and rollback guard. DATABASE_ONLY; source remote lab, objects and WAL/PITR remain outside this drill."
+    },
+    {
+      "id": "operations-simulator-wide-arithmetic",
+      "pass": "operations", "severity": "high", "category": "numerical-correctness", "effort": "medium",
+      "file": "internal/capacitysim/metrics.go", "line": 143,
+      "codeQuote": "func transferPayloadNS(bytes, bytesPerSecond, scalePPM int64) int64 {",
+      "finding": "Transfer bytes*1e9 and resource-time products overflowed before division; storage byte-time saturated early and independently rounded stage costs could become negative in aggregate.",
+      "fix": "Accumulate wide products exactly before unit conversion, preserve rational sensitivity factors, and reject unrepresentable final cost/throughput/resource-time.",
+      "status": "fixed",
+      "verification": "Independent public API red/green formulas cover 10 GB / 10 GB/s = 1 s, 10 GB * 2 s = 20 GB-seconds, 20-second GPU cost, 10,000-completion throughput and 0.5-byte/s sensitivity. Simulator and CLI packages pass."
+    },
+    {
+      "id": "operations-simulator-events-capacity",
+      "pass": "operations", "severity": "high", "category": "scientific-validity", "effort": "medium",
+      "file": "internal/capacitysim/simulator.go", "line": 484,
+      "codeQuote": "observedDuration := min(duration, state.scenario.WindowDurationNS-state.nowNS)",
+      "finding": "Early pool binding serialized available parallel capacity; transfer was also counted as queue waiting; cross-window execution was reported as idle; expired or exactly completed Jobs retained queue/Admission credit at arrival boundaries.",
+      "fix": "Select available pool at dispatch, start queue timing after transfer, clip busy/cost occupancy, release expired queue credit and process completion before same-time arrivals.",
+      "status": "fixed",
+      "verification": "Independent oracles assert 13 ns parallel completion instead of 25 ns, zero queue after 100 ns uncontended transfer, exact half-second occupancy, released expiry credits and two accepted Jobs at the exact completion boundary. Multiple seeds preserve the parallel result."
+    },
+    {
+      "id": "operations-simulator-live-object-conservation",
+      "pass": "operations", "severity": "high", "category": "scientific-validity", "effort": "medium",
+      "file": "internal/capacitysim/simulator.go", "line": 1026,
+      "codeQuote": "func (state *simulationState) storageConserved() bool {",
+      "finding": "Cache could evict a newly produced output still needed by a live Job; retries could consume another fan-out consumer's credit; negative clamping hid conservation errors. Failed/unstarted Organizations were omitted from fairness statistics.",
+      "fix": "Hold producer/reuse pins until Job termination, consume dependent buffer credit once, recompute storage/buffer/pin ownership independently, and charge failed service and unfinished waiting.",
+      "status": "fixed",
+      "verification": "One-entry cache pressure retains both live 10-byte inputs; all 128 seeded randomized scenarios preserve bounds and exact object conservation; failed cohorts consume 10 ns each and an unstarted queued Job records 100 ns waiting."
+    },
+    {
+      "id": "operations-simulator-model-provenance",
+      "pass": "operations", "severity": "high", "category": "scientific-validity", "effort": "medium",
+      "file": "internal/capacitysim/planner.go", "line": 8,
+      "codeQuote": "func ProposeResidency(",
+      "finding": "Docs claimed production decision replay without necessary snapshot inputs, missing predictions were AVAILABLE with zero duration, and proposals accepted a different Scenario's receipt.",
+      "fix": "Version algorithm v2, explicitly support only reserved-service-v1, expose unsupported dimensions, reject ignored nondefault knobs, preserve missing predictions as unavailable and bind proposals to exact Scenario digests.",
+      "status": "fixed",
+      "verification": "Missing prediction, wrong Scenario, long-window utilization and unsupported revision/parameter checks pass. Checked-in synthetic v2 input validates and completes all four Jobs. Production decision replay, measured hardware calibration and omitted cost dimensions remain explicitly unavailable."
+    },
+    {
+      "id": "validation-cache-runtime-configuration",
+      "pass": "validation", "severity": "high", "category": "runtime-composition", "effort": "medium",
+      "file": "cmd/vela-lab-bootstrap/main.go", "line": 680,
+      "codeQuote": "FROM vela_set_project_stage_cache_control(jsonb_build_object(",
+      "finding": "The baseline lab seeded cache policy but omitted Project control, reconciler keyring and a semantic seed shared by distinct Jobs.",
+      "fix": "Initialize absent Project control through its authority API, generate protected Project keys, configure the reconciler, and expose an explicit smoke seed.",
+      "status": "fixed",
+      "verification": "Bootstrap/assets/render/seed regressions passed. Complete physical source and exact cached target both publish independent outputs. Seed shell path verified with real jq and captured submitted JSON; remote campaign remains unexecuted."
+    },
+    {
+      "id": "validation-runtime-usage-producer",
+      "pass": "validation", "severity": "high", "category": "accounting", "effort": "medium",
+      "file": "internal/usagecostledger/ledger.go", "line": 155,
+      "codeQuote": "func (ledger *UsageCostLedger) RecordUsage(",
+      "finding": "Only tests produced resource usage, so runtime accounting claims were unsupported.",
+      "fix": "Migrations 76/77 record allocation occupancy and successful payload bytes atomically with source state; record cache source-duration estimates separately as COUNTERFACTUAL.",
+      "status": "partially_fixed",
+      "verification": "Runtime regression passed with actual physical/cache Jobs and transfer replays; no invented CPU/GPU time. Execution reviewer independently checked ACL and release ordering. Storage carry, residency and failed network transfer measurement remain open."
+    },
+    {
+      "id": "validation-idle-poll-history",
+      "pass": "validation", "severity": "high", "category": "performance", "effort": "medium",
+      "file": "internal/stageworkercontrol/postgres_assignment.go", "line": 119,
+      "codeQuote": "\"idle_retry_after_ms\":           backend.noWorkRetry.Milliseconds(),",
+      "finding": "Ordinary idle acquisition appended an intent, result and scheduler snapshot, yielding at least 414720 rows per day for eight Workers polling every five seconds.",
+      "fix": "Migration 78 shares existing authority readers with a read-only empty-queue probe; preserves all durable-intent replays and the existing runtime role API surface.",
+      "status": "fixed",
+      "verification": "64 idle polls added 192 rows before and 0 after. Work arriving after NoWork acquires and replays exactly. Role, forged/stale, claim crash/recovery, running-limit and migration Down/Up checks passed. Independent operations read review: a newly committed queue row invisible to the probe causes only bounded advisory NoWork delay; the next poll uses existing authority/CAS. Old clients on expanded schema keep the durable path. Pre-78 hinted/plain digest compatibility across client versions needs the parent mixed-version regression and explicit rollout boundary. Capacity observations and nonempty history still require lifecycle treatment."
+    },
+    {
+      "id": "validation-cost-summary-overflow",
+      "pass": "validation", "severity": "medium", "category": "numerical-correctness", "effort": "small",
+      "file": "internal/usagecostledger/ledger.go", "line": 221,
+      "codeQuote": "return OperatorSummary{}, errors.New(\"Usage/Cost summary exceeds int64 bounds\")",
+      "finding": "Adding independently valid resource buckets could overflow total direct/shared/counterfactual cost into a negative result.",
+      "fix": "Reject unrepresentable cross-bucket cost and unvalued-count totals before addition.",
+      "status": "fixed",
+      "verification": "Three MaxInt64+1 public Summarize regressions failed before repair and passed afterwards; full usagecostledger unit package passed."
+    },
+    {
+      "id": "execution-lease-expiry",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00036_stage_attempt_authority.sql",
+      "line": 2583,
+      "codeQuote": "WHERE lease.state = 'REVOKED' AND lease.revoke_reason = 'CUSTOMER_CANCELLATION'",
+      "finding": "The Stage reconciler recovered canceled leases only; lost ASSIGNED/RUNNING workers and expired MATERIALIZING authority could remain live indefinitely.",
+      "fix": "Migration 70 recovers ordinary effective lease/materialization expiry, accounts conservative retry seconds, fences stale results and converges exhausted attempts.",
+      "status": "fixed",
+      "verification": "TestStageLeaseExpiry* and TestStageMaterializationExpiry*: PASS, including four concurrent reconcilers, replay, post-lock clock, exhaustion and migration round trip. 2026-09-05 execution regression batch: 47.359 s."
+    },
+    {
+      "id": "execution-cancellation-renewal",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00036_stage_attempt_authority.sql",
+      "line": 2585,
+      "codeQuote": "AND lease.expires_at <= statement_timestamp()",
+      "finding": "Cancellation recovery used the initial lease expiry and ignored later signed authority renewals, permitting premature allocation reuse.",
+      "fix": "Migration 70 uses the greatest initial/signed-renewal expiry for cancellation and terminal sibling capacity release.",
+      "status": "fixed",
+      "verification": "TestStageLeaseExpiryHonorsLatestRenewalDuringCancellation and TestStageGraphFailureEntryPointsConvergeAndRetainSiblingAuthority: PASS with real START/Heartbeat renewal records."
+    },
+    {
+      "id": "execution-cache-downstream",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00042_stage_worker_assignment.sql",
+      "line": 331,
+      "codeQuote": "JOIN stage_artifacts AS artifact ON artifact.id = source.winner_stage_artifact_id",
+      "finding": "Cached stages have authoritative output bindings but no physical winner field, so actual downstream Worker assignments lost their cached inputs and consumer pins.",
+      "fix": "Migration 73 resolves assignment and committed input lineage through exact output bindings and creates downstream EXECUTION pins/buffer credits when cached outputs bind.",
+      "status": "fixed",
+      "verification": "TestStageCacheHitsFeedPhysicalDownstreamAssignmentsAndLineage: PASS for cached Encoder -> physical DiT and cached Encoder/DiT -> physical VAE through actual Acquire, durable replay, signed TransferTicket, object pull and Commit. Migration round trip PASS."
+    },
+    {
+      "id": "execution-terminal-convergence",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00059_model_runtime_epoch_registration.sql",
+      "line": 244,
+      "codeQuote": "WHERE allocation.attempt_id = v_attempt.id AND allocation.state = 'ALLOCATED'",
+      "finding": "Independent terminal failure implementations diverged: runtime epoch exhaustion released all sibling allocations immediately, while Worker FAIL omitted canonical failure event and sibling fencing.",
+      "fix": "Migration 75 routes Worker FAIL, assigned epoch exhaustion, materialization source loss and authority expiry through one terminal function; retains sibling allocations through effective expiry, fences all live runs and emits one failure event/credit release.",
+      "status": "fixed",
+      "verification": "TestStageGraphFailureEntryPointsConvergeAndRetainSiblingAuthority: all four entrypoints PASS with a pre-activation parallel-root DAG, signed renewal, replay and exact project/credit/event checks. Entrypoint OID/ACL and repeated Up/Down PASS."
+    },
+    {
+      "id": "execution-parent-lock-order",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00040_stage_worker_execution.sql",
+      "line": 544,
+      "codeQuote": "SELECT attempt.* INTO v_attempt FROM attempts AS attempt WHERE attempt.id = v_attempt_id FOR UPDATE;",
+      "finding": "Start/Heartbeat/Reattach locked Attempt before Job; Commit/SOURCE_LOST locked materialization before Job. Cancellation and graph failure take Job before children, creating lock inversions.",
+      "fix": "Migration 75 adds Worker -> runtime gate -> Job before Worker command child locks and Job before materialization child locks, preserving live function OIDs and ACLs.",
+      "status": "fixed",
+      "verification": "TestStageGraphParentLocksPrecedeWorkerCommandChildLocks (3 commands) and TestStageGraphParentLocksPrecedeMaterializationLocks (2 commands): PASS. A held Job blocks the command while a NOWAIT child lock succeeds, then the command commits after release. Existing execution/registration/reattachment regressions PASS."
+    },
+    {
+      "id": "execution-job-expiry",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00036_stage_attempt_authority.sql",
+      "line": 2676,
+      "codeQuote": "AND job.state IN ('QUEUED', 'RETRY_WAIT', 'RUNNING')",
+      "finding": "Stage graph reconciliation advances ready/retry work without ordinary Job Expiry convergence; Stage assignment also lacks the immutable Job deadline guard.",
+      "fix": "Migration 79 reconciles immutable Job and finalization deadlines through shared graph terminalization, fences new execution/completion writes after post-lock expiry, expires finalization claims and retains physical allocations through existing signed authority.",
+      "status": "fixed",
+      "verification": "Expired queued assignment failed the red regression. Queued, ASSIGNED, RUNNING, MATERIALIZING and FINALIZING tests pass with independently published short-lived catalog revisions, exact credit/event/fence convergence and no early allocation reuse. A held parent Job proves assignment rechecks expiry after waiting; repeated Down restores actual schema-78 terminal/reconcile definitions."
+    },
+    {
+      "id": "execution-retention-before-materialization-recovery",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/migrations/00070_stage_lease_expiry_recovery.sql",
+      "line": 164,
+      "codeQuote": "AND materialization.revoke_reason = 'RETENTION_EXPIRED'",
+      "finding": "Retention can expire an uploaded uncommitted materialization lease before the coordinator sees it; ACTIVE-only discovery and recovery then leave the Stage MATERIALIZING despite expired authority.",
+      "fix": "Migration 70 accepts preserved RETENTION_EXPIRED evidence only for the matching current MATERIALIZING run and OUTPUT_SEALED physical attempt, excluding already recovered history from further candidate scans.",
+      "status": "fixed",
+      "verification": "Independent isolation regression first returned no recovery decisions; retry-allowed and exhausted variants now reach RETRY_WAIT and FAILED after exact orphan deletion and permanent publication fencing. Both pass in 7.795 s."
+    },
+    {
+      "id": "execution-finalization-lock-clock",
+      "pass": "execution",
+      "severity": "P1",
+      "file": "db/queries/finalization.sql",
+      "line": 2,
+      "codeQuote": "SELECT clock_timestamp()::timestamptz AS transaction_time;",
+      "finding": "Finalization used transaction-start time after lock waits and acquired claim/Attempt before Job, allowing expired authority decisions and a lock inversion with cancellation or graph expiry.",
+      "fix": "Use the PostgreSQL wall clock after authority locks; take the parent Job before completion/replay children; expire old claims in a separate maintenance transaction and refresh claim issuance/replay deadlines.",
+      "status": "fixed",
+      "verification": "A real CPU media graph receives a legitimate 2-second claim. Complete blocks on the parent Job while a NOWAIT claim lock succeeds; after natural claim expiry and parent release, it rejects stale authority and writes no artifact set, Charge, grant or completion. This and finalization deadline convergence pass in 9.165 s."
+    },
+    {
+      "id": "validation-scheduler-parent-lock-order",
+      "pass": "validation", "severity": "medium", "category": "database", "effort": "medium",
+      "file": "db/migrations/00037_stage_scheduler.sql", "line": 461,
+      "codeQuote": "FROM public.stage_capacity_pool_counters AS counter\nWHERE counter.capacity_pool_id = v_pool.id\nFOR SHARE;",
+      "finding": "Snapshot capture and new scheduler claims lock the counter before a later evidence-insert foreign key locks the CapacityPool. Concurrent Admission graph instantiation holds the pool and waits for the counter, causing repeated 40P01 deadlocks and detection delays. Production discovery retries these errors; no successful unauthorized assignment was demonstrated.",
+      "fix": "Migration 80 takes the same parent KEY SHARE lock before each counter lock. Only the NOLOGIN owner gains UPDATE(id) for row locking; runtime write privileges and durable replay semantics are unchanged.",
+      "status": "fixed",
+      "verification": "Actual concurrent CPU runtime reproduced both lock cycles. Deterministic two-transaction tests failed with 55P03 before repair. Snapshot/new-claim lock tests, exact Up/Down definitions and existing identified-claim/replay regressions passed together in 13.674 s. The 16-Job CPU run then completed with zero Acquire retries; extended final load remains pending."
+    },
+    {
+      "id": "validation-resident-runtime-watchdogs",
+      "pass": "validation", "severity": "high", "category": "performance", "effort": "medium",
+      "file": "internal/modelruntime/service.go", "line": 621,
+      "codeQuote": "func (service *Service) resetWatchdogLocked(verified stageauthority.Verified)",
+      "finding": "Stopping a replaced timer did not wake its goroutine. Repeated renew/seal/stop operations accumulated watchers for the lifetime of a resident ModelRuntime.",
+      "fix": "Cancel each watcher explicitly under the runtime mutex, retaining generation checks against stale timer delivery.",
+      "status": "fixed",
+      "verification": "Public gRPC red cases retained 128 watchdogs after 64 rounds. Both drain cases and stale timer versus renewed generation pass; full runtime race package PASS 6.670s. The 16-Job CPU run kept goroutines 91 to 91 and watchdogs zero between waves."
+    },
+    {
+      "id": "validation-capacity-observation-lifecycle",
+      "pass": "validation", "severity": "medium", "category": "database", "effort": "medium",
+      "file": "db/migrations/00066_stage_worker_control_session_capacity.sql", "line": 743,
+      "codeQuote": "INSERT INTO public.capacity_observations (",
+      "finding": "Capacity changes and reconnect sequences append transient observations without retiring expired superseded rows.",
+      "fix": "Migration 83 prunes at most 256 expired superseded rows during a successful Worker report, retaining live rows and each epoch/source's highest sequence.",
+      "status": "fixed",
+      "verification": "64 capacity changes produced 65 rows; expiry plus renewal reduced them to 2, and 64 same-sequence renewals added none. Batch, watermark, role, rollback and replay checks passed in the 117.291s lifecycle/scheduler batch. Inactive Workers have no new report-driven cleanup."
+    },
+    {
+      "id": "validation-filtered-acquire-history",
+      "pass": "validation", "severity": "high", "category": "performance", "effort": "medium",
+      "file": "db/migrations/00078_idle_stage_worker_probe.sql", "line": 85,
+      "codeQuote": "CREATE FUNCTION vela_stage_worker_acquire_queue_empty",
+      "finding": "The empty-queue hint did not avoid durable polling history when queued work was wholly filtered by Project running limits.",
+      "fix": "Migration 84 extracts the existing candidate reader for both durable capture and advisory wholly-filtered probes; selection and authority remain in the original scheduler.",
+      "status": "fixed",
+      "verification": "64 blocked public Acquire calls dropped from 192 added records to zero. Capacity release still assigns work; a concurrent change causes at most one NoWork; signed replay, old/new clients, OID/ACL and rollback cases passed in 117.291s."
+    },
+    {
+      "id": "validation-committed-scratch-retirement",
+      "pass": "validation", "severity": "high", "category": "data-lifecycle", "effort": "medium",
+      "file": "internal/stageworkeragent/materialization.go", "line": 365,
+      "codeQuote": "agent.materialization.journal.Delete(ctx, record.ID)",
+      "finding": "Successful materialization discarded its recovery journal but retained sealed output and downloaded inputs; two eight-Job waves retained 215024 then 430048 scratch bytes.",
+      "fix": "Persist confirmed retirement disposition, retire only the exact committed StageAttempt output and StageRun inputs through bound directory handles, and retain the journal until cleanup succeeds.",
+      "status": "partially_fixed",
+      "verification": "Confirmed cleanup, response-loss/restart, TTL recovery and directory replacement race cases pass. Same-source schema 87 short/native exact-cache/512-Job race campaigns all pass (14.540/8.925/118.438 s); all 64 completed waves have scratch/watchdog 0, goroutines 93 and native worker FD 11. Real retention maintenance clears each wave's 24 execution pins while retaining unexpired Artifacts. An additional public-gRPC probe reproduces Prepare/Start of the same still-valid authority after Seal, so those observations do not establish exclusion of future writers. Reopened as partial until the persistent retirement gate also covers successful cleanup. See docs/schema87-validation-checkpoint-2026-09-05.json."
+    },
+    {
+      "id": "validation-expired-materialization-replay",
+      "pass": "validation", "severity": "high", "category": "recovery", "effort": "medium",
+      "file": "internal/stageworkercontrol/handler.go", "line": 137,
+      "codeQuote": "handler.materializationValidator.ValidateWithClockSkew(",
+      "finding": "A materialization response lost until its authority expires is rejected before database exact replay. The Worker also omitted command IDs, causing transport to generate a new ID on restart. Pending recovery can block subsequent acquisition despite an already committed result.",
+      "fix": "Keep signature and identity checks; allow expired requests only to recover an exact existing COMMIT or SOURCE_LOST result. Persist the original Worker command ID before sending. Preserve legacy ambiguous records instead of inventing their missing IDs. No new write or changed-payload replay is authorized.",
+      "status": "fixed",
+      "verification": "Real handler/PG tests and an independent 25.610s pass cover COMMIT and SOURCE_LOST retry/terminal confirmation and exact replay across TTL and reconnect, changed payload/identity/epoch/signature rejection and post-lock SOURCE_LOST deadlines. Real FileJournal -> StreamAgent -> Handler -> PG recovery passes with race detection in 15.427s; an overlay removing only the two wire command IDs fails both recovery paths in 11.926s. Actual Client/Server reconnect, local compatibility and five related race packages pass. Combined materialization/FAIL/migration regression passes in 46.971s."
+    },
+    {
+      "id": "validation-stage-failure-handler-result",
+      "pass": "validation", "severity": "high", "category": "recovery", "effort": "medium",
+      "file": "internal/stageworkercontrol/postgres_operations.go", "line": 291,
+      "codeQuote": "decision.StageAttemptID.String() != stage.GetStageAttemptId() || decision.State != \"READY\"",
+      "finding": "The Worker FailStage backend expects READY although the durable coordinator returns RETRY_WAIT or FAILED. A committed failure then returns a handler error, and the active-only authorizer may prevent exact retry confirmation after the state transition.",
+      "fix": "Match the actual typed failure outcomes and prove first response plus exact terminal replay through the real handler and PostgreSQL authority, retaining payload and identity fencing.",
+      "status": "fixed",
+      "verification": "Migration 86 and the real handler pass first acknowledgment, immediate/natural-TTL replay, reconnect/epoch and changed complete-protobuf payload rejection. FAIL rechecks effective wall/local and Job deadlines after locks; schema 85 accepted the same delayed request. Role/capability and repeated Down/Up checks pass, and StreamAgent uses a stable per-StageAttempt failure ID. Parent source review found no new authority bypass. The combined terminal command batch passes in 46.971s; cross-process failure journaling is not claimed."
+    },
+    {
+      "id": "validation-control-stream-generation",
+      "pass": "validation", "severity": "high", "category": "recovery", "effort": "medium",
+      "file": "internal/stageworkertransport/client.go", "line": 145,
+      "codeQuote": "func (client *Client) NextCommand(ctx context.Context)",
+      "finding": "Canceled receivers could block on a full queue, and old readiness/results or already queued Stops crossed connection generations. A superseded Stop could terminate the command consumer; pending renewed Reattach authority was also ignored by old-active comparisons.",
+      "fix": "Fence receive and bounded enqueue with stream replacement; use generation-aware consumer admission. Serialize Runtime authority adoption and Stop handling without holding the Runtime mutex while waiting for a control ACK, preserving pending Runtime authority and rejecting superseded late responses.",
+      "status": "fixed",
+      "verification": "Deterministic cancellation and real gRPC queued-Stop RED cases, superseded-Stop RED, blocked START/heartbeat ACK RED and renewed Reattach RED were independently reproduced. Final transport/agent/production-agent race packages PASS 1.687/2.835/3.468s including Reattach blocked ACK; full lint 0 issues. See docs/control-stream-generation-evidence-2026-09-05.md. Cancellation signaling does not prove STOPPED or permit scratch deletion."
+    },
+    {
+      "id": "validation-control-request-waiter-generation",
+      "pass": "validation", "severity": "high", "category": "recovery", "effort": "small",
+      "file": "internal/stageworkertransport/client.go", "line": 398,
+      "codeQuote": "if client.pending[requestID] == waiter {",
+      "finding": "An old delayed Send error could remove a new generation's pending exchange using the same durable request ID because cleanup checked only the ID.",
+      "fix": "Bind pending-map cleanup to the original waiter identity so old stream completion cannot remove a replacement exchange.",
+      "status": "fixed",
+      "verification": "A deterministic delayed-Send test installs the replacement same-ID waiter before releasing the old Send; the replacement stream and waiter survive. Included in final transport race PASS 1.687s. No separate pre-fix execution is claimed for this code-interleaving finding."
+    },
+    {
+      "id": "validation-stage-claim-finalization-pool-lock",
+      "pass": "validation", "severity": "high", "category": "database", "effort": "medium",
+      "file": "db/migrations/00087_stage_claim_finalization_lock_order.sql", "line": 2,
+      "codeQuote": "-- READY queue admission holds the CapacityPool parent before its counter.",
+      "finding": "After 112 successful Jobs, the extended CPU campaign hit 40P01 between Artifact COMMIT and scheduler claim finalization. A deterministic role-scoped test confirmed CommitClaim holds the counter while waiting for CapacityPool; READY queue admission takes the parent pool first. Migration 80 had covered snapshot and new claim, but not claim finalization.",
+      "fix": "Migration 87 takes the existing CapacityPool KEY SHARE lock before the counter in claim Commit, Abandon, expired reconciliation and the fairness helper, preserving claim identity locks and business semantics without new privileges.",
+      "status": "fixed",
+      "verification": "The parent-pool/counter regression failed on schema 86 with 55P03 in 4.381 s. Commit, Abandon, natural expiry and assigned-claim recovery plus exact replay pass on schema 87 in 15.518 s; two 86/87 roundtrips preserve four functions' OID, owner, ACL, security, search_path and exact rollback bodies in 3.595 s. The repaired 512-Job/64-wave campaign passes in 118.438 s with zero Acquire retries. Final four-shard integration exits zero on all shards (339.876/395.857/366.349/382.674 s for the integration package). Failure and final provenance are preserved in the diagnostic and final CPU load evidence JSON files."
+    },
+    {
+      "id": "validation-terminal-scratch-disposition",
+      "pass": "validation", "severity": "high", "category": "data-lifecycle", "effort": "large",
+      "file": "internal/stageworkeragent/stream.go", "line": 533,
+      "codeQuote": "func (agent *StreamAgent) HandleStop(",
+      "finding": "Canceled or failed StageRun inputs have no terminal reclamation path. Cancel acknowledgement alone does not prove Runtime stop, and SOURCE_LOST can retry the same StageRun, so neither permits unconditional input deletion.",
+      "fix": "Define typed read-only historical terminal disposition plus persistent namespace admission and Runtime restart barriers, drain all writers, persist complete-member stopped evidence and replay exact local cleanup. Source-loss cleanup may retire only the exact old StageAttempt output. The same writer exclusion must cover successful materialization.",
+      "status": "open",
+      "verification": "Current Close/Abort removes partial transfers only, and Runtime cleanup covers unsealed outputs only. Public gRPC reproduces reentry after both Seal and STOPPED, making writer exclusion an explicit prerequisite. Detailed identity/epoch/role and crash-recovery constraints are in docs/terminal-scratch-retirement-design-2026-09-05.md; no terminal reader or retirement journal has been implemented."
+    },
+    {
+      "id": "validation-runtime-terminal-authority-reentry",
+      "pass": "validation", "severity": "high", "category": "correctness", "effort": "large",
+      "file": "internal/modelruntime/service.go", "line": 570,
+      "codeQuote": "service.active = &activeExecution{",
+      "finding": "After Seal clears active authority, or a canceled execution reaches reusable STOPPED, Prepare accepts the same still-valid physical authority and Start returns RUNNING. A past terminal receipt does not exclude a delayed writer while scratch is retired.",
+      "fix": "Schema 88 assigns immutable allocation sequences after the Worker lock; StageAuthority V2 signs that order and the control authorizer compares it with the exact durable allocation. Runtime consumes one per-epoch high-water sequence before Prepare and retains it across terminal cleanup. Persistent Runtime epoch advancement rejects pre-restart envelopes. Down also checks sequence.is_called so rollback gaps and future history removal cannot reset numbering. Worker namespace admission, writer drain and scratch cleanup remain the separate terminal-retirement finding.",
+      "status": "fixed",
+      "verification": "The original public-gRPC probe reproduced both Seal and STOPPED reentry. New behavioral RED passed only after ordered execution; public gRPC now rejects duplicates and unseen renewals, preserves later attempts, consumes failed Prepare, survives 300 receipt evictions and FileEpochStore restart. Runtime/Agent four-package race PASS 8.680/1.710/3.069/3.767s; exact assignment/START and durable sequence mismatch regression race PASS6.174s; six PostgreSQL sequence regressions race PASS27.820s. PITR/data-loss recovery still requires new Runtime epochs before signing resumes. This closes RPC reentry, not process-descendant or input-writer quiescence. See docs/runtime-execution-order-2026-09-05.md."
+    }
+  ],
+  "iteration": 1,
+  "updatedAt": "2026-09-05"
+}

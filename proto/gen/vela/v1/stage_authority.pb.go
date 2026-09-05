@@ -175,8 +175,10 @@ type StageAuthority struct {
 	Signature                     []byte                       `protobuf:"bytes,29,opt,name=signature,proto3" json:"signature,omitempty"`
 	ExecutionSpecDigest           []byte                       `protobuf:"bytes,30,opt,name=execution_spec_digest,json=executionSpecDigest,proto3" json:"execution_spec_digest,omitempty"`
 	ModelRuntimeBarrierGeneration int64                        `protobuf:"varint,31,opt,name=model_runtime_barrier_generation,json=modelRuntimeBarrierGeneration,proto3" json:"model_runtime_barrier_generation,omitempty"`
-	unknownFields                 protoimpl.UnknownFields
-	sizeCache                     protoimpl.SizeCache
+	// Schema v2: immutable database-assigned order of physical allocations.
+	ExecutionSequence int64 `protobuf:"varint,32,opt,name=execution_sequence,json=executionSequence,proto3" json:"execution_sequence,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *StageAuthority) Reset() {
@@ -419,6 +421,13 @@ func (x *StageAuthority) GetModelRuntimeBarrierGeneration() int64 {
 	return 0
 }
 
+func (x *StageAuthority) GetExecutionSequence() int64 {
+	if x != nil {
+		return x.ExecutionSequence
+	}
+	return 0
+}
+
 var File_vela_v1_stage_authority_proto protoreflect.FileDescriptor
 
 const file_vela_v1_stage_authority_proto_rawDesc = "" +
@@ -431,7 +440,7 @@ const file_vela_v1_stage_authority_proto_rawDesc = "" +
 	"\x10worker_member_id\x18\x01 \x01(\tR\x0eworkerMemberId\x12!\n" +
 	"\fmember_epoch\x18\x02 \x01(\x03R\vmemberEpoch\x12.\n" +
 	"\x13model_runtime_epoch\x18\x03 \x01(\x03R\x11modelRuntimeEpoch\x12'\n" +
-	"\x0fidentity_digest\x18\x04 \x01(\fR\x0eidentityDigest\"\xfd\v\n" +
+	"\x0fidentity_digest\x18\x04 \x01(\fR\x0eidentityDigest\"\xac\f\n" +
 	"\x0eStageAuthority\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1d\n" +
@@ -468,7 +477,8 @@ const file_vela_v1_stage_authority_proto_rawDesc = "" +
 	"\x13monotonic_valid_for\x18\x1c \x01(\v2\x19.google.protobuf.DurationR\x11monotonicValidFor\x12\x1c\n" +
 	"\tsignature\x18\x1d \x01(\fR\tsignature\x122\n" +
 	"\x15execution_spec_digest\x18\x1e \x01(\fR\x13executionSpecDigest\x12G\n" +
-	" model_runtime_barrier_generation\x18\x1f \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x1aA\n" +
+	" model_runtime_barrier_generation\x18\x1f \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x12-\n" +
+	"\x12execution_sequence\x18  \x01(\x03R\x11executionSequence\x1aA\n" +
 	"\x13CapacityVectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01J\x04\b\x13\x10\x14B0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"

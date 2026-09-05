@@ -22,6 +22,50 @@ Its numbers exercise Encoder, single-GPU DiT, VAE Decoder, cross-node transfer,
 Project-scoped exact cache, fixed customer price comparison, and advisory warm
 residency output. They are not measurements or recommended production counts.
 
+## Model scope and accounting
+
+The current algorithm is `capacity-sim-v2`, with scheduler
+`reserved-service-v1`. Previous v1 receipts require the previous executable;
+the new executable rejects that revision instead of replaying it with changed
+semantics. Schema version remains 1.
+
+The scheduler model gives retries priority, then chooses the Organization with
+the least reserved service and stable arrival/identity ties. Service is charged
+at dispatch, including failed attempts and the part inside the observation
+window. This is an equal-share synthetic model. It does not replay production
+Organization/ServiceClass/Project deficit snapshots, protected lanes, score
+terms, domain-dependent placement, or correlated node failure. Those limits
+are carried in the receipt's `validation.unsupported_inputs`; advisory proposals
+also carry `SIMPLIFIED_SCHEDULER_MODEL`.
+
+Queue waiting starts after transfer completes. Transfer includes connector
+concurrency waiting and `ceil(bytes * 1e9 / bytes_per_second)` payload time.
+Sensitivity factors remain rational through this conversion, including 0.5
+bytes/s. At equal timestamps the order is expiry, finalization, residency,
+stage completion, arrival, transfer completion, Stage READY, retry READY.
+Completed Jobs therefore release Admission slots before equal-time arrivals;
+expiry wins an exact-deadline completion race.
+Workers remain occupied through service, seal, and materialization; expiry
+removes queued work, while an already running attempt occupies its worker until
+its scheduled completion. Busy/resource cost is clipped to the observation
+window. Percentiles are nearest-rank; stage service samples are predicted full
+attempt durations, whereas completed Job latency excludes unfinished Jobs.
+
+Resource-time and byte-time products accumulate exactly before unit conversion
+and integer flooring. Unrepresentable resource-time, throughput, or cost fails
+explicitly. Cache pins protect both produced and reused input objects until Job
+termination; buffer credit is consumed once per dependent Stage, including
+retries. TTL prevents hits; physical cache eviction is lazy and pressure-driven.
+Object-operation and warm-up costs are not modeled. Nonzero object-operation
+rates and non-unit Job resource multipliers are rejected, and the synthetic v2
+fixture explicitly uses zero object-operation rates.
+
+Fairness share error compares all admitted Organization cohorts to an equal
+share over the whole window; it is not a demand-normalized production fairness
+estimate. Maximum waiting includes queued work at expiry and window end.
+Observed calibration with no predicted samples returns
+`NO_PREDICTED_SAMPLES`, with no fabricated zero-duration prediction.
+
 ## Produce replay evidence
 
 Create outputs outside the input directory. The CLI rejects input overwrite and

@@ -16,6 +16,7 @@ postgres_image=ghcr.io/cloudnative-pg/postgresql:16.4
 test_directory=$(mktemp -d)
 kubeconfig="$test_directory/kubeconfig"
 created=false
+test_name=TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 
 if [ -z "$image_platform" ]; then
 	image_arch=$(docker info --format '{{.Architecture}}' 2>/dev/null || go env GOARCH)
@@ -49,6 +50,14 @@ cleanup() {
 	rmdir "$test_directory" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
+
+go -C "$repository_root" test -tags=integration,cnpg ./internal/integration \
+	-list "^${test_name}$" >"$test_directory/selected-tests"
+if ! awk -v name="$test_name" '$0 == name { found = 1 } END { exit !found }' \
+	"$test_directory/selected-tests"; then
+	echo "required CNPG failover test is absent from the selected Go build: $test_name" >&2
+	exit 1
+fi
 
 mkdir -p "$repository_root/bin"
 if [ ! -x "$kind_binary" ]; then
@@ -146,5 +155,5 @@ kubectl --kubeconfig "$kubeconfig" -n vela-system wait \
 VELA_CNPG_KUBECONFIG="$kubeconfig" \
 VELA_CNPG_KIND_CLUSTER="$cluster_name" \
 	go test -tags=integration,cnpg ./internal/integration \
-		-run '^TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed$' \
+		-run "^${test_name}$" \
 		-count=1 -timeout=20m -v
