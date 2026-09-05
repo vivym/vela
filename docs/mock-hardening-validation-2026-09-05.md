@@ -41,8 +41,9 @@ monolithic execution fallback.
 | Fixed customer Charge separate from internal Usage/Cost | Retain the commercial contract; actual producer receipts now flow through independent valuation/replay | Allocation occupancy is not GPU time; synthetic rates, source-duration estimates and incomplete telemetry cannot establish full economic savings |
 
 The original `/tmp/vela-handoff-2026-09-05.md` remains a schema-69 historical
-handoff. The current work is an uncommitted local hardening branch; remote lab
-deployment state has not been changed by this campaign.
+handoff. Local commit `a9a1f7abb5613eac981625e1948ef162a647cd9b` preserves the
+schema-88 hardening checkpoint and its evidence. Remote lab deployment state
+has not been changed by this campaign; subsequent lifecycle work remains open.
 
 ## Acceptance matrix
 
@@ -108,8 +109,9 @@ record and its scratch until its original durable result can be reconciled.
   Linux amd64 cross-compilation, and `make validate-deployment`: PASS after the
   main repairs. The final integration run is tracked separately below.
 - `make generate`: PASS, with identical generated-file SHA-256 manifests before
-  and after regeneration. Generated SQL changes are uncommitted, so the
-  HEAD-comparison in `make verify-generated` is not a clean-worktree check yet.
+  and after regeneration. At capture time the generated SQL changes were
+  uncommitted. After checkpoint `a9a1f7a`, `make verify-generated` also passed
+  against HEAD and the worktree remained clean.
 - `VELA_REQUIRE_PINNED_FFPROBE=1 go test ./internal/artifactvalidator
   ./internal/h3stagemock -count=1`: PASS on macOS. Linux-only sandbox tests are
   outside that host run.
@@ -527,3 +529,19 @@ The separate exact-cache run passes in 9.776 package seconds: source 4 physical
 Stages, target 2, five transfers, two independent Charges and four readable
 Job-owned public copies. Both admitted cache entries and their carrying
 references remain live. The source map still matches after both campaigns.
+
+## Post-checkpoint process teardown
+
+After local commit `a9a1f7a`, public CPU driver regressions reproduced inherited
+pipe/child-writer leaks, blocked request cancellation, and lost initialization
+cleanup errors. The scoped [ProcessBackend repair](process-backend-teardown-evidence-2026-09-05.md)
+passes same-source unit, lint, Linux cross-build, macOS race and actual Linux
+CPU tests. It preserves resident models and reports escaped-child/blocked-writer
+limits without granting scratch deletion permission. Earlier full integration,
+CNPG and 512-Job measurements remain bound to their original checkpoints.
+
+Read review of terminal retirement also identified unseen later allocations:
+an old stopped allocation is insufficient to close its StageRun namespace.
+The design now requires complete scoped allocation history and a retirement
+cutoff installed at both Worker input admission and every relevant Runtime,
+followed by independent writer drain. That protocol is not implemented yet.

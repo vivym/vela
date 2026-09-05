@@ -66,14 +66,44 @@ and an independent local stopped checkpoint. The checkpoint covers the original
 allocation's complete member set, exact execution authority digest/nonce,
 Worker/member/runtime epochs, and
 verified STOPPED results. A cancellation ACK, a missing process record, or a
-restarted runtime is insufficient. The runtime backend must have reaped the
-execution process group or verified its cgroup is empty before reporting STOPPED.
+restarted runtime is insufficient. The backend must join in-process execution
+tasks, close their writable handles, and account for any child writers before
+reporting a stopped checkpoint. An execution-specific process group or cgroup
+can supply part of that evidence when all writers are confined to it.
+
+## Resident model and execution stop
+
+Whole-driver teardown and Stage execution stop have different scopes. Closing a
+ProcessBackend may terminate its entire driver process group. Doing that at
+every Stage completion would unload the resident model and violate the accepted
+Worker contract. A cgroup containing the resident driver cannot become empty
+while that driver stays resident.
+
+The CPU `h3stagemock` driver currently processes its requests and output
+publication synchronously. Its cancellation code removes the unsealed output
+before setting STOPPED; it does not create an asynchronous Stage worker tree.
+That implementation explains its local stop semantics but provides no evidence
+for an external driver that starts threads or child writers.
+
+An asynchronous driver needs an execution-specific drain contract: reject new
+tasks for the exact execution, join the tasks already admitted, close writable
+handles, and terminate/reap any execution-owned child writers before its stop
+checkpoint is accepted. Persistent model state may remain in memory. If helpers
+can leave a process group, signalling that group does not prove they exited.
+Supervision must either prevent that escape or retain the execution as unproven.
+
+Even a complete driver drain does not cover Worker input resolvers, downloads,
+or future duplicate assignments. Those require the independent namespace gate
+below. Teardown tests, a shutdown ACK, and a successful SIGKILL call must never
+be substituted for that combined retirement proof.
+
+## Namespace gate and recovery
 
 A past STOPPED observation is not proof of future absence of writers.
 The schema-87 `ModelRuntime.installOrRenew` permitted a stopped execution to
 be prepared again with the same authority. The schema-88 sequence fence excludes
-that RPC reentry, while the Worker retirement design must still
-therefore persist an intent before cleanup and atomically close admission to
+that RPC reentry. The Worker must still persist an intent before cleanup and
+atomically close admission to
 Resolve/Prepare/Start for the entire target StageRun namespace. This gate must
 serialize with ExecuteAssignment and all root-input/transfer resolution. Late
 RPC responses must not install a runtime or write into a gated namespace.
@@ -122,7 +152,9 @@ on the existing Connect stream. It accepts no caller-selected paths. The typed
 response carries `INPUTS_UNUSED` or `RETAIN`, a reason, the exact original
 authority digest, StageRun/StageAttempt/allocation/lease identities, terminal
 state/fence/version, historical Worker epoch, authenticated member/current
-control session, and `observed_at`. It conveys no output deletion permission.
+control session, and `observed_at`. It must also carry the scoped retirement
+cutoff and complete Runtime scope described below; an old allocation's digest
+alone is insufficient. It conveys no output deletion permission.
 Successful COMMIT and SOURCE_LOST retain their existing output dispositions but
 must also pass the local writer gate before cleanup.
 
@@ -169,16 +201,76 @@ local input writer using that namespace has been excluded and drained. Retiring
 one failed StageAttempt must not prevent a legitimate retry with a new
 StageAttempt from reusing the still-live StageRun inputs.
 
+For bounded local state, use one Worker-wide persistent sequence watermark,
+one latest execution slot, and a capacity-limited set of pending retirement
+intents. This state spans the resident profiles sharing the Worker; it must not
+reset for each profile. The slot distinguishes `INPUTS_PENDING`,
+`RUNTIME_ENTERED`, and `CLOSED`. Only the same verified immutable identity at
+`INPUTS_PENDING` may resume an equal sequence after a download failure. Once
+the Runtime entry is durably recorded, uncertain RPC outcomes recover through
+Status/Reattach instead of repeating Resolve/Prepare. Renewals cannot reopen
+a closed slot.
+
+Validate the full assignment, V2 signature/time window, and current
+Worker/member/topology/runtime binding before advancing state or writing files.
+Invalid or busy requests must not consume the watermark. The existing command
+composition already constructs a StageAuthority validator, but it is not
+currently used by StreamAgent before Resolve.
+
+Admission synchronization must not hold its state lock over downloads or
+control exchanges. Stop must see and close an input-phase slot, cancel its
+resolver, and wait for the admitted work to return and close its handles. Check
+the slot again before entering Runtime and accepting late control responses.
+Persist failure prevents side effects; missing or damaged state on a reused
+root cannot be treated as first use. Keep unfinished retirement intents under
+backpressure rather than evicting them. FileProductionState's current behavior
+of initializing a missing session/capacity file is not this recovery contract.
+
+An observed sequence watermark alone does not cover all issued attempts. For
+example, this Worker may have observed allocation `n`, while Control has already
+allocated retry `n+1` for the same StageRun. The StageRun can become terminal
+before the Worker receives `n+1`. Retiring the namespace at local watermark `n`
+would still admit that delayed assignment. Renewals are another envelope of the
+same allocation sequence, so deleting an envelope-specific record does not solve
+the problem.
+
+The historical reader must additionally establish a retirement cutoff `C`: the
+maximum execution sequence across every allocation for the terminal StageRun,
+this Worker, and the permitted epoch. Its consistent snapshot must include
+allocated-but-not-yet-signed rows and demonstrate that no further allocation can
+be issued for the irreversible terminal StageRun. All retained identities must
+be complete and numbered. Missing/V1 history or an unknown history-retention
+boundary yields RETAIN; computing a maximum over an incomplete subset is not
+proof. The global sequence's `last_value` is not a substitute because it spans
+unrelated Workers and is not a scoped history-completeness check.
+
+Persisting Worker watermark `C` only closes the input-resolution entry point.
+Every relevant member/resident Runtime must also establish an irreversible
+admission floor through `C`, and then drain any execution it already accepted.
+Otherwise a delayed direct Prepare for `n+1` can pass the Runtime's still-local
+watermark `n` after the Worker has closed input admission. A single older
+allocation's STOPPED receipt does not cover the unseen attempt or that second
+entry point. The Runtime set must cover the complete relevant allocation
+history, not just the authority used to query the terminal reader.
+
+An alternative is an independently proven barrier that invalidates every old
+authority before execution drain. Advancing only a local counter, observing
+one lease expire, or finding an empty active-execution map does not establish
+that barrier. The current protocol has no terminal-cutoff installation RPC;
+the reader, Runtime floor, and local recovery records remain design work.
+
 The runtime epoch store persists an epoch, not terminal receipts or namespace
 intent. The materialization journal covers sealed outputs, not every failed or
 canceled execution. Neither can be described as the missing retirement journal.
 Persist each intent before forgetting its authority or starting cleanup. Tie
 recovery to the bound directory identity and exact complete member set.
 
-`ProcessBackend.abort` currently calls the direct process's `Process.Kill`.
-It does not establish that a process group was reaped or a cgroup is empty.
-The backend STOPPED contract needs independently verified writer quiescence;
-do not convert that Kill call or a driver ACK into deletion permission.
+The [ProcessBackend teardown repair](process-backend-teardown-evidence-2026-09-05.md)
+signals the driver's group before reaping the direct child and bounds output
+drain. Escaped descendants and blocked caller-owned writers remain explicitly
+unproven. The backend STOPPED contract still needs independently verified
+execution-specific writer quiescence; do not convert a group signal or driver
+ACK into deletion permission.
 
 Terminal replay suppression also needs bounded retained state. A fixed-size
 receipt cache can evict a still-valid retired authority; an unbounded tombstone

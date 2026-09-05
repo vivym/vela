@@ -77,11 +77,14 @@ the same journal concurrently.
 ## Remaining Lifecycle Boundary
 
 The schema-87 public-gRPC probe reproduced Prepare/Start with the same still-valid
-authority after both Seal and STOPPED. Both paths returned RUNNING. Consequently
-the confirmation and inode-bound deletion behavior above is implemented, but it
-does not yet exclude a delayed runtime writer. The successful 64-wave campaign
-did not inject those duplicates. See the
-[Checkpoint](../schema87-validation-checkpoint-2026-09-05.json) and
+authority after both Seal and STOPPED. Both paths returned RUNNING. Schema 88
+now rejects this Runtime RPC reentry through signed allocation order and
+persistent Runtime epochs. It still does not gate Worker input writers or prove
+backend execution drain. The confirmation and inode-bound deletion behavior
+above therefore remains partial. The successful 64-wave campaign did not inject
+those writer races. See the
+[Checkpoint](../schema87-validation-checkpoint-2026-09-05.json),
+[Execution Order](../runtime-execution-order-2026-09-05.md), and
 [Retirement Design](../terminal-scratch-retirement-design-2026-09-05.md).
 
 No mtime-based or generic TTL/quota sweeper is added. Committed input files from
@@ -92,6 +95,12 @@ Every retirement path also needs persistent prevention of future Resolve/Prepare
 Start calls, drain of already admitted writers, and a Runtime restart barrier.
 Until those conditions hold, successful-load scratch measurements do not
 establish adversarial cleanup safety or bounded scratch across failure campaigns.
+
+ProcessBackend shutdown is a separate whole-driver operation. Its process group
+contains the resident model, so normal Stage cancellation cannot kill that group
+while preserving residency. A Stage stop checkpoint needs execution-specific
+task/child/handle drain; whole-driver teardown evidence does not authorize
+scratch retirement.
 
 These CPU/mock checks do not establish real GPU readiness or Production Gate
 completion.

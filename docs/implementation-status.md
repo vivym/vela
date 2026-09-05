@@ -64,12 +64,13 @@ revisions in `CERTIFIED` and `CANARY` as well as the existing active states.
 Migration `00069` revalidates TransferTicket expiry and live capacity against a
 post-lock PostgreSQL server-clock sample, preventing lock waits and host-clock
 skew from extending transfer authority. The handoff/deployed baseline remains
-schema `00069`; the uncommitted local hardening branch now contains migrations
-through `00088`. Its scoped repair and verification status is tracked in
+schema `00069`; local checkpoint `a9a1f7a` contains migrations through `00088`.
+Its scoped repair and verification status is tracked in
 [Mock Hardening Validation](mock-hardening-validation-2026-09-05.md), including
 same-source native exact-cache and 512-Job CPU load evidence. It has not been
-committed, pushed or deployed to the remote lab, and terminal scratch lifecycle
-work remains open. Final local unit, four-shard integration, lint, cross-build,
+pushed or deployed to the remote lab, and terminal scratch lifecycle work
+remains open. After the local commit, `make verify-generated` passed with a
+clean worktree. Final local unit, four-shard integration, lint, cross-build,
 deployment and generated-output checks pass on schema-87 source. A subsequent
 public-gRPC counterexample nevertheless restarted the same still-valid authority
 after Seal or STOPPED. Schema 88 now prevents this RPC reentry with signed,
@@ -84,6 +85,10 @@ Successful scratch retirement is only partially closed until Worker input writer
 are excluded and backend descendant quiescence is established. The
 [Schema-87 Checkpoint](schema87-validation-checkpoint-2026-09-05.json) records both
 the passing checks and that open correctness finding.
+The subsequent [ProcessBackend teardown repair](process-backend-teardown-evidence-2026-09-05.md)
+passes unit, lint, cross-build, macOS race and Linux CPU checks. It preserves
+residency and reports incomplete output drain; it does not close terminal
+scratch retirement or replace the earlier source-bound load receipts.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

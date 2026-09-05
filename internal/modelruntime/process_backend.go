@@ -57,21 +57,27 @@ type ProcessBackendConfig struct {
 	OutputRoot             string
 	InitializationTimeout  time.Duration
 	ShutdownTimeout        time.Duration
-	Stderr                 io.Writer
+	// Stderr must return from Write. A blocked caller-owned writer cannot be canceled.
+	Stderr io.Writer
 }
 
 type ProcessBackend struct {
 	command         *exec.Cmd
 	stdin           io.WriteCloser
+	stdout          io.ReadCloser
+	stderr          io.ReadCloser
 	writer          *bufio.Writer
 	responses       chan driverReadResult
 	done            chan struct{}
+	readStop        chan struct{}
 	shutdownTimeout time.Duration
 
-	rpcMu     sync.Mutex
+	rpcGate   chan struct{}
 	nextID    uint64
 	closeOnce sync.Once
 	closeErr  error
+	killOnce  sync.Once
+	killErr   error
 	waitMu    sync.Mutex
 	waitErr   error
 }
@@ -205,38 +211,83 @@ func NewProcessBackend(
 		return nil, err
 	}
 	command := exec.Command(config.Command[0], config.Command[1:]...)
+	if err := configureDriverProcess(command); err != nil {
+		return nil, err
+	}
 	command.Dir = config.ScratchRoot
 	command.Env = append(os.Environ(), config.Environment...)
 	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1")
-	if config.Stderr == nil {
-		command.Stderr = os.Stderr
-	} else {
-		command.Stderr = config.Stderr
+	stderrWriter := config.Stderr
+	if stderrWriter == nil {
+		stderrWriter = os.Stderr
 	}
-	stdin, err := command.StdinPipe()
+	stdinRead, stdin, err := os.Pipe()
 	if err != nil {
 		return nil, fmt.Errorf("open ModelRuntime driver stdin: %w", err)
 	}
-	stdout, err := command.StdoutPipe()
+	defer func() { _ = stdinRead.Close() }()
+	command.Stdin = stdinRead
+	// Own the output pipes: exec.Cmd.Wait must only wait for the direct process,
+	// independent of inherited descriptors and caller-provided stderr writers.
+	stdout, stdoutWrite, err := os.Pipe()
 	if err != nil {
 		_ = stdin.Close()
 		return nil, fmt.Errorf("open ModelRuntime driver stdout: %w", err)
 	}
+	command.Stdout = stdoutWrite
+	var stderr, stderrWrite *os.File
+	if file, ok := stderrWriter.(*os.File); ok {
+		command.Stderr = file
+	} else {
+		stderr, stderrWrite, err = os.Pipe()
+		if err != nil {
+			_ = stdin.Close()
+			_ = stdout.Close()
+			_ = stdoutWrite.Close()
+			return nil, fmt.Errorf("open ModelRuntime driver stderr: %w", err)
+		}
+		command.Stderr = stderrWrite
+	}
 	if err := command.Start(); err != nil {
 		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = stdoutWrite.Close()
+		if stderr != nil {
+			_ = stderr.Close()
+			_ = stderrWrite.Close()
+		}
 		return nil, fmt.Errorf("start ModelRuntime driver: %w", err)
+	}
+	_ = stdinRead.Close()
+	_ = stdoutWrite.Close()
+	if stderrWrite != nil {
+		_ = stderrWrite.Close()
 	}
 	backend := &ProcessBackend{
 		command: command, stdin: stdin, writer: bufio.NewWriterSize(stdin, 64<<10),
+		stdout:    stdout,
 		responses: make(chan driverReadResult, 1), done: make(chan struct{}),
+		readStop:        make(chan struct{}),
+		rpcGate:         make(chan struct{}, 1),
 		shutdownTimeout: config.ShutdownTimeout,
 	}
 	if backend.shutdownTimeout == 0 {
 		backend.shutdownTimeout = defaultShutdownTimeout
 	}
 	readerDone := make(chan struct{})
+	stderrDone := make(chan error, 1)
+	if stderr != nil {
+		backend.stderr = stderr
+		go func() {
+			defer func() { _ = stderr.Close() }()
+			_, err := io.Copy(stderrWriter, stderr)
+			stderrDone <- err
+		}()
+	} else {
+		stderrDone <- nil
+	}
 	go backend.readResponses(stdout, readerDone)
-	go backend.wait(readerDone)
+	go backend.wait(readerDone, stderrDone)
 	initializeContext, cancel := context.WithTimeout(ctx, config.InitializationTimeout)
 	defer cancel()
 	response, err := backend.call(initializeContext, driverRequestV1{
@@ -244,11 +295,11 @@ func NewProcessBackend(
 		Initialize: initializeDriverRequest(binding, config),
 	})
 	if err != nil || !response.Initialized || !response.Acknowledged {
-		_ = backend.abort()
+		cleanupErr := backend.abort()
 		if err != nil {
-			return nil, fmt.Errorf("initialize resident ModelRuntime driver: %w", err)
+			return nil, fmt.Errorf("initialize resident ModelRuntime driver: %w", errors.Join(err, cleanupErr))
 		}
-		return nil, errors.New("resident ModelRuntime driver did not complete load and warmup")
+		return nil, errors.Join(errors.New("resident ModelRuntime driver did not complete load and warmup"), cleanupErr)
 	}
 	return backend, nil
 }
@@ -360,21 +411,21 @@ func (backend *ProcessBackend) Close() error {
 		}
 		_ = backend.stdin.Close()
 		if err != nil {
-			_ = backend.abort()
-			backend.closeErr = err
+			backend.closeErr = errors.Join(err, backend.abort())
 			return
 		}
 		select {
 		case <-backend.done:
 			backend.closeErr = backend.processWaitError()
 		case <-time.After(backend.shutdownTimeout):
-			backend.closeErr = errors.New("ModelRuntime driver did not exit after shutdown")
-			_ = backend.abort()
+			backend.closeErr = errors.Join(errors.New("ModelRuntime driver did not exit after shutdown"), backend.abort())
 		}
 	})
 	return backend.closeErr
 }
 
+// Done reports direct-driver teardown completion, including bounded output drain.
+// Err reports incomplete drain; Done does not certify all descendants are gone.
 func (backend *ProcessBackend) Done() <-chan struct{} {
 	if backend == nil {
 		return nil
@@ -413,11 +464,20 @@ func (backend *ProcessBackend) call(
 	if err := ctx.Err(); err != nil {
 		return driverResponseV1{}, err
 	}
-	backend.rpcMu.Lock()
-	defer backend.rpcMu.Unlock()
+	select {
+	case backend.rpcGate <- struct{}{}:
+		defer func() { <-backend.rpcGate }()
+	case <-ctx.Done():
+		return driverResponseV1{}, ctx.Err()
+	case <-backend.done:
+		return driverResponseV1{}, backend.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return driverResponseV1{}, err
+	}
 	select {
 	case <-backend.done:
-		return driverResponseV1{}, fmt.Errorf("ModelRuntime driver exited: %w", backend.processWaitError())
+		return driverResponseV1{}, backend.Err()
 	default:
 	}
 	backend.nextID++
@@ -427,36 +487,62 @@ func (backend *ProcessBackend) call(
 	if err != nil || len(encoded) == 0 || len(encoded) > maxDriverMessageBytes {
 		return driverResponseV1{}, errors.New("encode bounded ModelRuntime driver request")
 	}
+	// Cancellation must also interrupt writes when a driver stops reading stdin.
+	cancellationDone := make(chan struct{})
+	stopCancellation := context.AfterFunc(ctx, func() {
+		defer close(cancellationDone)
+		_ = backend.terminate()
+	})
+	defer func() {
+		if !stopCancellation() {
+			<-cancellationDone
+		}
+	}()
 	if _, err := backend.writer.Write(encoded); err != nil {
+		if ctx.Err() != nil {
+			return driverResponseV1{}, ctx.Err()
+		}
 		return driverResponseV1{}, fmt.Errorf("write ModelRuntime driver request: %w", err)
 	}
 	if err := backend.writer.WriteByte('\n'); err != nil {
+		if ctx.Err() != nil {
+			return driverResponseV1{}, ctx.Err()
+		}
 		return driverResponseV1{}, fmt.Errorf("terminate ModelRuntime driver request: %w", err)
 	}
 	if err := backend.writer.Flush(); err != nil {
+		if ctx.Err() != nil {
+			return driverResponseV1{}, ctx.Err()
+		}
 		return driverResponseV1{}, fmt.Errorf("flush ModelRuntime driver request: %w", err)
 	}
+	var result driverReadResult
 	select {
 	case <-ctx.Done():
 		_ = backend.abort()
 		return driverResponseV1{}, ctx.Err()
 	case <-backend.done:
-		return driverResponseV1{}, fmt.Errorf("ModelRuntime driver exited: %w", backend.processWaitError())
-	case result := <-backend.responses:
-		if result.err != nil {
-			_ = backend.abort()
-			return driverResponseV1{}, result.err
+		// The driver may exit immediately after its final acknowledgement.
+		select {
+		case result = <-backend.responses:
+		default:
+			return driverResponseV1{}, backend.Err()
 		}
-		if result.response.RequestID != request.RequestID ||
-			result.response.SchemaVersion != driverProtocolVersion {
-			_ = backend.abort()
-			return driverResponseV1{}, errors.New("ModelRuntime driver response identity is invalid")
-		}
-		if result.response.Error != "" {
-			return driverResponseV1{}, errors.New(result.response.Error)
-		}
-		return result.response, nil
+	case result = <-backend.responses:
 	}
+	if result.err != nil {
+		_ = backend.abort()
+		return driverResponseV1{}, result.err
+	}
+	if result.response.RequestID != request.RequestID ||
+		result.response.SchemaVersion != driverProtocolVersion {
+		_ = backend.abort()
+		return driverResponseV1{}, errors.New("ModelRuntime driver response identity is invalid")
+	}
+	if result.response.Error != "" {
+		return driverResponseV1{}, errors.New(result.response.Error)
+	}
+	return result.response, nil
 }
 
 func (backend *ProcessBackend) readResponses(stdout io.ReadCloser, readerDone chan<- struct{}) {
@@ -484,14 +570,24 @@ func (backend *ProcessBackend) readResponses(stdout io.ReadCloser, readerDone ch
 			backend.deliverTerminal(driverReadResult{err: errors.New("ModelRuntime driver response contains trailing data")})
 			return
 		}
-		backend.deliver(driverReadResult{response: response})
+		if !backend.deliver(driverReadResult{response: response}) {
+			return
+		}
 	}
 }
 
-func (backend *ProcessBackend) deliver(result driverReadResult) {
+func (backend *ProcessBackend) deliver(result driverReadResult) bool {
+	// Keep a final acknowledgement even if exit was already observed.
 	select {
 	case backend.responses <- result:
-	case <-backend.done:
+		return true
+	default:
+	}
+	select {
+	case backend.responses <- result:
+		return true
+	case <-backend.readStop:
+		return false
 	}
 }
 
@@ -502,13 +598,48 @@ func (backend *ProcessBackend) deliverTerminal(result driverReadResult) {
 	}
 }
 
-func (backend *ProcessBackend) wait(readerDone <-chan struct{}) {
-	<-readerDone
-	err := backend.command.Wait()
+func (backend *ProcessBackend) wait(readerDone <-chan struct{}, stderrDone <-chan error) {
+	// Observe exit without reaping so the PID/PGID cannot be reused before the
+	// one group signal. No other path may call command.Wait.
+	observeErr := waitDriverProcessExit(backend.command.Process)
+	if observeErr != nil {
+		observeErr = fmt.Errorf("observe ModelRuntime driver exit: %w", observeErr)
+	}
+	killErr := backend.terminate()
+	waitErr := backend.command.Wait()
+	close(backend.readStop)
+	err := errors.Join(observeErr, killErr, waitErr, backend.drainOutputs(readerDone, stderrDone))
 	backend.waitMu.Lock()
 	backend.waitErr = err
 	backend.waitMu.Unlock()
 	close(backend.done)
+}
+
+func (backend *ProcessBackend) drainOutputs(readerDone <-chan struct{}, stderrDone <-chan error) error {
+	defer func() {
+		_ = backend.stdout.Close()
+		if backend.stderr != nil {
+			_ = backend.stderr.Close()
+		}
+	}()
+	timer := time.NewTimer(backend.shutdownTimeout)
+	defer timer.Stop()
+	select {
+	case <-readerDone:
+	case <-timer.C:
+		return errors.New("ModelRuntime driver stdout drain timed out; inherited descriptors may remain open")
+	}
+	select {
+	case err := <-stderrDone:
+		if err != nil {
+			return fmt.Errorf("drain ModelRuntime driver stderr: %w", err)
+		}
+		return nil
+	case <-timer.C:
+		// Closing the pipe releases reads, but cannot interrupt a blocked Write
+		// inside the caller's stderr sink. Report that incomplete drain.
+		return errors.New("ModelRuntime driver stderr drain timed out; stderr writer may remain blocked")
+	}
 }
 
 func (backend *ProcessBackend) processWaitError() error {
@@ -521,11 +652,24 @@ func (backend *ProcessBackend) abort() error {
 	if backend == nil || backend.command == nil || backend.command.Process == nil {
 		return nil
 	}
-	err := backend.command.Process.Kill()
-	if errors.Is(err, os.ErrProcessDone) {
-		return nil
+	err := backend.terminate()
+	select {
+	case <-backend.done:
+		return errors.Join(err, backend.processWaitError())
+	case <-time.After(2 * backend.shutdownTimeout):
+		return errors.Join(err, errors.New("ModelRuntime driver teardown did not finish"))
 	}
-	return err
+}
+
+func (backend *ProcessBackend) terminate() error {
+	backend.killOnce.Do(func() {
+		_ = backend.stdin.Close()
+		backend.killErr = killDriverProcessGroup(backend.command.Process)
+		if backend.killErr != nil {
+			backend.killErr = fmt.Errorf("terminate ModelRuntime driver group: %w", backend.killErr)
+		}
+	})
+	return backend.killErr
 }
 
 func initializeDriverRequest(
