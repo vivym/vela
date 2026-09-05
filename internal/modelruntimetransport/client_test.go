@@ -111,6 +111,47 @@ func TestClientWaitsForModelRuntimeSocketDuringStartup(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 }
 
+func TestClientWaitsForModelRuntimeSocketPermissionsDuringStartup(t *testing.T) {
+	directory := shortRuntimeDirectory(t)
+	socketPath := filepath.Join(directory, "runtime.sock")
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	if err := os.Chmod(socketPath, 0o666); err != nil {
+		t.Fatalf("set pre-publication socket mode: %v", err)
+	}
+	server := grpc.NewServer()
+	velav1.RegisterModelRuntimeServiceServer(server, &recordingRuntimeServer{})
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		_ = listener.Close()
+		if serveErr := <-done; serveErr != nil && serveErr != grpc.ErrServerStopped {
+			t.Errorf("serve ModelRuntime: %v", serveErr)
+		}
+	})
+	protected := make(chan error, 1)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		protected <- os.Chmod(socketPath, 0o600)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	client, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{
+		SocketPath: socketPath, ExpectedUID: uint32(os.Geteuid()),
+	})
+	if protectErr := <-protected; protectErr != nil {
+		t.Fatalf("protect ModelRuntime socket: %v", protectErr)
+	}
+	if err != nil {
+		t.Fatalf("Dial during socket permission publication: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+}
+
 func TestClientTimesOutWaitingForMissingModelRuntimeSocket(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
 	defer cancel()

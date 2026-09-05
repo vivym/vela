@@ -23,6 +23,8 @@ const (
 	socketPollInterval     = 50 * time.Millisecond
 )
 
+var errSocketPermissionsPending = errors.New("ModelRuntime socket permissions are not ready")
+
 type Config struct {
 	SocketPath  string
 	ExpectedUID uint32
@@ -115,7 +117,7 @@ func waitForSocket(ctx context.Context, path string, expectedUID uint32) error {
 	for {
 		if _, err := validateSocket(path, expectedUID); err == nil {
 			return nil
-		} else if !errors.Is(err, os.ErrNotExist) {
+		} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, errSocketPermissionsPending) {
 			return err
 		}
 		select {
@@ -132,9 +134,11 @@ func validateSocket(path string, expectedUID uint32) (os.FileInfo, error) {
 		return nil, fmt.Errorf("inspect ModelRuntime socket: %w", err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 ||
-		stat.Uid != expectedUID {
+	if !ok || info.Mode()&os.ModeSocket == 0 || stat.Uid != expectedUID {
 		return nil, errors.New("ModelRuntime socket owner, type, or permissions are invalid")
+	}
+	if info.Mode().Perm() != 0o600 {
+		return nil, errSocketPermissionsPending
 	}
 	return info, nil
 }
