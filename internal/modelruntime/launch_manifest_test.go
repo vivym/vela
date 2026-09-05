@@ -1,6 +1,7 @@
 package modelruntime_test
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,6 +38,15 @@ func TestLoadLaunchManifestReturnsCompleteResidentRuntimeBindings(t *testing.T) 
 		len(bindings[0].Members) != 1 || bindings[0].WorkerMemberEpoch != 11 {
 		t.Fatalf("runtime bindings = %#v", bindings)
 	}
+	members, err := loaded.ExecutionFloorMembers()
+	if err != nil || len(members) != 1 || members[0].WorkerMemberID != loaded.Members[0].ID || members[0].MemberEpoch != 11 ||
+		hex.EncodeToString(members[0].IdentityDigest) != strings.Repeat("d", 64) || hex.EncodeToString(members[0].DeviceSubsetDigest) != strings.Repeat("e", 64) {
+		t.Fatalf("launch floor members: %+v %v", members, err)
+	}
+	members[0].IdentityDigest[0] ^= 1
+	if loaded.Members[0].IdentityDigest != strings.Repeat("d", 64) {
+		t.Fatal("floor consumer changed launch authority")
+	}
 }
 
 func TestLoadLaunchManifestRejectsAmbiguousOrIncompleteAuthority(t *testing.T) {
@@ -46,6 +56,28 @@ func TestLoadLaunchManifestRejectsAmbiguousOrIncompleteAuthority(t *testing.T) {
 		name   string
 		mutate func(map[string]any)
 	}{
+		{
+			name:   "old schema",
+			mutate: func(document map[string]any) { document["schema_version"] = 1 },
+		},
+		{
+			name: "missing member identity",
+			mutate: func(document map[string]any) {
+				delete(document["members"].([]any)[0].(map[string]any), "identity_digest")
+			},
+		},
+		{
+			name: "missing device subset",
+			mutate: func(document map[string]any) {
+				delete(document["members"].([]any)[0].(map[string]any), "device_subset_digest")
+			},
+		},
+		{
+			name: "noncanonical device subset",
+			mutate: func(document map[string]any) {
+				document["members"].([]any)[0].(map[string]any)["device_subset_digest"] = strings.Repeat("E", 64)
+			},
+		},
 		{
 			name: "unknown field",
 			mutate: func(document map[string]any) {
@@ -135,6 +167,7 @@ func TestLoadLaunchManifestAcceptsCertifiedMultiMemberLLMTopology(t *testing.T) 
 	})
 	manifest["members"] = append(manifest["members"].([]any), map[string]any{
 		"id": "41000000-0000-0000-0000-000000000002", "epoch": float64(19),
+		"identity_digest": strings.Repeat("1", 64), "device_subset_digest": strings.Repeat("2", 64),
 	})
 	path := filepath.Join(root, "multi-member-llm.json")
 	writeLaunchManifest(t, path, manifest)
@@ -173,7 +206,7 @@ func TestEncodeLaunchManifestRejectsManifestLargerThanLoaderLimit(t *testing.T) 
 
 func launchManifestFixture(root string) map[string]any {
 	return map[string]any{
-		"schema_version":             1,
+		"schema_version":             2,
 		"worker_profile_revision_id": "71000000-0000-0000-0000-000000000001",
 		"worker_role":                "aux",
 		"capacity_slots":             float64(1),
@@ -189,6 +222,7 @@ func launchManifestFixture(root string) map[string]any {
 		}},
 		"members": []any{map[string]any{
 			"id": "41000000-0000-0000-0000-000000000001", "epoch": float64(11),
+			"identity_digest": strings.Repeat("d", 64), "device_subset_digest": strings.Repeat("e", 64),
 		}},
 		"local_devices": []any{map[string]any{
 			"device_id": "31000000-0000-0000-0000-000000000001", "device_epoch": float64(13),

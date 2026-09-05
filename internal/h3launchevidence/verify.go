@@ -232,7 +232,7 @@ func verifyRegistryWorker(
 			member.NodeIdentity != expected.NodeIdentity || member.ComputeNodeID == uuid.Nil ||
 			member.Readiness != "READY" || !hexDigestPattern.MatchString(member.DeviceSubsetDigest) ||
 			!hexDigestPattern.MatchString(member.IdentityDigest) ||
-			member.IdentityDigest != expected.IdentityDigest ||
+			member.IdentityDigest != expected.IdentityDigest || member.DeviceSubsetDigest != expected.DeviceSubsetDigest ||
 			len(member.Devices) != len(expected.DeviceConstraints) {
 			return WorkerEvidence{}, invalid("WorkerMember %s Fleet authority is missing, stale, or not READY", expected.ID)
 		}

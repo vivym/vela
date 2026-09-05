@@ -351,7 +351,7 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 		}
 	}
 	actuation := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		SchemaVersion: 2, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: images[0],
 		StageWorkerAgentImage:          stageImage,
 		RuntimeImage:                   runtimeImage,
@@ -377,7 +377,8 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49200000-0000-0000-0000-000000000205"), MemberEpoch: 1,
 				Key: "member-0", NodeIdentity: "campaign-node-a", ResourceClass: "GPU", DeviceCount: 1,
-				IdentityDigest: "c4e4970f516c8e4cb61c23d077f071afec0dcd82110cfcb70c9031b410e23089",
+				IdentityDigest:     "c4e4970f516c8e4cb61c23d077f071afec0dcd82110cfcb70c9031b410e23089",
+				DeviceSubsetDigest: strings.Repeat("3", 64),
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49200000-0000-0000-0000-000000000206"), DeviceEpoch: 1,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000201", PCIBDF: "0000:41:00.0",

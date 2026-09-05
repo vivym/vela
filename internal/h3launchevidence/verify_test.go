@@ -114,7 +114,7 @@ func TestVerifyAcceptsAllocationWithoutOptionalTimestamp(t *testing.T) {
 }
 
 func TestVerifyRejectsRegistryDigestMismatchAgainstApprovedLaunch(t *testing.T) {
-	for _, field := range []string{"device set", "membership", "member identity"} {
+	for _, field := range []string{"device set", "membership", "member identity", "device subset"} {
 		t.Run(field, func(t *testing.T) {
 			input := exactLaunchInput(t)
 			worker := input.Rollout.WorkerBundles[0].WorkerInstances[0]
@@ -128,6 +128,8 @@ func TestVerifyRejectsRegistryDigestMismatchAgainstApprovedLaunch(t *testing.T) 
 				input.Registry.Workers[0].MembershipDigest = digestHex('f')
 			case "member identity":
 				input.Registry.Workers[0].Members[0].IdentityDigest = digestHex('f')
+			case "device subset":
+				input.Registry.Workers[0].Members[0].DeviceSubsetDigest = digestHex('f')
 			}
 			if evidence, err := h3launchevidence.Verify(input); !errors.Is(err, h3launchevidence.ErrInvalidLaunchEvidence) {
 				t.Fatalf("mismatched %s yielded evidence for %d workers: %v", field, len(evidence.Workers), err)
@@ -251,7 +253,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 	stageProfileID := uuid.MustParse("49320000-0000-0000-0000-00000000000b")
 	runtimeDigest := digest('3')
 	bundle := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		SchemaVersion: 2, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace:                      "vela-system",
 		InitImage:                      "docker.io/library/busybox@" + digest('1'),
 		StageWorkerAgentImage:          "ghcr.io/vivym/vela-stage-worker-agent@" + digest('2'),
@@ -277,7 +279,8 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: memberID, MemberEpoch: 11, Key: "member-0", NodeIdentity: "gpu-node-01",
 				ResourceClass: "GPU", DeviceCount: 1,
-				IdentityDigest: "7e5eba74e8016c5147f1cc30fb3bbd9a3c6ebf139a0cb9865628accdc235766e",
+				IdentityDigest:     "7e5eba74e8016c5147f1cc30fb3bbd9a3c6ebf139a0cb9865628accdc235766e",
+				DeviceSubsetDigest: digestHex('8'),
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: deviceID, DeviceEpoch: 13,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000007",

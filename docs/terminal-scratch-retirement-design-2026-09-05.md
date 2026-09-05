@@ -18,6 +18,10 @@ The [member forwarding path](member-floor-forwarding-evidence-2026-09-06.md) add
 authenticated leader delivery and validates both acknowledgements. The explicit
 [all-member collector](all-member-floor-evidence-2026-09-06.md) now validates
 complete trusted history and reconfirms every member's durable installation.
+The [launch topology contract](launch-topology-authority-evidence-2026-09-06.md)
+now carries trusted member identity/subset digests from v2 Fleet actuation into
+v2 Runtime manifests; explicit floor assembly derives its members from that
+manifest and rejects conflicting configuration before backend startup.
 Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
@@ -380,8 +384,12 @@ execution or drain. Missing/replaced state fails closed. The local signed floor
 RPC now reports identity/digest-bound durable installation, including forwarding
 through an authenticated member. An explicitly configured Worker collector now
 validates complete historical Runtime routes and requires all-member durable
-acknowledgements, with full retry after partial installation. Default command
-assembly and persistent retirement orchestration remain open. WaitAcceptedOperations joins
+acknowledgements, with full retry after partial installation. Runtime launch v2
+now supplies the trusted complete member digest configuration; subset digests
+remain opaque approved values. Default command assembly still needs independent
+bootstrap authority: a missing file, empty directory or repeated Pod init is not
+evidence of first use. Recovery must never receive a reusable initialization
+permission. Persistent retirement orchestration remains open. WaitAcceptedOperations joins
 only the calls registered before that installation, not asynchronous backend
 writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency

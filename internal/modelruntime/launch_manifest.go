@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	launchManifestSchemaVersion = 1
+	launchManifestSchemaVersion = 2
 	maxLaunchManifestBytes      = 1 << 20
 	maxLaunchDevices            = 64
 	maxLaunchMembers            = 64
@@ -56,8 +56,10 @@ type LaunchDeviceEpoch struct {
 }
 
 type LaunchMemberEpoch struct {
-	ID    string `json:"id"`
-	Epoch int64  `json:"epoch"`
+	ID                 string `json:"id"`
+	Epoch              int64  `json:"epoch"`
+	IdentityDigest     string `json:"identity_digest"`
+	DeviceSubsetDigest string `json:"device_subset_digest"`
 }
 
 type LaunchRuntime struct {
@@ -141,6 +143,24 @@ func (manifest LaunchManifest) RuntimeBindings() ([]stageauthority.RuntimeBindin
 	return bindings, nil
 }
 
+// ExecutionFloorMembers preserves the trusted opaque digests in launch authority.
+// Device-subset digests are not recomputed from the local device description.
+func (manifest LaunchManifest) ExecutionFloorMembers() ([]ExecutionFloorMember, error) {
+	if err := validateLaunchManifest(manifest); err != nil {
+		return nil, err
+	}
+	members := make([]ExecutionFloorMember, 0, len(manifest.Members))
+	for _, member := range manifest.Members {
+		identity, _ := hex.DecodeString(member.IdentityDigest)
+		subset, _ := hex.DecodeString(member.DeviceSubsetDigest)
+		members = append(members, ExecutionFloorMember{
+			WorkerMemberID: member.ID, MemberEpoch: member.Epoch,
+			IdentityDigest: identity, DeviceSubsetDigest: subset,
+		})
+	}
+	return members, nil
+}
+
 func (runtime LaunchRuntime) ProcessBackendConfig(localDevices []DriverDevice) (ProcessBackendConfig, error) {
 	initializationTimeout, err := time.ParseDuration(runtime.InitializationTimeout)
 	if err != nil {
@@ -184,7 +204,8 @@ func validateLaunchManifest(manifest LaunchManifest) error {
 	}
 	members := make(map[string]int64, len(manifest.Members))
 	for _, member := range manifest.Members {
-		if uuid.Validate(member.ID) != nil || member.Epoch <= 0 {
+		if uuid.Validate(member.ID) != nil || member.Epoch <= 0 ||
+			!validLaunchDigest(member.IdentityDigest) || !validLaunchDigest(member.DeviceSubsetDigest) {
 			return errors.New("ModelRuntime launch manifest membership is invalid")
 		}
 		if _, duplicate := members[member.ID]; duplicate {

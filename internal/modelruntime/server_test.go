@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -164,6 +165,64 @@ func TestStartRuntimeServerRejectsInvalidClockSkew(t *testing.T) {
 			)
 			if server != nil || startErr == nil || startErr.Error() != "ModelRuntime server clock skew is invalid" {
 				t.Fatalf("StartRuntimeServer skew=%s server=%v error=%v", maxClockSkew, server, startErr)
+			}
+		})
+	}
+}
+
+func TestRuntimeServerRejectsFloorTopologyDriftBeforeStartingBackends(t *testing.T) {
+	validator, err := stageauthority.NewValidator(map[string][]byte{"authority-v1": make([]byte, 32)}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mutation := range []string{"identity", "subset", "epoch", "unknown member", "duplicate", "missing member"} {
+		t.Run(mutation, func(t *testing.T) {
+			manifest := runtimeServerManifest(t.TempDir())
+			manifest.WorkerRole, manifest.SharedSlotException = "llm", ""
+			manifest.Runtimes = manifest.Runtimes[:1]
+			manifest.Runtimes[0].Component = "LLM"
+			manifest.Members = append(manifest.Members, modelruntime.LaunchMemberEpoch{
+				ID: "41000000-0000-0000-0000-000000000002", Epoch: 12,
+				IdentityDigest: repeatHex("1"), DeviceSubsetDigest: repeatHex("2"),
+			})
+			members, err := manifest.ExecutionFloorMembers()
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch mutation {
+			case "identity":
+				members[0].IdentityDigest[0] ^= 1
+			case "subset":
+				members[0].DeviceSubsetDigest[0] ^= 1
+			case "epoch":
+				members[0].MemberEpoch++
+			case "unknown member":
+				members[0].WorkerMemberID = "41000000-0000-0000-0000-000000000003"
+			case "duplicate":
+				members[1] = members[0]
+			case "missing member":
+				members = members[:1]
+			}
+			epochCalls, backendCalls := 0, 0
+			server, err := modelruntime.StartRuntimeServer(context.Background(), modelruntime.RuntimeServerConfig{
+				Manifest: manifest, Validator: validator, CancelTimeout: time.Second,
+				SocketPath:     filepath.Join(privateSocketRoot(t), "runtime.sock"),
+				ExecutionFloor: &modelruntime.ExecutionFloorConfig{Members: members},
+				EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) {
+					epochCalls++
+					return 1, nil
+				}),
+				BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+					backendCalls++
+					return modelruntime.NewFakeEncoderRuntime(), nil
+				},
+			})
+			if server != nil {
+				_ = server.Close()
+				t.Fatal("mismatched floor topology started a server")
+			}
+			if err == nil || !strings.Contains(err.Error(), "execution floor topology") || epochCalls != 0 || backendCalls != 0 {
+				t.Fatalf("topology rejection: err=%v epoch calls=%d backend calls=%d", err, epochCalls, backendCalls)
 			}
 		})
 	}
@@ -520,14 +579,16 @@ func startTestRuntimeServer(
 
 func runtimeServerManifest(root string) modelruntime.LaunchManifest {
 	return modelruntime.LaunchManifest{
-		SchemaVersion:           1,
+		SchemaVersion:           2,
 		WorkerProfileRevisionID: "71000000-0000-0000-0000-000000000001",
 		WorkerRole:              "aux", CapacitySlots: 1, SharedSlotException: "H3_AUX_ENCODER_VAE",
 		WorkerInstanceID: "21000000-0000-0000-0000-000000000001", WorkerInstanceEpoch: 7,
 		WorkerMemberID: "41000000-0000-0000-0000-000000000001", WorkerMemberEpoch: 11,
 		DeviceSetDigest: repeatHex("a"), MembershipDigest: repeatHex("b"),
 		Devices: []modelruntime.LaunchDeviceEpoch{{ID: "31000000-0000-0000-0000-000000000001", Epoch: 13}},
-		Members: []modelruntime.LaunchMemberEpoch{{ID: "41000000-0000-0000-0000-000000000001", Epoch: 11}},
+		Members: []modelruntime.LaunchMemberEpoch{{ID: "41000000-0000-0000-0000-000000000001", Epoch: 11,
+			IdentityDigest: repeatHex("d"), DeviceSubsetDigest: repeatHex("e"),
+		}},
 		LocalDevices: []modelruntime.DriverDevice{{
 			DeviceID: "31000000-0000-0000-0000-000000000001", DeviceEpoch: 13,
 			GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",

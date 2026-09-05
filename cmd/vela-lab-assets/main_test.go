@@ -107,12 +107,23 @@ func TestGenerateCreatesProtectedCompleteAssets(t *testing.T) {
 	if err := minioCertificate.VerifyHostname(defaultMinIOHost); err != nil {
 		t.Fatalf("MinIO certificate does not cover %q: %v", defaultMinIOHost, err)
 	}
-	for _, index := range []string{"1", "2", "thumbnail"} {
+	for _, descriptor := range labv2contract.WorkerDescriptors() {
+		index := descriptor.AssetIndex
 		launch, err := modelruntime.LoadLaunchManifest(
 			filepath.Join(output, "stage", "worker-"+index+"-launch.json"),
 		)
 		if err != nil {
 			t.Fatalf("load worker %s launch manifest: %v", index, err)
+		}
+		certificate := readCertificate(t, filepath.Join(output, "pki", "stage-worker-"+index+".crt"))
+		if len(certificate.URIs) != 1 || len(launch.Members) != 1 {
+			t.Fatalf("worker %s lacks exact member identity", index)
+		}
+		identity := sha256.Sum256([]byte(certificate.URIs[0].String()))
+		subset := sha256.Sum256([]byte("vela/lab-v2/" + descriptor.Name + "/device-subset/v1"))
+		if launch.SchemaVersion != 2 || launch.Members[0].IdentityDigest != hex.EncodeToString(identity[:]) ||
+			launch.Members[0].DeviceSubsetDigest != hex.EncodeToString(subset[:]) {
+			t.Fatalf("worker %s launch topology differs from lab bootstrap authority", index)
 		}
 		wantDigest := "7cba327fcc04f689d72140287a8c206aeb6080a7ddff641bc19efeebff1d537b"
 		if index == "thumbnail" {

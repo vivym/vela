@@ -45,6 +45,15 @@ authority is implemented.
 
 ## Release bundle boundary
 
+WorkerBundle actuation and generated ModelRuntime launch manifests require
+schema 2. Each approved member supplies its exact `identity_digest` and opaque
+`device_subset_digest`; Fleet forwards both and the launch verifier compares
+them with Registry authority. Schema-1 actuation/manifests are rejected. Rebuild
+configuration from complete trusted data and recompute bundle/plan digests;
+do not manufacture a missing subset digest from local device constraints.
+The outer ResidencyPlanRollouts and ApprovedResidencyPlan schemas remain 1.
+Template subset digests are placeholders, not approved device authority.
+
 Production assembly must include the final `kubectl kustomize` output as the
 exact `fleet-controller` render in the canonical Slice 40 release bundle. The
 bundle rejects placeholder or mutable image references and binds the approved

@@ -17,7 +17,7 @@ data:
             "id": "49320000-0000-0000-0000-000000000001",
             "stable_id": "h3-disaggregated-template-r1",
             "revision": 1,
-            "content_digest": "3f0bb8fa08f507b35a247e45b2f81aad9f554b997f956a17400a1209c1e5c20e",
+            "content_digest": "1924682c33b57765842a60a10398958e88dd40cbe7133a30e75ffd571ca7993d",
             "approval_evidence_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "approved_at": "2026-08-31T00:00:00Z",
             "approved_by": "fleet/template-not-approved",
@@ -82,13 +82,13 @@ data:
                 "id": "49320000-0000-0000-0000-000000000002",
                 "stable_id": "h3-worker-bundle-template",
                 "desired_generation": 1,
-                "layout_digest": "2b6071fc40855f060ef9a81c557c875c3dea6bafc243944a82f6a33c0e1b6fa0"
+                "layout_digest": "63ef4b6ebe9521fcab0e796ad7c76c9b460a4a50ed38164891017a31df42aa40"
               },
               {
                 "id": "49320000-0000-0000-0000-00000000000b",
                 "stable_id": "h3-cpu-media-worker-bundle-template",
                 "desired_generation": 1,
-                "layout_digest": "009e094a24cfdbb84a47c1cc27c9d70fd11b732e300b1ae40fa19b4212c2522c"
+                "layout_digest": "9f845a0336afbafa8a14e6b64abf06a6b3986a8229a979225ace33c93a2ff591"
               }
             ],
             "worker_instances": [
@@ -266,10 +266,10 @@ data:
           },
           "worker_bundles": [
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "plan_revision_id": "49320000-0000-0000-0000-000000000001",
               "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
-              "revision_digest": "2b6071fc40855f060ef9a81c557c875c3dea6bafc243944a82f6a33c0e1b6fa0",
+              "revision_digest": "63ef4b6ebe9521fcab0e796ad7c76c9b460a4a50ed38164891017a31df42aa40",
               "namespace": "vela-system",
               "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
               "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -345,6 +345,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "1cd8b517bd35e5ec297ed04eae7b5a4b79acd32e2657f18654df352f82886a81",
+                      "device_subset_digest": "622037679682b81a61b49cf1bd7c34972de6cdcc5fe4b43c3621670ffb7b5e1a",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -398,6 +399,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "3a4f7cab90e816f826b4290de8232602a1a53b77f25801d0466e9690f91922d4",
+                      "device_subset_digest": "fd80e154c87858baa67049479c72e2b8ec119ad3b1ad191b4258b920813e3036",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -451,6 +453,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "62af7522fe4a4e0c62f2311ba7e071131cbb416156eb6dbedda9d58f0e553d53",
+                      "device_subset_digest": "08fcae4de5cc503275065814f286bda1c243b83cca3c6cf675b2e9218575a8de",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -504,6 +507,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "2db01ba2fc1e6250c1d98dc6bef9a75ef99e8605ccd9591df95b29517f3b9c1a",
+                      "device_subset_digest": "6565dd8bf946fe39a8cc2a917eca47fc495abeabf6edf21c5dd9405374de9925",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -557,6 +561,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "517104ca99669d23672e6d4ad3a4361b02b7f446c79873e7b58f776c50bfac10",
+                      "device_subset_digest": "237f9e28b5de464beb523cba393d8001675b59d632afb2580dcacf05d82a18cf",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -610,6 +615,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "275c21f3ffd146489193f8d1f9b046dcbd881e4e5534a2b4dcb4892a7ca49415",
+                      "device_subset_digest": "a596b8fc377080e499e9afdfd1a758cc157c76e1e31f2a7925ba15deec8967fa",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -663,6 +669,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "4908db47b53c8273773455866ec943d0b9938df58db0251aad63231a19b16210",
+                      "device_subset_digest": "8c98442a734586548029a3717ac9648126e8f9fa9a058ac9e49687234bf4cd84",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -716,6 +723,7 @@ data:
                       "node_identity": "h3-node-template",
                       "resource_class": "GPU",
                       "identity_digest": "f3824970730dce95d5a5ebec0cf8e4ad0b91790d92cf2c18d82962035afb822f",
+                      "device_subset_digest": "887bccb777818e5a3c3348e961cdbdeea097cb2f0ed104991d06f827fe0fb3b6",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -731,10 +739,10 @@ data:
               ]
             },
             {
-              "schema_version": 1,
+              "schema_version": 2,
               "plan_revision_id": "49320000-0000-0000-0000-000000000001",
               "worker_bundle_id": "49320000-0000-0000-0000-00000000000b",
-              "revision_digest": "009e094a24cfdbb84a47c1cc27c9d70fd11b732e300b1ae40fa19b4212c2522c",
+              "revision_digest": "9f845a0336afbafa8a14e6b64abf06a6b3986a8229a979225ace33c93a2ff591",
               "namespace": "vela-system",
               "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
               "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -781,6 +789,7 @@ data:
                       "node_identity": "h3-cpu-node-template",
                       "resource_class": "CPU",
                       "identity_digest": "c2eaea29d71703bc566e3ca3b5a10ef1d7e97f0f160fe218247ee8e019bbd07b",
+                      "device_subset_digest": "cf48b0b37e4a9a32bc7a6ff4495e1842667af78faeaf8a3b78170f09f5ccff32",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -827,6 +836,7 @@ data:
                       "node_identity": "h3-cpu-node-template",
                       "resource_class": "CPU",
                       "identity_digest": "aa26e812ca99af9dd2210842a01090ae33ddc66c918b0e690a02c7ebe4199656",
+                      "device_subset_digest": "684a0f2cc5fc82a349f97761636901f52a04833af868110852c82c7e718e3e72",
                       "device_count": 1,
                       "device_constraints": [
                         {
@@ -873,6 +883,7 @@ data:
                       "node_identity": "h3-cpu-node-template",
                       "resource_class": "CPU",
                       "identity_digest": "4a2600cbac5574ff6857d146e82230560e3191026b78708681938cb91cdbec03",
+                      "device_subset_digest": "8407e8c51f5e06a4043aec6edb3ae30ddde8ad1b7c372d34192faaa63d497db1",
                       "device_count": 1,
                       "device_constraints": [
                         {

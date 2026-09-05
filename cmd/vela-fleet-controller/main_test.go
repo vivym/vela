@@ -192,7 +192,7 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 	workerID := uuid.MustParse("49310000-0000-0000-0000-000000000004")
 	profileID := uuid.MustParse("49310000-0000-0000-0000-000000000005")
 	bundle := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		SchemaVersion: 2, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: pinnedTestImage("busybox", 'a'),
 		StageWorkerAgentImage:          pinnedTestImage("vela-stage-worker-agent", 'b'),
 		RuntimeImage:                   pinnedTestImage("vela-h3-stage-runtime", 'c'),
@@ -218,7 +218,8 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49310000-0000-0000-0000-000000000006"), MemberEpoch: 11,
 				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
-				IdentityDigest: "796332ebf0c5ea66d59e3e6ae5c4e01a189755b174250479bdd7b01dcd2d4fbc",
+				IdentityDigest:     "796332ebf0c5ea66d59e3e6ae5c4e01a189755b174250479bdd7b01dcd2d4fbc",
+				DeviceSubsetDigest: testDigest('3'),
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49310000-0000-0000-0000-000000000008"), DeviceEpoch: 3,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",

@@ -194,6 +194,8 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			launch.WorkerMemberID != expectedMember.ID.String() ||
 			launch.DeviceSetDigest != expectedWorkers[workerID].DeviceSetDigest ||
 			launch.MembershipDigest != expectedWorkers[workerID].MembershipDigest ||
+			len(launch.Members) != 1 || launch.Members[0].IdentityDigest != expectedMember.IdentityDigest ||
+			launch.Members[0].DeviceSubsetDigest != expectedMember.DeviceSubsetDigest ||
 			len(launch.LocalDevices) != 1 ||
 			launch.LocalDevices[0].GPUUUID != expectedMember.DeviceConstraints[0].GPUUUID {
 			t.Fatalf("WorkerInstance Pod %q launch manifest = %#v error=%v", pod.Name, launch, err)
@@ -479,7 +481,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		},
 	}
 	bundle := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion:                  1,
+		SchemaVersion:                  2,
 		PlanRevisionID:                 uuid.MustParse("49300000-0000-0000-0000-000000000001"),
 		WorkerBundleID:                 uuid.MustParse("49300000-0000-0000-0000-000000000002"),
 		Namespace:                      "vela-system",
@@ -515,14 +517,14 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 				{
 					ID: memberIDs[0], MemberEpoch: 21,
 					Key: "member-0", NodeIdentity: "llm-node-a", ResourceClass: "GPU",
-					IdentityDigest: memberIdentityDigests[memberIDs[0]],
-					DeviceCount:    2, DeviceConstraints: memberDevices["member-0"],
+					IdentityDigest: memberIdentityDigests[memberIDs[0]], DeviceSubsetDigest: strings.Repeat("3", 64),
+					DeviceCount: 2, DeviceConstraints: memberDevices["member-0"],
 				},
 				{
 					ID: memberIDs[1], MemberEpoch: 22,
 					Key: "member-1", NodeIdentity: "llm-node-b", ResourceClass: "GPU",
-					IdentityDigest: memberIdentityDigests[memberIDs[1]],
-					DeviceCount:    2, DeviceConstraints: memberDevices["member-1"],
+					IdentityDigest: memberIdentityDigests[memberIDs[1]], DeviceSubsetDigest: strings.Repeat("4", 64),
+					DeviceCount: 2, DeviceConstraints: memberDevices["member-1"],
 				},
 			},
 		}},
@@ -820,6 +822,18 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 		mutate func(*fleetcontroller.WorkerBundleActuation)
 	}{
 		{
+			name: "legacy schema",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.SchemaVersion = 1
+			},
+		},
+		{
+			name: "missing device subset authority",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[0].Members[0].DeviceSubsetDigest = ""
+			},
+		},
+		{
 			name: "duplicate device id",
 			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
 				bundle.WorkerInstances[1].Members[0].DeviceConstraints[0].DeviceID =
@@ -895,6 +909,30 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 			}
 			if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err == nil {
 				t.Fatal("invalid WorkerBundle actuation was accepted")
+			}
+		})
+	}
+}
+
+func TestWorkerBundleActuationBindsDeviceSubsetToApprovedRevision(t *testing.T) {
+	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle.WorkerInstances[0].Members[0].DeviceSubsetDigest = strings.Repeat("3", 64)
+	if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err == nil {
+		t.Fatal("changed device subset retained the approved revision")
+	}
+	for _, mutation := range []string{"schema", "missing subset"} {
+		t.Run(mutation, func(t *testing.T) {
+			spec := h3BundleSpec()
+			if mutation == "schema" {
+				spec.SchemaVersion = 1
+			} else {
+				spec.DeviceSubsetDigests[0] = ""
+			}
+			if _, err := fleetcontroller.BuildH3WorkerBundleActuation(spec); err == nil {
+				t.Fatal("incomplete H3 authority was accepted")
 			}
 		})
 	}
@@ -1086,6 +1124,7 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 	devices := [8]fleetcontroller.DeviceConstraint{}
 	memberEpochs := [8]int64{}
 	deviceSetDigests := [8]string{}
+	deviceSubsetDigests := [8]string{}
 	membershipDigests := [8]string{}
 	ditRuntimes := [7]fleetcontroller.ModelRuntimeProcess{}
 	for index := range devices {
@@ -1099,6 +1138,7 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		}
 		memberEpochs[index] = int64(index + 21)
 		deviceSetDigests[index] = strings.Repeat(string(rune('1'+index)), 64)
+		deviceSubsetDigests[index] = strings.Repeat(string("abcdef12"[index]), 64)
 		membershipDigests[index] = strings.Repeat(string("89abcdef"[index]), 64)
 		if index > 0 {
 			ditRuntimes[index-1] = fleetcontroller.ModelRuntimeProcess{
@@ -1114,7 +1154,7 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		}
 	}
 	return fleetcontroller.H3WorkerBundleSpec{
-		SchemaVersion:  1,
+		SchemaVersion:  2,
 		PlanRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000001"),
 		WorkerBundleID: uuid.MustParse("49300000-0000-0000-0000-000000000002"),
 		Namespace:      "vela-system", NodeIdentity: "h3-node-01",
@@ -1135,6 +1175,7 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		Devices:                        devices,
 		MemberEpochs:                   memberEpochs,
 		DeviceSetDigests:               deviceSetDigests,
+		DeviceSubsetDigests:            deviceSubsetDigests,
 		MembershipDigests:              membershipDigests,
 		Encoder: fleetcontroller.ModelRuntimeProcess{
 			ModelResidencyID:       uuid.MustParse("49300000-0000-0000-0000-000000000201"),
@@ -1200,7 +1241,8 @@ func cpuMediaBundle(t *testing.T) fleetcontroller.WorkerBundleActuation {
 				ResourceClass: "CPU", IdentityDigest: memberIdentityDigest(
 					uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000007%d", index+1)),
 				),
-				DeviceCount: 1, DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+				DeviceSubsetDigest: strings.Repeat(spec.digit, 64),
+				DeviceCount:        1, DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID:    uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000008%d", index+1)),
 					DeviceEpoch: 1, ResourceClass: "CPU",
 				}},

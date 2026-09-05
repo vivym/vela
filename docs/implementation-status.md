@@ -144,6 +144,16 @@ multiple profiles pass UDS response-loss and restart checks. Full unit,
 related-module race, lint and non-root Linux checks pass. Default trusted
 Runtime/Worker configuration, automatic startup reconciliation, writer drain
 and terminal retirement remain open.
+The [trusted launch topology increment](launch-topology-authority-evidence-2026-09-06.md)
+now carries exact member identity/device-subset digests from approved v2 Fleet
+actuation into v2 Runtime launch manifests and derives the explicit Runtime
+floor configuration from them. Supplied conflicting topology rejects before
+epoch allocation or backend startup. Registry launch verification also compares
+the approved subset digest. Full unit, related-module race, Catalog promotion
+and H3 campaign evidence integration, lint, deployment, cross-build and non-root
+Linux checks pass. Old launch/actuation schemas reject and require complete
+trusted v2 reconstruction. Default startup bootstrap/recovery and the remaining
+Worker/drain/retirement lifecycle are still open; database schema stays 90.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

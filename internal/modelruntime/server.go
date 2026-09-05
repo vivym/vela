@@ -1,6 +1,7 @@
 package modelruntime
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -70,6 +71,13 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	}
 	if err := validateLaunchManifest(config.Manifest); err != nil {
 		return nil, err
+	}
+	if config.ExecutionFloor != nil {
+		floor, err := config.Manifest.bindExecutionFloorConfig(*config.ExecutionFloor, config.Validator)
+		if err != nil {
+			return nil, err
+		}
+		config.ExecutionFloor = floor
 	}
 	if config.CancelTimeout <= 0 || config.CancelTimeout > time.Minute {
 		return nil, errors.New("ModelRuntime server cancellation timeout is invalid")
@@ -231,6 +239,35 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		close(server.done)
 	}()
 	return server, nil
+}
+
+func (manifest LaunchManifest) bindExecutionFloorConfig(config ExecutionFloorConfig, validator *stageauthority.Validator) (*ExecutionFloorConfig, error) {
+	members, err := manifest.ExecutionFloorMembers()
+	if err != nil {
+		return nil, err
+	}
+	if len(config.Members) != 0 {
+		expected := make(map[string]ExecutionFloorMember, len(members))
+		for _, member := range members {
+			expected[member.WorkerMemberID] = member
+		}
+		for _, member := range config.Members {
+			trusted, found := expected[member.WorkerMemberID]
+			if !found || member.MemberEpoch != trusted.MemberEpoch ||
+				!bytes.Equal(member.IdentityDigest, trusted.IdentityDigest) || !bytes.Equal(member.DeviceSubsetDigest, trusted.DeviceSubsetDigest) {
+				return nil, errors.New("ModelRuntime execution floor topology does not match launch authority")
+			}
+			delete(expected, member.WorkerMemberID)
+		}
+		if len(expected) != 0 {
+			return nil, errors.New("ModelRuntime execution floor topology omits launch members")
+		}
+	}
+	config.Members = members
+	if config.Validator == nil {
+		config.Validator = validator
+	}
+	return &config, nil
 }
 
 // Only signed terminal history needs the larger receive bound. Existing

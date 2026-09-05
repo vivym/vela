@@ -243,14 +243,16 @@ func TestModelRuntimeCommandDriverHelper(t *testing.T) {
 
 func commandLaunchManifest(root, outputRoot, executable, eventPath string) modelruntime.LaunchManifest {
 	return modelruntime.LaunchManifest{
-		SchemaVersion:           1,
+		SchemaVersion:           2,
 		WorkerProfileRevisionID: "72000000-0000-0000-0000-000000000001",
 		WorkerRole:              "dit", CapacitySlots: 1,
 		WorkerInstanceID: "22000000-0000-0000-0000-000000000001", WorkerInstanceEpoch: 3,
 		WorkerMemberID: "42000000-0000-0000-0000-000000000001", WorkerMemberEpoch: 4,
 		DeviceSetDigest: strings.Repeat("a", 64), MembershipDigest: strings.Repeat("b", 64),
 		Devices: []modelruntime.LaunchDeviceEpoch{{ID: "32000000-0000-0000-0000-000000000001", Epoch: 5}},
-		Members: []modelruntime.LaunchMemberEpoch{{ID: "42000000-0000-0000-0000-000000000001", Epoch: 4}},
+		Members: []modelruntime.LaunchMemberEpoch{{ID: "42000000-0000-0000-0000-000000000001", Epoch: 4,
+			IdentityDigest: strings.Repeat("d", 64), DeviceSubsetDigest: strings.Repeat("e", 64),
+		}},
 		LocalDevices: []modelruntime.DriverDevice{{
 			DeviceID: "32000000-0000-0000-0000-000000000001", DeviceEpoch: 5,
 			GPUUUID: "GPU-00000000-0000-0000-0000-000000000002", PCIBDF: "0000:42:00.0",

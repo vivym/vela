@@ -605,15 +605,19 @@ func buildModelRuntimeLaunchManifests(runtimeDigest, thumbnailRuntimeDigest stri
 	result := make(map[string][]byte, 3)
 	for _, worker := range labWorkerRuntimes(runtimeDigest, thumbnailRuntimeDigest) {
 		membershipDigest, _, deviceSetDigest := labWorkerDigests(worker.name)
+		identityDigest := sha256.Sum256([]byte(stageWorkerSPIFFEIdentity(worker.memberID)))
+		subsetDigest := sha256.Sum256([]byte("vela/lab-v2/" + worker.name + "/device-subset/v1"))
 		manifest := modelruntime.LaunchManifest{
-			SchemaVersion: 1, WorkerProfileRevisionID: worker.workerProfileID,
+			SchemaVersion: 2, WorkerProfileRevisionID: worker.workerProfileID,
 			WorkerRole: worker.role, CapacitySlots: 1, SharedSlotException: worker.sharedSlot,
 			WorkerInstanceID: worker.instanceID, WorkerInstanceEpoch: 1,
 			WorkerMemberID: worker.memberID, WorkerMemberEpoch: 1,
 			DeviceSetDigest:  hex.EncodeToString(deviceSetDigest[:]),
 			MembershipDigest: hex.EncodeToString(membershipDigest[:]),
 			Devices:          []modelruntime.LaunchDeviceEpoch{{ID: worker.deviceID, Epoch: 1}},
-			Members:          []modelruntime.LaunchMemberEpoch{{ID: worker.memberID, Epoch: 1}},
+			Members: []modelruntime.LaunchMemberEpoch{{ID: worker.memberID, Epoch: 1,
+				IdentityDigest: hex.EncodeToString(identityDigest[:]), DeviceSubsetDigest: hex.EncodeToString(subsetDigest[:]),
+			}},
 			LocalDevices: []modelruntime.DriverDevice{{
 				DeviceID: worker.deviceID, DeviceEpoch: 1, ResourceClass: worker.resourceClass,
 				GPUUUID: worker.gpuUUID, PCIBDF: worker.pciBDF,

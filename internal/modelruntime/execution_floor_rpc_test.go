@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -208,6 +209,8 @@ func TestExecutionFloorServerAssemblyRecoversAndPreservesMessageBounds(t *testin
 	f := &executionFloorFixture{clock: newManualClock(time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC))}
 	f.signer, f.validator = runtimeAuthorityCrypto(t, f.clock)
 	manifest := runtimeServerManifest(t.TempDir())
+	manifest.Members[0].IdentityDigest = fmt.Sprintf("%x", bytes.Repeat([]byte{0x66}, 32))
+	manifest.Members[0].DeviceSubsetDigest = fmt.Sprintf("%x", bytes.Repeat([]byte{0x67}, 32))
 	var err error
 	f.bindings, err = manifest.RuntimeBindings()
 	if err != nil {
@@ -233,10 +236,9 @@ func TestExecutionFloorServerAssemblyRecoversAndPreservesMessageBounds(t *testin
 		Manifest: manifest, Validator: f.validator, CancelTimeout: time.Second,
 		EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return 9, nil }),
 		SocketPath: filepath.Join(socketRoot, "runtime.sock"),
-		ExecutionFloor: &modelruntime.ExecutionFloorConfig{Validator: f.validator, Members: []modelruntime.ExecutionFloorMember{{
-			WorkerMemberID: manifest.WorkerMemberID, MemberEpoch: manifest.WorkerMemberEpoch,
-			IdentityDigest: bytes.Repeat([]byte{0x66}, 32), DeviceSubsetDigest: bytes.Repeat([]byte{0x67}, 32),
-		}}, State: &modelruntime.ExecutionFloorStateConfig{Directory: directory, Initialize: true}},
+		ExecutionFloor: &modelruntime.ExecutionFloorConfig{
+			State: &modelruntime.ExecutionFloorStateConfig{Directory: directory, Initialize: true},
+		},
 		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
 			return modelruntime.NewFakeEncoderRuntime(), nil
 		},
@@ -296,7 +298,10 @@ func TestExecutionFloorServerAssemblyRecoversAndPreservesMessageBounds(t *testin
 	config.Manifest.Members = nil
 	config.ExecutionFloor.Members = nil
 	for _, member := range large.Allocations[0].Members {
-		config.Manifest.Members = append(config.Manifest.Members, modelruntime.LaunchMemberEpoch{ID: member.WorkerMemberId, Epoch: member.MemberEpoch})
+		config.Manifest.Members = append(config.Manifest.Members, modelruntime.LaunchMemberEpoch{
+			ID: member.WorkerMemberId, Epoch: member.MemberEpoch,
+			IdentityDigest: fmt.Sprintf("%x", member.IdentityDigest), DeviceSubsetDigest: fmt.Sprintf("%x", member.DeviceSubsetDigest),
+		})
 		config.ExecutionFloor.Members = append(config.ExecutionFloor.Members, modelruntime.ExecutionFloorMember{
 			WorkerMemberID: member.WorkerMemberId, MemberEpoch: member.MemberEpoch,
 			IdentityDigest: bytes.Clone(member.IdentityDigest), DeviceSubsetDigest: bytes.Clone(member.DeviceSubsetDigest),

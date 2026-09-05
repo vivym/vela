@@ -106,14 +106,15 @@ type WorkerInstanceActuation struct {
 }
 
 type WorkerMemberActuation struct {
-	ID                uuid.UUID          `json:"id"`
-	MemberEpoch       int64              `json:"member_epoch"`
-	Key               string             `json:"key"`
-	NodeIdentity      string             `json:"node_identity"`
-	ResourceClass     string             `json:"resource_class"`
-	IdentityDigest    string             `json:"identity_digest"`
-	DeviceCount       int                `json:"device_count"`
-	DeviceConstraints []DeviceConstraint `json:"device_constraints,omitempty"`
+	ID                 uuid.UUID          `json:"id"`
+	MemberEpoch        int64              `json:"member_epoch"`
+	Key                string             `json:"key"`
+	NodeIdentity       string             `json:"node_identity"`
+	ResourceClass      string             `json:"resource_class"`
+	IdentityDigest     string             `json:"identity_digest"`
+	DeviceSubsetDigest string             `json:"device_subset_digest"`
+	DeviceCount        int                `json:"device_count"`
+	DeviceConstraints  []DeviceConstraint `json:"device_constraints,omitempty"`
 }
 
 type DeviceConstraint struct {
@@ -162,6 +163,7 @@ type H3WorkerBundleSpec struct {
 	Devices                        [8]DeviceConstraint
 	MemberEpochs                   [8]int64
 	DeviceSetDigests               [8]string
+	DeviceSubsetDigests            [8]string
 	MembershipDigests              [8]string
 	Encoder                        ModelRuntimeProcess
 	DiT                            [7]ModelRuntimeProcess
@@ -243,7 +245,7 @@ func NewWorkerInstanceActuator(
 }
 
 func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuation, error) {
-	if spec.SchemaVersion != 1 || spec.PlanRevisionID == uuid.Nil ||
+	if spec.SchemaVersion != 2 || spec.PlanRevisionID == uuid.Nil ||
 		spec.WorkerBundleID == uuid.Nil ||
 		(spec.RevisionDigest != "" && !validSHA256(spec.RevisionDigest)) ||
 		!validResourceName(spec.Namespace) || !validResourceName(spec.NodeIdentity) ||
@@ -263,7 +265,8 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 	}
 	for index, device := range spec.Devices {
 		if !validDeviceConstraint("GPU", device) || spec.MemberEpochs[index] <= 0 ||
-			!validSHA256(spec.DeviceSetDigests[index]) || !validSHA256(spec.MembershipDigests[index]) {
+			!validSHA256(spec.DeviceSetDigests[index]) || !validSHA256(spec.MembershipDigests[index]) ||
+			!validSHA256(spec.DeviceSubsetDigests[index]) {
 			return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle device constraint is invalid")
 		}
 	}
@@ -274,7 +277,7 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 	}
 	expectedDigest := spec.RevisionDigest
 	bundle := WorkerBundleActuation{
-		SchemaVersion: 1, PlanRevisionID: spec.PlanRevisionID,
+		SchemaVersion: 2, PlanRevisionID: spec.PlanRevisionID,
 		WorkerBundleID: spec.WorkerBundleID,
 		Namespace:      spec.Namespace, InitImage: spec.InitImage,
 		StageWorkerAgentImage: spec.StageWorkerAgentImage, RuntimeImage: spec.RuntimeImage,
@@ -300,7 +303,7 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		MembershipDigest:    spec.MembershipDigests[0],
 		ModelRuntimes:       []ModelRuntimeProcess{encoder, vaeDecoder},
 		Members: []WorkerMemberActuation{
-			h3Member(auxID, spec.MemberEpochs[0], spec.NodeIdentity, spec.Devices[0]),
+			h3Member(auxID, spec.MemberEpochs[0], spec.NodeIdentity, spec.Devices[0], spec.DeviceSubsetDigests[0]),
 		},
 	})
 	for index := range 7 {
@@ -315,7 +318,7 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 			MembershipDigest: spec.MembershipDigests[index+1],
 			ModelRuntimes:    []ModelRuntimeProcess{runtime},
 			Members: []WorkerMemberActuation{
-				h3Member(workerID, spec.MemberEpochs[index+1], spec.NodeIdentity, spec.Devices[index+1]),
+				h3Member(workerID, spec.MemberEpochs[index+1], spec.NodeIdentity, spec.Devices[index+1], spec.DeviceSubsetDigests[index+1]),
 			},
 		})
 	}
@@ -338,13 +341,15 @@ func h3Member(
 	memberEpoch int64,
 	nodeIdentity string,
 	device DeviceConstraint,
+	deviceSubsetDigest string,
 ) WorkerMemberActuation {
 	memberID := uuid.NewSHA1(workerID, []byte("member-0"))
 	return WorkerMemberActuation{
 		ID: memberID, MemberEpoch: memberEpoch, Key: "member-0",
 		NodeIdentity: nodeIdentity, ResourceClass: "GPU", DeviceCount: 1,
-		IdentityDigest:    workerMemberIdentityDigest(memberID),
-		DeviceConstraints: []DeviceConstraint{device},
+		IdentityDigest:     workerMemberIdentityDigest(memberID),
+		DeviceSubsetDigest: deviceSubsetDigest,
+		DeviceConstraints:  []DeviceConstraint{device},
 	}
 }
 
@@ -512,7 +517,7 @@ func (actuator *WorkerInstanceActuator) Actuate(
 }
 
 func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
-	if bundle.SchemaVersion != 1 || bundle.PlanRevisionID == uuid.Nil ||
+	if bundle.SchemaVersion != 2 || bundle.PlanRevisionID == uuid.Nil ||
 		bundle.WorkerBundleID == uuid.Nil || !validSHA256(bundle.RevisionDigest) ||
 		!validResourceName(bundle.Namespace) || !validPinnedImage(bundle.InitImage) ||
 		!validPinnedImage(bundle.StageWorkerAgentImage) || !validPinnedImage(bundle.RuntimeImage) ||
@@ -572,7 +577,7 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 		hasMultiMemberWorker = hasMultiMemberWorker || len(worker.Members) > 1
 		for _, member := range worker.Members {
 			if member.ID == uuid.Nil || member.MemberEpoch <= 0 || !validMemberKey(member.Key) ||
-				!validSHA256(member.IdentityDigest) ||
+				!validSHA256(member.IdentityDigest) || !validSHA256(member.DeviceSubsetDigest) ||
 				!validResourceName(member.NodeIdentity) || member.DeviceCount <= 0 || member.DeviceCount > 64 ||
 				(member.ResourceClass != "GPU" && member.ResourceClass != "CPU") ||
 				len(member.DeviceConstraints) != member.DeviceCount {
@@ -625,7 +630,7 @@ func ComputeWorkerBundleActuationDigest(bundle WorkerBundleActuation) (string, e
 		Schema string                `json:"schema"`
 		Bundle WorkerBundleActuation `json:"bundle"`
 	}{
-		Schema: "vela.worker-bundle-actuation/v1",
+		Schema: "vela.worker-bundle-actuation/v2",
 		Bundle: canonical,
 	})
 	if err != nil {
@@ -765,7 +770,7 @@ func encodeModelRuntimeLaunchManifest(
 		return "", errors.New("ModelRuntime image digest is invalid")
 	}
 	manifest := modelruntime.LaunchManifest{
-		SchemaVersion: 1, WorkerProfileRevisionID: worker.WorkerProfileRevisionID.String(),
+		SchemaVersion: 2, WorkerProfileRevisionID: worker.WorkerProfileRevisionID.String(),
 		WorkerRole: worker.Role, CapacitySlots: worker.CapacitySlots,
 		SharedSlotException: worker.SharedSlotException,
 		WorkerInstanceID:    worker.ID.String(), WorkerInstanceEpoch: worker.InstanceEpoch,
@@ -775,6 +780,7 @@ func encodeModelRuntimeLaunchManifest(
 	for _, member := range worker.Members {
 		manifest.Members = append(manifest.Members, modelruntime.LaunchMemberEpoch{
 			ID: member.ID.String(), Epoch: member.MemberEpoch,
+			IdentityDigest: member.IdentityDigest, DeviceSubsetDigest: member.DeviceSubsetDigest,
 		})
 		for _, device := range member.DeviceConstraints {
 			manifest.Devices = append(manifest.Devices, modelruntime.LaunchDeviceEpoch{
