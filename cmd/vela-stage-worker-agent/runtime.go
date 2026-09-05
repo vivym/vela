@@ -57,7 +57,6 @@ type stageWorkerRuntimeBuilder func(context.Context, config) (stageWorkerRuntime
 type productionRuntime struct {
 	agent                 *stageworkeragent.ProductionAgent
 	inputJournal          *stageworkeragent.FileInputTransferJournal
-	scratchRetirer        *stageworkeragent.FilesystemScratchRetirer
 	control               *stageworkertransport.Client
 	modelRuntime          *modelruntimetransport.Client
 	memberClients         []*stageworkermembertransport.Client
@@ -360,10 +359,6 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(err)
 	}
-	runtime.scratchRetirer, err = stageworkeragent.NewFilesystemScratchRetirer(configuration.inputRoot, configuration.outputRoot)
-	if err != nil {
-		return fail(err)
-	}
 	publisher, err := stageartifact.NewObjectStorePublisher(store, time.Now)
 	if err != nil {
 		return fail(err)
@@ -404,7 +399,7 @@ func newProductionRuntimeUsing(
 			Source:                  outputSource,
 			Publisher:               publisher,
 			Journal:                 materializationJournal,
-			ScratchRetirer:          runtime.scratchRetirer,
+			ScratchRetirer:          stageworkeragent.RetainScratchRetirer{},
 			OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
 			SourceLossEvidence:      sourceLossEvidenceProvider(configuration, time.Now),
 			MaxClockSkew:            authoritypolicy.ProductionMaxClockSkew,
@@ -506,10 +501,6 @@ func (runtime *productionRuntime) Close() error {
 	if runtime.inputJournal != nil {
 		closeErr = errors.Join(closeErr, runtime.inputJournal.Close())
 		runtime.inputJournal = nil
-	}
-	if runtime.scratchRetirer != nil {
-		closeErr = errors.Join(closeErr, runtime.scratchRetirer.Close())
-		runtime.scratchRetirer = nil
 	}
 	if runtime.control != nil {
 		closeErr = errors.Join(closeErr, runtime.control.Close())

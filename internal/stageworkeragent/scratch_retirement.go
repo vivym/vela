@@ -24,6 +24,20 @@ type ScratchRetirer interface {
 	RetireSourceLost(context.Context, stageartifact.LocalOutputManifestV1, MaterializationSourceLossEvidence) error
 }
 
+var ErrScratchRetirementUnproven = errors.New("stage scratch retirement requires durable admission exclusion and writer-drain evidence")
+
+// RetainScratchRetirer preserves scratch and the caller's recovery record while
+// the terminal retirement protocol is unavailable. Publication is not drain.
+type RetainScratchRetirer struct{}
+
+func (RetainScratchRetirer) RetireCommitted(context.Context, stageartifact.LocalOutputManifestV1, stageartifact.Artifact) error {
+	return ErrScratchRetirementUnproven
+}
+
+func (RetainScratchRetirer) RetireSourceLost(context.Context, stageartifact.LocalOutputManifestV1, MaterializationSourceLossEvidence) error {
+	return ErrScratchRetirementUnproven
+}
+
 const AttemptOwnedFilesystemScratchV1 = "attempt-owned-filesystem-scratch/v1"
 
 func validateAttemptOwnedScratchManifest(manifest stageartifact.LocalOutputManifestV1) error {
@@ -36,6 +50,9 @@ func validateAttemptOwnedScratchManifest(manifest stageartifact.LocalOutputManif
 	return nil
 }
 
+// FilesystemScratchRetirer is a destructive filesystem primitive. It does not
+// establish admission exclusion or writer drain and must not be wired directly
+// into a live Worker without an independent durable retirement protocol.
 type FilesystemScratchRetirer struct {
 	mu              sync.Mutex
 	inputs, outputs *os.Root

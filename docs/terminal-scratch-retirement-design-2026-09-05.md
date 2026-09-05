@@ -34,6 +34,11 @@ member forwarding. FakeRuntime implements the explicit backend capability;
 ProcessBackend now uses the [independent inspection channel](process-inspection-evidence-2026-09-06.md)
 when the driver negotiates support. Missing history stays unknown, and no
 inspection changes admission, renews authority or certifies writer drain.
+The [default retention policy](scratch-retention-evidence-2026-09-06.md) now
+removes direct filesystem deletion from command assembly: unproven retirement
+preserves scratch and confirmed materialization records and pauses subsequent
+Worker discovery. This contains the premature cleanup path; it does not supply
+drain evidence or restore steady-state progress.
 Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
@@ -47,10 +52,12 @@ Attempts of the same StageRun share these inputs. Output manifests bind a
 StageAttempt and place its output below `<StageAttemptID>/`.
 
 Confirmed COMMIT establishes that durable publication no longer needs the local
-source. The implemented cleanup path uses that confirmation for successful
-retirement. Confirmed SOURCE_LOST likewise makes the old StageAttempt output
-dispensable, but its StageRun can enter `RETRY_WAIT`, so that confirmation alone
-cannot retire its input subtree. Neither response proves local writer exclusion.
+source. The filesystem primitive uses that confirmation for successful
+retirement, but is no longer directly wired by the default Worker command.
+Confirmed SOURCE_LOST likewise makes the old StageAttempt output dispensable,
+but its StageRun can enter `RETRY_WAIT`, so that confirmation alone cannot retire
+its input subtree. Neither response proves local writer exclusion; the default
+Worker now retains both kinds of scratch and their confirmed recovery records.
 
 The schema-87 [Checkpoint](schema87-validation-checkpoint-2026-09-05.json) includes
 a failing public-gRPC probe: both Seal and Cancel/STOPPED followed by the same

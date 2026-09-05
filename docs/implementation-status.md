@@ -82,7 +82,13 @@ and current V2 CNPG failover checks. Its source-bound 512-Job CPU load and
 independent exact-cache run pass in 121.436 / 9.776 package seconds. These are
 new receipts, separate from the historical source-87 evidence.
 Successful scratch retirement is only partially closed until Worker input writers
-are excluded and backend descendant quiescence is established. The
+are excluded and backend descendant quiescence is established. The current
+[default retention policy](scratch-retention-evidence-2026-09-06.md) removes direct
+filesystem retirement from Worker command assembly. It preserves scratch and
+confirmed materialization history and returns an explicit unproven-retirement
+error; the production loop pauses further Acquire calls while that record is
+pending. Unit, related race and Linux non-root retention tests pass. This is
+containment, not complete retirement or sustained Worker throughput. The
 [Schema-87 Checkpoint](schema87-validation-checkpoint-2026-09-05.json) records both
 the passing checks and that open correctness finding.
 The subsequent [ProcessBackend teardown repair](process-backend-teardown-evidence-2026-09-05.md)
