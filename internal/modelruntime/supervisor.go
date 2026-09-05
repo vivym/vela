@@ -86,6 +86,14 @@ func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervis
 		}
 	}
 	supervisor.admission = newExecutionAdmission(ordered)
+	if floor != nil && floor.State != nil {
+		store, err := openExecutionState(*floor.State, supervisor)
+		if err != nil {
+			return nil, err
+		}
+		supervisor.admission.store = store
+		supervisor.admission.highest, supervisor.admission.floor = store.state.Highest, store.state.Floor
+	}
 	for _, service := range ordered {
 		service.admission = supervisor.admission
 		service.supervised = true
@@ -101,9 +109,15 @@ func (supervisor *Supervisor) Shutdown() error {
 	if supervisor == nil {
 		return nil
 	}
+	if supervisor.admission != nil {
+		supervisor.admission.stopAdmission()
+	}
 	var shutdownErr error
 	for _, service := range supervisor.services {
 		shutdownErr = errors.Join(shutdownErr, service.Shutdown())
+	}
+	if shutdownErr == nil && supervisor.admission != nil {
+		shutdownErr = supervisor.admission.finishShutdown()
 	}
 	return shutdownErr
 }

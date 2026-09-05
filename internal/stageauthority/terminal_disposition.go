@@ -60,6 +60,24 @@ func (validator *Validator) ValidateTerminalDispositionEnvelope(value *velav1.St
 	if validator == nil || validator.now == nil {
 		return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
 	}
+	verified, err := validator.ValidateTerminalDispositionSignature(value)
+	if err != nil {
+		return VerifiedTerminalDisposition{}, err
+	}
+	now := validator.now().UTC()
+	if now.Before(verified.Disposition.GetObservedAt().AsTime()) || !now.Before(verified.Disposition.GetExpiresAt().AsTime()) {
+		return VerifiedTerminalDisposition{}, ErrStale
+	}
+	return verified, nil
+}
+
+// ValidateTerminalDispositionSignature authenticates retained restrictive facts
+// without granting freshness, execution, or drain. Recovery must still bind the
+// stored fact to its trusted Worker/member topology before restoring a floor.
+func (validator *Validator) ValidateTerminalDispositionSignature(value *velav1.StageTerminalDisposition) (VerifiedTerminalDisposition, error) {
+	if validator == nil {
+		return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
+	}
 	canonical, err := canonicalTerminalDisposition(value, true)
 	if err != nil {
 		return VerifiedTerminalDisposition{}, err
@@ -78,10 +96,6 @@ func (validator *Validator) ValidateTerminalDispositionEnvelope(value *velav1.St
 		return VerifiedTerminalDisposition{}, ErrInvalidSignature
 	}
 	canonical.Signature = signature
-	now := validator.now().UTC()
-	if now.Before(canonical.GetObservedAt().AsTime()) || !now.Before(canonical.GetExpiresAt().AsTime()) {
-		return VerifiedTerminalDisposition{}, ErrStale
-	}
 	wire, err := terminalDispositionPayload(canonical)
 	if err != nil {
 		return VerifiedTerminalDisposition{}, err

@@ -9,8 +9,10 @@ filesystem-fault and process-restart tests. The explicit [durable Stream
 integration](durable-stream-admission-evidence-2026-09-05.md) now covers local
 execution, Stop, renewal and materialization. The [Runtime admission floor
 component](runtime-execution-floor-evidence-2026-09-05.md) now provides a shared
-Service boundary and explicit signed, process-local cutoff installation.
-Default command assembly, automatic startup reconciliation, durable Runtime floors,
+Service boundary and explicit signed cutoff installation. The optional
+[durable journal](durable-runtime-admission-evidence-2026-09-05.md) persists and
+recovers that floor and the allocation watermark, with fail-closed state binding.
+Default command assembly, floor RPC, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -366,8 +368,10 @@ direct Service calls. Its optional signed floor constructor requires trusted
 complete member identity/device-subset digests and exact current local Runtime
 routes for every historical allocation. Missing or replaced runtimes are rejected.
 It registers admitted calls under the common lock without holding that lock over
-backend calls. This floor is process-local; durable FLOOR_INSTALLED still requires
-persistence/recovery and remote protocol assembly. WaitAcceptedOperations joins
+backend calls. Optional journal configuration now persists/replays restrictions
+across profile and local Runtime epoch changes without granting historical
+execution or drain. Missing/replaced state fails closed. Remote protocol and
+default command assembly remain open. WaitAcceptedOperations joins
 only the calls registered before that installation, not asynchronous backend
 writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency
@@ -377,7 +381,7 @@ An alternative is an independently proven barrier that invalidates every old
 authority before execution drain. Advancing only a local counter, observing
 one lease expire, or finding an empty active-execution map does not establish
 that barrier. The current protocol has no terminal-cutoff installation RPC;
-the Runtime floor and combined retirement recovery remain implementation work.
+Runtime floor delivery and combined retirement recovery remain implementation work.
 
 The runtime epoch store persists an epoch, not terminal receipts or namespace
 intent. The materialization journal covers sealed outputs, not every failed or

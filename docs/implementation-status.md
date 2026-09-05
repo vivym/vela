@@ -116,8 +116,13 @@ including direct calls, and fixes reusable STOPPED profiles retaining the shared
 slot. An explicit in-process constructor verifies signed terminal scope and
 installs a monotonic floor across Prepare, Start and implicit renewal. CPU and
 race tests cover late commands and blocked backend calls. This checkpoint is
-non-durable and waiting for admitted calls is not writer drain. Durable floor
-recovery, floor RPC/default assembly and terminal retirement remain open.
+process-local; the subsequent [durable Runtime admission component](durable-runtime-admission-evidence-2026-09-05.md)
+adds explicit journal configuration, signed watermark/floor recovery, exclusive
+state ownership and sticky failure on state loss or replacement. Missing state
+never silently initializes during recovery, and failed admission stops readiness
+advertisement. Its final unit, related-module race, lint and non-root Linux CPU
+checks pass. Waiting for admitted calls is not writer drain. Floor RPC/default
+assembly, automatic startup reconciliation and terminal retirement remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

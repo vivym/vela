@@ -368,9 +368,19 @@ type executionFloorFixture struct {
 
 func newExecutionFloorFixture(t *testing.T, blocked string) *executionFloorFixture {
 	t.Helper()
-	f := &executionFloorFixture{clock: newManualClock(time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC))}
+	f, err := executionFloorFixtureWithState(t, blocked, nil, 9, time.Date(2026, 9, 5, 8, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+func executionFloorFixtureWithState(t *testing.T, blocked string, state *modelruntime.ExecutionFloorStateConfig, epoch int64, now time.Time) (*executionFloorFixture, error) {
+	t.Helper()
+	f := &executionFloorFixture{clock: newManualClock(now)}
 	f.signer, f.validator = runtimeAuthorityCrypto(t, f.clock)
 	f.bindings = []stageauthority.RuntimeBinding{runtimeBinding(), runtimeBinding()}
+	f.bindings[0].ModelRuntimeEpoch, f.bindings[1].ModelRuntimeEpoch = epoch, epoch
 	f.bindings[1].ModelResidencyID = "51000000-0000-0000-0000-000000000012"
 	f.bindings[1].ModelRuntimeIdentity = "h3-vae-runtime-1"
 	f.bindings[1].StageProfileRevisionID = "61000000-0000-0000-0000-000000000012"
@@ -382,20 +392,21 @@ func newExecutionFloorFixture(t *testing.T, blocked string) *executionFloorFixtu
 	}
 	// Unblock before Service cleanup, including after a failed assertion.
 	t.Cleanup(f.backend.unblock)
-	config := modelruntime.ExecutionFloorConfig{Validator: f.validator, Members: []modelruntime.ExecutionFloorMember{{
+	config := modelruntime.ExecutionFloorConfig{Validator: f.validator, State: state, Members: []modelruntime.ExecutionFloorMember{{
 		WorkerMemberID: f.bindings[0].WorkerMemberID, MemberEpoch: f.bindings[0].WorkerMemberEpoch,
 		IdentityDigest: bytes.Repeat([]byte{0x66}, 32), DeviceSubsetDigest: bytes.Repeat([]byte{0x67}, 32),
 	}}}
 	var err error
 	f.supervisor, err = modelruntime.NewSupervisorWithExecutionFloor(config, f.services...)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
+	t.Cleanup(f.supervisor.Close)
 	// The constructor must own copies of trusted digests.
 	config.Members[0].IdentityDigest[0] ^= 1
 	config.Members[0].DeviceSubsetDigest[0] ^= 1
 	f.authorities = []*velav1.StageAuthority{f.authority(t, 0, 10), f.authority(t, 1, 11)}
-	return f
+	return f, nil
 }
 
 func (f *executionFloorFixture) authority(t *testing.T, profile int, sequence int64) *velav1.StageAuthority {
@@ -403,7 +414,7 @@ func (f *executionFloorFixture) authority(t *testing.T, profile int, sequence in
 	a := signSupervisorAuthority(t, f.signer, f.clock.Now(), f.bindings[profile], "11")
 	a.StageAttemptId, a.StageAllocationId, a.StageLeaseId = uuid.NewString(), uuid.NewString(), uuid.NewString()
 	a.ExecutionSequence = sequence
-	// The local epoch is 9; this deliberately differs from the barrier generation.
+	// The barrier generation deliberately differs from the local Runtime epoch.
 	a.ModelRuntimeBarrierGeneration = 73
 	a, err := f.signer.Sign(a)
 	if err != nil {

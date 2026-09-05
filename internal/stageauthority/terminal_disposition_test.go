@@ -67,6 +67,35 @@ func TestTerminalDispositionAuthenticatesCompleteHistoricalScope(t *testing.T) {
 	}
 }
 
+func TestTerminalDispositionSignatureRecoveryDoesNotGrantFreshness(t *testing.T) {
+	signer, verifier, _, value, now := terminalDispositionFixture(t)
+	signed, err := signer.SignTerminalDisposition(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := verifier.ValidateTerminalDispositionEnvelope(signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, instant := range []time.Time{now.Add(-time.Hour), now.Add(time.Hour)} {
+		validator, err := stageauthority.NewValidator(map[string][]byte{"stage-key-7": bytes.Repeat([]byte{0x42}, 32)}, func() time.Time { return instant })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := validator.ValidateTerminalDispositionEnvelope(signed); !errors.Is(err, stageauthority.ErrStale) {
+			t.Fatalf("historical fact acquired current freshness: %v", err)
+		}
+		retained, err := validator.ValidateTerminalDispositionSignature(signed)
+		if err != nil || retained.Digest != original.Digest {
+			t.Fatalf("retained restrictive signature: %+v %v", retained, err)
+		}
+	}
+	signed.Signature[0] ^= 1
+	if _, err := verifier.ValidateTerminalDispositionSignature(signed); !errors.Is(err, stageauthority.ErrInvalidSignature) {
+		t.Fatalf("signature recovery accepted tampering: %v", err)
+	}
+}
+
 func TestTerminalDispositionRejectsTamperingAndIncompleteScope(t *testing.T) {
 	signer, verifier, original, value, _ := terminalDispositionFixture(t)
 	signed, err := signer.SignTerminalDisposition(value)

@@ -22,6 +22,16 @@ type ExecutionFloorMember struct {
 type ExecutionFloorConfig struct {
 	Validator *stageauthority.Validator
 	Members   []ExecutionFloorMember
+	State     *ExecutionFloorStateConfig
+}
+
+// ExecutionFloorStateConfig defaults to recovery of existing state. Initialize
+// is an explicit, one-time bootstrap into an already trusted empty directory.
+// Empty storage alone does not prove a new Worker; ordinary restarts must never
+// infer Initialize from missing files.
+type ExecutionFloorStateConfig struct {
+	Directory  string
+	Initialize bool
 }
 
 type executionFloorVerifier struct {
@@ -29,10 +39,11 @@ type executionFloorVerifier struct {
 	members   map[string]ExecutionFloorMember
 }
 
-// ExecutionFloorInstallation is a process-local admission checkpoint. It is not
-// durable, does not prove backend writer drain, and cannot authorize deletion.
+// ExecutionFloorInstallation reports an admission checkpoint. Durable means its
+// floor is persisted; neither form proves backend drain or authorizes deletion.
 type ExecutionFloorInstallation struct {
 	Cutoff            int64
+	Durable           bool
 	DispositionDigest [sha256.Size]byte
 	pending           []<-chan struct{}
 }
@@ -54,8 +65,8 @@ func (installation *ExecutionFloorInstallation) WaitAcceptedOperations(ctx conte
 	return ctx.Err()
 }
 
-// NewSupervisorWithExecutionFloor enables explicit, in-process signed cutoff
-// installation. Production RPC/recovery assembly requires durable state first.
+// NewSupervisorWithExecutionFloor enables signed cutoff installation. A State
+// configuration additionally persists restrictions across process restarts.
 func NewSupervisorWithExecutionFloor(config ExecutionFloorConfig, services ...*Service) (*Supervisor, error) {
 	return newSupervisor(&config, services...)
 }
@@ -99,16 +110,24 @@ func (supervisor *Supervisor) InstallExecutionFloor(ctx context.Context, value *
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := admission.checkStateLocked(); err != nil {
+		return nil, err
+	}
 	// Validate freshness at the same admission boundary that installs the cutoff.
 	verified, err := supervisor.floor.validator.ValidateTerminalDispositionEnvelope(value)
 	if err != nil {
 		return nil, err
 	}
-	if err := supervisor.matchExecutionFloorScope(verified.Disposition); err != nil {
+	if err := supervisor.matchExecutionFloorScope(verified.Disposition, true); err != nil {
 		return nil, err
 	}
+	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {
+		if err := admission.store.saveFloor(verified.Disposition); err != nil {
+			return nil, admission.failStateLocked(err)
+		}
+	}
 	admission.floor = max(admission.floor, verified.Disposition.GetCutoff())
-	installation := &ExecutionFloorInstallation{Cutoff: admission.floor, DispositionDigest: verified.Digest}
+	installation := &ExecutionFloorInstallation{Cutoff: admission.floor, Durable: admission.store != nil, DispositionDigest: verified.Digest}
 	for _, operation := range admission.active {
 		if operation.sequence <= admission.floor {
 			installation.pending = append(installation.pending, operation.done)
@@ -117,7 +136,7 @@ func (supervisor *Supervisor) InstallExecutionFloor(ctx context.Context, value *
 	return installation, nil
 }
 
-func (supervisor *Supervisor) matchExecutionFloorScope(value *velav1.StageTerminalDisposition) error {
+func (supervisor *Supervisor) matchExecutionFloorScope(value *velav1.StageTerminalDisposition, currentRuntimes bool) error {
 	baseline := supervisor.services[0].binding
 	if value.GetWorkerInstanceId() != baseline.WorkerInstanceID || value.GetWorkerInstanceEpoch() != baseline.WorkerInstanceEpoch ||
 		!bytes.Equal(value.GetDeviceSetDigest(), baseline.DeviceSetDigest) || !bytes.Equal(value.GetMembershipDigest(), baseline.MembershipDigest) ||
@@ -151,7 +170,7 @@ func (supervisor *Supervisor) matchExecutionFloorScope(value *velav1.StageTermin
 					modelResidencyID: allocation.GetModelResidencyId(), runtimeIdentity: allocation.GetModelRuntimeIdentity(),
 					modelRuntimeEpoch: member.GetModelRuntimeEpoch(), stageProfileRevisionID: allocation.GetStageProfileRevisionId(),
 				}
-				if supervisor.routes[route] == nil {
+				if currentRuntimes && supervisor.routes[route] == nil {
 					return stageauthority.ErrRuntimeMismatch
 				}
 			}

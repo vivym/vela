@@ -1,5 +1,9 @@
 # Runtime execution admission floor evidence
 
+Follow-up: [durable Runtime admission](durable-runtime-admission-evidence-2026-09-05.md)
+adds explicit state persistence/recovery and readiness failure handling. The
+process-local implementation and validation below describe the earlier checkpoint.
+
 Status: local CPU-only shared-admission checkpoint `c5bd070`, schema 90, plus the
 queued-authority freshness repair described below. All Supervisors
 now share execution admission across their resident Services. Explicit signed

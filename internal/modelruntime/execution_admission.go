@@ -6,21 +6,28 @@ import (
 
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
-	errExecutionFloor = errors.New("StageAllocation execution sequence is below the Runtime admission floor")
-	errSharedSlotBusy = errors.New("WorkerInstance member shared slot is held by another resident runtime")
+	errExecutionFloor         = errors.New("StageAllocation execution sequence is below the Runtime admission floor")
+	errSharedSlotBusy         = errors.New("WorkerInstance member shared slot is held by another resident runtime")
+	ErrExecutionStateRecovery = errors.New("ModelRuntime execution admission requires state recovery")
 )
 
 // One admission boundary covers every Service owned by a Supervisor, including
 // calls made directly to a Service. Its lock never spans a backend call.
 type executionAdmission struct {
-	mu       sync.Mutex
-	services []*Service
-	highest  int64
-	floor    int64
-	active   map[*Service]*admittedOperation
+	mu            sync.Mutex
+	services      []*Service
+	highest       int64
+	floor         int64
+	active        map[*Service]*admittedOperation
+	store         *executionStateFile
+	failed        error
+	closing       bool
+	shutdownReady bool
+	closeErr      error
 }
 
 type admittedOperation struct {
@@ -39,10 +46,38 @@ func (service *Service) executionAdmission() *executionAdmission {
 	return service.admission
 }
 
+func (service *Service) checkReadinessAdmission() error {
+	select {
+	case <-service.closed:
+		return errors.New("ModelRuntime service is closed")
+	default:
+	}
+	service.mu.Lock()
+	admission := service.admission
+	service.mu.Unlock()
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	return admission.checkStateLocked()
+}
+
 // The caller owns service.operationMu throughout the returned operation.
 func (admission *executionAdmission) prepare(service *Service, verified *stageauthority.Verified) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
+	if admission.store != nil && proto.Size(verified.Authority) > maxExecutionWireBytes {
+		return false, nil, errors.New("ModelRuntime execution authority exceeds its persistence bound")
+	}
+	if err := admission.checkStateLocked(); err != nil {
+		return false, nil, err
+	}
+	if admission.store != nil {
+		if _, err := admission.store.scope.floor.validator.ValidateEnvelopeSignature(verified.Authority); err != nil {
+			return false, nil, err
+		}
+		if err := admission.store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+			return false, nil, err
+		}
+	}
 	if _, err := service.refreshExecutionAuthority(verified, false); err != nil {
 		return false, nil, err
 	}
@@ -61,9 +96,21 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		if sequence <= admission.highest {
 			return false, nil, errors.New("StageAllocation execution sequence is retired")
 		}
-		service.cancelWatchdogLocked()
 		// A backend failure cannot reopen an allocation, including on another profile.
+		if admission.store != nil {
+			if err := admission.store.saveHighest(verified.Authority); err != nil {
+				return false, nil, admission.failStateLocked(err)
+			}
+		}
 		admission.highest = sequence
+		// fsync can consume authority lifetime. The persisted sequence remains
+		// consumed even when it expires before backend entry.
+		if admission.store != nil {
+			if _, err := service.refreshExecutionAuthority(verified, false); err != nil {
+				return false, nil, err
+			}
+		}
+		service.cancelWatchdogLocked()
 		service.active = &activeExecution{
 			verified: *verified,
 			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
@@ -80,9 +127,19 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 func (admission *executionAdmission) begin(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
+	if admission.closing {
+		return false, nil, errors.New("ModelRuntime execution admission is closed")
+	}
+	stateErr := admission.checkStateLocked()
+	if stateErr != nil && !cancellation {
+		return false, nil, stateErr
+	}
 	allowRenewal, err := service.refreshExecutionAuthority(verified, cancellation)
 	if err != nil {
 		return false, nil, err
+	}
+	if stateErr != nil {
+		allowRenewal = false
 	}
 	sequence := verified.Authority.GetExecutionSequence()
 	aboveFloor := sequence > admission.floor
@@ -95,6 +152,11 @@ func (admission *executionAdmission) begin(service *Service, verified *stageauth
 // Initial validation precedes operationMu, which can wait behind backend work.
 // Revalidate the canonical envelope and its remaining lifetime at admission.
 func (service *Service) refreshExecutionAuthority(verified *stageauthority.Verified, cancellation bool) (bool, error) {
+	select {
+	case <-service.closed:
+		return false, errors.New("ModelRuntime service is closed")
+	default:
+	}
 	var fresh stageauthority.Verified
 	var err error
 	allowRenewal := true
@@ -118,6 +180,54 @@ func (admission *executionAdmission) registerLocked(service *Service, sequence i
 		defer admission.mu.Unlock()
 		delete(admission.active, service)
 		close(operation.done)
+		if admission.shutdownReady && len(admission.active) == 0 {
+			admission.closeStateLocked()
+		}
+	}
+}
+
+func (admission *executionAdmission) checkStateLocked() error {
+	if admission.closing {
+		return errors.New("ModelRuntime execution admission is closed")
+	}
+	if admission.failed != nil {
+		return admission.failed
+	}
+	if admission.store != nil {
+		if err := admission.store.check(); err != nil {
+			return admission.failStateLocked(err)
+		}
+	}
+	return nil
+}
+
+func (admission *executionAdmission) failStateLocked(err error) error {
+	if admission.failed == nil {
+		admission.failed = errors.Join(ErrExecutionStateRecovery, err)
+	}
+	return admission.failed
+}
+
+func (admission *executionAdmission) stopAdmission() {
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	admission.closing = true
+}
+
+func (admission *executionAdmission) finishShutdown() error {
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	admission.shutdownReady = true
+	if len(admission.active) != 0 {
+		return errors.New("ModelRuntime admitted calls remain in flight; execution state lock retained")
+	}
+	admission.closeStateLocked()
+	return admission.closeErr
+}
+
+func (admission *executionAdmission) closeStateLocked() {
+	if admission.store != nil {
+		admission.closeErr = errors.Join(admission.closeErr, admission.store.close())
 	}
 }
 

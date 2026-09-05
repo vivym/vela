@@ -193,6 +193,10 @@ func (service *Service) ProbeReadiness(
 		response.Detail = "readiness check is invalid"
 		return response, nil
 	}
+	if err := service.checkReadinessAdmission(); err != nil {
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	result, err := service.backend.Probe(ctx, request.GetCheck())
 	if err != nil {
 		response.Detail = boundedDetail(err.Error())
@@ -200,6 +204,10 @@ func (service *Service) ProbeReadiness(
 	}
 	if len(result.Evidence) > maxRuntimeStatusBytes {
 		response.Detail = "readiness evidence exceeds bound"
+		return response, nil
+	}
+	if err := service.checkReadinessAdmission(); err != nil {
+		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
 	response.Ready = result.Ready
