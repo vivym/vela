@@ -121,6 +121,17 @@ not a COMMIT/SOURCE_LOST confirmation; do not use it to generate billing or
 publication receipts. See [reconciliation evidence](../terminal-materialization-reconciliation-evidence-2026-09-06.md).
 Default command assembly does not yet enable this path.
 
+Set `DurableStreamConfig.TerminalHistory` to the authenticated Control client to
+enable fresh collection in this recovery loop. It queries retained execution
+envelopes, prefers the latest signed renewal and preserves original Acquire IDs.
+It derives Runtime targets from trusted historical bindings and supplies no
+invented authority for an undelivered retry. Fresh complete history can advance
+INTENT; RETAIN or missing retained query evidence leaves it blocked. The pass
+uses the Runtime floor timeout. Existing READY/RETIRED recover before fresh
+collection and require no online Control or Runtime. Missing writer proof still
+requires writer recovery, not repeated cleanup or a forced journal deletion.
+See [automatic recovery evidence](../automatic-terminal-recovery-evidence-2026-09-06.md).
+
 ## Remaining Lifecycle Boundary
 
 The schema-87 public-gRPC probe reproduced Prepare/Start with the same still-valid

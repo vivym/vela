@@ -160,7 +160,7 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 		disposition.GetAllocations()[1].GetStageAllocationId() != next.StageAllocationID.String() {
 		t.Fatal("signed disposition omitted allocated but undelivered retry")
 	}
-	assertUnsignedTerminalAllocationNonAdmission(t, fixture, validator, authority, disposition, next.StageAllocationID.String())
+	assertUnsignedTerminalAllocationNonAdmission(t, fixture, validator, acquired.Assignment, command, disposition, next.StageAllocationID.String())
 	// Global issuance can advance independently; it is not this StageRun's cutoff.
 	if _, err := fixture.database.Admin.Exec(`SELECT nextval('stage_allocation_execution_sequence')`); err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"errors"
 	"net"
@@ -13,17 +14,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/stageworkercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
-func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSchedulerFixture, validator *stageauthority.Validator, original *velav1.StageAuthority, disposition *velav1.StageTerminalDisposition, allocationID string) {
+func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSchedulerFixture, validator *stageauthority.Validator, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, allocationID string) {
 	t.Helper()
+	original := assignment.GetAuthority()
 	var issued int
 	if err := fixture.database.Admin.QueryRow(`SELECT count(*) FROM stage_assignment_authority_receipts AS receipt
 		JOIN stage_leases AS lease ON lease.id = receipt.stage_lease_id WHERE lease.stage_allocation_id = $1`, allocationID).Scan(&issued); err != nil || issued != 0 {
@@ -88,7 +94,7 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 		proof.Contract != modelruntime.TerminalNonAdmissionContract || !proto.Equal(proof.Disposition, disposition) {
 		t.Fatalf("unsigned database allocation was not checkpointed: %+v %v", proof, err)
 	}
-	assertDatabaseTerminalScratchRetirement(t, supervisor, validator, binding, original, disposition, subset)
+	assertDatabaseTerminalScratchRetirement(t, fixture, supervisor, validator, binding, assignment, command, disposition, subset)
 	supervisor.Close()
 	recovered := open(false, member.GetModelRuntimeEpoch()+1)
 	read, err := recovered.InspectTerminalNonAdmission(t.Context(), disposition, allocationID)
@@ -98,8 +104,9 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 	t.Log("unsigned retry: PostgreSQL history -> authenticated Control disposition -> durable Runtime floor and non-admission -> next-epoch proof recovery")
 }
 
-func assertDatabaseTerminalScratchRetirement(t *testing.T, supervisor *modelruntime.Supervisor, validator *stageauthority.Validator, binding stageauthority.RuntimeBinding, original *velav1.StageAuthority, disposition *velav1.StageTerminalDisposition, subset []byte) {
+func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedulerFixture, supervisor *modelruntime.Supervisor, validator *stageauthority.Validator, binding stageauthority.RuntimeBinding, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, subset []byte) {
 	t.Helper()
+	original := assignment.GetAuthority()
 	socketDirectory, err := os.MkdirTemp("/tmp", "vela-retirement-")
 	if err != nil {
 		t.Fatal(err)
@@ -146,15 +153,40 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, supervisor *modelrunt
 			t.Fatal(err)
 		}
 	}
-	gate, err := stageworkeragent.NewFileAssignmentAdmission(stageworkeragent.AssignmentAdmissionConfig{
+	// Persist the actual issued assignment at its issuance time, then reopen with
+	// the expired-envelope validator used by the authenticated recovery transport.
+	keys := map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)}
+	bootstrapValidator, err := stageauthority.NewValidator(keys, func() time.Time { return original.GetIssuedAt().AsTime() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	admissionConfig := stageworkeragent.AssignmentAdmissionConfig{
 		Initialize: true, Directory: filepath.Join(base, "state"), InputRoot: filepath.Join(base, "inputs"), OutputRoot: filepath.Join(base, "outputs"),
 		WorkerInstanceID: uuid.MustParse(binding.WorkerInstanceID), WorkerInstanceEpoch: binding.WorkerInstanceEpoch, WorkerMemberID: uuid.MustParse(binding.WorkerMemberID),
-		Validator: validator, Bindings: []stageworkeragent.AdmissionRuntimeBinding{stageworkeragent.AdmissionRuntimeBinding(trusted)}, MaxRecords: 4,
-	})
+		Validator: bootstrapValidator, Bindings: []stageworkeragent.AdmissionRuntimeBinding{stageworkeragent.AdmissionRuntimeBinding(trusted)}, MaxRecords: 4,
+	}
+	gate, err := stageworkeragent.NewFileAssignmentAdmission(admissionConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = gate.Close() })
+	admitted, err := gate.Begin(t.Context(), assignment, command.CommandID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admitted.CompleteInputs(t.Context()); err != nil {
+		admitted.Release()
+		t.Fatal(err)
+	}
+	admitted.Release()
+	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	admissionConfig.Initialize, admissionConfig.Validator = false, validator
+	gate, err = stageworkeragent.NewFileAssignmentAdmission(admissionConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
 	paths := []string{filepath.Join(base, "inputs", "stage-runs", disposition.StageRunId, "inputs", "payload")}
 	for _, allocation := range disposition.Allocations {
 		paths = append(paths, filepath.Join(base, "outputs", allocation.StageAttemptId, "output"))
@@ -171,9 +203,51 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, supervisor *modelrunt
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := retirer.Retire(t.Context(), disposition, map[string]*velav1.StageAuthority{original.StageAllocationId: original}, map[string]*velav1.ModelRuntimeIdentity{binding.WorkerMemberID: identities.Identities[0]})
-	if err != nil || result.Phase != stageworkeragent.TerminalRetirementRetired {
-		t.Fatalf("database-authorized scratch retirement: %+v %v", result, err)
+	handler, _, _ := terminalDispositionControl(t, fixture)
+	control := terminalDispositionDialer(t, handler)(command.Identity.SPIFFEID, command.ControlSessionEpoch)
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(admissionConfig.OutputRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publisher, err := stageartifact.NewObjectStorePublisher(artifactstore.NewLocal(), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	materializationValidator, err := materializationauthority.NewValidator(keys, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := stageworkeragent.NewDurableStreamAgent(stageworkeragent.DurableStreamConfig{
+		Runtime: runtimeAgent, Control: control, Admission: gate, TerminalRetirement: retirer, TerminalHistory: control,
+		Materialization: &stageworkeragent.MaterializationConfig{
+			Validator: materializationValidator, Source: source, Publisher: publisher, Journal: journal,
+			ScratchRetirer: stageworkeragent.RetainScratchRetirer{}, OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
+			SourceLossEvidence: stageworkeragent.MaterializationSourceLossEvidenceFunc(func(context.Context, stageworkeragent.PendingMaterialization) (stageworkeragent.MaterializationSourceLossEvidence, error) {
+				return stageworkeragent.MaterializationSourceLossEvidence{}, errors.New("terminal retirement must not report source loss")
+			}),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := stream.ResumeMaterializations(t.Context())
+	if err != nil || result.TerminalRecordsRetired != 0 || result.Committed || result.SourceLostReported || result.L2Published {
+		t.Fatalf("automatic database-authorized scratch retirement: %+v %v", result, err)
+	}
+	state, err := gate.Snapshot(t.Context())
+	if err != nil || len(state.Retirements) != 1 || state.Retirements[0].Phase != stageworkeragent.TerminalRetirementRetired ||
+		state.Floor != disposition.GetCutoff() || state.Latest.Phase != stageworkeragent.AssignmentClosed || state.Latest.AcquireCommandID != command.CommandID {
+		t.Fatalf("automatic recovery lost durable proof or original Acquire: %+v %v", state, err)
+	}
+	if err := control.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.ResumeMaterializations(t.Context()); err != nil {
+		t.Fatalf("RETIRED recovery still needs Control: %v", err)
 	}
 	for _, name := range paths {
 		if _, err := os.Stat(name); !errors.Is(err, os.ErrNotExist) {
@@ -183,5 +257,5 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, supervisor *modelrunt
 	if _, err := os.Stat(filepath.Join(base, "outputs", "unrelated", "keep")); err != nil {
 		t.Fatal("retirement changed unrelated scratch")
 	}
-	t.Log("authenticated PostgreSQL terminal history -> Worker intent/floor -> UDS Runtime proof collection -> durable READY -> exact scratch retirement")
+	t.Log("persisted original Acquire -> automatic authenticated PostgreSQL history query -> Worker INTENT/floor -> UDS Runtime proof -> durable READY/RETIRED -> offline replay")
 }

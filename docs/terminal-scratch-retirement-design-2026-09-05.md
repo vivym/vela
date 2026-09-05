@@ -101,9 +101,13 @@ The subsequent [Stream reconciliation](terminal-materialization-reconciliation-e
 now serializes retirement with materialization and resumes READY/RETIRED in an
 explicitly configured Stream's ordinary recovery loop. It removes validated
 obsolete materialization records after durable cleanup without asserting their
-unconfirmed command outcomes. Default command assembly and automatic fresh
-history/INTENT collection remain open, as do historical writer/receipt recovery
-and bounded checkpoint reclamation.
+unconfirmed command outcomes. The subsequent
+[automatic history collector](automatic-terminal-recovery-evidence-2026-09-06.md)
+now queries authenticated Control history from retained envelopes/renewals and
+Acquire IDs, and retries INTENT with complete input/floor/member exclusion.
+RETAIN or missing query evidence cannot complete INTENT. Default command
+assembly, historical writer/receipt recovery and bounded checkpoint reclamation
+remain open.
 
 ## Current ownership and evidence
 

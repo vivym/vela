@@ -20,24 +20,29 @@ func (agent *StreamAgent) RetireTerminalScratch(ctx context.Context, disposition
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()
+	snapshot, _, err := agent.retireTerminalMaterializations(ctx, disposition, authorities, targets)
+	return snapshot, err
+}
+
+func (agent *StreamAgent) retireTerminalMaterializations(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (TerminalRetirementSnapshot, int, error) {
 	verified, err := agent.admission.validator.ValidateTerminalDispositionEnvelope(disposition)
 	if err != nil {
-		return TerminalRetirementSnapshot{}, err
+		return TerminalRetirementSnapshot{}, 0, err
 	}
 	records, err := agent.materialization.journal.List(ctx)
 	if err != nil {
-		return TerminalRetirementSnapshot{}, err
+		return TerminalRetirementSnapshot{}, 0, err
 	}
 	selected, err := agent.terminalMaterializationRecords(verified.Disposition, records)
 	if err != nil {
-		return TerminalRetirementSnapshot{}, err
+		return TerminalRetirementSnapshot{}, 0, err
 	}
 	snapshot, err := agent.terminalRetirement.Retire(ctx, verified.Disposition, authorities, targets)
 	if err != nil {
-		return snapshot, err
+		return snapshot, 0, err
 	}
-	_, err = agent.finishTerminalMaterializations(ctx, snapshot, selected)
-	return snapshot, err
+	count, err := agent.finishTerminalMaterializations(ctx, snapshot, selected)
+	return snapshot, count, err
 }
 
 type terminalMaterializationPlan struct {
@@ -76,7 +81,9 @@ func (agent *StreamAgent) resumeTerminalMaterializations(ctx context.Context) (i
 	var incomplete error
 	for _, plan := range plans {
 		if plan.snapshot.Phase == TerminalRetirementIntent {
-			incomplete = errors.Join(incomplete, fmt.Errorf("terminal Stage %s needs fresh history and complete drain: %w", plan.snapshot.StageRunID, ErrScratchRetirementUnproven))
+			if agent.terminalHistory == nil {
+				incomplete = errors.Join(incomplete, fmt.Errorf("terminal Stage %s needs fresh history and complete drain: %w", plan.snapshot.StageRunID, ErrScratchRetirementUnproven))
+			}
 			continue
 		}
 		snapshot, err := agent.terminalRetirement.Resume(ctx, plan.snapshot.StageRunID)
@@ -88,6 +95,10 @@ func (agent *StreamAgent) resumeTerminalMaterializations(ctx context.Context) (i
 		if err != nil {
 			return retired, errors.Join(incomplete, err)
 		}
+	}
+	if agent.terminalHistory != nil {
+		count, err := agent.collectTerminalMaterializations(ctx)
+		return retired + count, errors.Join(incomplete, err)
 	}
 	return retired, incomplete
 }

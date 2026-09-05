@@ -39,6 +39,7 @@ type StreamAgent struct {
 	inputResolver      InputResolver
 	admission          *FileAssignmentAdmission
 	terminalRetirement *TerminalScratchRetirement
+	terminalHistory    TerminalDispositionReader
 	materialization    *streamMaterialization
 	materializationMu  sync.Mutex
 	assignmentMu       sync.Mutex
@@ -63,11 +64,15 @@ type DurableStreamConfig struct {
 	InputResolver      InputResolver
 	Materialization    *MaterializationConfig
 	TerminalRetirement *TerminalScratchRetirement
+	TerminalHistory    TerminalDispositionReader
 }
 
 func NewDurableStreamAgent(config DurableStreamConfig) (*StreamAgent, error) {
 	if config.Admission == nil {
 		return nil, errors.New("durable Stage Worker stream requires assignment admission")
+	}
+	if config.TerminalHistory != nil && config.TerminalRetirement == nil {
+		return nil, errors.New("automatic terminal history requires durable retirement")
 	}
 	if retirement := config.TerminalRetirement; retirement != nil &&
 		(retirement.gate != config.Admission || retirement.runtime != config.Runtime || config.Materialization == nil ||
@@ -86,6 +91,7 @@ func NewDurableStreamAgent(config DurableStreamConfig) (*StreamAgent, error) {
 	}
 	agent.admission, agent.inputResolver = config.Admission, config.InputResolver
 	agent.terminalRetirement = config.TerminalRetirement
+	agent.terminalHistory = config.TerminalHistory
 	return agent, nil
 }
 

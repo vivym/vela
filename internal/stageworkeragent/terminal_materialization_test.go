@@ -206,7 +206,10 @@ func TestTerminalMaterializationResumesWithoutInventingCommandResults(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			stream = terminalMaterializationStream(t, f, gate, journal, validator, guard)
+			stream = automaticTerminalStream(t, terminalMaterializationConfig(t, f, gate, journal, validator, guard), func(context.Context, *stageauthority.Validator, *velav1.StageAuthority, string, uuid.UUID) (*stageauthority.VerifiedTerminalDisposition, error) {
+				t.Fatal("READY recovery requested fresh Control history")
+				return nil, errors.New("Control offline")
+			})
 			result, err := stream.ResumeMaterializations(t.Context())
 			if err != nil || result.TerminalRecordsRetired != 1 || result.Committed || result.SourceLostReported || result.L2Published || guard.calls != 0 {
 				t.Fatalf("terminal recovery invented command outcome or I/O: %+v %v calls=%d", result, err, guard.calls)

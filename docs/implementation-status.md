@@ -308,9 +308,15 @@ is reported separately from COMMIT/SOURCE_LOST acknowledgement; no command IDs,
 Control receipts or publication results are invented. Unknown INTENT blocks
 Production discovery, and deletion failure preserves the retirement proof.
 Full unit, Worker race, lint, non-root Linux and focused PostgreSQL premise tests
-pass. Default command/bootstrap assembly, fresh history/INTENT collection,
-unknown historical writers, sealed receipt recovery and bounded checkpoint
-reclamation remain open; the default retention policy is still active.
+pass. The subsequent [automatic terminal recovery](automatic-terminal-recovery-evidence-2026-09-06.md)
+queries fresh history from the authenticated Control transport using retained
+execution envelopes, latest renewals and original Acquire IDs. It advances
+INTENT through complete trusted Runtime exclusion and durable retirement;
+RETAIN/missing envelopes preserve incomplete INTENT and READY/RETIRED recover
+offline. Automatic PostgreSQL-to-filesystem recovery covers an allocated but
+undelivered retry. Default command/bootstrap assembly, unknown historical
+writers, sealed receipt recovery and bounded checkpoint reclamation remain
+open; the default retention policy is still active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
