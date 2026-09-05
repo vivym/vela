@@ -69,6 +69,12 @@ between backend drain and never-admitted evidence. Existing absence checkpoints
 survive epoch/profile changes; missing old-epoch evidence remains unknown.
 Runtime journal is now schema 3 with explicit validated schema-2 upgrade, while
 Worker and launch/Fleet schemas remain 2 and database schema remains 90.
+The subsequent [durable input completion increment](assignment-input-drain-evidence-2026-09-06.md)
+advances Worker admission to schema 3 with explicit validated schema-2 upgrade.
+Resolver completion is persisted before Runtime entry and after failure/Stop;
+missing historical handles cannot prove input drain. Unknown input records block
+new admission, and completed retries must establish a fresh checkpoint. Existing
+Runtime journal 3, launch/Fleet 2 and database 90 versions stay unchanged.
 Default command assembly, automatic startup reconciliation, complete-history drain
 orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
@@ -365,9 +371,12 @@ of initializing a missing session/capacity file is not this recovery contract.
 The explicit assignment admission component now enforces that distinction for
 its own journal. Its signed floor API records C and its witness, and the Stream
 floor operation persists this local restriction before collecting Runtime
-acknowledgements. Partial remote failure does not reopen input. Waiting for an
-input handle's Release covers its in-process resolver only; after a Worker crash,
-the persisted intent still needs independent recovery and writer-drain evidence.
+acknowledgements. Partial remote failure does not reopen input. `CompleteInputs`
+now persists the separate input writer-drain checkpoint after all resolver work
+returns. `WaitInputWriters` requires that durable checkpoint for each retained
+input invocation through its floor; Release alone and a missing historical handle
+never suffice. A crash preserves saved completion, while an intent without a
+checkpoint still requires independent writer recovery before new admission.
 
 An observed sequence watermark alone does not cover all issued attempts. For
 example, this Worker may have observed allocation `n`, while Control has already

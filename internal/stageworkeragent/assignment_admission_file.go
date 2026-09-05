@@ -28,11 +28,12 @@ const (
 )
 
 type assignmentAdmissionEntry struct {
-	AcquireCommandID uuid.UUID                `json:"acquire_command_id"`
-	Identity         [sha256.Size]byte        `json:"execution_identity"`
-	Phase            AssignmentAdmissionPhase `json:"phase"`
-	OriginalWire     []byte                   `json:"original_authority"`
-	LatestWire       []byte                   `json:"latest_authority"`
+	AcquireCommandID uuid.UUID                       `json:"acquire_command_id"`
+	Identity         [sha256.Size]byte               `json:"execution_identity"`
+	Phase            AssignmentAdmissionPhase        `json:"phase"`
+	OriginalWire     []byte                          `json:"original_authority"`
+	LatestWire       []byte                          `json:"latest_authority"`
+	InputDrain       *AssignmentInputDrainCheckpoint `json:"input_drain,omitempty"`
 }
 
 type admissionDirectoryIdentity struct {
@@ -57,17 +58,18 @@ type assignmentAdmissionState struct {
 }
 
 type assignmentAdmissionFiles struct {
-	roots     [3]*os.Root
-	paths     [3]string
-	infos     [3]os.FileInfo
-	lock      *os.File
-	lockInfo  os.FileInfo
-	stateInfo os.FileInfo
-	id        uuid.UUID
+	roots         [3]*os.Root
+	paths         [3]string
+	infos         [3]os.FileInfo
+	lock          *os.File
+	lockInfo      os.FileInfo
+	stateInfo     os.FileInfo
+	id            uuid.UUID
+	syncDirectory func(*os.Root) error
 }
 
 func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignmentAdmissionFiles, assignmentAdmissionState, error) {
-	files := &assignmentAdmissionFiles{paths: [3]string{config.Directory, config.InputRoot, config.OutputRoot}}
+	files := &assignmentAdmissionFiles{paths: [3]string{config.Directory, config.InputRoot, config.OutputRoot}, syncDirectory: syncAdmissionDirectory}
 	success := false
 	defer func() {
 		if !success {
@@ -126,7 +128,7 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 				return nil, state, err
 			}
 		}
-		state = assignmentAdmissionState{SchemaVersion: 2, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
+		state = assignmentAdmissionState{SchemaVersion: 3, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
 		for i, info := range files.infos {
 			state.Directories[i] = admissionFileIdentity(info)
 		}
@@ -241,7 +243,7 @@ func (files *assignmentAdmissionFiles) persist(state assignmentAdmissionState) e
 	if err := files.roots[0].Rename(name, admissionStateFile); err != nil {
 		return err
 	}
-	if err := syncAdmissionDirectory(files.roots[0]); err != nil {
+	if err := files.syncDirectory(files.roots[0]); err != nil {
 		return err
 	}
 	info, err := files.roots[0].Lstat(admissionStateFile)
@@ -249,6 +251,25 @@ func (files *assignmentAdmissionFiles) persist(state assignmentAdmissionState) e
 		return err
 	}
 	files.stateInfo = info
+	return files.validateBinding()
+}
+
+func (files *assignmentAdmissionFiles) recoverDurability() error {
+	if err := files.validateBinding(); err != nil {
+		return err
+	}
+	file, err := files.roots[0].OpenFile(admissionStateFile, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return err
+	}
+	info, statErr := file.Stat()
+	if statErr != nil || !os.SameFile(info, files.stateInfo) {
+		_ = file.Close()
+		return errors.New("assignment admission state changed during recovery")
+	}
+	if err := errors.Join(file.Sync(), file.Close(), files.lock.Sync(), files.syncDirectory(files.roots[0])); err != nil {
+		return err
+	}
 	return files.validateBinding()
 }
 

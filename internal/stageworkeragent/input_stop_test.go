@@ -25,11 +25,17 @@ func TestStreamAgentStopCancelsPendingRootInput(t *testing.T) {
 		if direct {
 			name = "direct"
 		}
-		t.Run(name, func(t *testing.T) { testStopCancelsPendingRootInput(t, direct) })
+		t.Run(name, func(t *testing.T) { testStopCancelsPendingRootInput(t, direct, false) })
 	}
 }
 
-func testStopCancelsPendingRootInput(t *testing.T, direct bool) {
+func TestDurableStreamStopCancelsPendingRootInput(t *testing.T) {
+	for _, direct := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unsolicited", true: "direct"}[direct], func(t *testing.T) { testStopCancelsPendingRootInput(t, direct, true) })
+	}
+}
+
+func testStopCancelsPendingRootInput(t *testing.T, direct, durable bool) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -55,6 +61,13 @@ func testStopCancelsPendingRootInput(t *testing.T, direct bool) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	assignment := rootInputAssignment(t, fixture.assignment, digest, int64(len(payload)), server.URL+"/input")
 	inputRoot := t.TempDir()
+	var journal admissionFixture
+	var gate *stageworkeragent.FileAssignmentAdmission
+	if durable {
+		journal = durableFixtureAdmission(t, fixture)
+		gate = journal.open(t)
+		inputRoot = journal.config.InputRoot
+	}
 	resolver, err := stageworkeragent.NewHTTPSRootInputResolver(stageworkeragent.HTTPSRootInputResolverConfig{
 		InputRoot: inputRoot, Client: server.Client(),
 	})
@@ -72,6 +85,9 @@ func testStopCancelsPendingRootInput(t *testing.T, direct bool) {
 		decision: velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED, commands: commands,
 	}
 	agent, err := stageworkeragent.NewInputResolvingStreamAgent(runtime, control, resolver)
+	if durable {
+		agent, err = stageworkeragent.NewDurableStreamAgent(stageworkeragent.DurableStreamConfig{Runtime: runtime, Control: control, Admission: gate, InputResolver: resolver})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,13 +97,22 @@ func testStopCancelsPendingRootInput(t *testing.T, direct bool) {
 	}
 	finished := make(chan executionResult, 1)
 	go func() {
-		result, err := agent.ExecuteAssignment(ctx, assignment)
+		var result stageworkeragent.AssignmentExecutionResult
+		var err error
+		if durable {
+			result, err = agent.ExecuteAcquiredAssignment(ctx, assignment, journal.acquireID)
+		} else {
+			result, err = agent.ExecuteAssignment(ctx, assignment)
+		}
 		finished <- executionResult{result: result, err: err}
 	}()
 	select {
 	case <-started:
 	case <-ctx.Done():
 		t.Fatal("root download did not start")
+	}
+	if durable && admissionSnapshot(t, gate).Latest.InputDrain != nil {
+		t.Fatal("partial HTTPS download already had input completion proof")
 	}
 	stop := &velav1.StopStage{
 		Authority: assignment.Authority,
@@ -124,7 +149,23 @@ func testStopCancelsPendingRootInput(t *testing.T, direct bool) {
 	case <-ctx.Done():
 		t.Fatal("input resolution did not finish after cancellation")
 	}
+	if durable {
+		before := admissionSnapshot(t, gate).Latest.InputDrain
+		if before == nil {
+			t.Fatal("canceled HTTPS resolver did not persist input completion")
+		}
+		if err := gate.Close(); err != nil {
+			t.Fatal(err)
+		}
+		gate = journal.open(t)
+		if after := admissionSnapshot(t, gate).Latest.InputDrain; after == nil || *after != *before {
+			t.Fatal("HTTPS input completion did not survive recovery")
+		}
+	}
 	if err := filepath.WalkDir(inputRoot, func(path string, entry fs.DirEntry, err error) error {
+		if durable && path == filepath.Join(inputRoot, ".vela-assignment-admission") {
+			return err
+		}
 		if err == nil && entry.Type().IsRegular() {
 			t.Errorf("stopped download retained input data: %s", path)
 		}

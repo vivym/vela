@@ -50,7 +50,7 @@ func TestAssignmentFloorPersistsBeforeInputReleaseAndReplays(t *testing.T) {
 		snapshot.Latest.Phase != stageworkeragent.AssignmentInputsPending || !proto.Equal(snapshot.Disposition, f.disposition) {
 		t.Fatalf("floor lost input history: %+v", snapshot)
 	}
-	handle.Release()
+	completeAdmissionInputs(t, handle)
 	if err := installation.WaitInputWriters(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -90,6 +90,9 @@ func TestAssignmentFloorBlocksRenewalWithoutClaimingRuntimeDrain(t *testing.T) {
 	f := newAssignmentFloorFixture(t)
 	gate := f.open(t)
 	handle := beginAdmission(t, gate, f.assignment, f.acquireID)
+	if err := handle.CompleteInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := handle.EnterRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +201,7 @@ func TestAssignmentFloorRecoveryBindsWitnessAndPreservesRestrictionAcrossRuntime
 			case "floor":
 				document = bytes.Replace(document, []byte(`"floor":7`), []byte(`"floor":6`), 1)
 			case "old schema":
-				document = bytes.Replace(document, []byte(`"schema_version":2`), []byte(`"schema_version":1`), 1)
+				document = bytes.Replace(document, []byte(`"schema_version":3`), []byte(`"schema_version":1`), 1)
 			case "missing witness", "signature":
 				encoded, err := proto.MarshalOptions{Deterministic: true}.Marshal(f.disposition)
 				if err != nil {

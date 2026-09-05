@@ -252,6 +252,17 @@ A subsequent regression and repair lets a still-resident member create its
 non-admission proof after a peer's original profile retires. Complete signed
 history and trusted-reader checks remain mandatory, and unknown peer evidence
 keeps the result partial. Full unit, Worker race, lint and Linux checks pass.
+The [durable input completion increment](assignment-input-drain-evidence-2026-09-06.md)
+fixes recovery treating an absent in-process input handle as completed writer
+work. Worker admission schema 3 checkpoints input completion, rejects unproven
+retries/new admission and requires completion before Runtime entry. The durable
+Stream records resolver return before releasing its handle, including failure
+and Stop; panic remains unproven. Validated schema-2 upgrade preserves prior
+evidence without inventing completion. Actual HTTPS cancellation, process-exit
+recovery, sync/reply faults, full unit, Worker race, lint and non-root Linux checks
+pass. Runtime journal stays 3, launch/Fleet stays 2 and database stays 90. Recovery
+of unknown writers, default assembly, complete retirement orchestration and
+bounded evidence reclamation remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

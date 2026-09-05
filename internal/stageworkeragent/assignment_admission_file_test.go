@@ -362,6 +362,28 @@ func TestAssignmentAdmissionProcessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mode := os.Getenv("VELA_ADMISSION_TEST_MODE")
+	if mode == "inputs-and-exit" || mode == "complete-inputs-and-exit" {
+		file, err := os.Create(filepath.Join(fixture.config.InputRoot, "process-input"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.WriteString("process-owned-input"); err != nil {
+			t.Fatal(err)
+		}
+		if mode == "complete-inputs-and-exit" {
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := handle.CompleteInputs(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		os.Exit(0)
+	}
+	if err := handle.CompleteInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := handle.EnterRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}

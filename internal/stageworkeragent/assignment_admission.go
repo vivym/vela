@@ -41,7 +41,10 @@ type AdmissionRuntimeBinding struct {
 type AssignmentAdmissionConfig struct {
 	// Initialize is a separate, explicitly authorized first bootstrap. Recovery
 	// must leave it false even when every local directory has been replaced.
-	Initialize          bool
+	Initialize bool
+	// UpgradeV2 validates and preserves schema-2 history without inventing input
+	// drain evidence. It cannot be combined with first bootstrap.
+	UpgradeV2           bool
 	Directory           string
 	InputRoot           string
 	OutputRoot          string
@@ -61,6 +64,7 @@ type AssignmentAdmissionRecord struct {
 	Phase            AssignmentAdmissionPhase
 	Original         *velav1.StageAuthority
 	Latest           *velav1.StageAuthority
+	InputDrain       *AssignmentInputDrainCheckpoint
 }
 
 type AssignmentAdmissionSnapshot struct {
@@ -85,13 +89,17 @@ type FileAssignmentAdmission struct {
 // AssignmentAdmission owns an in-process input writer slot. Release is called
 // only after Resolve/download tasks have returned and closed their handles.
 type AssignmentAdmission struct {
-	gate      *FileAssignmentAdmission
-	authority *velav1.StageAuthority
-	identity  [sha256.Size]byte
-	done      chan struct{}
+	gate       *FileAssignmentAdmission
+	authority  *velav1.StageAuthority
+	identity   [sha256.Size]byte
+	done       chan struct{}
+	inputsDone chan struct{}
 }
 
 func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignmentAdmission, error) {
+	if config.Initialize && config.UpgradeV2 {
+		return nil, errors.New("assignment admission upgrade cannot initialize state")
+	}
 	if config.WorkerInstanceID == uuid.Nil || config.WorkerInstanceEpoch <= 0 || config.WorkerMemberID == uuid.Nil ||
 		config.Validator == nil || len(config.Bindings) == 0 || len(config.Bindings) > 16*64 ||
 		config.MaxRecords < 1 || config.MaxRecords > 64 || config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
@@ -114,9 +122,32 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		return nil, err
 	}
 	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings, maxSkew: config.MaxClockSkew}
+	upgrade := config.UpgradeV2 && state.SchemaVersion == 2
+	if upgrade {
+		for _, entry := range admissionEntries(state) {
+			if entry.InputDrain != nil {
+				_ = files.close()
+				return nil, errors.New("schema-2 assignment admission cannot contain input drain proof")
+			}
+		}
+		state.SchemaVersion = 3
+	}
 	if err := gate.validateState(state); err != nil {
 		_ = files.close()
 		return nil, err
+	}
+	if !config.Initialize {
+		if err := files.recoverDurability(); err != nil {
+			_ = files.close()
+			return nil, fmt.Errorf("recover assignment admission durability: %w", err)
+		}
+	}
+	if upgrade {
+		if err := files.persist(state); err != nil {
+			_ = files.close()
+			return nil, fmt.Errorf("upgrade assignment admission: %w", err)
+		}
+		gate.state = state
 	}
 	return gate, nil
 }
@@ -163,6 +194,9 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 		if next.Latest.Phase == AssignmentRuntimeEntered {
 			return nil, ErrAdmissionRecoveryRequired
 		}
+		if next.Latest.InputDrain == nil {
+			return nil, ErrInputWritersUnproven
+		}
 		latest, err := gate.decodeAuthority(next.Latest.LatestWire)
 		if err != nil {
 			return nil, err
@@ -173,10 +207,14 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 			}
 			next.Latest.LatestWire = wire
 		}
+		next.Latest.InputDrain = nil
 	} else {
 		if next.Latest != nil {
 			if next.Latest.Phase == AssignmentRuntimeEntered {
 				return nil, ErrAdmissionRecoveryRequired
+			}
+			if next.Latest.InputDrain == nil {
+				return nil, ErrInputWritersUnproven
 			}
 			previous := *next.Latest
 			previous.Phase = AssignmentClosed
@@ -188,10 +226,15 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 		next.Watermark = sequence
 		next.Latest = &assignmentAdmissionEntry{AcquireCommandID: acquireID, Identity: identity, Phase: AssignmentInputsPending, OriginalWire: wire, LatestWire: wire}
 	}
+	for _, pending := range next.Pending {
+		if pending.InputDrain == nil {
+			return nil, ErrInputWritersUnproven
+		}
+	}
 	if err := gate.commit(ctx, next); err != nil {
 		return nil, err
 	}
-	handle := &AssignmentAdmission{gate: gate, authority: verified.Authority, identity: identity, done: make(chan struct{})}
+	handle := &AssignmentAdmission{gate: gate, authority: verified.Authority, identity: identity, done: make(chan struct{}), inputsDone: make(chan struct{})}
 	gate.active = handle
 	return handle, nil
 }
@@ -212,6 +255,9 @@ func (handle *AssignmentAdmission) EnterRuntime(ctx context.Context) error {
 	// Input resolution and waiting for the lock can outlive the execution window.
 	if _, err := gate.verifyCurrent(handle.authority); err != nil {
 		return err
+	}
+	if gate.state.Latest.InputDrain == nil {
+		return ErrInputWritersUnproven
 	}
 	next := cloneAdmissionState(gate.state)
 	next.Latest.Phase = AssignmentRuntimeEntered
@@ -439,7 +485,12 @@ func (gate *FileAssignmentAdmission) record(entry assignmentAdmissionEntry) (Ass
 	if err != nil {
 		return AssignmentAdmissionRecord{}, err
 	}
-	return AssignmentAdmissionRecord{AcquireCommandID: entry.AcquireCommandID, Phase: entry.Phase, Original: original, Latest: latest}, nil
+	var inputDrain *AssignmentInputDrainCheckpoint
+	if entry.InputDrain != nil {
+		copy := *entry.InputDrain
+		inputDrain = &copy
+	}
+	return AssignmentAdmissionRecord{AcquireCommandID: entry.AcquireCommandID, Phase: entry.Phase, Original: original, Latest: latest, InputDrain: inputDrain}, nil
 }
 
 func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.StageAuthority, error) {
@@ -462,7 +513,7 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 }
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
-	if state.SchemaVersion != 2 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
+	if state.SchemaVersion != 3 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
 		state.MaxRecords < 1 || state.MaxRecords > 64 || state.Watermark < 0 || len(state.Pending) >= state.MaxRecords ||
 		(state.Latest == nil && (state.Watermark != 0 || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")
@@ -475,12 +526,12 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 			return err
 		}
 	}
-	entries := slices.Clone(state.Pending)
-	if state.Latest != nil {
-		entries = append(entries, *state.Latest)
-	}
+	entries := admissionEntries(state)
 	var previous int64
 	for index, entry := range entries {
+		if entry.InputDrain != nil && (entry.InputDrain.Contract != AssignmentInputDrainContract || entry.InputDrain.ObservedAt.IsZero() || entry.InputDrain.ObservedAt.Location() != time.UTC) {
+			return ErrInputWritersUnproven
+		}
 		record, err := gate.record(entry)
 		if err != nil {
 			return err
@@ -515,6 +566,14 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 		return ErrAdmissionClosed
 	}
 	return nil
+}
+
+func admissionEntries(state assignmentAdmissionState) []assignmentAdmissionEntry {
+	entries := slices.Clone(state.Pending)
+	if state.Latest != nil {
+		entries = append(entries, *state.Latest)
+	}
+	return entries
 }
 
 func assignmentExecutionIdentity(authority *velav1.StageAuthority) ([sha256.Size]byte, error) {

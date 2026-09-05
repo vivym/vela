@@ -195,7 +195,7 @@ func TestAssignmentAdmissionRejectsInvalidWithoutConsumingWatermark(t *testing.T
 func TestAssignmentAdmissionInputRetryAndRenewalSurviveReopen(t *testing.T) {
 	fixture := newAdmissionFixture(t)
 	gate := fixture.open(t)
-	beginAdmission(t, gate, fixture.assignment, fixture.acquireID).Release()
+	completeAdmissionInputs(t, beginAdmission(t, gate, fixture.assignment, fixture.acquireID))
 	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -206,14 +206,14 @@ func TestAssignmentAdmissionInputRetryAndRenewalSurviveReopen(t *testing.T) {
 		}
 		t.Fatalf("different Acquire identity accepted: %v", err)
 	}
-	beginAdmission(t, gate, fixture.assignment, fixture.acquireID).Release()
+	completeAdmissionInputs(t, beginAdmission(t, gate, fixture.assignment, fixture.acquireID))
 	renewal := proto.Clone(fixture.assignment).(*velav1.StageAssignment)
 	renewal.Authority.StageVersion++
 	renewal.Authority.IssuedAt = timestamppb.New(renewal.Authority.IssuedAt.AsTime().Add(time.Second))
 	renewal.Authority.ExpiresAt = timestamppb.New(renewal.Authority.ExpiresAt.AsTime().Add(time.Second))
 	fixture.clock.Add(int64(time.Second))
 	fixture.sign(t, renewal)
-	beginAdmission(t, gate, renewal, fixture.acquireID).Release()
+	completeAdmissionInputs(t, beginAdmission(t, gate, renewal, fixture.acquireID))
 	if handle, err := gate.Begin(t.Context(), fixture.assignment, fixture.acquireID); !errors.Is(err, stageauthority.ErrRenewalMismatch) {
 		if handle != nil {
 			handle.Release()
@@ -266,8 +266,12 @@ func TestAssignmentAdmissionCloseDoesNotReleaseLateInputWriter(t *testing.T) {
 		<-finish
 		_, writeErr := file.WriteString("late resolver result")
 		closeErr := file.Close()
+		var checkpointErr error
+		if closeErr == nil {
+			checkpointErr = handle.CompleteInputs(t.Context())
+		}
 		handle.Release()
-		writerErr = errors.Join(writeErr, closeErr)
+		writerErr = errors.Join(writeErr, closeErr, checkpointErr)
 		close(writerDone)
 	}()
 	finishWriter := func() {
@@ -315,6 +319,9 @@ func TestAssignmentAdmissionRuntimeEntryRequiresRecoveryAcrossRestart(t *testing
 	fixture := newAdmissionFixture(t)
 	gate := fixture.open(t)
 	handle := beginAdmission(t, gate, fixture.assignment, fixture.acquireID)
+	if err := handle.CompleteInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := handle.EnterRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +386,7 @@ func TestAssignmentAdmissionCrossProfileWatermarkAndBoundedBacklog(t *testing.T)
 			assignment.Authority.StageProfileRevisionId = otherProfile
 			fixture.sign(t, assignment)
 		}
-		beginAdmission(t, gate, assignment, uuid.New()).Release()
+		completeAdmissionInputs(t, beginAdmission(t, gate, assignment, uuid.New()))
 	}
 	if handle, err := gate.Begin(t.Context(), fixture.next(t, 4), uuid.New()); !errors.Is(err, stageworkeragent.ErrAdmissionCapacity) {
 		if handle != nil {

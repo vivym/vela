@@ -30,6 +30,9 @@ func TestExecutionFloorCollectionRPCPersistsCompleteMemberHistoryWithoutDrain(t 
 	group := startFloorCollectorRuntimes(t, f, base, true, true)
 	agent := f.agent(t)
 	handle := beginAdmission(t, gate, f.assignment, f.acquireID)
+	if err := handle.CompleteInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := handle.EnterRuntime(t.Context()); err != nil {
 		t.Fatal(err)
 	}

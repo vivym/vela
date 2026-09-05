@@ -254,7 +254,7 @@ func TestDurableStreamInputRetryCheckpointsBeforePrepare(t *testing.T) {
 	resolver := inputResolverFunc(func(ctx context.Context, _ *velav1.StageAssignment) error {
 		resolves++
 		snapshot, err := gate.Snapshot(ctx)
-		if err != nil || snapshot.Latest == nil || snapshot.Latest.Phase != stageworkeragent.AssignmentInputsPending || snapshot.Latest.AcquireCommandID != journal.acquireID {
+		if err != nil || snapshot.Latest == nil || snapshot.Latest.Phase != stageworkeragent.AssignmentInputsPending || snapshot.Latest.AcquireCommandID != journal.acquireID || snapshot.Latest.InputDrain != nil {
 			return errors.New("Resolve called without durable input admission")
 		}
 		if resolves == 1 {
@@ -264,7 +264,7 @@ func TestDurableStreamInputRetryCheckpointsBeforePrepare(t *testing.T) {
 	})
 	probe := &admissionRuntimeProbe{ModelRuntimeServiceClient: fixture.client, beforePrepare: func(authority *velav1.StageAuthority) error {
 		snapshot, err := gate.Snapshot(t.Context())
-		if err != nil || snapshot.Latest == nil || snapshot.Latest.Phase != stageworkeragent.AssignmentRuntimeEntered || !proto.Equal(snapshot.Latest.Latest, authority) {
+		if err != nil || snapshot.Latest == nil || snapshot.Latest.Phase != stageworkeragent.AssignmentRuntimeEntered || !proto.Equal(snapshot.Latest.Latest, authority) || snapshot.Latest.InputDrain == nil {
 			return errors.New("Prepare called before durable Runtime intent")
 		}
 		return nil
@@ -277,6 +277,9 @@ func TestDurableStreamInputRetryCheckpointsBeforePrepare(t *testing.T) {
 	if probe.prepares.Load() != 0 {
 		t.Fatal("input failure reached Prepare")
 	}
+	if admissionSnapshot(t, gate).Latest.InputDrain == nil {
+		t.Fatal("returned input failure did not persist writer completion")
+	}
 	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -285,6 +288,31 @@ func TestDurableStreamInputRetryCheckpointsBeforePrepare(t *testing.T) {
 	result, err := stream.ExecuteAcquiredAssignment(t.Context(), assignment, journal.acquireID)
 	if err != nil || !result.ControlStartAccepted || probe.prepares.Load() != 1 || resolves != 2 {
 		t.Fatalf("retry failed: %+v, %v, resolves=%d prepares=%d", result, err, resolves, probe.prepares.Load())
+	}
+}
+
+func TestDurableStreamResolverPanicDoesNotCheckpointInputDrain(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	journal := durableFixtureAdmission(t, fixture)
+	gate := journal.open(t)
+	assignment := rootInputAssignment(t, fixture.assignment, sha256.Sum256([]byte("input")), 5, "https://example.test/input")
+	probe := &admissionRuntimeProbe{ModelRuntimeServiceClient: fixture.client}
+	stream := durableFixtureStream(t, fixture, gate, &recordingStreamControl{}, inputResolverFunc(func(context.Context, *velav1.StageAssignment) error {
+		panic("injected resolver panic")
+	}), probe, nil)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("resolver did not panic")
+			}
+		}()
+		_, _ = stream.ExecuteAcquiredAssignment(t.Context(), assignment, journal.acquireID)
+	}()
+	if snapshot := admissionSnapshot(t, gate); snapshot.Latest == nil || snapshot.Latest.InputDrain != nil || probe.prepares.Load() != 0 {
+		t.Fatal("panic was converted into durable input completion")
+	}
+	if _, err := stream.ExecuteAcquiredAssignment(t.Context(), assignment, journal.acquireID); !errors.Is(err, stageworkeragent.ErrInputWritersUnproven) {
+		t.Fatalf("panic allowed an unproven input retry: %v", err)
 	}
 }
 
@@ -344,6 +372,9 @@ func TestDurableStreamStopPersistsBeforeLateResolverReturns(t *testing.T) {
 			if inputCtx.Err() == nil || admissionSnapshot(t, gate).Latest.Phase != stageworkeragent.AssignmentClosed {
 				t.Fatal("Stop returned without cancel and durable closure")
 			}
+			if admissionSnapshot(t, gate).Latest.InputDrain != nil {
+				t.Fatal("Stop invented input completion before the late writer exited")
+			}
 			if err := gate.Close(); !errors.Is(err, stageworkeragent.ErrStageWorkerBusy) {
 				t.Fatalf("writer handle released before resolver exit: %v", err)
 			}
@@ -363,6 +394,9 @@ func TestDurableStreamStopPersistsBeforeLateResolverReturns(t *testing.T) {
 				t.Fatal(err)
 			}
 			gate = journal.open(t)
+			if admissionSnapshot(t, gate).Latest.InputDrain == nil {
+				t.Fatal("canceled resolver exit lost its durable input checkpoint")
+			}
 			stream = durableFixtureStream(t, fixture, gate, control, resolver, probe, nil)
 			if _, err := stream.ExecuteAcquiredAssignment(ctx, assignment, journal.acquireID); !errors.Is(err, stageworkeragent.ErrAdmissionClosed) {
 				t.Fatalf("restart reopened stopped input: %v", err)

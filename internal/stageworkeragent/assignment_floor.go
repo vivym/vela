@@ -38,27 +38,20 @@ func (agent *StreamAgent) InstallExecutionFloor(ctx context.Context, disposition
 }
 
 // AssignmentFloorInstallation is a durable input admission checkpoint only.
-// Pending resolvers still own their files until they release their handles.
+// WaitInputWriters separately requires persisted completion of every retained
+// input invocation through its cutoff. Neither result proves Runtime drain.
 type AssignmentFloorInstallation struct {
 	Cutoff            int64
 	DispositionDigest [sha256.Size]byte
-	pending           *AssignmentAdmission
+	gate              *FileAssignmentAdmission
+	cutoff            int64
 }
 
 func (installation *AssignmentFloorInstallation) WaitInputWriters(ctx context.Context) error {
-	if installation == nil || ctx == nil {
+	if installation == nil || installation.gate == nil || ctx == nil {
 		return ErrAdmissionClosed
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if installation.pending == nil {
-		return nil
-	}
-	if err := installation.pending.WaitReleased(ctx); err != nil {
-		return err
-	}
-	return ctx.Err()
+	return installation.gate.waitInputWriters(ctx, installation.cutoff)
 }
 
 // InstallExecutionFloor closes Begin, EnterRuntime and renewal through the signed
@@ -96,10 +89,7 @@ func (gate *FileAssignmentAdmission) InstallExecutionFloor(ctx context.Context, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	installation := &AssignmentFloorInstallation{Cutoff: gate.state.Floor, DispositionDigest: verified.Digest}
-	if gate.active != nil && gate.active.authority.GetExecutionSequence() <= gate.state.Floor {
-		installation.pending = gate.active
-	}
+	installation := &AssignmentFloorInstallation{Cutoff: gate.state.Floor, DispositionDigest: verified.Digest, gate: gate, cutoff: gate.state.Floor}
 	return installation, nil
 }
 

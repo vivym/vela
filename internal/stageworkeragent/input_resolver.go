@@ -16,6 +16,9 @@ import (
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
+// InputResolver owns all input work it starts. Resolve must join that work and
+// close every writable input handle before returning, on success or failure.
+// Implementations must not leave background tasks or descendant writers alive.
 type InputResolver interface {
 	Resolve(context.Context, *velav1.StageAssignment) error
 }

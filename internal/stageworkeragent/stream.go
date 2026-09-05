@@ -226,8 +226,7 @@ func (agent *StreamAgent) ExecuteAcquiredAssignment(ctx context.Context, assignm
 	return agent.executeAssignment(ctx, assignment, acquireID)
 }
 
-func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *velav1.StageAssignment, acquireID uuid.UUID) (AssignmentExecutionResult, error) {
-	result := AssignmentExecutionResult{}
+func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *velav1.StageAssignment, acquireID uuid.UUID) (result AssignmentExecutionResult, resultErr error) {
 	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
 		return result, errors.New("missing configured Stage Worker stream Agent")
 	}
@@ -250,6 +249,7 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 	defer cancelInputs()
 	inputs := &pendingAssignmentInputs{authorityDigest: digest, cancel: cancelInputs}
 	var admission *AssignmentAdmission
+	inputsReturned := true
 	agent.inputMu.Lock()
 	if agent.admission != nil {
 		admission, err = agent.admission.Begin(ctx, assignment, acquireID)
@@ -268,6 +268,11 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 		}
 		agent.inputMu.Unlock()
 		if admission != nil {
+			// Cancellation must not erase evidence after the resolver has returned.
+			// No RPC or additional input work runs under this uncanceled context.
+			if inputsReturned {
+				resultErr = errors.Join(resultErr, admission.CompleteInputs(context.WithoutCancel(ctx)))
+			}
 			admission.Release()
 		}
 	}()
@@ -281,8 +286,16 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 		if agent.inputResolver == nil {
 			return result, errors.New("StageAssignment inputs require a configured input resolver")
 		}
-		if err := agent.inputResolver.Resolve(ctx, assignment); err != nil {
-			return result, fmt.Errorf("resolve StageAssignment inputs: %w", err)
+		inputsReturned = false
+		resolveErr := agent.inputResolver.Resolve(ctx, assignment)
+		inputsReturned = true
+		if resolveErr != nil {
+			return result, fmt.Errorf("resolve StageAssignment inputs: %w", resolveErr)
+		}
+	}
+	if admission != nil {
+		if err := admission.CompleteInputs(ctx); err != nil {
+			return result, err
 		}
 	}
 	agent.runtimeMu.Lock()

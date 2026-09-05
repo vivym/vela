@@ -5,6 +5,10 @@ Local CPU/mock increment over `504143d`. Runtime admission journal advances to
 remains **90**. Production Gates remain **0/9**. No GPU or remote lab deployment
 was used.
 
+Follow-up: [durable input writer completion](assignment-input-drain-evidence-2026-09-06.md)
+advances Worker admission to schema 3 and strengthens input recovery. Version
+and validation statements below describe this Runtime non-admission increment.
+
 ## Undelivered Allocations
 
 A complete signed terminal disposition includes allocations that Runtime may
