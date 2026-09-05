@@ -752,6 +752,71 @@ func TestPostgresAssignmentBackendDoesNotAssignFirstStageAtProjectRunningLimit(t
 	}
 }
 
+func TestPostgresAssignmentBackendAssignsRunningGraphAtProjectRunningLimit(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "stage-worker-running-project-capacity")
+	tx, err := fixture.database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin running graph capacity fixture: %v", err)
+	}
+	if _, err := tx.Exec(`SET LOCAL ROLE vela_attempt_coordinator_owner`); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("assume AttemptCoordinator owner role: %v", err)
+	}
+	var advanced int
+	if err := tx.QueryRow(`
+		WITH target AS MATERIALIZED (
+			SELECT attempt.id AS attempt_id, attempt.job_id,
+			       job.organization_id, job.project_id
+			FROM stage_runs AS run
+			JOIN attempts AS attempt ON attempt.id = run.attempt_id
+			JOIN jobs AS job ON job.id = attempt.job_id
+			WHERE run.id = $1
+		), moment AS MATERIALIZED (
+			SELECT clock_timestamp() AS advanced_at
+		), advanced_job AS (
+			UPDATE jobs AS job
+			SET state = 'RUNNING', billable_started_at = moment.advanced_at,
+			    version = job.version + 1, updated_at = moment.advanced_at
+			FROM target, moment
+			WHERE job.id = target.job_id
+			  AND job.state = 'QUEUED'
+			RETURNING job.id
+		), advanced_attempt AS (
+			UPDATE attempts AS attempt
+			SET state = 'RUNNING', graph_state = 'RUNNING',
+			    started_at = moment.advanced_at, updated_at = moment.advanced_at
+			FROM target, moment, advanced_job
+			WHERE attempt.id = target.attempt_id
+			  AND attempt.state = 'ASSIGNED'
+			  AND attempt.graph_state = 'QUEUED'
+			RETURNING attempt.id
+		)
+		UPDATE projects AS project
+		SET queued_count = project.queued_count - 1,
+		    running_count = project.running_limit
+		FROM target, advanced_attempt
+		WHERE project.id = target.project_id
+		  AND project.organization_id = target.organization_id
+		  AND project.queued_count > 0
+		RETURNING 1
+	`, fixture.stageRunID).Scan(&advanced); err != nil || advanced != 1 {
+		_ = tx.Rollback()
+		t.Fatalf("advance graph to full-capacity RUNNING state = %d error=%v", advanced, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit running graph capacity fixture: %v", err)
+	}
+
+	result, err := newPostgresAssignmentTestBackend(t, fixture).AcquireStage(
+		context.Background(),
+		stageWorkerAcquireCommand(fixture),
+		stageWorkerAcquireRequest(fixture),
+	)
+	if err != nil || result.Assignment == nil || result.Command != nil || result.RetryAfter != 0 {
+		t.Fatalf("AcquireStage for running graph at Project limit = %#v error=%v", result, err)
+	}
+}
+
 func TestPostgresAssignmentBackendPersistsForgedAndStaleAuthorityDecisions(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "stage-worker-authority-rejection")
 	backend := newPostgresAssignmentTestBackend(t, fixture)
