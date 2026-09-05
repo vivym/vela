@@ -141,6 +141,14 @@ func TestExecutionDrainRPCRejectsInvalidScopesWithoutBackendEntry(t *testing.T) 
 			if err == nil || allocation != nil {
 				t.Fatalf("invalid allocation inspection accepted: %v %v", allocation, err)
 			}
+			nonAdmission, err := client.CheckpointStageNonAdmission(ctx, &velav1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest{Scope: scope})
+			if err == nil || nonAdmission != nil {
+				t.Fatalf("invalid non-admission checkpoint request accepted: %v %v", nonAdmission, err)
+			}
+			nonAdmissionRead, err := client.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: scope})
+			if err == nil || nonAdmissionRead != nil {
+				t.Fatalf("invalid non-admission read accepted: %v %v", nonAdmissionRead, err)
+			}
 		})
 	}
 }

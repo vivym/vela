@@ -30,6 +30,8 @@ const (
 	ModelRuntimeService_DrainStageExecution_FullMethodName         = "/vela.v1.ModelRuntimeService/DrainStageExecution"
 	ModelRuntimeService_InspectStageExecutionDrain_FullMethodName  = "/vela.v1.ModelRuntimeService/InspectStageExecutionDrain"
 	ModelRuntimeService_InspectStageAllocationDrain_FullMethodName = "/vela.v1.ModelRuntimeService/InspectStageAllocationDrain"
+	ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName = "/vela.v1.ModelRuntimeService/CheckpointStageNonAdmission"
+	ModelRuntimeService_InspectStageNonAdmission_FullMethodName    = "/vela.v1.ModelRuntimeService/InspectStageNonAdmission"
 	ModelRuntimeService_SealOutput_FullMethodName                  = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
@@ -48,6 +50,8 @@ type ModelRuntimeServiceClient interface {
 	DrainStageExecution(ctx context.Context, in *ModelRuntimeServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
 	InspectStageAllocationDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error)
+	CheckpointStageNonAdmission(ctx context.Context, in *ModelRuntimeServiceCheckpointStageNonAdmissionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error)
+	InspectStageNonAdmission(ctx context.Context, in *ModelRuntimeServiceInspectStageNonAdmissionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageNonAdmissionResponse, error)
 	SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error)
 }
 
@@ -169,6 +173,26 @@ func (c *modelRuntimeServiceClient) InspectStageAllocationDrain(ctx context.Cont
 	return out, nil
 }
 
+func (c *modelRuntimeServiceClient) CheckpointStageNonAdmission(ctx context.Context, in *ModelRuntimeServiceCheckpointStageNonAdmissionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceCheckpointStageNonAdmissionResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelRuntimeServiceClient) InspectStageNonAdmission(ctx context.Context, in *ModelRuntimeServiceInspectStageNonAdmissionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageNonAdmissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceInspectStageNonAdmissionResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_InspectStageNonAdmission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelRuntimeServiceSealOutputResponse)
@@ -194,6 +218,8 @@ type ModelRuntimeServiceServer interface {
 	DrainStageExecution(context.Context, *ModelRuntimeServiceDrainStageExecutionRequest) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(context.Context, *ModelRuntimeServiceInspectStageExecutionDrainRequest) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
 	InspectStageAllocationDrain(context.Context, *ModelRuntimeServiceInspectStageAllocationDrainRequest) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error)
+	CheckpointStageNonAdmission(context.Context, *ModelRuntimeServiceCheckpointStageNonAdmissionRequest) (*ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error)
+	InspectStageNonAdmission(context.Context, *ModelRuntimeServiceInspectStageNonAdmissionRequest) (*ModelRuntimeServiceInspectStageNonAdmissionResponse, error)
 	SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error)
 	mustEmbedUnimplementedModelRuntimeServiceServer()
 }
@@ -237,6 +263,12 @@ func (UnimplementedModelRuntimeServiceServer) InspectStageExecutionDrain(context
 }
 func (UnimplementedModelRuntimeServiceServer) InspectStageAllocationDrain(context.Context, *ModelRuntimeServiceInspectStageAllocationDrainRequest) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectStageAllocationDrain not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) CheckpointStageNonAdmission(context.Context, *ModelRuntimeServiceCheckpointStageNonAdmissionRequest) (*ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckpointStageNonAdmission not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) InspectStageNonAdmission(context.Context, *ModelRuntimeServiceInspectStageNonAdmissionRequest) (*ModelRuntimeServiceInspectStageNonAdmissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageNonAdmission not implemented")
 }
 func (UnimplementedModelRuntimeServiceServer) SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SealOutput not implemented")
@@ -460,6 +492,42 @@ func _ModelRuntimeService_InspectStageAllocationDrain_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelRuntimeService_CheckpointStageNonAdmission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceCheckpointStageNonAdmissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).CheckpointStageNonAdmission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).CheckpointStageNonAdmission(ctx, req.(*ModelRuntimeServiceCheckpointStageNonAdmissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelRuntimeService_InspectStageNonAdmission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceInspectStageNonAdmissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).InspectStageNonAdmission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_InspectStageNonAdmission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).InspectStageNonAdmission(ctx, req.(*ModelRuntimeServiceInspectStageNonAdmissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModelRuntimeService_SealOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ModelRuntimeServiceSealOutputRequest)
 	if err := dec(in); err != nil {
@@ -528,6 +596,14 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectStageAllocationDrain",
 			Handler:    _ModelRuntimeService_InspectStageAllocationDrain_Handler,
+		},
+		{
+			MethodName: "CheckpointStageNonAdmission",
+			Handler:    _ModelRuntimeService_CheckpointStageNonAdmission_Handler,
+		},
+		{
+			MethodName: "InspectStageNonAdmission",
+			Handler:    _ModelRuntimeService_InspectStageNonAdmission_Handler,
 		},
 		{
 			MethodName: "SealOutput",

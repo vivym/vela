@@ -211,13 +211,14 @@ func TestMemberCancellationAfterFloorAllowsOnlyInstalledExpiredAuthority(t *test
 }
 
 type memberFloorChain struct {
-	client              *Client
-	backend             *memberFloorBackend
-	address             string
-	f                   *serverFixture
-	followerCredentials credentials.TransportCredentials
-	close               func()
-	dropDrainResponse   *atomic.Bool
+	client                   *Client
+	backend                  *memberFloorBackend
+	address                  string
+	f                        *serverFixture
+	followerCredentials      credentials.TransportCredentials
+	close                    func()
+	dropDrainResponse        *atomic.Bool
+	dropNonAdmissionResponse *atomic.Bool
 }
 
 type memberFloorBackend struct {
@@ -308,10 +309,14 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 	serverTLS, leaderTLS, followerTLS := memberFloorTLS(t, f)
 	var lost atomic.Bool
 	var dropDrainResponse atomic.Bool
+	var dropNonAdmissionResponse atomic.Bool
 	memberServer := grpc.NewServer(grpc.Creds(serverTLS), grpc.MaxRecvMsgSize(4<<20), grpc.UnaryInterceptor(func(ctx context.Context, request any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 		response, err := next(ctx, request)
 		if err == nil && info.FullMethod == velav1.StageWorkerMemberService_DrainStageExecution_FullMethodName && dropDrainResponse.CompareAndSwap(true, false) {
 			return nil, status.Error(codes.Unavailable, "injected lost durable drain response")
+		}
+		if err == nil && info.FullMethod == velav1.StageWorkerMemberService_CheckpointStageNonAdmission_FullMethodName && dropNonAdmissionResponse.CompareAndSwap(true, false) {
+			return nil, status.Error(codes.Unavailable, "injected lost non-admission response")
 		}
 		if err == nil && loseResponse && info.FullMethod == velav1.StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName && lost.CompareAndSwap(false, true) {
 			return nil, status.Error(codes.Unavailable, "injected lost floor acknowledgement")
@@ -326,7 +331,7 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 	memberDone := make(chan error, 1)
 	go func() { memberDone <- memberServer.Serve(memberListener) }()
 	t.Cleanup(memberServer.Stop)
-	chain := &memberFloorChain{backend: backend, address: memberListener.Addr().String(), f: f, followerCredentials: followerTLS, dropDrainResponse: &dropDrainResponse}
+	chain := &memberFloorChain{backend: backend, address: memberListener.Addr().String(), f: f, followerCredentials: followerTLS, dropDrainResponse: &dropDrainResponse, dropNonAdmissionResponse: &dropNonAdmissionResponse}
 	chain.client = chain.dial(t, leaderTLS)
 	var once sync.Once
 	chain.close = func() {

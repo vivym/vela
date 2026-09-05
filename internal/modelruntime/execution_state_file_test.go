@@ -805,6 +805,7 @@ type durableExecutionStateDocument struct {
 	Floor         int64           `json:"floor"`
 	Disposition   []byte          `json:"floor_disposition"`
 	Executions    json.RawMessage `json:"executions"`
+	NonAdmissions json.RawMessage `json:"non_admissions,omitempty"`
 }
 
 func readDurableExecutionState(t *testing.T, directory string) durableExecutionStateDocument {

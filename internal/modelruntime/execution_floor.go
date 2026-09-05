@@ -32,6 +32,9 @@ type ExecutionFloorConfig struct {
 type ExecutionFloorStateConfig struct {
 	Directory  string
 	Initialize bool
+	// UpgradeV2 permits validated schema-2 to schema-3 recovery. It preserves all
+	// restrictions and pending/drained history, and creates no non-admission proof.
+	UpgradeV2 bool
 }
 
 type executionFloorVerifier struct {

@@ -235,8 +235,19 @@ Two-member/two-allocation UDS, partial-renewal/profile-retirement recovery, mTLS
 forwarding, eight PostgreSQL terminal-history/disposition tests, full unit, related
 race, lint, generation, compatibility and Linux non-root checks pass. This is
 observation only: Worker retirement journaling, floor/input exclusion orchestration,
-pending historical writers, never-admitted allocation proof and checkpoint
-reclamation remain open; default scratch retention stays active.
+pending historical writers and checkpoint reclamation remain open; default
+scratch retention stays active. The subsequent [durable non-admission increment](execution-non-admission-evidence-2026-09-06.md)
+adds separate never-admitted checkpoints after a persisted Runtime floor, only
+for the original currently resident epoch/profile with no execution intent.
+Existing proofs survive epoch/profile changes; missing old-epoch history stays
+unknown. Authenticated UDS/mTLS RPCs and a complete terminal-history collector
+combine typed drain or never-admitted proof for every allocation/member pair.
+Runtime admission journal is now schema 3, with explicit validated schema-2
+upgrade preserving pending/drained history. Worker and launch/Fleet schemas stay
+2, and database schema stays 90. Full unit, related race, lint, generation,
+protobuf compatibility and non-root Linux checks pass. Mixed member evidence
+does not establish Worker input-writer exclusion or authorize scratch deletion;
+default retirement orchestration and sustained progress remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

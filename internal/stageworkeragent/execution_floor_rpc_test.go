@@ -130,10 +130,11 @@ func collectorHistoryAuthority(t *testing.T, f *floorCollectorFixture, allocatio
 }
 
 type floorCollectorRuntimes struct {
-	clients        []velav1.ModelRuntimeServiceClient
-	activeBackends []*floorCollectorBackend
-	backends       map[string]map[string]*floorCollectorBackend
-	close          func()
+	clients                  []velav1.ModelRuntimeServiceClient
+	activeBackends           []*floorCollectorBackend
+	backends                 map[string]map[string]*floorCollectorBackend
+	dropNonAdmissionResponse *atomic.Bool
+	close                    func()
 }
 
 type floorCollectorBackend struct {
@@ -148,7 +149,7 @@ func (backend *floorCollectorBackend) Close() error {
 
 func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base string, initialize, loseResponse bool) *floorCollectorRuntimes {
 	t.Helper()
-	group := &floorCollectorRuntimes{backends: make(map[string]map[string]*floorCollectorBackend)}
+	group := &floorCollectorRuntimes{backends: make(map[string]map[string]*floorCollectorBackend), dropNonAdmissionResponse: &atomic.Bool{}}
 	var closers []func()
 	var once sync.Once
 	group.close = func() {
@@ -220,6 +221,9 @@ func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base st
 		var lost atomic.Bool
 		server := grpc.NewServer(grpc.MaxRecvMsgSize(4<<20), grpc.UnaryInterceptor(func(ctx context.Context, request any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 			response, err := next(ctx, request)
+			if err == nil && info.FullMethod == velav1.ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName && group.dropNonAdmissionResponse.CompareAndSwap(true, false) {
+				return nil, status.Error(codes.Unavailable, "injected response loss after non-admission persistence")
+			}
 			if err == nil && loseResponse && index == 1 && info.FullMethod == velav1.ModelRuntimeService_InstallStageExecutionFloor_FullMethodName && !lost.Swap(true) {
 				return nil, status.Error(codes.Unavailable, "injected floor response loss after persistence")
 			}

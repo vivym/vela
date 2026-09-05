@@ -4,6 +4,11 @@ Local CPU/mock increment over `69701e0`. Database schema remains **90**;
 Runtime admission, Worker admission and launch/Fleet schemas remain **2**.
 Production Gates remain **0/9**. No GPU or remote lab deployment was used.
 
+Follow-up: [durable non-admission proofs](execution-non-admission-evidence-2026-09-06.md)
+adds a separate current-epoch never-admitted checkpoint and mixed terminal-history
+collector at Runtime journal schema 3. The schema versions and validation below
+describe this earlier increment; absent records alone still never prove drain.
+
 ## Partial Renewal Gap
 
 An allocation can reach different authority renewals on different members. Their

@@ -31,6 +31,10 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceInspectStageExecutionDrainResponse);
   rpc InspectStageAllocationDrain(ModelRuntimeServiceInspectStageAllocationDrainRequest)
       returns (ModelRuntimeServiceInspectStageAllocationDrainResponse);
+  rpc CheckpointStageNonAdmission(ModelRuntimeServiceCheckpointStageNonAdmissionRequest)
+      returns (ModelRuntimeServiceCheckpointStageNonAdmissionResponse);
+  rpc InspectStageNonAdmission(ModelRuntimeServiceInspectStageNonAdmissionRequest)
+      returns (ModelRuntimeServiceInspectStageNonAdmissionResponse);
   rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
       returns (ModelRuntimeServiceSealOutputResponse);
 }
@@ -270,6 +274,44 @@ message ModelRuntimeServiceInspectStageAllocationDrainRequest {
 
 message ModelRuntimeServiceInspectStageAllocationDrainResponse {
   ModelRuntimeExecutionDrainResult result = 1;
+}
+
+// Never-admitted proof is distinct from backend drain. A current-epoch proof
+// requires a durable admission floor and no persisted intent for the allocation.
+message ModelRuntimeExecutionNonAdmissionCheckpoint {
+  uint32 schema_version = 1;
+  StageAuthority authority = 2;
+  bytes authority_digest = 3;
+  string worker_member_id = 4;
+  int64 execution_sequence = 5;
+  int64 installed_cutoff = 6;
+  string contract = 7;
+  google.protobuf.Timestamp observed_at = 8;
+}
+
+message ModelRuntimeExecutionNonAdmissionResult {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  bytes authority_digest = 3;
+  ModelRuntimeCommandDecision decision = 4;
+  // Absent checkpoint always means unproven, including an ACCEPTED read.
+  ModelRuntimeExecutionNonAdmissionCheckpoint checkpoint = 5;
+}
+
+message ModelRuntimeServiceCheckpointStageNonAdmissionRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceCheckpointStageNonAdmissionResponse {
+  ModelRuntimeExecutionNonAdmissionResult result = 1;
+}
+
+message ModelRuntimeServiceInspectStageNonAdmissionRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceInspectStageNonAdmissionResponse {
+  ModelRuntimeExecutionNonAdmissionResult result = 1;
 }
 
 message ModelRuntimeFailureEvidence {

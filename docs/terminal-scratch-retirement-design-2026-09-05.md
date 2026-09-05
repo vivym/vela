@@ -46,8 +46,9 @@ slots. FakeRuntime implements that contract. The subsequent [process drain
 channel](process-drain-evidence-2026-09-06.md) now gives ProcessBackend negotiated
 fd-4 drain support; H3/thumbnail mocks join synchronous command work and freeze
 exact terminal execution without unloading resident models or cleaning its files.
-Unproven recovered records block new execution/readiness. Runtime journal schema
-2 rejects schema 1 pending validated migration and historical writer recovery.
+Unproven recovered records block new execution/readiness. The subsequent
+non-admission increment below advances Runtime journal schema 2 to 3; schema 1
+still requires validated migration and historical writer recovery.
 The [authenticated member drain](member-execution-drain-evidence-2026-09-06.md)
 now collects complete per-execution checkpoints through private UDS and authenticated
 member forwarding, including historical reads from current trusted journal owners.
@@ -60,6 +61,14 @@ history. Its separate read-only allocation RPC preserves checkpoints at differen
 renewals, including through alternate current readers after profile retirement.
 Exact-envelope queries remain exact. This observes existing checkpoints only;
 pending and absent history stays unproven, including undelivered allocations.
+The [durable non-admission increment](execution-non-admission-evidence-2026-09-06.md)
+now permits an explicit never-admitted checkpoint after a persisted floor, only
+for the original resident Runtime epoch/profile with no execution intent.
+Authenticated RPCs and a complete mixed-proof collector retain the distinction
+between backend drain and never-admitted evidence. Existing absence checkpoints
+survive epoch/profile changes; missing old-epoch evidence remains unknown.
+Runtime journal is now schema 3 with explicit validated schema-2 upgrade, while
+Worker and launch/Fleet schemas remain 2 and database schema remains 90.
 Default command assembly, automatic startup reconciliation, complete-history drain
 orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
