@@ -1244,6 +1244,7 @@ type productionExecutionControl struct {
 	reattachCalls        int
 	assignment           *velav1.StageAssignment
 	acquireCalls         int
+	acquireIDs           []string
 	commands             <-chan *velav1.StageWorkerControlServiceConnectResponse
 	observationSequences []int64
 	failCalls            int
@@ -1335,6 +1336,7 @@ func (control *productionExecutionControl) Exchange(
 		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		control.acquireCalls++
+		control.acquireIDs = append(control.acquireIDs, request.GetRequestId())
 		if control.assignment != nil {
 			assignment := control.assignment
 			control.assignment = nil

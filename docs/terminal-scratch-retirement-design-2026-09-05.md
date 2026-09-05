@@ -5,7 +5,10 @@ of the complete signed original, and the [signed terminal disposition over
 authenticated Control](terminal-disposition-evidence-2026-09-05.md) are implemented
 and locally tested at schema 90. The standalone [persistent Worker admission
 component](assignment-admission-evidence-2026-09-05.md) now has local replay,
-filesystem-fault and process-restart tests. Its production wiring, Runtime floors,
+filesystem-fault and process-restart tests. The explicit [durable Stream
+integration](durable-stream-admission-evidence-2026-09-05.md) now covers local
+execution, Stop, renewal and materialization. Default command assembly, automatic
+startup reconciliation, Runtime floors,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -368,7 +371,7 @@ An alternative is an independently proven barrier that invalidates every old
 authority before execution drain. Advancing only a local counter, observing
 one lease expire, or finding an empty active-execution map does not establish
 that barrier. The current protocol has no terminal-cutoff installation RPC;
-the reader, Runtime floor, and local recovery records remain design work.
+the Runtime floor and combined retirement recovery remain implementation work.
 
 The runtime epoch store persists an epoch, not terminal receipts or namespace
 intent. The materialization journal covers sealed outputs, not every failed or

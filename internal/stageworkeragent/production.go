@@ -405,7 +405,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			}
 			continue
 		}
-		result, heartbeatSequence, err := agent.startAndMonitor(ctx, discovery.Assignment)
+		result, heartbeatSequence, err := agent.startAndMonitor(ctx, discovery.Assignment, discovery.AcquireCommandID)
 		for errors.Is(err, errControlReconnect) && !result.GPUReleased {
 			if err := agent.wait(ctx, backoff); err != nil {
 				if ctx.Err() != nil {
@@ -459,19 +459,28 @@ func (agent *ProductionAgent) RunAssignment(
 	ctx context.Context,
 	assignment *velav1.StageAssignment,
 ) (MaterializationResult, error) {
-	result, _, err := agent.startAndMonitor(ctx, assignment)
+	result, _, err := agent.startAndMonitor(ctx, assignment, uuid.Nil)
+	return result, err
+}
+
+func (agent *ProductionAgent) RunAcquiredAssignment(ctx context.Context, assignment *velav1.StageAssignment, acquireID uuid.UUID) (MaterializationResult, error) {
+	if acquireID == uuid.Nil {
+		return MaterializationResult{}, errors.New("StageAssignment requires its original Acquire command ID")
+	}
+	result, _, err := agent.startAndMonitor(ctx, assignment, acquireID)
 	return result, err
 }
 
 func (agent *ProductionAgent) startAndMonitor(
 	ctx context.Context,
 	assignment *velav1.StageAssignment,
+	acquireID uuid.UUID,
 ) (MaterializationResult, int64, error) {
 	if agent == nil || agent.stream == nil || agent.wait == nil ||
 		agent.heartbeatInterval <= 0 || ctx == nil || assignment == nil {
 		return MaterializationResult{}, 1, errors.New("stage worker production execution is not configured")
 	}
-	if _, err := agent.stream.ExecuteAssignment(ctx, assignment); err != nil {
+	if _, err := agent.stream.executeAssignment(ctx, assignment, acquireID); err != nil {
 		return MaterializationResult{}, 1, fmt.Errorf("execute StageAssignment: %w", err)
 	}
 	return agent.monitorActive(ctx, 1)
@@ -482,11 +491,7 @@ func (agent *ProductionAgent) monitorActive(
 	sequence int64,
 ) (MaterializationResult, int64, error) {
 	for ; ; sequence++ {
-		authority := agent.stream.activeAuthority()
-		if authority == nil {
-			return MaterializationResult{}, sequence, errors.New("stage worker lost active authority before completion")
-		}
-		status, err := agent.stream.runtime.Status(ctx, authority)
+		_, status, err := agent.stream.inspectActiveRuntime(ctx)
 		if err != nil {
 			return MaterializationResult{}, sequence, fmt.Errorf("observe ModelRuntime execution: %w", err)
 		}
@@ -520,11 +525,7 @@ func (agent *ProductionAgent) monitorActive(
 }
 
 func (agent *ProductionAgent) reattachActive(ctx context.Context) error {
-	authority := agent.stream.activeAuthority()
-	if authority == nil {
-		return errors.New("stage worker has no active authority to reattach")
-	}
-	status, err := agent.stream.runtime.Status(ctx, authority)
+	authority, status, err := agent.stream.inspectActiveRuntime(ctx)
 	if err != nil {
 		return fmt.Errorf("observe ModelRuntime before reattach: %w", err)
 	}

@@ -1,12 +1,14 @@
 package stageworkeragent_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -21,6 +23,7 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 		staleStop     bool
 		directStop    bool
 		renewResponse bool
+		durable       bool
 	}{
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE},
@@ -33,6 +36,10 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE, renewedActive: true, staleStop: true},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, renewResponse: true, directStop: true},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE, renewResponse: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, renewResponse: true, directStop: true, durable: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE, renewResponse: true, durable: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE, renewedActive: true, durable: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, stopFails: true, durable: true},
 	} {
 		name := test.operation.String()
 		if test.renewedActive {
@@ -49,6 +56,9 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 		}
 		if test.renewResponse {
 			name += "/renewed-response"
+		}
+		if test.durable {
+			name += "/durable"
 		}
 		t.Run(name, func(t *testing.T) {
 			operation := test.operation
@@ -86,17 +96,39 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New Agent: %v", err)
 			}
-			agent, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+			var admission *stageworkeragent.FileAssignmentAdmission
+			journal := admissionFixture{}
+			if test.durable {
+				journal = newAdmissionFixture(t)
+				journal.config.Validator, err = stageauthority.NewValidator(map[string][]byte{"barrier-key": bytes.Repeat([]byte{0x6b}, 32)}, time.Now)
+				if err != nil {
+					t.Fatal(err)
+				}
+				admission = journal.open(t)
+			}
+			newStream := func() (*stageworkeragent.StreamAgent, error) {
+				if admission != nil {
+					return stageworkeragent.NewDurableStreamAgent(stageworkeragent.DurableStreamConfig{Runtime: runtimeAgent, Control: control, Admission: admission})
+				}
+				return stageworkeragent.NewStreamAgent(runtimeAgent, control)
+			}
+			agent, err := newStream()
 			if err != nil {
 				t.Fatalf("NewStreamAgent: %v", err)
 			}
+			execute := func() (stageworkeragent.AssignmentExecutionResult, error) {
+				if admission != nil {
+					return agent.ExecuteAcquiredAssignment(ctx, fixture.assignment, journal.acquireID)
+				}
+				return agent.ExecuteAssignment(ctx, fixture.assignment)
+			}
 			if operation != velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE {
-				if _, err := agent.ExecuteAssignment(ctx, fixture.assignment); err != nil {
+				if _, err := execute(); err != nil {
 					t.Fatalf("ExecuteAssignment: %v", err)
 				}
 			}
 			if operation == velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE && !test.renewedActive {
-				agent, err = stageworkeragent.NewStreamAgent(runtimeAgent, control)
+				agent, err = newStream()
 				if err != nil {
 					t.Fatalf("rebuild StreamAgent: %v", err)
 				}
@@ -112,7 +144,7 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 				switch operation {
 				case velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE:
 					var result stageworkeragent.AssignmentExecutionResult
-					result, err = agent.ExecuteAssignment(ctx, fixture.assignment)
+					result, err = execute()
 					accepted = result.ControlStartAccepted
 				case velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE:
 					var result *velav1.StageCommandResult
@@ -196,6 +228,9 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 				case <-ctx.Done():
 					t.Error("command consumer did not finish after response release")
 				}
+			}
+			if admission != nil && admissionSnapshot(t, admission).Latest.Phase != stageworkeragent.AssignmentClosed {
+				t.Error("late control response reopened durable admission")
 			}
 		})
 	}

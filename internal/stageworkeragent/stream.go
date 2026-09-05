@@ -37,6 +37,7 @@ type StreamAgent struct {
 	runtime           *Agent
 	control           ControlClient
 	inputResolver     InputResolver
+	admission         *FileAssignmentAdmission
 	materialization   *streamMaterialization
 	materializationMu sync.Mutex
 	assignmentMu      sync.Mutex
@@ -52,6 +53,32 @@ type StreamAgent struct {
 type pendingAssignmentInputs struct {
 	authorityDigest [sha256.Size]byte
 	cancel          context.CancelFunc
+}
+
+type DurableStreamConfig struct {
+	Runtime         *Agent
+	Control         ControlClient
+	Admission       *FileAssignmentAdmission
+	InputResolver   InputResolver
+	Materialization *MaterializationConfig
+}
+
+func NewDurableStreamAgent(config DurableStreamConfig) (*StreamAgent, error) {
+	if config.Admission == nil {
+		return nil, errors.New("durable Stage Worker stream requires assignment admission")
+	}
+	var agent *StreamAgent
+	var err error
+	if config.Materialization == nil {
+		agent, err = NewStreamAgent(config.Runtime, config.Control)
+	} else {
+		agent, err = NewMaterializingStreamAgent(config.Runtime, config.Control, *config.Materialization)
+	}
+	if err != nil {
+		return nil, err
+	}
+	agent.admission, agent.inputResolver = config.Admission, config.InputResolver
+	return agent, nil
 }
 
 type AssignmentExecutionResult struct {
@@ -160,7 +187,7 @@ func (agent *StreamAgent) RunControlCommands(ctx context.Context) error {
 }
 
 func (agent *StreamAgent) handleUnsolicitedStop(ctx context.Context, stop *velav1.StopStage) error {
-	if canceled, err := agent.cancelPendingInputs(stop); canceled || err != nil {
+	if canceled, err := agent.cancelPendingInputs(ctx, stop); canceled || err != nil {
 		return err
 	}
 	agent.runtimeMu.Lock()
@@ -189,9 +216,23 @@ func (agent *StreamAgent) ExecuteAssignment(
 	ctx context.Context,
 	assignment *velav1.StageAssignment,
 ) (AssignmentExecutionResult, error) {
+	return agent.executeAssignment(ctx, assignment, uuid.Nil)
+}
+
+func (agent *StreamAgent) ExecuteAcquiredAssignment(ctx context.Context, assignment *velav1.StageAssignment, acquireID uuid.UUID) (AssignmentExecutionResult, error) {
+	if acquireID == uuid.Nil {
+		return AssignmentExecutionResult{}, errors.New("StageAssignment requires its original Acquire command ID")
+	}
+	return agent.executeAssignment(ctx, assignment, acquireID)
+}
+
+func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *velav1.StageAssignment, acquireID uuid.UUID) (AssignmentExecutionResult, error) {
 	result := AssignmentExecutionResult{}
 	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
 		return result, errors.New("missing configured Stage Worker stream Agent")
+	}
+	if agent.admission != nil && acquireID == uuid.Nil {
+		return result, errors.New("durable StageAssignment requires its original Acquire command ID")
 	}
 	agent.assignmentMu.Lock()
 	defer agent.assignmentMu.Unlock()
@@ -206,8 +247,17 @@ func (agent *StreamAgent) ExecuteAssignment(
 		return result, err
 	}
 	ctx, cancelInputs := context.WithCancel(ctx)
+	defer cancelInputs()
 	inputs := &pendingAssignmentInputs{authorityDigest: digest, cancel: cancelInputs}
+	var admission *AssignmentAdmission
 	agent.inputMu.Lock()
+	if agent.admission != nil {
+		admission, err = agent.admission.Begin(ctx, assignment, acquireID)
+		if err != nil {
+			agent.inputMu.Unlock()
+			return result, err
+		}
+	}
 	agent.pendingInputs = inputs
 	agent.inputMu.Unlock()
 	defer func() {
@@ -217,6 +267,9 @@ func (agent *StreamAgent) ExecuteAssignment(
 			agent.pendingInputs = nil
 		}
 		agent.inputMu.Unlock()
+		if admission != nil {
+			admission.Release()
+		}
 	}()
 	if agent.materialization != nil {
 		if err := agent.materialization.journal.EnsureCapacity(ctx); err != nil {
@@ -242,6 +295,12 @@ func (agent *StreamAgent) ExecuteAssignment(
 	if inputErr != nil {
 		agent.runtimeMu.Unlock()
 		return result, inputErr
+	}
+	if admission != nil {
+		if err := admission.EnterRuntime(ctx); err != nil {
+			agent.runtimeMu.Unlock()
+			return result, err
+		}
 	}
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)
 	result.StartBarrierResult = barrier
@@ -295,6 +354,11 @@ func (agent *StreamAgent) ExecuteAssignment(
 	}
 	activeAuthority := assignment.GetAuthority()
 	if renewed := command.GetRenewedAuthority(); renewed != nil {
+		if err := agent.observeRuntimeAuthority(ctx, renewed); err != nil {
+			acknowledged, cancelErr := agent.cancelAfterControlStartFailure(ctx, assignment.GetAuthority(), err)
+			result.CancellationAcknowledgedMembers = acknowledged
+			return result, cancelErr
+		}
 		if _, err := agent.runtime.Status(ctx, renewed); err != nil {
 			acknowledged, cancelErr := agent.cancelAfterControlStartFailure(
 				ctx,
@@ -305,6 +369,11 @@ func (agent *StreamAgent) ExecuteAssignment(
 			return result, cancelErr
 		}
 		activeAuthority = renewed
+	}
+	if err := agent.observeRuntimeAuthority(ctx, activeAuthority); err != nil {
+		acknowledged, cancelErr := agent.cancelAfterControlStartFailure(ctx, activeAuthority, err)
+		result.CancellationAcknowledgedMembers = acknowledged
+		return result, cancelErr
 	}
 	result.ControlStartAccepted = true
 	agent.setActive(activeAuthority)
@@ -323,6 +392,10 @@ func (agent *StreamAgent) Heartbeat(
 	if authority == nil {
 		agent.runtimeMu.Unlock()
 		return nil, errors.New("missing active StageAuthority on Stage Worker")
+	}
+	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
+		agent.runtimeMu.Unlock()
+		return nil, err
 	}
 	statusResult, err := agent.runtime.Status(ctx, authority)
 	stopGeneration := agent.stopGeneration
@@ -369,6 +442,9 @@ func (agent *StreamAgent) Heartbeat(
 		return command, errors.New("rejected Stage Worker heartbeat authority")
 	}
 	if renewed := command.GetRenewedAuthority(); renewed != nil {
+		if err := agent.observeRuntimeAuthority(ctx, renewed); err != nil {
+			return nil, err
+		}
 		if _, err := agent.runtime.Status(ctx, renewed); err != nil {
 			return nil, fmt.Errorf("validate renewed StageAuthority with resident runtime: %w", err)
 		}
@@ -412,6 +488,9 @@ func (agent *StreamAgent) Fail(
 		(command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
 			command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
 		return command, errors.New("control rejected Stage Worker failure evidence")
+	}
+	if err := agent.closeAdmission(ctx, authority); err != nil {
+		return nil, err
 	}
 	agent.clearActive(authority)
 	return command, nil
@@ -517,7 +596,7 @@ func (agent *StreamAgent) Reattach(
 	localReceiptDigest []byte,
 ) (ReattachResult, error) {
 	result := ReattachResult{}
-	if agent == nil || agent.runtime == nil || agent.control == nil || authority == nil ||
+	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil || authority == nil ||
 		(len(localReceiptDigest) != 0 && len(localReceiptDigest) != 32) {
 		return result, errors.New("invalid Stage Worker reattach authority")
 	}
@@ -525,6 +604,10 @@ func (agent *StreamAgent) Reattach(
 	defer agent.assignmentMu.Unlock()
 	agent.runtimeMu.Lock()
 	initialActive := agent.activeAuthority()
+	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
+		agent.runtimeMu.Unlock()
+		return result, err
+	}
 	statusResult, err := agent.runtime.Status(ctx, authority)
 	if err != nil {
 		agent.runtimeMu.Unlock()
@@ -587,10 +670,10 @@ func (agent *StreamAgent) HandleStop(
 	ctx context.Context,
 	stop *velav1.StopStage,
 ) (CancellationResult, error) {
-	if agent == nil {
+	if agent == nil || ctx == nil {
 		return CancellationResult{}, errors.New("missing Stage Worker stream Agent")
 	}
-	if canceled, err := agent.cancelPendingInputs(stop); canceled || err != nil {
+	if canceled, err := agent.cancelPendingInputs(ctx, stop); canceled || err != nil {
 		return CancellationResult{}, err
 	}
 	agent.runtimeMu.Lock()
@@ -598,7 +681,7 @@ func (agent *StreamAgent) HandleStop(
 	return agent.handleStop(ctx, stop)
 }
 
-func (agent *StreamAgent) cancelPendingInputs(stop *velav1.StopStage) (bool, error) {
+func (agent *StreamAgent) cancelPendingInputs(ctx context.Context, stop *velav1.StopStage) (bool, error) {
 	if stop.GetReason() == velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_UNSPECIFIED {
 		return false, errors.New("invalid Stage Worker StopStage command")
 	}
@@ -613,7 +696,7 @@ func (agent *StreamAgent) cancelPendingInputs(stop *velav1.StopStage) (bool, err
 	}
 	agent.pendingInputs.cancel()
 	// Cancellation signals the resolver; its return establishes local drain.
-	return true, nil
+	return true, agent.closeAdmission(context.WithoutCancel(ctx), stop.GetAuthority())
 }
 
 func (agent *StreamAgent) handleStop(
@@ -635,11 +718,13 @@ func (agent *StreamAgent) handleStop(
 		// fails or its acknowledgment is lost.
 		agent.stopGeneration++
 	}
-	return agent.runtime.Cancel(
+	closeErr := agent.closeAdmission(context.WithoutCancel(ctx), stop.GetAuthority())
+	result, cancelErr := agent.runtime.Cancel(
 		ctx,
 		stop.GetAuthority(),
 		velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
 	)
+	return result, errors.Join(closeErr, cancelErr)
 }
 
 // The caller holds runtimeMu. Runtime may accept authority before control ACKs it.
@@ -655,12 +740,41 @@ func (agent *StreamAgent) cancelAfterControlStartFailure(
 	authority *velav1.StageAuthority,
 	cause error,
 ) (int, error) {
+	closeErr := agent.closeAdmission(context.WithoutCancel(ctx), authority)
 	canceled, err := agent.runtime.Cancel(
 		context.WithoutCancel(ctx),
 		authority,
 		velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
 	)
-	return canceled.AcknowledgedMembers, errors.Join(cause, err)
+	return canceled.AcknowledgedMembers, errors.Join(cause, closeErr, err)
+}
+
+func (agent *StreamAgent) observeRuntimeAuthority(ctx context.Context, authority *velav1.StageAuthority) error {
+	if agent.admission == nil {
+		return nil
+	}
+	return agent.admission.ObserveRuntimeAuthority(ctx, authority)
+}
+
+func (agent *StreamAgent) closeAdmission(ctx context.Context, authority *velav1.StageAuthority) error {
+	if agent.admission == nil {
+		return nil
+	}
+	return agent.admission.CloseExecution(ctx, authority)
+}
+
+func (agent *StreamAgent) inspectActiveRuntime(ctx context.Context) (*velav1.StageAuthority, AggregateStatus, error) {
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
+	authority := agent.activeAuthority()
+	if authority == nil {
+		return nil, AggregateStatus{}, errors.New("stage worker has no active authority to inspect")
+	}
+	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
+		return nil, AggregateStatus{}, err
+	}
+	status, err := agent.runtime.Status(ctx, authority)
+	return authority, status, err
 }
 
 func (agent *StreamAgent) setActive(authority *velav1.StageAuthority) {
@@ -682,7 +796,7 @@ func (agent *StreamAgent) clearActive(authority *velav1.StageAuthority) {
 	if authority == nil {
 		return
 	}
-	digest, err := stageauthority.Digest(authority)
+	identity, err := assignmentExecutionIdentity(authority)
 	if err != nil {
 		return
 	}
@@ -691,8 +805,9 @@ func (agent *StreamAgent) clearActive(authority *velav1.StageAuthority) {
 	if agent.active == nil {
 		return
 	}
-	activeDigest, err := stageauthority.Digest(agent.active)
-	if err == nil && activeDigest == digest {
+	// A terminal response may arrive after the same execution was renewed.
+	activeIdentity, err := assignmentExecutionIdentity(agent.active)
+	if err == nil && activeIdentity == identity {
 		agent.active = nil
 	}
 }

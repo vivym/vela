@@ -217,6 +217,9 @@ func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterial
 	if authority == nil {
 		return PendingMaterialization{}, result, errors.New("missing active StageAuthority to seal")
 	}
+	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
+		return PendingMaterialization{}, result, err
+	}
 	receipt, err := agent.runtime.SealOutput(ctx, authority)
 	if err != nil {
 		return PendingMaterialization{}, result, err
@@ -228,6 +231,9 @@ func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterial
 	}
 	if err := agent.materialization.journal.Put(ctx, record); err != nil {
 		return record, result, fmt.Errorf("persist sealed local output before releasing StageAuthority: %w", err)
+	}
+	if err := agent.closeAdmission(ctx, authority); err != nil {
+		return record, result, err
 	}
 	agent.clearActive(authority)
 	result.GPUReleased = true
@@ -248,6 +254,15 @@ func (agent *StreamAgent) ResumeMaterializations(
 		return result, err
 	}
 	for _, record := range records {
+		agent.runtimeMu.Lock()
+		closeErr := agent.closeAdmission(ctx, record.StageAuthority)
+		if closeErr == nil {
+			agent.clearActive(record.StageAuthority)
+		}
+		agent.runtimeMu.Unlock()
+		if closeErr != nil {
+			return result, closeErr
+		}
 		result, err = agent.advancePendingMaterialization(ctx, record)
 		result.LocalSealed = true
 		result.GPUReleased = true

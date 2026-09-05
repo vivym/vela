@@ -212,6 +212,47 @@ func (handle *AssignmentAdmission) EnterRuntime(ctx context.Context) error {
 	return gate.commit(ctx, next)
 }
 
+// ObserveRuntimeAuthority persists a permitted renewal before a Runtime RPC can
+// install it. It cannot create an execution or reopen a closed admission.
+func (gate *FileAssignmentAdmission) ObserveRuntimeAuthority(ctx context.Context, authority *velav1.StageAuthority) error {
+	if gate == nil || ctx == nil {
+		return ErrAdmissionClosed
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if err := gate.available(ctx); err != nil {
+		return err
+	}
+	verified, err := gate.verifyCurrent(authority)
+	if err != nil {
+		return err
+	}
+	identity, err := assignmentExecutionIdentity(verified.Authority)
+	if err != nil {
+		return err
+	}
+	if gate.state.Latest == nil || gate.state.Latest.Identity != identity || gate.state.Latest.Phase != AssignmentRuntimeEntered {
+		return ErrAdmissionClosed
+	}
+	latest, err := gate.decodeAuthority(gate.state.Latest.LatestWire)
+	if err != nil {
+		return err
+	}
+	if proto.Equal(latest, verified.Authority) {
+		return nil
+	}
+	if err := stageauthority.ValidateRenewal(latest, verified.Authority); err != nil {
+		return err
+	}
+	wire, err := admissionAuthorityWire(verified.Authority)
+	if err != nil {
+		return err
+	}
+	next := cloneAdmissionState(gate.state)
+	next.Latest.LatestWire = wire
+	return gate.commit(ctx, next)
+}
+
 // CloseExecution closes both initial and renewal envelopes of the same immutable
 // execution. It does not cancel/join writers, release the handle or authorize cleanup.
 func (gate *FileAssignmentAdmission) CloseExecution(ctx context.Context, authority *velav1.StageAuthority) error {
@@ -232,6 +273,11 @@ func (gate *FileAssignmentAdmission) CloseExecution(ctx context.Context, authori
 		return err
 	}
 	if gate.state.Latest == nil || gate.state.Latest.Identity != identity {
+		for _, entry := range gate.state.Pending {
+			if entry.Identity == identity && entry.Phase == AssignmentClosed {
+				return nil
+			}
+		}
 		return ErrAdmissionClosed
 	}
 	if gate.state.Latest.Phase == AssignmentClosed {

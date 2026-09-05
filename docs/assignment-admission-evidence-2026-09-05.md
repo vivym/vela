@@ -1,7 +1,9 @@
 # Durable assignment admission component evidence
 
 Status: local CPU-only component, based on checkpoint `d63674f`, schema 90.
-The component is not yet connected to StreamAgent or the production command.
+The subsequent [durable Stream integration](durable-stream-admission-evidence-2026-09-05.md)
+connects this component through an explicit constructor. Default production
+command assembly and automatic startup recovery remain open.
 Production Gates remain **0/9**. These results establish neither execution drain
 nor permission to remove scratch files.
 
@@ -87,12 +89,11 @@ now echoes the request ID as the real transport does.
 
 ## Required integration
 
-Carry DiscoveryResult.AcquireCommandID through Run/startAndMonitor into the
-durable gate. The existing RunAssignment API also needs explicit original lookup
-evidence before it can use that gate. Wire Begin before any Resolve/download, EnterRuntime before Prepare,
-and closure into Stop, failure and materialization, without holding the admission
-mutex across downloads or Control RPCs. Preserve correct recovery on reattach and
-provide trusted Runtime binding refresh as Fleet epochs change.
+The subsequent Stream integration carries DiscoveryResult.AcquireCommandID through
+Run/startAndMonitor, provides direct APIs with original lookup evidence, and wires
+Begin, EnterRuntime, renewal, Reattach and closure into the local execution path.
+Default command assembly, automatic startup reconciliation and trusted Runtime
+binding refresh as Fleet epochs change are still required.
 
 The [terminal retirement design](terminal-scratch-retirement-design-2026-09-05.md)
 still requires signed Runtime floors, distinct FLOOR_INSTALLED and DRAINED

@@ -102,9 +102,14 @@ adds a bounded Worker-wide watermark, original Acquire/renewal history and a
 persistent Runtime-entry intent. Local replay, filesystem-fault, process-restart,
 macOS race and Linux CPU tests pass at schema 90. Production pre-Resolve wiring,
 Runtime floors, execution drain and retirement of pending records remain open.
-Production discovery now retains the original transmitted Acquire command ID
-and rejects assignment responses with a different or missing ID. Passing that
-identity into the durable execution gate is still required.
+Production discovery retains the original transmitted Acquire command ID and
+rejects assignment responses with a different or missing ID. The explicit
+[durable Stream path](durable-stream-admission-evidence-2026-09-05.md) carries that
+identity through Run into input/Runtime admission, renewal, Reattach and local
+closure. Its CPU/race/Linux lifecycle tests pass. Default command assembly and
+automatic startup reconciliation are still pending alongside Runtime drain and
+terminal retirement. The same increment fixes active authority surviving an
+accepted Fail response after concurrent renewal.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
