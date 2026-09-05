@@ -60,7 +60,9 @@ retirement gate. Replaying the same assignment can still reenter Resolve. The
 terminal allocation cutoff, complete Runtime scope, signed disposition and
 durable retirement recovery remain in the
 [terminal scratch design](terminal-scratch-retirement-design-2026-09-05.md).
-Late control START acceptance after a Runtime Stop is a separate open finding.
+Late control acceptance after a Runtime Stop was a separate finding at this
+checkpoint, subsequently repaired in the
+[response ordering evidence](late-control-stop-evidence-2026-09-05.md).
 
 No GPU, remote lab, database integration, CNPG or load campaign was run for this
 change. The previous 512-Job measurements remain bound to `a9a1f7a`.

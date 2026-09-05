@@ -9,21 +9,46 @@ import (
 
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 	for _, test := range []struct {
 		operation     velav1.StageWorkerOperation
 		renewedActive bool
+		stopFails     bool
+		staleStop     bool
+		directStop    bool
+		renewResponse bool
 	}{
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE},
 		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE, renewedActive: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, stopFails: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE, stopFails: true, directStop: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE, stopFails: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, staleStop: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE, renewedActive: true, staleStop: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE, renewResponse: true, directStop: true},
+		{operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE, renewResponse: true},
 	} {
 		name := test.operation.String()
 		if test.renewedActive {
 			name += "/renewed-active"
+		}
+		if test.stopFails {
+			name += "/cancel-error"
+		}
+		if test.staleStop {
+			name += "/stale-stop"
+		}
+		if test.directStop {
+			name += "/direct-stop"
+		}
+		if test.renewResponse {
+			name += "/renewed-response"
 		}
 		t.Run(name, func(t *testing.T) {
 			operation := test.operation
@@ -42,10 +67,20 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 				operation: operation, blocked: make(chan struct{}), release: release,
 				commands: make(chan *velav1.StageWorkerControlServiceConnectResponse, 1),
 			}
+			if test.renewResponse {
+				control.renewedAuthority = renewBarrierAuthority(t, fixture.authority)
+			}
+			clients := fixture.clients
+			if test.stopFails {
+				clients = []velav1.ModelRuntimeServiceClient{
+					failingStopRuntimeClient{ModelRuntimeServiceClient: clients[0]},
+					failingStopRuntimeClient{ModelRuntimeServiceClient: clients[1]},
+				}
+			}
 			runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
 				Members: []stageworkeragent.RuntimeMember{
-					{ID: fixture.memberIDs[0], Client: fixture.clients[0]},
-					{ID: fixture.memberIDs[1], Client: fixture.clients[1]},
+					{ID: fixture.memberIDs[0], Client: clients[0]},
+					{ID: fixture.memberIDs[1], Client: clients[1]},
 				},
 			})
 			if err != nil {
@@ -66,39 +101,65 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 					t.Fatalf("rebuild StreamAgent: %v", err)
 				}
 			}
-			operationFinished := make(chan error, 1)
+			type operationResult struct {
+				accepted bool
+				err      error
+			}
+			operationFinished := make(chan operationResult, 1)
 			go func() {
 				var err error
+				var accepted bool
 				switch operation {
 				case velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE:
-					_, err = agent.ExecuteAssignment(ctx, fixture.assignment)
+					var result stageworkeragent.AssignmentExecutionResult
+					result, err = agent.ExecuteAssignment(ctx, fixture.assignment)
+					accepted = result.ControlStartAccepted
 				case velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE:
-					_, err = agent.Heartbeat(ctx, 1)
+					var result *velav1.StageCommandResult
+					result, err = agent.Heartbeat(ctx, 1)
+					accepted = result.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED
 				case velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE:
-					_, err = agent.Reattach(ctx, stopAuthority, "", nil)
+					var result stageworkeragent.ReattachResult
+					result, err = agent.Reattach(ctx, stopAuthority, "", nil)
+					accepted = result.Accepted
 				}
-				operationFinished <- err
+				operationFinished <- operationResult{accepted: accepted, err: err}
 			}()
 			select {
 			case <-control.blocked:
 			case <-ctx.Done():
 				t.Fatal("control operation did not reach its blocked response")
 			}
+			stop := &velav1.StopStage{
+				Authority: proto.Clone(stopAuthority).(*velav1.StageAuthority),
+				Reason:    velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED,
+			}
+			if test.staleStop {
+				if test.renewedActive {
+					stop.Authority = fixture.authority
+				} else {
+					stop.Authority.ExecutionNonce[0] ^= 1
+				}
+			}
 			control.commands <- &velav1.StageWorkerControlServiceConnectResponse{
-				Result: &velav1.StageWorkerControlServiceConnectResponse_StopStage{StopStage: &velav1.StopStage{
-					Authority: stopAuthority,
-					Reason:    velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED,
-				}},
+				Result: &velav1.StageWorkerControlServiceConnectResponse_StopStage{StopStage: stop},
 			}
 			close(control.commands)
 			commandsFinished := make(chan error, 1)
-			go func() { commandsFinished <- agent.RunControlCommands(ctx) }()
+			go func() {
+				if test.directStop {
+					_, err := agent.HandleStop(ctx, stop)
+					commandsFinished <- err
+				} else {
+					commandsFinished <- agent.RunControlCommands(ctx)
+				}
+			}()
 			consumed := false
 			deadline := time.NewTimer(time.Second)
 			select {
 			case err := <-commandsFinished:
 				consumed = true
-				if err != nil {
+				if (err != nil) != test.stopFails {
 					t.Errorf("RunControlCommands while response is blocked: %v", err)
 				}
 			case <-deadline.C:
@@ -110,15 +171,22 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 				if err != nil {
 					t.Errorf("Status before releasing control response: %v", err)
 				}
+				wantState := velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING
+				if test.staleStop || test.stopFails {
+					wantState = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING
+				}
 				for memberID, state := range status.States {
-					if state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
-						t.Errorf("member %s state before releasing control response = %s, want CANCELING", memberID, state)
+					if state != wantState {
+						t.Errorf("member %s state before releasing control response = %s, want %s", memberID, state, wantState)
 					}
 				}
 			}
 			releaseResponse()
 			select {
-			case <-operationFinished:
+			case result := <-operationFinished:
+				if (result.err == nil) != test.staleStop || result.accepted != test.staleStop {
+					t.Errorf("late control response accepted after Stop: accepted=%v error=%v", result.accepted, result.err)
+				}
 			case <-ctx.Done():
 				t.Error("control operation did not finish after response release")
 			}
@@ -134,10 +202,11 @@ func TestStreamAgentConsumesStopWhileControlResponseIsBlocked(t *testing.T) {
 }
 
 type stopLivenessControl struct {
-	operation velav1.StageWorkerOperation
-	blocked   chan struct{}
-	release   <-chan struct{}
-	commands  chan *velav1.StageWorkerControlServiceConnectResponse
+	operation        velav1.StageWorkerOperation
+	blocked          chan struct{}
+	release          <-chan struct{}
+	commands         chan *velav1.StageWorkerControlServiceConnectResponse
+	renewedAuthority *velav1.StageAuthority
 }
 
 func (control *stopLivenessControl) NextCommand(ctx context.Context) (*velav1.StageWorkerControlServiceConnectResponse, error) {
@@ -167,5 +236,21 @@ func (control *stopLivenessControl) Exchange(
 			return nil, ctx.Err()
 		}
 	}
-	return commandResultResponse(operation, velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED), nil
+	response := commandResultResponse(operation, velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED)
+	if operation == control.operation {
+		response.GetStageCommandResult().RenewedAuthority = control.renewedAuthority
+	}
+	return response, nil
+}
+
+type failingStopRuntimeClient struct {
+	velav1.ModelRuntimeServiceClient
+}
+
+func (failingStopRuntimeClient) CancelStage(
+	context.Context,
+	*velav1.ModelRuntimeServiceCancelStageRequest,
+	...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceCancelStageResponse, error) {
+	return nil, errors.New("injected Runtime cancellation transport error")
 }

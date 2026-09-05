@@ -93,6 +93,10 @@ The [input Stop repair](input-stop-evidence-2026-09-05.md) cancels pending
 resolution and rejects late resolver success before Runtime admission. Its unit,
 related-module race and lint checks pass; persistent namespace exclusion and
 complete terminal scratch retirement remain open.
+The [late control response repair](late-control-stop-evidence-2026-09-05.md)
+also prevents a matching Stop from being overwritten by delayed START,
+HEARTBEAT or REATTACH acceptance. Unit, related-module race and lint checks pass;
+the process-local response guard does not establish durable stopped state.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

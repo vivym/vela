@@ -44,6 +44,7 @@ type StreamAgent struct {
 	pendingInputs     *pendingAssignmentInputs
 	runtimeMu         sync.Mutex
 	startingAuthority *velav1.StageAuthority
+	stopGeneration    uint64
 	mu                sync.Mutex
 	active            *velav1.StageAuthority
 }
@@ -249,6 +250,7 @@ func (agent *StreamAgent) ExecuteAssignment(
 		return result, err
 	}
 	agent.startingAuthority = proto.Clone(assignment.GetAuthority()).(*velav1.StageAuthority)
+	stopGeneration := agent.stopGeneration
 	agent.runtimeMu.Unlock()
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_StartStage{
@@ -269,6 +271,9 @@ func (agent *StreamAgent) ExecuteAssignment(
 		)
 		result.CancellationAcknowledgedMembers = acknowledged
 		return result, cancelErr
+	}
+	if agent.stopGeneration != stopGeneration {
+		return result, errors.New("control stopped StageAttempt while start response was pending")
 	}
 	if stop := response.GetStopStage(); stop != nil {
 		cancelResult, cancelErr := agent.handleStop(ctx, stop)
@@ -320,6 +325,7 @@ func (agent *StreamAgent) Heartbeat(
 		return nil, errors.New("missing active StageAuthority on Stage Worker")
 	}
 	statusResult, err := agent.runtime.Status(ctx, authority)
+	stopGeneration := agent.stopGeneration
 	agent.runtimeMu.Unlock()
 	if err != nil {
 		return nil, err
@@ -345,6 +351,9 @@ func (agent *StreamAgent) Heartbeat(
 	}
 	agent.runtimeMu.Lock()
 	defer agent.runtimeMu.Unlock()
+	if agent.stopGeneration != stopGeneration {
+		return nil, errors.New("control stopped StageAttempt while heartbeat response was pending")
+	}
 	if agent.startingAuthority != nil || !proto.Equal(agent.activeAuthority(), authority) {
 		return nil, errors.New("StageAuthority changed while heartbeat response was pending")
 	}
@@ -533,6 +542,7 @@ func (agent *StreamAgent) Reattach(
 	}
 	result.Status = statusResult
 	agent.startingAuthority = proto.Clone(authority).(*velav1.StageAuthority)
+	stopGeneration := agent.stopGeneration
 	agent.runtimeMu.Unlock()
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{
@@ -550,6 +560,9 @@ func (agent *StreamAgent) Reattach(
 	}()
 	if err != nil {
 		return result, err
+	}
+	if agent.stopGeneration != stopGeneration {
+		return result, errors.New("control stopped StageAttempt while reattach response was pending")
 	}
 	if !proto.Equal(agent.activeAuthority(), initialActive) {
 		return result, errors.New("StageAuthority changed while reattach response was pending")
@@ -618,6 +631,9 @@ func (agent *StreamAgent) handleStop(
 		if activeErr != nil || stopErr != nil || activeDigest != stopDigest {
 			return CancellationResult{}, errors.New("StopStage authority does not match active StageAttempt")
 		}
+		// A matching Stop invalidates pending success responses even if Cancel
+		// fails or its acknowledgment is lost.
+		agent.stopGeneration++
 	}
 	return agent.runtime.Cancel(
 		ctx,
