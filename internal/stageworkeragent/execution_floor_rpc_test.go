@@ -224,7 +224,7 @@ func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base st
 		var lost atomic.Bool
 		server := grpc.NewServer(grpc.MaxRecvMsgSize(4<<20), grpc.UnaryInterceptor(func(ctx context.Context, request any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
 			response, err := next(ctx, request)
-			if err == nil && info.FullMethod == velav1.ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName && group.dropNonAdmissionResponse.CompareAndSwap(true, false) {
+			if err == nil && (info.FullMethod == velav1.ModelRuntimeService_CheckpointStageNonAdmission_FullMethodName || info.FullMethod == velav1.ModelRuntimeService_CheckpointStageTerminalNonAdmission_FullMethodName) && group.dropNonAdmissionResponse.CompareAndSwap(true, false) {
 				return nil, status.Error(codes.Unavailable, "injected response loss after non-admission persistence")
 			}
 			if err == nil && loseResponse && index == 1 && info.FullMethod == velav1.ModelRuntimeService_InstallStageExecutionFloor_FullMethodName && !lost.Swap(true) {

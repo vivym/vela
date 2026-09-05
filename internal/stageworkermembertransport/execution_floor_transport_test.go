@@ -315,7 +315,7 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 		if err == nil && info.FullMethod == velav1.StageWorkerMemberService_DrainStageExecution_FullMethodName && dropDrainResponse.CompareAndSwap(true, false) {
 			return nil, status.Error(codes.Unavailable, "injected lost durable drain response")
 		}
-		if err == nil && info.FullMethod == velav1.StageWorkerMemberService_CheckpointStageNonAdmission_FullMethodName && dropNonAdmissionResponse.CompareAndSwap(true, false) {
+		if err == nil && (info.FullMethod == velav1.StageWorkerMemberService_CheckpointStageNonAdmission_FullMethodName || info.FullMethod == velav1.StageWorkerMemberService_CheckpointStageTerminalNonAdmission_FullMethodName) && dropNonAdmissionResponse.CompareAndSwap(true, false) {
 			return nil, status.Error(codes.Unavailable, "injected lost non-admission response")
 		}
 		if err == nil && loseResponse && info.FullMethod == velav1.StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName && lost.CompareAndSwap(false, true) {

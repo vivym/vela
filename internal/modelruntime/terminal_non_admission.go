@@ -69,18 +69,14 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
 	if admission.store == nil || disposition == nil || proto.Size(disposition) > maxExecutionWireBytes {
 		return nil, ErrExecutionNonAdmissionUnproven
 	}
-	verified, err := supervisor.floor.validator.ValidateTerminalDispositionSignature(disposition)
+	verified, err := supervisor.floor.validator.ValidateTerminalDispositionForReplay(disposition)
 	if err != nil {
 		return nil, err
-	}
-	// Inspection accepts expired historical evidence but never a future fact.
-	if supervisor.services[0].clock.Now().Before(verified.Disposition.GetObservedAt().AsTime()) {
-		return nil, stageauthority.ErrStale
 	}
 	if err := supervisor.matchExecutionFloorScope(verified.Disposition, false); err != nil {
 		return nil, err
 	}
-	allocation := terminalAllocationByID(verified.Disposition, allocationID)
+	allocation := stageauthority.FindTerminalAllocation(verified.Disposition, allocationID)
 	if allocation == nil {
 		return nil, ErrExecutionNonAdmissionUnproven
 	}
@@ -159,32 +155,6 @@ func (supervisor *Supervisor) terminalAllocationService(allocation *velav1.Stage
 	return nil
 }
 
-func terminalAllocationByID(disposition *velav1.StageTerminalDisposition, id string) *velav1.StageTerminalAllocation {
-	for _, allocation := range disposition.GetAllocations() {
-		if allocation.GetStageAllocationId() == id {
-			return allocation
-		}
-	}
-	return nil
-}
-
-func sameTerminalAllocation(a, b *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) bool {
-	if a.GetOrganizationId() != b.GetOrganizationId() || a.GetProjectId() != b.GetProjectId() || a.GetJobId() != b.GetJobId() ||
-		a.GetAttemptId() != b.GetAttemptId() || a.GetStageRunId() != b.GetStageRunId() || a.GetTerminalState() != b.GetTerminalState() ||
-		a.GetStageFence() != b.GetStageFence() || a.GetStageVersion() != b.GetStageVersion() ||
-		a.GetWorkerInstanceId() != b.GetWorkerInstanceId() || a.GetWorkerInstanceEpoch() != b.GetWorkerInstanceEpoch() ||
-		!bytes.Equal(a.GetDeviceSetDigest(), b.GetDeviceSetDigest()) || !bytes.Equal(a.GetMembershipDigest(), b.GetMembershipDigest()) ||
-		len(a.GetDevices()) != len(b.GetDevices()) || !proto.Equal(terminalAllocationByID(a, allocation.GetStageAllocationId()), allocation) {
-		return false
-	}
-	for i, device := range a.GetDevices() {
-		if !proto.Equal(device, b.GetDevices()[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error) {
 	for _, record := range store.state.TerminalNonAdmissions {
 		if record.ExecutionSequence != allocation.GetExecutionSequence() {
@@ -194,7 +164,7 @@ func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *vel
 		if err != nil {
 			return nil, err
 		}
-		if !sameTerminalAllocation(original.Disposition, disposition, allocation) {
+		if stageauthority.ValidateSameTerminalAllocation(original.Disposition, disposition, allocation.GetStageAllocationId()) != nil {
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 		return &TerminalNonAdmissionCheckpoint{
@@ -249,7 +219,7 @@ func (store *executionStateFile) validateTerminalNonAdmissions() error {
 		if err != nil {
 			return err
 		}
-		allocation := terminalAllocationByID(original.Disposition, record.StageAllocationID)
+		allocation := stageauthority.FindTerminalAllocation(original.Disposition, record.StageAllocationID)
 		if allocation == nil || record.ExecutionSequence <= previous || record.ExecutionSequence != allocation.GetExecutionSequence() ||
 			record.DispositionDigest != original.Digest || record.InstalledCutoff < record.ExecutionSequence || record.InstalledCutoff > store.state.Floor ||
 			record.Contract != TerminalNonAdmissionContract || record.ObservedAt.IsZero() || record.ObservedAt.Location() != time.UTC ||
@@ -281,7 +251,7 @@ func (store *executionStateFile) matchTerminalNonAdmissionAuthority(authority *v
 			if err != nil {
 				return err
 			}
-			if err := stageauthority.ValidateTerminalAllocation(original.Disposition, terminalAllocationByID(original.Disposition, record.StageAllocationID), authority); err != nil {
+			if err := stageauthority.ValidateTerminalAllocation(original.Disposition, stageauthority.FindTerminalAllocation(original.Disposition, record.StageAllocationID), authority); err != nil {
 				return errors.Join(ErrExecutionNonAdmissionUnproven, err)
 			}
 		}

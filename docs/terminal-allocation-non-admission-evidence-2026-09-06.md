@@ -95,11 +95,65 @@ capabilities, no-new-privileges and a private `/tmp` tmpfs. Test image:
 `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73`.
 Selection: `^(TestTerminalNonAdmission|TestExecutionNonAdmission|TestDurableExecutionState)`.
 
+## Authenticated RPC and complete-history collection
+
+A subsequent increment adds `CheckpointStageTerminalNonAdmission` and
+`InspectStageTerminalNonAdmission` to both Runtime and WorkerMember services.
+The request binds a trusted current reader, signed terminal history and selected
+allocation ID. Creation additionally requires the selected original residency;
+inspection can replay through an alternate current profile or Runtime epoch.
+The reply echoes the query digest while preserving the checkpoint's actual
+original disposition, digest, allocation, member, cutoff, contract and time.
+
+The member path authenticates the deterministic leader for every historical
+allocation, verifies the target member identity digest, and forwards to a private
+Runtime socket. Each hop clones requests and independently validates response
+scope, canonical signatures, original proof identity, wrappers and decisions.
+Malformed or canceled/late replies never become successful observations.
+
+The complete exclusion collector accepts omitted execution envelopes and requires
+terminal non-admission proof for those allocations on every member. Supplied
+envelopes must still belong to signed history; explicit nil values reject.
+All history and trusted readers are checked before any RPC. The collector first
+inspects existing evidence and can create a checkpoint only after a valid accepted
+read returns no proof. Required allocation counts come from signed history, not
+the number of available envelopes. The separate drain-only collector still
+requires every execution envelope and cannot reinterpret non-admission as drain.
+
+Additional validation passed:
+
+```sh
+go test ./...
+go test -race ./internal/modelruntime ./internal/stageworkeragent ./internal/stageworkermembertransport ./internal/stageauthority ./internal/modelruntimetransport
+make lint
+go test -tags=integration ./internal/integration -run '^(TestStageTerminalHistoryCoversAllocatedUndeliveredRetry|TestStageTerminalDispositionThroughAuthenticatedControl)$' -count=1 -timeout=5m
+make generate-proto
+go run github.com/bufbuild/buf/cmd/buf@v1.72.0 breaking --against '.git#ref=d73fe27'
+git diff --check
+```
+
+Regeneration leaves generated files byte-identical. Real TCP/mTLS-to-UDS tests
+cover unsigned allocations, missing floors, prior execution intent, nonleader
+requests, lost replies and recovery after profile/epoch changes and expiry.
+Malformed-response cases exercise both forwarding hops. Two-member UDS
+collection combines one drain, one envelope non-admission and two terminal
+non-admission checkpoints, without ever constructing the second execution
+envelope. Recovery retains the original proofs; missing old-epoch evidence and
+invalid reads remain unproven. The PostgreSQL tests remain local Runtime API
+evidence; the transport and collector tests independently cover the RPC paths.
+
+The same non-root Linux arm64 container configuration above passes these sets:
+
+- Runtime: `^(TestTerminalNonAdmission|TestExecutionNonAdmission|TestDurableExecutionState|TestExecutionFloor)`.
+- Worker: `^(TestTerminalNonAdmission|TestTerminalExecutionExclusion|TestTerminalExecutionDrain|TestAgentExecution)`.
+- Member transport: `^(TestMemberTerminalNonAdmission|TestMemberExecution)`.
+
+Versions remain database 90, Runtime journal 4, Worker journal 3 and launch/Fleet 2.
+
 ## Remaining work
 
-This is a local durable Runtime primitive. The existing authenticated member RPC
-and complete-history collector still require execution envelopes; they do not
-yet consume this new proof format. Pending historical Runtime writer recovery,
+The authenticated RPC and complete-history collector are now available as
+explicit components. Pending historical Runtime writer recovery,
 unknown input-writer recovery, complete retirement intent/results, default
 assembly and bounded evidence reclamation remain unfinished. The default
 `RetainScratchRetirer` stays active. No scratch deletion, sustained Worker

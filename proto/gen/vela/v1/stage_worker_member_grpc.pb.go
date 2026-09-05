@@ -19,17 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StageWorkerMemberService_PrepareStage_FullMethodName                = "/vela.v1.StageWorkerMemberService/PrepareStage"
-	StageWorkerMemberService_StartStage_FullMethodName                  = "/vela.v1.StageWorkerMemberService/StartStage"
-	StageWorkerMemberService_CancelStage_FullMethodName                 = "/vela.v1.StageWorkerMemberService/CancelStage"
-	StageWorkerMemberService_Status_FullMethodName                      = "/vela.v1.StageWorkerMemberService/Status"
-	StageWorkerMemberService_InspectExecution_FullMethodName            = "/vela.v1.StageWorkerMemberService/InspectExecution"
-	StageWorkerMemberService_DrainStageExecution_FullMethodName         = "/vela.v1.StageWorkerMemberService/DrainStageExecution"
-	StageWorkerMemberService_InspectStageExecutionDrain_FullMethodName  = "/vela.v1.StageWorkerMemberService/InspectStageExecutionDrain"
-	StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName = "/vela.v1.StageWorkerMemberService/InspectStageAllocationDrain"
-	StageWorkerMemberService_CheckpointStageNonAdmission_FullMethodName = "/vela.v1.StageWorkerMemberService/CheckpointStageNonAdmission"
-	StageWorkerMemberService_InspectStageNonAdmission_FullMethodName    = "/vela.v1.StageWorkerMemberService/InspectStageNonAdmission"
-	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName  = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
+	StageWorkerMemberService_PrepareStage_FullMethodName                        = "/vela.v1.StageWorkerMemberService/PrepareStage"
+	StageWorkerMemberService_StartStage_FullMethodName                          = "/vela.v1.StageWorkerMemberService/StartStage"
+	StageWorkerMemberService_CancelStage_FullMethodName                         = "/vela.v1.StageWorkerMemberService/CancelStage"
+	StageWorkerMemberService_Status_FullMethodName                              = "/vela.v1.StageWorkerMemberService/Status"
+	StageWorkerMemberService_InspectExecution_FullMethodName                    = "/vela.v1.StageWorkerMemberService/InspectExecution"
+	StageWorkerMemberService_DrainStageExecution_FullMethodName                 = "/vela.v1.StageWorkerMemberService/DrainStageExecution"
+	StageWorkerMemberService_InspectStageExecutionDrain_FullMethodName          = "/vela.v1.StageWorkerMemberService/InspectStageExecutionDrain"
+	StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName         = "/vela.v1.StageWorkerMemberService/InspectStageAllocationDrain"
+	StageWorkerMemberService_CheckpointStageNonAdmission_FullMethodName         = "/vela.v1.StageWorkerMemberService/CheckpointStageNonAdmission"
+	StageWorkerMemberService_InspectStageNonAdmission_FullMethodName            = "/vela.v1.StageWorkerMemberService/InspectStageNonAdmission"
+	StageWorkerMemberService_CheckpointStageTerminalNonAdmission_FullMethodName = "/vela.v1.StageWorkerMemberService/CheckpointStageTerminalNonAdmission"
+	StageWorkerMemberService_InspectStageTerminalNonAdmission_FullMethodName    = "/vela.v1.StageWorkerMemberService/InspectStageTerminalNonAdmission"
+	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName          = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
 )
 
 // StageWorkerMemberServiceClient is the client API for StageWorkerMemberService service.
@@ -46,6 +48,8 @@ type StageWorkerMemberServiceClient interface {
 	InspectStageAllocationDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
 	CheckpointStageNonAdmission(ctx context.Context, in *StageWorkerMemberServiceCheckpointStageNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCheckpointStageNonAdmissionResponse, error)
 	InspectStageNonAdmission(ctx context.Context, in *StageWorkerMemberServiceInspectStageNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageNonAdmissionResponse, error)
+	CheckpointStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error)
+	InspectStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error)
 	InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 }
 
@@ -157,6 +161,26 @@ func (c *stageWorkerMemberServiceClient) InspectStageNonAdmission(ctx context.Co
 	return out, nil
 }
 
+func (c *stageWorkerMemberServiceClient) CheckpointStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_CheckpointStageTerminalNonAdmission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *stageWorkerMemberServiceClient) InspectStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_InspectStageTerminalNonAdmission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *stageWorkerMemberServiceClient) InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StageWorkerMemberServiceInstallStageExecutionFloorResponse)
@@ -181,6 +205,8 @@ type StageWorkerMemberServiceServer interface {
 	InspectStageAllocationDrain(context.Context, *StageWorkerMemberServiceInspectStageAllocationDrainRequest) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
 	CheckpointStageNonAdmission(context.Context, *StageWorkerMemberServiceCheckpointStageNonAdmissionRequest) (*StageWorkerMemberServiceCheckpointStageNonAdmissionResponse, error)
 	InspectStageNonAdmission(context.Context, *StageWorkerMemberServiceInspectStageNonAdmissionRequest) (*StageWorkerMemberServiceInspectStageNonAdmissionResponse, error)
+	CheckpointStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error)
+	InspectStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error)
 	InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 	mustEmbedUnimplementedStageWorkerMemberServiceServer()
 }
@@ -221,6 +247,12 @@ func (UnimplementedStageWorkerMemberServiceServer) CheckpointStageNonAdmission(c
 }
 func (UnimplementedStageWorkerMemberServiceServer) InspectStageNonAdmission(context.Context, *StageWorkerMemberServiceInspectStageNonAdmissionRequest) (*StageWorkerMemberServiceInspectStageNonAdmissionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectStageNonAdmission not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) CheckpointStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckpointStageTerminalNonAdmission not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) InspectStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageTerminalNonAdmission not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
@@ -427,6 +459,42 @@ func _StageWorkerMemberService_InspectStageNonAdmission_Handler(srv interface{},
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StageWorkerMemberService_CheckpointStageTerminalNonAdmission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).CheckpointStageTerminalNonAdmission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_CheckpointStageTerminalNonAdmission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).CheckpointStageTerminalNonAdmission(ctx, req.(*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StageWorkerMemberService_InspectStageTerminalNonAdmission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).InspectStageTerminalNonAdmission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_InspectStageTerminalNonAdmission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).InspectStageTerminalNonAdmission(ctx, req.(*StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StageWorkerMemberService_InstallStageExecutionFloor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
 	if err := dec(in); err != nil {
@@ -491,6 +559,14 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectStageNonAdmission",
 			Handler:    _StageWorkerMemberService_InspectStageNonAdmission_Handler,
+		},
+		{
+			MethodName: "CheckpointStageTerminalNonAdmission",
+			Handler:    _StageWorkerMemberService_CheckpointStageTerminalNonAdmission_Handler,
+		},
+		{
+			MethodName: "InspectStageTerminalNonAdmission",
+			Handler:    _StageWorkerMemberService_InspectStageTerminalNonAdmission_Handler,
 		},
 		{
 			MethodName: "InstallStageExecutionFloor",

@@ -35,6 +35,10 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceCheckpointStageNonAdmissionResponse);
   rpc InspectStageNonAdmission(ModelRuntimeServiceInspectStageNonAdmissionRequest)
       returns (ModelRuntimeServiceInspectStageNonAdmissionResponse);
+  rpc CheckpointStageTerminalNonAdmission(ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest)
+      returns (ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse);
+  rpc InspectStageTerminalNonAdmission(ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest)
+      returns (ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse);
   rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
       returns (ModelRuntimeServiceSealOutputResponse);
 }
@@ -312,6 +316,55 @@ message ModelRuntimeServiceInspectStageNonAdmissionRequest {
 
 message ModelRuntimeServiceInspectStageNonAdmissionResponse {
   ModelRuntimeExecutionNonAdmissionResult result = 1;
+}
+
+// Historical allocation identity, including allocations never issued an execution
+// envelope. identity selects a trusted current journal owner. Creation requires
+// the selected allocation's original resident epoch/profile; reads may cross them.
+message ModelRuntimeTerminalAllocationScope {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  StageTerminalDisposition disposition = 3;
+  string stage_allocation_id = 4;
+}
+
+message ModelRuntimeTerminalNonAdmissionCheckpoint {
+  uint32 schema_version = 1;
+  StageTerminalDisposition disposition = 2;
+  bytes disposition_digest = 3;
+  string worker_member_id = 4;
+  string stage_allocation_id = 5;
+  int64 execution_sequence = 6;
+  int64 installed_cutoff = 7;
+  string contract = 8;
+  google.protobuf.Timestamp observed_at = 9;
+}
+
+message ModelRuntimeTerminalNonAdmissionResult {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  // Echoes the query, while the checkpoint keeps the original signed facts.
+  bytes disposition_digest = 3;
+  string stage_allocation_id = 4;
+  ModelRuntimeCommandDecision decision = 5;
+  // Absence always means unproven; this is not backend writer-drain evidence.
+  ModelRuntimeTerminalNonAdmissionCheckpoint checkpoint = 6;
+}
+
+message ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest {
+  ModelRuntimeTerminalAllocationScope scope = 1;
+}
+
+message ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse {
+  ModelRuntimeTerminalNonAdmissionResult result = 1;
+}
+
+message ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest {
+  ModelRuntimeTerminalAllocationScope scope = 1;
+}
+
+message ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse {
+  ModelRuntimeTerminalNonAdmissionResult result = 1;
 }
 
 message ModelRuntimeFailureEvidence {

@@ -81,8 +81,13 @@ including allocations canceled before any signed assignment was created. It
 requires the selected original local residency, an independently persisted floor
 and no execution intent at that sequence. Runtime journal is now 4 with explicit
 validated schema-3/schema-2 upgrades; Worker remains 3. Existing proof survives
-restart; missing old-epoch proof stays unknown. Authenticated member RPC and
-complete-history collectors do not yet consume this new proof format.
+restart; missing old-epoch proof stays unknown. Subsequent authenticated
+Runtime/member RPCs and the complete-history exclusion collector now consume
+this proof when an execution envelope is unavailable. Every signed allocation
+and trusted member is preflighted; read/create remain separate, and original
+proof survives refreshed queries and reader epoch/profile changes. Missing or
+malformed member proof keeps collection incomplete. Drain-only inspection still
+requires all execution envelopes. Versions remain unchanged.
 Default command assembly, automatic startup reconciliation, complete-history drain
 orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across

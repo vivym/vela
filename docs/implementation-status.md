@@ -271,8 +271,15 @@ sequence. Existing proof can be read after restart; missing old-epoch proof stay
 unknown. Runtime journal is now 4, with explicit validated schema-3 or schema-2
 upgrades; Worker stays 3, launch/Fleet stays 2 and database stays 90. PostgreSQL
 unsigned-retry integration, full unit, Runtime race, lint and non-root Linux checks
-pass. Member RPC/collector support for this proof, retirement orchestration and
-bounded reclamation remain open; default scratch retention remains active.
+pass. Subsequent authenticated Runtime/member RPCs now expose this proof to the
+complete-history exclusion collector, including allocations with no available
+execution envelope. It validates all history and trusted readers before RPCs,
+preserves actual original checkpoints across epoch/profile changes and requires
+every allocation/member pair. Two-member mixed-proof collection, mTLS-to-UDS
+forwarding, malformed/late replies, lost-reply recovery, PostgreSQL regression,
+full unit, related race, lint, protobuf compatibility/reproducibility and Linux
+non-root checks pass. Retirement orchestration and bounded reclamation remain
+open; versions are unchanged and default scratch retention remains active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

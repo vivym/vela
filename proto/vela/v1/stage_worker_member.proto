@@ -27,6 +27,10 @@ service StageWorkerMemberService {
       returns (StageWorkerMemberServiceCheckpointStageNonAdmissionResponse);
   rpc InspectStageNonAdmission(StageWorkerMemberServiceInspectStageNonAdmissionRequest)
       returns (StageWorkerMemberServiceInspectStageNonAdmissionResponse);
+  rpc CheckpointStageTerminalNonAdmission(StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest)
+      returns (StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse);
+  rpc InspectStageTerminalNonAdmission(StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest)
+      returns (StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse);
   rpc InstallStageExecutionFloor(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
       returns (StageWorkerMemberServiceInstallStageExecutionFloorResponse);
 }
@@ -124,6 +128,24 @@ message StageWorkerMemberServiceInspectStageNonAdmissionRequest {
 
 message StageWorkerMemberServiceInspectStageNonAdmissionResponse {
   ModelRuntimeServiceInspectStageNonAdmissionResponse result = 1;
+}
+
+message StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest command = 2;
+}
+
+message StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse {
+  ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse result = 1;
+}
+
+message StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest command = 2;
+}
+
+message StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse {
+  ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse result = 1;
 }
 
 message StageWorkerMemberServiceInstallStageExecutionFloorResponse {

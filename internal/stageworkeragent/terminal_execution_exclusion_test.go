@@ -172,6 +172,7 @@ func TestTerminalExecutionExclusionValidatesHistoryBeforeRPC(t *testing.T) {
 		}}
 	}
 	queries := terminalDrainQueries(t, f)
+	queries["outside-signed-history"] = queries[f.disposition.Allocations[1].StageAllocationId]
 	delete(queries, f.disposition.Allocations[1].StageAllocationId)
 	agent := f.agent(t)
 	for _, operation := range []func(context.Context, *velav1.StageTerminalDisposition, map[string]*velav1.StageAuthority, map[string]*velav1.ModelRuntimeIdentity) (stageworkeragent.TerminalExecutionExclusionResult, error){agent.InspectTerminalExecutionExclusions, agent.CheckpointTerminalExecutionExclusions} {

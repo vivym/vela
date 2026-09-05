@@ -446,5 +446,12 @@ func discoverExecutionFloorIdentity(t *testing.T, client *modelruntimetransport.
 	if err != nil || len(response.GetIdentities()) == 0 {
 		t.Fatalf("discover floor identity: %v %v", response, err)
 	}
-	return response.GetIdentities()[0]
+	for _, identity := range response.GetIdentities() {
+		if identity.GetModelResidencyId() == binding.ModelResidencyID && identity.GetRuntimeIdentity() == binding.ModelRuntimeIdentity &&
+			identity.GetModelRuntimeEpoch() == binding.ModelRuntimeEpoch && identity.GetStageProfileRevisionId() == binding.StageProfileRevisionID {
+			return identity
+		}
+	}
+	t.Fatal("discovery omitted the requested resident Runtime binding")
+	return nil
 }

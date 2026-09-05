@@ -14,8 +14,9 @@ import (
 // ExecutionExclusionProof contains exactly one validated member result. Drain and
 // never-admitted retain distinct meanings; neither proves Worker input exclusion.
 type ExecutionExclusionProof struct {
-	Drain         *velav1.ModelRuntimeExecutionDrainResult
-	NeverAdmitted *velav1.ModelRuntimeExecutionNonAdmissionResult
+	Drain                 *velav1.ModelRuntimeExecutionDrainResult
+	NeverAdmitted         *velav1.ModelRuntimeExecutionNonAdmissionResult
+	TerminalNeverAdmitted *velav1.ModelRuntimeTerminalNonAdmissionResult
 }
 
 // TerminalExecutionExclusionResult is not a durable Worker retirement receipt or
@@ -29,6 +30,8 @@ type TerminalExecutionExclusionResult struct {
 	AllExcluded         bool
 }
 
+// Authorities may omit allocations with no available execution envelope. Those
+// allocations require terminal-identity non-admission proof from every member.
 func (agent *Agent) InspectTerminalExecutionExclusions(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (TerminalExecutionExclusionResult, error) {
 	return agent.collectTerminalExecutionExclusions(ctx, disposition, authorities, targets, false)
 }
@@ -50,12 +53,12 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	history, err := agent.terminalExecutionQueries(ctx, disposition, authorities, targets)
+	history, err := agent.terminalExecutionQueries(ctx, disposition, authorities, targets, true)
 	if err != nil {
 		return result, err
 	}
 	result.DispositionDigest, result.Cutoff = history.verified.Digest, history.verified.Disposition.GetCutoff()
-	result.RequiredAllocations, result.RequiredMembers = len(history.authorities), len(agent.ids)
+	result.RequiredAllocations, result.RequiredMembers = len(history.verified.Disposition.GetAllocations()), len(agent.ids)
 	result.Allocations = make(map[string]map[string]ExecutionExclusionProof, result.RequiredAllocations)
 	var joined error
 	for _, allocation := range history.verified.Disposition.GetAllocations() {
@@ -63,9 +66,12 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 			return result, errors.Join(joined, err)
 		}
 		id := allocation.GetStageAllocationId()
-		scopes, err := agent.executionDrainScopes(history.authorities[id], history.readers, true)
-		if err != nil {
-			return result, errors.Join(joined, err)
+		var scopes map[string]*velav1.ModelRuntimeExecutionDrainScope
+		if history.authorities[id] != nil {
+			scopes, err = agent.executionDrainScopes(history.authorities[id], history.readers, true)
+			if err != nil {
+				return result, errors.Join(joined, err)
+			}
 		}
 		type memberResult struct {
 			id    string
@@ -75,7 +81,13 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 		completed := make(chan memberResult, len(agent.ids))
 		for _, memberID := range agent.ids {
 			go func() {
-				proof, err := agent.collectMemberExclusion(ctx, memberID, scopes[memberID], checkpoint)
+				var proof ExecutionExclusionProof
+				var err error
+				if history.authorities[id] == nil {
+					proof, err = agent.collectMemberTerminalNonAdmission(ctx, memberID, history.verified.Disposition, allocation, history.readers[memberID], checkpoint)
+				} else {
+					proof, err = agent.collectMemberExclusion(ctx, memberID, scopes[memberID], checkpoint)
+				}
 				completed <- memberResult{id: memberID, proof: proof, err: err}
 			}()
 		}

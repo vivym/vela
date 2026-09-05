@@ -71,6 +71,49 @@ func (validator *Validator) ValidateTerminalDispositionEnvelope(value *velav1.St
 	return verified, nil
 }
 
+// ValidateTerminalDispositionForReplay accepts expired historical facts but
+// rejects future observations. It grants no new floor, execution or drain.
+func (validator *Validator) ValidateTerminalDispositionForReplay(value *velav1.StageTerminalDisposition) (VerifiedTerminalDisposition, error) {
+	verified, err := validator.ValidateTerminalDispositionSignature(value)
+	if err != nil {
+		return verified, err
+	}
+	if validator.now().UTC().Before(verified.Disposition.GetObservedAt().AsTime()) {
+		return VerifiedTerminalDisposition{}, ErrStale
+	}
+	return verified, nil
+}
+
+// FindTerminalAllocation selects an identity from already verified history.
+func FindTerminalAllocation(disposition *velav1.StageTerminalDisposition, id string) *velav1.StageTerminalAllocation {
+	for _, allocation := range disposition.GetAllocations() {
+		if allocation.GetStageAllocationId() == id {
+			return allocation
+		}
+	}
+	return nil
+}
+
+// ValidateSameTerminalAllocation compares already verified histories. Refreshed
+// query anchors/sessions/times may differ; the selected terminal identity may not.
+func ValidateSameTerminalAllocation(a, b *velav1.StageTerminalDisposition, id string) error {
+	allocation := FindTerminalAllocation(b, id)
+	if a == nil || b == nil || allocation == nil || a.GetOrganizationId() != b.GetOrganizationId() || a.GetProjectId() != b.GetProjectId() || a.GetJobId() != b.GetJobId() ||
+		a.GetAttemptId() != b.GetAttemptId() || a.GetStageRunId() != b.GetStageRunId() || a.GetTerminalState() != b.GetTerminalState() ||
+		a.GetStageFence() != b.GetStageFence() || a.GetStageVersion() != b.GetStageVersion() ||
+		a.GetWorkerInstanceId() != b.GetWorkerInstanceId() || a.GetWorkerInstanceEpoch() != b.GetWorkerInstanceEpoch() ||
+		!bytes.Equal(a.GetDeviceSetDigest(), b.GetDeviceSetDigest()) || !bytes.Equal(a.GetMembershipDigest(), b.GetMembershipDigest()) ||
+		len(a.GetDevices()) != len(b.GetDevices()) || !proto.Equal(FindTerminalAllocation(a, id), allocation) {
+		return ErrInvalidTerminalDisposition
+	}
+	for i, device := range a.GetDevices() {
+		if !proto.Equal(device, b.GetDevices()[i]) {
+			return ErrInvalidTerminalDisposition
+		}
+	}
+	return nil
+}
+
 // ValidateTerminalDispositionSignature authenticates retained restrictive facts
 // without granting freshness, execution, or drain. Recovery must still bind the
 // stored fact to its trusted Worker/member topology before restoring a floor.

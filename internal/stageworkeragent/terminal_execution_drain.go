@@ -37,7 +37,7 @@ func (agent *Agent) InspectTerminalExecutionDrains(ctx context.Context, disposit
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	history, err := agent.terminalExecutionQueries(ctx, disposition, authorities, targets)
+	history, err := agent.terminalExecutionQueries(ctx, disposition, authorities, targets, false)
 	if err != nil {
 		return result, err
 	}
@@ -75,14 +75,19 @@ type terminalExecutionQuerySet struct {
 	readers     map[string]*velav1.ModelRuntimeIdentity
 }
 
-func (agent *Agent) terminalExecutionQueries(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (*terminalExecutionQuerySet, error) {
+func (agent *Agent) terminalExecutionQueries(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity, allowUnsigned bool) (*terminalExecutionQuerySet, error) {
 	verified, err := agent.floor.validator.ValidateTerminalDispositionEnvelope(disposition)
 	if err != nil {
 		return nil, err
 	}
 	value := verified.Disposition
-	if len(authorities) != len(value.GetAllocations()) || len(targets) != len(agent.ids) {
+	if (!allowUnsigned && len(authorities) != len(value.GetAllocations())) || len(authorities) > len(value.GetAllocations()) || len(targets) != len(agent.ids) {
 		return nil, errors.New("terminal execution drain history or readers are incomplete")
+	}
+	for id, authority := range authorities {
+		if authority == nil || stageauthority.FindTerminalAllocation(value, id) == nil {
+			return nil, errors.New("terminal execution authority is missing or outside signed history")
+		}
 	}
 	readers := make(map[string]*velav1.ModelRuntimeIdentity, len(targets))
 	for id, identity := range targets {
@@ -97,6 +102,14 @@ func (agent *Agent) terminalExecutionQueries(ctx context.Context, disposition *v
 			return nil, err
 		}
 		authority := authorities[allocation.GetStageAllocationId()]
+		if authority == nil && allowUnsigned {
+			for _, member := range allocation.GetMembers() {
+				if _, err := agent.terminalAllocationMemberScope(value, allocation, member.GetWorkerMemberId(), readers[member.GetWorkerMemberId()], true); err != nil {
+					return nil, err
+				}
+			}
+			continue
+		}
 		if authority == nil || proto.Size(authority) > 64<<10 {
 			return nil, errors.New("terminal execution drain original is missing or oversized")
 		}
