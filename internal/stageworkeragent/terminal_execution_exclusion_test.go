@@ -239,3 +239,61 @@ func TestTerminalExecutionExclusionDiscardsLateCheckpointReply(t *testing.T) {
 		t.Fatalf("late checkpoint escaped cancellation: %+v %v", result, err)
 	}
 }
+
+func TestTerminalExecutionExclusionCheckpointsResidentMemberAfterPeerProfileRetires(t *testing.T) {
+	for _, peerDrained := range []bool{true, false} {
+		t.Run(map[bool]string{true: "peer-drained", false: "peer-unknown"}[peerDrained], func(t *testing.T) {
+			f := newFloorCollectorFixture(t)
+			queries := terminalDrainQueries(t, f)
+			peerID, residentID := f.config.Members[0].ID, f.config.Members[1].ID
+			// The peer retains only the second profile. Its first allocation can
+			// supply historical proof, but cannot create a new absence checkpoint.
+			f.config.ExecutionFloor.Bindings = f.config.ExecutionFloor.Bindings[1:]
+			var peerWrites, residentWrites atomic.Int64
+			for index := range f.config.Members {
+				id := f.config.Members[index].ID
+				f.config.Members[index].Client = &exclusionCollectorClient{
+					drain: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error) {
+						result := drainCollectorReply(scope)
+						if id == residentID || !peerDrained {
+							result.Checkpoint = nil
+						}
+						return result, nil
+					},
+					read: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error) {
+						result := exclusionNonAdmissionReply(scope)
+						result.Checkpoint = nil
+						return result, nil
+					},
+					checkpoint: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error) {
+						if id == peerID {
+							peerWrites.Add(1)
+						} else {
+							residentWrites.Add(1)
+						}
+						if scope.Identity.ModelResidencyId != scope.Authority.ModelResidencyId || scope.Identity.RuntimeIdentity != scope.Authority.ModelRuntimeIdentity {
+							return nil, errors.New("checkpoint used historical reader instead of original resident")
+						}
+						return exclusionNonAdmissionReply(scope), nil
+					},
+				}
+			}
+			result, err := f.agent(t).CheckpointTerminalExecutionExclusions(t.Context(), f.disposition, queries, drainCollectorTargets(f))
+			if result.AllExcluded != peerDrained || (err == nil) != peerDrained || residentWrites.Load() != 2 {
+				t.Fatalf("resident proof depended on peer residency: allExcluded=%v err=%v writes=%d", result.AllExcluded, err, residentWrites.Load())
+			}
+			for _, allocation := range result.Allocations {
+				if allocation[residentID].NeverAdmitted == nil || allocation[residentID].Drain != nil {
+					t.Fatal("resident member lost its independent non-admission proof")
+				}
+			}
+			if peerDrained {
+				if peerWrites.Load() != 0 {
+					t.Fatal("existing drain triggered an unnecessary absence checkpoint")
+				}
+			} else if peerWrites.Load() != 1 || result.Allocations[f.assignment.Authority.StageAllocationId][peerID].NeverAdmitted != nil {
+				t.Fatal("retired profile inferred a new historical absence proof")
+			}
+		})
+	}
+}

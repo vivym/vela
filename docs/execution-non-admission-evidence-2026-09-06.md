@@ -69,10 +69,11 @@ malformed/rejected replies never fall through to an alternative success. One
 timeout covers preflight and the whole history, with bounded member concurrency.
 `AllExcluded` requires every pair; partial evidence stays partial.
 
-Creating a new proof currently requires resolving the original current bindings
-for all members of that allocation. This is conservative and can limit partial
-progress when another member's original epoch/profile has retired. Existing
-proofs remain readable through configured current readers.
+Creating a new proof requires the selected member's original current binding.
+Other members may supply existing proofs through configured current readers
+after their original epoch/profile retires. Complete signed-history and trusted
+reader preflight still covers every member before any RPC. The follow-up below
+records the correction from the initial all-member residency requirement.
 
 The collector neither installs floors nor drains backends. Its result is not a
 durable Worker retirement receipt, input-writer exclusion proof or filesystem
@@ -125,6 +126,32 @@ increment, which changes neither migrations nor database queries. Earlier
 terminal-history integration evidence retains its original source boundary.
 No sustained throughput, external asynchronous driver drain or Launch Receipt
 is established by these checks.
+
+## Member Residency Follow-Up
+
+A regression against `f13a98d` reproduced one member's retired original profile
+preventing a still-resident member from checkpointing non-admission. The collector
+required all original bindings again even when the retired member had already
+supplied valid historical drain evidence. Its independent peer therefore lost
+one of two available absence checkpoints.
+
+The shared route validator now also resolves one member without requiring other
+members' original residency. Complete-history preflight still resolves and
+authenticates every historical reader. Only creating a new checkpoint uses the
+selected member's exact original epoch/profile; reading historical evidence
+continues to preserve the actual saved authority. No protocol or journal schema
+changes are involved.
+
+The deterministic collector regression covers both a peer with historical drain
+and a peer with unknown history. The first completes mixed proof collection;
+the second keeps the result partial while preserving both resident-member
+proofs. The retired original profile cannot create a new absence checkpoint.
+These new cases model profile retirement in trusted routing configuration with
+stubbed RPC replies; the earlier real UDS/mTLS tests separately cover persistence
+and transport. Full unit tests, Worker race, lint (0 issues) and non-root Linux
+Worker tests pass after the correction. Linux used `worker-resident.test` under
+the same directory/image and restrictions above, selecting:
+`^(TestTerminalExecutionExclusion|TestTerminalExecutionDrain|TestExecutionDrainCollection|TestExecutionFloorCollection)`.
 
 ## Remaining Work
 

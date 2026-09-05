@@ -161,11 +161,12 @@ func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string,
 		return proof, errors.New("non-admission inspection rejected")
 	}
 	if result.GetCheckpoint() == nil && checkpoint {
-		current, err := agent.executionDrainScopes(verified.Authority, nil, false)
+		// Other members may already have historical proof after retiring their
+		// original profile. Only this new checkpoint requires original residency.
+		checkpointScope, err := agent.executionDrainMemberScope(verified.Authority, memberID, nil, false)
 		if err != nil {
 			return proof, err
 		}
-		checkpointScope := current[memberID]
 		response, err := client.CheckpointStageNonAdmission(ctx, &velav1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest{Scope: proto.Clone(checkpointScope).(*velav1.ModelRuntimeExecutionDrainScope)})
 		if err != nil {
 			return proof, err

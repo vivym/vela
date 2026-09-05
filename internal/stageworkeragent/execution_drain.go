@@ -162,37 +162,59 @@ func (agent *Agent) executionDrainScopes(authority *velav1.StageAuthority, targe
 	scopes := make(map[string]*velav1.ModelRuntimeExecutionDrainScope)
 	for _, member := range authority.GetMembers() {
 		id := member.GetWorkerMemberId()
-		if agent.members[id] == nil {
-			return nil, errors.New("execution drain member is not configured")
+		scope, err := agent.executionDrainMemberScope(authority, id, targets[id], historical)
+		if err != nil {
+			return nil, err
 		}
-		matches := 0
-		for _, binding := range agent.floor.bindings {
-			if binding.Runtime.WorkerMemberID != id || !bytes.Equal(binding.IdentityDigest[:], member.GetIdentityDigest()) {
-				continue
-			}
-			identity := executionDrainIdentity(binding.Runtime)
-			if historical && !proto.Equal(targets[id], identity) {
-				continue
-			}
-			original := binding.Runtime
-			if historical {
-				original.ModelResidencyID, original.ModelRuntimeIdentity, original.StageProfileRevisionID = authority.GetModelResidencyId(), authority.GetModelRuntimeIdentity(), authority.GetStageProfileRevisionId()
-				original.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
-			}
-			if _, err := agent.floor.validator.ValidateSignature(authority, original); err != nil {
-				continue
-			}
-			scope := &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: identity, Authority: proto.Clone(authority).(*velav1.StageAuthority)}
-			if _, err := modelruntimetransport.ValidateExecutionDrainScope(agent.floor.validator, scope, 0, historical); err != nil {
-				return nil, err
-			}
-			scopes[id], matches = scope, matches+1
-		}
-		if matches != 1 {
-			return nil, fmt.Errorf("execution drain member %s binding is missing or ambiguous", id)
-		}
+		scopes[id] = scope
 	}
 	return scopes, nil
+}
+
+func (agent *Agent) executionDrainMemberScope(authority *velav1.StageAuthority, id string, target *velav1.ModelRuntimeIdentity, historical bool) (*velav1.ModelRuntimeExecutionDrainScope, error) {
+	if agent.members[id] == nil {
+		return nil, errors.New("execution drain member is not configured")
+	}
+	var member *velav1.StageAuthorityMemberEpoch
+	for _, candidate := range authority.GetMembers() {
+		if candidate.GetWorkerMemberId() == id {
+			if member != nil {
+				return nil, errors.New("execution drain member is ambiguous")
+			}
+			member = candidate
+		}
+	}
+	if member == nil {
+		return nil, errors.New("execution drain member is absent from authority")
+	}
+	var selected *velav1.ModelRuntimeExecutionDrainScope
+	matches := 0
+	for _, binding := range agent.floor.bindings {
+		if binding.Runtime.WorkerMemberID != id || !bytes.Equal(binding.IdentityDigest[:], member.GetIdentityDigest()) {
+			continue
+		}
+		identity := executionDrainIdentity(binding.Runtime)
+		if historical && !proto.Equal(target, identity) {
+			continue
+		}
+		original := binding.Runtime
+		if historical {
+			original.ModelResidencyID, original.ModelRuntimeIdentity, original.StageProfileRevisionID = authority.GetModelResidencyId(), authority.GetModelRuntimeIdentity(), authority.GetStageProfileRevisionId()
+			original.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
+		}
+		if _, err := agent.floor.validator.ValidateSignature(authority, original); err != nil {
+			continue
+		}
+		scope := &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: identity, Authority: proto.Clone(authority).(*velav1.StageAuthority)}
+		if _, err := modelruntimetransport.ValidateExecutionDrainScope(agent.floor.validator, scope, 0, historical); err != nil {
+			return nil, err
+		}
+		selected, matches = scope, matches+1
+	}
+	if matches != 1 {
+		return nil, fmt.Errorf("execution drain member %s binding is missing or ambiguous", id)
+	}
+	return selected, nil
 }
 
 func executionDrainIdentity(binding stageauthority.RuntimeBinding) *velav1.ModelRuntimeIdentity {

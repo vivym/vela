@@ -248,6 +248,10 @@ upgrade preserving pending/drained history. Worker and launch/Fleet schemas stay
 protobuf compatibility and non-root Linux checks pass. Mixed member evidence
 does not establish Worker input-writer exclusion or authorize scratch deletion;
 default retirement orchestration and sustained progress remain open.
+A subsequent regression and repair lets a still-resident member create its
+non-admission proof after a peer's original profile retires. Complete signed
+history and trusted-reader checks remain mandatory, and unknown peer evidence
+keeps the result partial. Full unit, Worker race, lint and Linux checks pass.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
