@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -61,8 +62,8 @@ func TestPostgresTerminalHistoryRequiresExactSignedOriginal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candidate := readTerminalHistory(t, fixture, terminalHistoryRequest(t, command, changed)); !candidate.Eligible {
-		t.Fatal("fixture did not reach original-wire candidate matching")
+	if candidate := readTerminalHistory(t, fixture, terminalHistoryRequest(t, command, changed)); candidate.Eligible || candidate.Reason != "SIGNED_HISTORY_UNAVAILABLE" {
+		t.Fatal("history SQL accepted a different original authority digest")
 	}
 	if history, err := reader.Read(context.Background(), command, changed, command.CommandID); err != nil || history != nil {
 		t.Fatalf("different signed original accepted: history=%v error=%v", history, err)
@@ -82,11 +83,32 @@ func TestPostgresTerminalHistoryRequiresExactSignedOriginal(t *testing.T) {
 	}
 	request := terminalHistoryRequest(t, command, authority)
 	request["acquire_command_id"] = otherCommand.CommandID
-	if candidate := readTerminalHistory(t, fixture, request); !candidate.Eligible {
-		t.Fatal("fixture did not locate another same-Worker original-wire candidate")
+	if candidate := readTerminalHistory(t, fixture, request); candidate.Eligible || candidate.Reason != "SIGNED_HISTORY_UNAVAILABLE" {
+		t.Fatal("history SQL accepted another same-Worker Acquire identity")
 	}
 	if history, err := reader.Read(context.Background(), command, authority, otherCommand.CommandID); err != nil || history != nil {
 		t.Fatalf("different Acquire original accepted: history=%v error=%v", history, err)
+	}
+	// Corrupt only the returned candidate, keeping SQL's matching digest and
+	// allocation metadata intact. The Go boundary must verify the full original.
+	changedWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var definition string
+	if err := fixture.database.Admin.QueryRow(`SELECT replace(
+		pg_get_functiondef('vela_read_stage_terminal_history(jsonb)'::regprocedure),
+		'encode(v_assignment_wire, ''hex'')', quote_literal($1))`, hex.EncodeToString(changedWire)).Scan(&definition); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.database.Admin.Exec(definition); err != nil {
+		t.Fatal(err)
+	}
+	if candidate := readTerminalHistory(t, fixture, terminalHistoryRequest(t, command, authority)); !candidate.Eligible || candidate.AuthorityWire != hex.EncodeToString(changedWire) {
+		t.Fatal("fixture did not inject a mismatched signed candidate")
+	}
+	if history, err := reader.Read(context.Background(), command, authority, command.CommandID); err != nil || history != nil {
+		t.Fatalf("different stored signed authority accepted: history=%v error=%v", history, err)
 	}
 	now = authority.GetIssuedAt().AsTime().Add(-time.Second)
 	if history, err := reader.Read(context.Background(), command, authority, command.CommandID); err == nil || history != nil {

@@ -47,6 +47,7 @@ const (
 	RoleStageScheduler             Role = "vela_stage_scheduler"
 	RoleStageArtifact              Role = "vela_stage_artifact"
 	RoleStageWorkerControl         Role = "vela_stage_worker_control"
+	RoleAssignmentHistoryMigration Role = "vela_assignment_history_migration"
 	RoleUsageCost                  Role = "vela_usage_cost"
 	RoleH3CampaignEvidence         Role = "vela_h3_campaign_evidence"
 )
@@ -96,6 +97,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleStageScheduler:             {verifyPrivileges: verifyStageSchedulerPrivileges},
 	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
 	RoleStageWorkerControl:         {verifyPrivileges: verifyStageWorkerControlPrivileges},
+	RoleAssignmentHistoryMigration: {verifyPrivileges: verifyAssignmentHistoryMigrationPrivileges},
 	RoleUsageCost:                  {verifyPrivileges: verifyUsageCostPrivileges},
 	RoleH3CampaignEvidence:         {verifyPrivileges: verifyH3CampaignEvidencePrivileges},
 }
@@ -313,7 +315,7 @@ func verifyStageWorkerControlPrivileges(
 	database rowQuerier,
 	currentUser string,
 ) error {
-	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+	if err := verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
 		inspectionLabel: "StageWorkerControl",
 		failureLabel:    "StageWorkerControl authority snapshot",
 		functions: []string{
@@ -324,6 +326,7 @@ func verifyStageWorkerControlPrivileges(
 			"vela_read_stage_authority_snapshot(uuid,bigint)",
 			"vela_read_stage_allocation_execution_sequence(uuid,uuid)",
 			"vela_read_stage_terminal_history(jsonb)",
+			"vela_stage_assignment_history_ready()",
 			"vela_is_stage_failure_authority_replayable(jsonb)",
 			"vela_read_stage_authority_member_epochs(uuid)",
 			"vela_start_stage_worker_command(jsonb)",
@@ -332,6 +335,28 @@ func verifyStageWorkerControlPrivileges(
 			"vela_register_stage_worker_runtime(jsonb)",
 			"vela_verify_stage_worker_registration(jsonb)",
 			"vela_verify_stage_capacity_observation(jsonb)",
+		},
+	}); err != nil {
+		return err
+	}
+	var ready bool
+	if err := database.QueryRow(ctx, `SELECT vela_stage_assignment_history_ready()`).Scan(&ready); err != nil {
+		return fmt.Errorf("inspect assignment history migration readiness: %w", err)
+	}
+	if !ready {
+		return errors.New("StageWorkerControl requires completed assignment history backfill")
+	}
+	return nil
+}
+
+func verifyAssignmentHistoryMigrationPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Assignment history migration",
+		failureLabel:    "Assignment history migration",
+		functions: []string{
+			"vela_read_stage_assignment_history_backfill(integer)",
+			"vela_record_stage_assignment_authority(jsonb)",
+			"vela_retire_unverifiable_stage_assignment(jsonb)",
 		},
 	})
 }

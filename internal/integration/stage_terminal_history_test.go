@@ -48,12 +48,12 @@ func TestStageTerminalHistoryRequiresTerminalScope(t *testing.T) {
 		after.StageVersion <= authority.GetStageVersion() || len(after.Allocations) != 1 {
 		t.Fatalf("terminal StageRun history = %+v", after)
 	}
-	wire, err := hex.DecodeString(after.AssignmentWire)
+	wire, err := hex.DecodeString(after.AuthorityWire)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var recorded velav1.StageAssignment
-	if err := proto.Unmarshal(wire, &recorded); err != nil || !proto.Equal(recorded.Authority, authority) {
+	var recorded velav1.StageAuthority
+	if err := proto.Unmarshal(wire, &recorded); err != nil || !proto.Equal(&recorded, authority) || after.AssignmentWire != "" {
 		t.Fatalf("historical original authority changed: %v", err)
 	}
 	if after.WorkerMemberID != authority.GetMembers()[0].GetWorkerMemberId() || after.ObservedAt.IsZero() {
@@ -81,7 +81,7 @@ func TestStageTerminalHistoryRequiresTerminalScope(t *testing.T) {
 			changed[test.field] = test.value
 			snapshot := readTerminalHistory(t, fixture, changed)
 			if snapshot.Eligible || snapshot.Reason == "" || len(snapshot.Allocations) != 0 ||
-				snapshot.AssignmentWire != "" || snapshot.RenewalWire != "" {
+				snapshot.AssignmentWire != "" || snapshot.AuthorityWire != "" || snapshot.RenewalWire != "" {
 				t.Fatalf("mismatched %s disclosed terminal history", test.field)
 			}
 		})
@@ -204,7 +204,7 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 				t.Fatal(err)
 			}
 			if rejected.Eligible || rejected.Reason != test.reason || len(rejected.Allocations) != 0 ||
-				rejected.AssignmentWire != "" || rejected.RenewalWire != "" {
+				rejected.AssignmentWire != "" || rejected.AuthorityWire != "" || rejected.RenewalWire != "" {
 				t.Fatalf("incomplete history result eligible=%t reason=%s", rejected.Eligible, rejected.Reason)
 			}
 		})
@@ -243,6 +243,9 @@ func TestStageTerminalHistorySurvivesJobMetadataExpiry(t *testing.T) {
 		history.StageRunID.String() != authority.GetStageRunId() {
 		t.Fatalf("verified history after metadata expiry=%v error=%v", history, err)
 	}
+	assertAssignmentDeliveryRetired(t, fixture.database, command.CommandID)
+	replayed, err := newPostgresAssignmentTestBackend(t, fixture).AcquireStage(context.Background(), command, stageWorkerAcquireRequest(fixture))
+	assertAssignmentDeletedResult(t, replayed, err)
 }
 
 func TestStageTerminalHistoryReadsRenewalWithoutAcquireID(t *testing.T) {
@@ -277,7 +280,7 @@ func TestStageTerminalHistoryReadsRenewalWithoutAcquireID(t *testing.T) {
 	request := terminalHistoryRequest(t, command, started.Authority)
 	delete(request, "acquire_command_id")
 	snapshot := readTerminalHistory(t, fixture, request)
-	if !snapshot.Eligible || snapshot.AssignmentWire != "" || snapshot.RenewalWire == "" ||
+	if !snapshot.Eligible || snapshot.AssignmentWire != "" || snapshot.AuthorityWire != "" || snapshot.RenewalWire == "" ||
 		snapshot.Cutoff != authority.GetExecutionSequence() {
 		t.Fatalf("renewal history eligible=%t reason=%s cutoff=%d", snapshot.Eligible, snapshot.Reason, snapshot.Cutoff)
 	}
@@ -313,8 +316,14 @@ func TestStageTerminalHistoryMigrationKeepsRoleBoundary(t *testing.T) {
 		if err := goose.UpTo(database.Admin, migrations, 89); err != nil {
 			t.Fatal(err)
 		}
+		if err := veladb.VerifyRole(context.Background(), workerPool, veladb.RoleStageWorkerControl); err == nil {
+			t.Fatal("control startup accepted schema89 without assignment content lifecycle")
+		}
+		if err := goose.UpTo(database.Admin, migrations, 90); err != nil {
+			t.Fatal(err)
+		}
 		if err := veladb.VerifyRole(context.Background(), workerPool, veladb.RoleStageWorkerControl); err != nil {
-			t.Fatalf("control startup rejected schema89: %v", err)
+			t.Fatalf("control startup rejected schema90: %v", err)
 		}
 		for _, role := range []string{"vela_request", "vela_stage_scheduler", "vela_fleet", "vela_stage_worker_control"} {
 			var allowed bool
@@ -356,6 +365,7 @@ type terminalHistorySnapshot struct {
 	StageVersion   int64             `json:"stage_version"`
 	Cutoff         int64             `json:"cutoff"`
 	AssignmentWire string            `json:"assignment_wire"`
+	AuthorityWire  string            `json:"authority_wire"`
 	RenewalWire    string            `json:"renewal_wire"`
 	WorkerMemberID string            `json:"worker_member_id"`
 	ObservedAt     time.Time         `json:"observed_at"`

@@ -387,6 +387,13 @@ func bootstrapDatabase(ctx context.Context, configuration configuration) error {
 	if err := goose.UpContext(ctx, database, filepath.Join(configuration.databaseRoot, "migrations")); err != nil {
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
+	var historyReady bool
+	if err := database.QueryRowContext(ctx, `SELECT vela_stage_assignment_history_ready()`).Scan(&historyReady); err != nil {
+		return fmt.Errorf("inspect assignment history migration: %w", err)
+	}
+	if !historyReady {
+		return errors.New("assignment history backfill required: run vela-assignment-history-migrate with the historical public verifier keyring before retrying bootstrap")
+	}
 	if err := createLoginRoles(ctx, database, configuration); err != nil {
 		return err
 	}

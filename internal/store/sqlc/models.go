@@ -6277,6 +6277,27 @@ type StageArtifactPin struct {
 	CreatedAt          pgtype.Timestamptz    `db:"created_at" json:"created_at"`
 }
 
+type StageAssignmentAuthorityReceipt struct {
+	CommandID        uuid.UUID          `db:"command_id" json:"command_id"`
+	AssignmentDigest []byte             `db:"assignment_digest" json:"assignment_digest"`
+	AuthorityDigest  []byte             `db:"authority_digest" json:"authority_digest"`
+	AuthorityWire    []byte             `db:"authority_wire" json:"authority_wire"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	StageLeaseID     uuid.UUID          `db:"stage_lease_id" json:"stage_lease_id"`
+	RecordedAt       pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
+type StageAssignmentHistoryPending struct {
+	CommandID uuid.UUID `db:"command_id" json:"command_id"`
+}
+
+type StageAssignmentUnverifiableTombstone struct {
+	CommandID        uuid.UUID          `db:"command_id" json:"command_id"`
+	AssignmentDigest []byte             `db:"assignment_digest" json:"assignment_digest"`
+	Reason           string             `db:"reason" json:"reason"`
+	RetiredAt        pgtype.Timestamptz `db:"retired_at" json:"retired_at"`
+}
+
 type StageAttempt struct {
 	ID                             uuid.UUID          `db:"id" json:"id"`
 	OrganizationID                 uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -6938,12 +6959,14 @@ type StageWorkerAcquireIntent struct {
 }
 
 type StageWorkerAcquireResult struct {
-	CommandID      uuid.UUID                    `db:"command_id" json:"command_id"`
-	ResultKind     StageWorkerAcquireResultKind `db:"result_kind" json:"result_kind"`
-	AssignmentWire []byte                       `db:"assignment_wire" json:"assignment_wire"`
-	RetryAfterMs   *int64                       `db:"retry_after_ms" json:"retry_after_ms"`
-	Detail         *string                      `db:"detail" json:"detail"`
-	CompletedAt    pgtype.Timestamptz           `db:"completed_at" json:"completed_at"`
+	CommandID           uuid.UUID                    `db:"command_id" json:"command_id"`
+	ResultKind          StageWorkerAcquireResultKind `db:"result_kind" json:"result_kind"`
+	AssignmentWire      []byte                       `db:"assignment_wire" json:"assignment_wire"`
+	RetryAfterMs        *int64                       `db:"retry_after_ms" json:"retry_after_ms"`
+	Detail              *string                      `db:"detail" json:"detail"`
+	CompletedAt         pgtype.Timestamptz           `db:"completed_at" json:"completed_at"`
+	AssignmentDigest    []byte                       `db:"assignment_digest" json:"assignment_digest"`
+	AssignmentRetiredAt pgtype.Timestamptz           `db:"assignment_retired_at" json:"assignment_retired_at"`
 }
 
 type StageWorkerCommand struct {

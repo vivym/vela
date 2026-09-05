@@ -1,6 +1,6 @@
 # Terminal Stage history reader evidence
 
-Status: local CPU/PostgreSQL integration evidence for schema 89, based on
+Status: historical local CPU/PostgreSQL integration evidence for schema 89, based on
 `6871a04`. This is a read-only prerequisite for terminal scratch retirement.
 It neither signs a disposition nor permits Worker or Runtime deletion.
 Production Gates remain **0/9**. Remote deployment is unchanged.
@@ -10,7 +10,10 @@ Production Gates remain **0/9**. Remote deployment is unchanged.
 `vela_read_stage_terminal_history(jsonb)` runs as the existing coordinator owner
 with a fixed search path. Only Stage Worker Control may call it. The runtime
 role receives no direct table privileges. Control's exact startup privilege
-contract requires schema 89; code and database must be upgraded together.
+contract at this checkpoint required schema 89; code and database must be upgraded together.
+The later schema-90 [content lifecycle repair](assignment-content-lifecycle-evidence-2026-09-05.md)
+replaces the original assignment candidate with retained signed authority and
+requires completed legacy backfill before current control startup.
 
 The reader binds the historical lease token, allocation, physical attempt,
 StageRun, retained Job/Attempt roots, Worker epoch, current control session and

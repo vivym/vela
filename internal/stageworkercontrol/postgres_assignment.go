@@ -585,6 +585,16 @@ func (backend *PostgresAssignmentBackend) complete(
 	}
 	if len(wire) > 0 {
 		payload["assignment_wire"] = hex.EncodeToString(wire)
+		var assignment velav1.StageAssignment
+		if err := proto.Unmarshal(wire, &assignment); err != nil {
+			return AcquireResult{}, errors.New("assignment authority evidence cannot be decoded")
+		}
+		evidence, err := stageAssignmentAuthorityEvidence(assignment.GetAuthority(), wire)
+		if err != nil {
+			return AcquireResult{}, err
+		}
+		payload["schema_version"] = 2
+		payload["authority_evidence"] = evidence
 	}
 	if retryAfterMS > 0 {
 		payload["retry_after_ms"] = retryAfterMS
@@ -602,7 +612,10 @@ func (backend *PostgresAssignmentBackend) complete(
 	var returnedDetail sql.NullString
 	if err := backend.pool.QueryRow(ctx, `
 		SELECT result_kind, assignment_wire, retry_after_ms, detail
-		FROM vela_complete_stage_worker_acquire($1::jsonb)
+		FROM vela_complete_stage_worker_acquire(CASE
+			WHEN to_regprocedure('public.vela_stage_assignment_history_ready()') IS NULL
+			THEN ($1::jsonb - 'authority_evidence') || '{"schema_version":1}'::jsonb
+			ELSE $1::jsonb END)
 	`, encoded).Scan(
 		&returnedKind, &returnedWire, &returnedRetry, &returnedDetail,
 	); err != nil {

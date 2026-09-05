@@ -1,5 +1,8 @@
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_assignment_history_migration') THEN
+        CREATE ROLE vela_assignment_history_migration NOLOGIN;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_recovery') THEN
         CREATE ROLE vela_recovery NOLOGIN;
     END IF;

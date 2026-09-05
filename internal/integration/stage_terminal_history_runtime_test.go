@@ -151,12 +151,12 @@ func TestStageTerminalHistoryPreservesHistoricalRuntimeScopesWhileDraining(t *te
 				t.Fatalf("historical member %d = %+v", index, actualMember)
 			}
 		}
-		wire, err := hex.DecodeString(snapshot.AssignmentWire)
+		wire, err := hex.DecodeString(snapshot.AuthorityWire)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var recorded velav1.StageAssignment
-		if err := proto.Unmarshal(wire, &recorded); err != nil || !proto.Equal(recorded.GetAuthority(), old) {
+		var recorded velav1.StageAuthority
+		if err := proto.Unmarshal(wire, &recorded); err != nil || !proto.Equal(&recorded, old) || snapshot.AssignmentWire != "" {
 			t.Fatalf("history substituted latest authority for the original: %v", err)
 		}
 	}

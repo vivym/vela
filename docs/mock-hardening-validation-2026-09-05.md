@@ -3,7 +3,7 @@
 Date: 2026-09-05
 Baseline: `1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2`
 Work branch: `feature/vela-mock-hardening`
-Current local migration: `88`
+Current local migration: `90`
 Status: In progress
 
 ## Objective and evidence boundary
@@ -58,7 +58,7 @@ has not been changed by this campaign; subsequent lifecycle work remains open.
 | A7 | Quiescence and backup can be used for actual recovery | Closed Admission, consistent authority snapshot, isolated PostgreSQL restore and replay | Isolated database drill passed; object recovery separate |
 | A8 | Idle and loaded operation have bounded resource growth | Polling/record lifecycle review, sustained mock observation, capacity evidence | Successful 64-wave scratch/watchdog/pin convergence passes; terminal scratch and inactive-worker history remain open |
 | A9 | Deployment and verification exercise current entry points | Generated contracts, lint, build, all integration packages, CPU runtime composition | Schema-88 unit, four-shard integration, lint, cross-build, deployment, generation, CNPG failover and native CPU campaigns pass; full external composition separate |
-| A10 | Review findings are repaired and independently rechecked | Finding ledger, regression tests, final requirement-by-requirement audit | 38 findings: 34 fixed, 1 false positive, 2 partial, 1 open; overall closure pending |
+| A10 | Review findings are repaired and independently rechecked | Finding ledger, regression tests, final requirement-by-requirement audit | Initial review: 38 findings, 34 fixed, 1 false positive, 2 partial, 1 open; subsequent content-lifecycle repair verified separately; overall closure pending |
 | A11 | Capacity and scheduling models are scientifically defensible | Independent analytical/oracle checks, dimensional consistency, deterministic load and failure experiments | 18 public-API formula/oracle checks and random conservation pass; production scheduler replay remains unmodeled |
 | A12 | Architecture improvements solve observed problems | Before/after invariants, overhead, convergence, and measured mock comparisons | In progress |
 
@@ -69,12 +69,16 @@ now covers allocated but undelivered retries and historical Runtime scopes in
 local PostgreSQL tests. Its SQL output is candidate evidence; the Go reader now
 authenticates the complete signed original before returning typed history.
 Disposition signing and local writer exclusion remain open. Control's exact
-database startup privilege contract now requires schema 89.
+database startup privilege contract now requires schema 90 and completed legacy
+assignment history backfill.
 This incremental result does not supersede the schema-88 campaign receipts.
 
 The history work also exposed retained Customer Content in Acquire assignment
-wire and its historical replay path. Content-free authority evidence and
-content-aware delivery replay retention must be separated in follow-up work.
+wire and its historical replay path. The schema-90
+[content lifecycle repair](assignment-content-lifecycle-evidence-2026-09-05.md)
+separates immutable signed authority from deletable delivery, preserves terminal
+history after deletion, and fences unmigrated legacy records. Its migration and
+concurrent lifecycle regressions are tracked independently below.
 
 1. Complete Worker namespace gating and drain all input resolvers/download writers
    before scratch deletion. Runtime RPC ordering alone cannot exclude these users.
@@ -160,6 +164,7 @@ record and its scratch until its original durable result can be reconciled.
 | Simulator preselects pools and miscounts queue/window boundaries | Parallel capacity is serialized, transfers are double-counted as waiting, and partial execution is idle | Dispatch chooses live capacity; transfer and queue samples are disjoint; occupancy is clipped; expiry/completion release queue/Admission credits at defined event boundaries |
 | Simulator cache lifetime and fairness omit active/failed work | Live output can be evicted, retries consume fan-out credit twice, and failed/unstarted cohorts disappear | Producer/reuse pins last through Job termination; dependent credit is consumed once; exact storage/buffer/pin conservation, failed service and unfinished waiting are checked |
 | Simulator claims production decision replay without required inputs | Advisory proposals can misstate fidelity or use another scenario's receipt | Versioned simplified scheduler is explicit; unsupported dimensions are carried in receipts; missing predictions are unavailable; proposals bind the exact Scenario digest |
+| Complete Acquire delivery survives Customer Content deletion | The same command can return prompt and root URLs after deletion completes | Schema 90 separates immutable original authority from deletable delivery; deletion/retention/metadata expiry, late completion, historical backfill and lock-order regressions pass |
 
 ## Additional runtime evidence
 
@@ -573,6 +578,44 @@ The terminal reader design now specifies complete physical-attempt/ASSIGN/budget
 checks before its scoped cutoff calculation, retained non-content identity roots,
 and a union of historical member Runtime scopes. Runtime enforcement requires a
 domain-separated signed disposition and separate FLOOR_INSTALLED/DRAINED states.
-Original authority lookup from retained protobuf assignment wire, role-scoped
-reader implementation, persistent Worker/Runtime barriers and fault/restart
-campaigns remain open. This design review does not advance an acceptance gate.
+At that checkpoint, original authority lookup, the role-scoped reader,
+persistent Worker/Runtime barriers and fault/restart campaigns remained open.
+Schema 89 subsequently implemented the reader; schema 90 separates delivery
+content from its retained authority. The remaining retirement protocol is still
+open. This design review does not advance an acceptance gate.
+
+## Schema 90 assignment content lifecycle
+
+The [schema-90 repair](assignment-content-lifecycle-evidence-2026-09-05.md)
+closes a second Customer Content copy in durable Acquire results. Active delivery
+replay remains exact. Deleted/expired delivery returns deterministic rejection,
+while the original signed authority remains independently verifiable. A dedicated
+public-key migration tool handles existing data; pending legacy rows block
+startup and deletion completion, and explicit unverifiable retirement records
+only a digest and reason. Up/Down use NOWAIT before any table changes, and Down
+refuses to erase retained authority or retired-delivery evidence.
+
+The public deletion regression first failed with a returned assignment after
+COMPLETED. Independent review also found a root/Job lock cycle during backfill;
+its two-transaction test failed with `55P03` before the repair and passed in
+4.853 s afterward. Both completion and backfill now take the retained root lock
+before the live Job. Late initial completion, deadline crossing during lock
+wait, and metadata expiry cannot restore delivery content.
+
+Local validation, using disposable PostgreSQL 17 instances and no GPU:
+
+- `go test -tags=integration ./internal/integration -run
+  '^(TestDatabasePoolsFailClosedOnRoleConfusion|TestStageAssignmentContent|TestStageTerminalHistory|TestPostgresTerminalHistory|TestStageFailureReplayMigration)'
+  -count=1 -timeout=10m`: PASS, 64.298 s.
+- Assignment-content integration with `-race`: PASS, 48.606 s. The separate
+  `TestPostgresTerminalHistoryRequiresExactSignedOriginal` race run passed in
+  6.600 s, including a substituted signed SQL candidate rejected by the Go reader.
+- An earlier assignment/retention/migration compatibility batch passed in
+  103.276 s and lab-bootstrap integration in 11.799 s. These preceded the
+  additional root-order repair; the later lifecycle batch rechecks that boundary.
+- `go test ./...`, `make lint` (0 issues), and `make generate`: PASS. Generation
+  adds the schema-90 SQL types and acquire-result lifecycle columns only.
+
+No remote rollout, GPU execution, new load/CNPG campaign, or Production Gate
+advancement is claimed. Signed terminal disposition, persistent input admission,
+writer drain and the local retirement journal remain the next lifecycle work.

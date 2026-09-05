@@ -135,7 +135,7 @@ func (reader *PostgresTerminalHistoryReader) Read(
 	if err := json.Unmarshal(raw, &row); err != nil {
 		return nil, errors.New("terminal Stage history has an invalid format")
 	}
-	if row.SchemaVersion != 1 {
+	if row.SchemaVersion != 1 && row.SchemaVersion != 2 {
 		return nil, errors.New("terminal Stage history schema is unsupported")
 	}
 	if !row.Eligible {
@@ -144,7 +144,16 @@ func (reader *PostgresTerminalHistoryReader) Read(
 	if row.Reason != "HISTORY_COMPLETE" {
 		return nil, errors.New("terminal Stage history lacks a complete history result")
 	}
-	stored, err := decodeTerminalStoredAuthority(row.AssignmentWire, row.RenewalWire)
+	assignmentWire, authorityWire := row.AssignmentWire, row.RenewalWire
+	if row.SchemaVersion == 2 {
+		if row.AssignmentWire != "" || (row.AuthorityWire == "") == (row.RenewalWire == "") {
+			return nil, errors.New("terminal Stage history has ambiguous authority evidence")
+		}
+		if row.AuthorityWire != "" {
+			authorityWire = row.AuthorityWire
+		}
+	}
+	stored, err := decodeTerminalStoredAuthority(assignmentWire, authorityWire)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +185,7 @@ type terminalHistoryRow struct {
 	MembershipDigest string                  `json:"membership_digest"`
 	Allocations      []terminalAllocationRow `json:"allocations"`
 	AssignmentWire   string                  `json:"assignment_wire"`
+	AuthorityWire    string                  `json:"authority_wire"`
 	RenewalWire      string                  `json:"renewal_wire"`
 }
 
