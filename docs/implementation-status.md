@@ -280,6 +280,11 @@ forwarding, malformed/late replies, lost-reply recovery, PostgreSQL regression,
 full unit, related race, lint, protobuf compatibility/reproducibility and Linux
 non-root checks pass. Retirement orchestration and bounded reclamation remain
 open; versions are unchanged and default scratch retention remains active.
+A follow-up recovery regression fixes available execution envelopes hiding
+previously persisted terminal non-admission proof after epoch/profile changes.
+The collector now checks existing terminal proof after valid empty envelope
+observations, while rejecting malformed/error observations before any alternate
+proof or write. Full unit, Worker race, lint and non-root Linux checks pass.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

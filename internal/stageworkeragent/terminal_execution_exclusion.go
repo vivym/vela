@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -86,7 +87,7 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 				if history.authorities[id] == nil {
 					proof, err = agent.collectMemberTerminalNonAdmission(ctx, memberID, history.verified.Disposition, allocation, history.readers[memberID], checkpoint)
 				} else {
-					proof, err = agent.collectMemberExclusion(ctx, memberID, scopes[memberID], checkpoint)
+					proof, err = agent.collectMemberExclusion(ctx, memberID, scopes[memberID], history.verified.Disposition, checkpoint)
 				}
 				completed <- memberResult{id: memberID, proof: proof, err: err}
 			}()
@@ -125,7 +126,7 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 	return result, joined
 }
 
-func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string, scope *velav1.ModelRuntimeExecutionDrainScope, checkpoint bool) (ExecutionExclusionProof, error) {
+func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string, scope *velav1.ModelRuntimeExecutionDrainScope, disposition *velav1.StageTerminalDisposition, checkpoint bool) (ExecutionExclusionProof, error) {
 	proof := ExecutionExclusionProof{}
 	if err := ctx.Err(); err != nil {
 		return proof, err
@@ -171,6 +172,18 @@ func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string,
 	}
 	if result.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
 		return proof, errors.New("non-admission inspection rejected")
+	}
+	if result.GetCheckpoint() == nil {
+		// Recovering an execution envelope must not hide earlier terminal proof.
+		allocation := stageauthority.FindTerminalAllocation(disposition, verified.Authority.GetStageAllocationId())
+		terminal, err := agent.inspectMemberTerminalNonAdmission(ctx, memberID, disposition, allocation, scope.GetIdentity())
+		if err != nil {
+			return proof, err
+		}
+		if terminal != nil {
+			proof.TerminalNeverAdmitted = terminal
+			return proof, nil
+		}
 	}
 	if result.GetCheckpoint() == nil && checkpoint {
 		// Other members may already have historical proof after retiring their

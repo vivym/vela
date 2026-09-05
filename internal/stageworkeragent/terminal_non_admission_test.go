@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -124,6 +125,44 @@ func TestTerminalNonAdmissionCollectorCannotInferOldEpochAbsence(t *testing.T) {
 	}
 }
 
+func TestTerminalNonAdmissionCollectorRecoversProofWhenExecutionEnvelopeBecomesAvailable(t *testing.T) {
+	f := newFloorCollectorFixture(t)
+	queries := terminalDrainQueries(t, f)
+	base := t.TempDir()
+	group := startFloorCollectorRuntimes(t, f, base, true, false)
+	agent := f.agent(t)
+	if floor, err := agent.InstallExecutionFloor(t.Context(), f.disposition); err != nil || !floor.AllInstalled {
+		t.Fatalf("floor: %+v %v", floor, err)
+	}
+	// The first collector has terminal history but has not recovered envelopes.
+	before, err := agent.CheckpointTerminalExecutionExclusions(t.Context(), f.disposition, nil, drainCollectorTargets(f))
+	if err != nil || !before.AllExcluded {
+		t.Fatalf("terminal checkpoints: %+v %v", before, err)
+	}
+	group.close()
+	f.config.ExecutionFloor.Bindings = f.config.ExecutionFloor.Bindings[2:]
+	for index := range f.config.ExecutionFloor.Bindings {
+		f.config.ExecutionFloor.Bindings[index].Runtime.ModelRuntimeEpoch++
+	}
+	startFloorCollectorRuntimes(t, f, base, false, false)
+	agent = f.agent(t)
+	for _, collect := range []func(context.Context, *velav1.StageTerminalDisposition, map[string]*velav1.StageAuthority, map[string]*velav1.ModelRuntimeIdentity) (stageworkeragent.TerminalExecutionExclusionResult, error){agent.InspectTerminalExecutionExclusions, agent.CheckpointTerminalExecutionExclusions} {
+		after, err := collect(t.Context(), f.disposition, queries, drainCollectorTargets(f))
+		if err != nil || !after.AllExcluded {
+			t.Fatalf("available envelopes hid persisted terminal proof: %+v %v", after, err)
+		}
+		for allocation, members := range before.Allocations {
+			for member, proof := range members {
+				recovered := after.Allocations[allocation][member]
+				if recovered.Drain != nil || recovered.NeverAdmitted != nil || recovered.TerminalNeverAdmitted == nil ||
+					!proto.Equal(proof.TerminalNeverAdmitted.GetCheckpoint(), recovered.TerminalNeverAdmitted.GetCheckpoint()) {
+					t.Fatal("envelope recovery changed the original proof contract")
+				}
+			}
+		}
+	}
+}
+
 func TestTerminalNonAdmissionCollectorPreflightsCompleteHistory(t *testing.T) {
 	for _, fault := range []string{"missing reader", "reader epoch", "member identity", "subset", "devices", "signature", "nil authority"} {
 		t.Run(fault, func(t *testing.T) {
@@ -172,49 +211,71 @@ func TestTerminalNonAdmissionCollectorPreflightsCompleteHistory(t *testing.T) {
 
 func TestTerminalNonAdmissionCollectorRejectsBadReadsBeforeCheckpointing(t *testing.T) {
 	for _, fault := range []string{"error", "nil", "digest", "signature", "floor", "contract", "mutation", "late", "rejected"} {
-		t.Run(fault, func(t *testing.T) {
-			f := newFloorCollectorFixture(t)
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			var writes atomic.Int64
-			for index := range f.config.Members {
-				f.config.Members[index].Client = &terminalExclusionClient{
-					read: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
-						result := terminalExclusionReply(t, f, scope)
-						switch fault {
-						case "error":
-							return result, errors.New("transport failure with proof")
-						case "nil":
-							return nil, nil
-						case "digest":
-							result.DispositionDigest[0] ^= 1
-						case "signature":
-							result.Checkpoint.Disposition.Signature[0] ^= 1
-						case "floor":
-							result.Checkpoint.InstalledCutoff = 0
-						case "contract":
-							result.Checkpoint.Contract = modelruntimetransport.ExecutionDrainContract
-						case "mutation":
-							scope.Identity.ModelRuntimeEpoch++
-							result.Identity.ModelRuntimeEpoch++
-						case "late":
-							cancel()
-						case "rejected":
-							result.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
-							result.Checkpoint = nil
-						}
-						return result, nil
-					},
-					checkpoint: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
-						writes.Add(1)
-						return terminalExclusionReply(t, f, scope), nil
-					},
+		for _, withEnvelope := range []bool{false, true} {
+			t.Run(fault+map[bool]string{false: "/missing-envelope", true: "/known-envelope"}[withEnvelope], func(t *testing.T) {
+				f := newFloorCollectorFixture(t)
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				var writes atomic.Int64
+				for index := range f.config.Members {
+					f.config.Members[index].Client = &terminalExclusionClient{
+						ModelRuntimeServiceClient: &exclusionCollectorClient{
+							drain: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error) {
+								result := drainCollectorReply(scope)
+								result.Checkpoint = nil
+								return result, nil
+							},
+							read: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error) {
+								result := exclusionNonAdmissionReply(scope)
+								result.Checkpoint = nil
+								return result, nil
+							},
+							checkpoint: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error) {
+								writes.Add(1)
+								return exclusionNonAdmissionReply(scope), nil
+							},
+						},
+						read: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+							result := terminalExclusionReply(t, f, scope)
+							switch fault {
+							case "error":
+								return result, errors.New("transport failure with proof")
+							case "nil":
+								return nil, nil
+							case "digest":
+								result.DispositionDigest[0] ^= 1
+							case "signature":
+								result.Checkpoint.Disposition.Signature[0] ^= 1
+							case "floor":
+								result.Checkpoint.InstalledCutoff = 0
+							case "contract":
+								result.Checkpoint.Contract = modelruntimetransport.ExecutionDrainContract
+							case "mutation":
+								scope.Identity.ModelRuntimeEpoch++
+								result.Identity.ModelRuntimeEpoch++
+							case "late":
+								cancel()
+							case "rejected":
+								result.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+								result.Checkpoint = nil
+							}
+							return result, nil
+						},
+						checkpoint: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+							writes.Add(1)
+							return terminalExclusionReply(t, f, scope), nil
+						},
+					}
 				}
-			}
-			if result, err := f.agent(t).CheckpointTerminalExecutionExclusions(ctx, f.disposition, nil, drainCollectorTargets(f)); err == nil || result.AllExcluded || writes.Load() != 0 {
-				t.Fatalf("invalid read fell through to checkpoint: %+v %v writes=%d", result, err, writes.Load())
-			}
-		})
+				var queries map[string]*velav1.StageAuthority
+				if withEnvelope {
+					queries = terminalDrainQueries(t, f)
+				}
+				if result, err := f.agent(t).CheckpointTerminalExecutionExclusions(ctx, f.disposition, queries, drainCollectorTargets(f)); err == nil || result.AllExcluded || writes.Load() != 0 {
+					t.Fatalf("invalid read fell through to checkpoint: %+v %v writes=%d", result, err, writes.Load())
+				}
+			})
+		}
 	}
 }
 

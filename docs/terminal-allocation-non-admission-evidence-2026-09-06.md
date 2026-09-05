@@ -150,6 +150,28 @@ The same non-root Linux arm64 container configuration above passes these sets:
 
 Versions remain database 90, Runtime journal 4, Worker journal 3 and launch/Fleet 2.
 
+## Recovery when execution envelopes become available
+
+A subsequent two-member UDS regression reproduced existing terminal proofs being
+hidden when the caller recovered execution envelopes after Runtime restart and
+profile retirement. The collector selected only envelope-based proof queries,
+so all four persisted terminal non-admission checkpoints became unobservable
+through that call even though direct terminal inspection could still read them.
+
+After valid drain and envelope non-admission reads both report no checkpoint,
+the collector now inspects the terminal proof before creating any new absence
+checkpoint. Existing terminal proof retains its original signed disposition and
+contract with either collection API, including across Runtime epoch changes.
+Rejected, malformed, failed or canceled reads cannot select alternative evidence
+or trigger a write. Existing drain and envelope proofs still return directly.
+
+The regression failed before the repair and passes afterward. Both available-
+and missing-envelope paths reject the malformed terminal-response matrix before
+checkpoint writes; bad envelope observations cannot fall through to terminal
+proof. Full unit, Worker race, lint and the Linux non-root
+`^(TestTerminalNonAdmission|TestTerminalExecutionExclusion)` selection pass.
+No protocol, journal schema or default scratch-retention policy changes.
+
 ## Remaining work
 
 The authenticated RPC and complete-history collector are now available as

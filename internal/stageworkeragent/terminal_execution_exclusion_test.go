@@ -111,9 +111,13 @@ func TestTerminalExecutionExclusionRejectsBadProofWithoutAlternativeSuccess(t *t
 			f := newFloorCollectorFixture(t)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			var writes, reads atomic.Int64
+			var writes, reads, terminalReads atomic.Int64
 			for index := range f.config.Members {
 				f.config.Members[index].Client = &exclusionCollectorClient{
+					terminalRead: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+						terminalReads.Add(1)
+						return terminalExclusionReply(t, f, scope), nil
+					},
 					drain: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error) {
 						result := drainCollectorReply(scope)
 						if fault == "drain-error" {
@@ -152,8 +156,8 @@ func TestTerminalExecutionExclusionRejectsBadProofWithoutAlternativeSuccess(t *t
 				}
 			}
 			result, err := f.agent(t).CheckpointTerminalExecutionExclusions(ctx, f.disposition, terminalDrainQueries(t, f), drainCollectorTargets(f))
-			if err == nil || result.AllExcluded || writes.Load() != 0 {
-				t.Fatalf("invalid proof used alternate success: %+v %v writes=%d", result, err, writes.Load())
+			if err == nil || result.AllExcluded || writes.Load() != 0 || terminalReads.Load() != 0 {
+				t.Fatalf("invalid proof used alternate success: %+v %v writes=%d terminal-reads=%d", result, err, writes.Load(), terminalReads.Load())
 			}
 			if (fault == "drain-error" || fault == "drain-digest") && reads.Load() != 0 {
 				t.Fatal("invalid drain inspection fell through to another proof")
@@ -184,9 +188,15 @@ func TestTerminalExecutionExclusionValidatesHistoryBeforeRPC(t *testing.T) {
 
 type exclusionCollectorClient struct {
 	velav1.ModelRuntimeServiceClient
-	drain      func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error)
-	read       func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error)
-	checkpoint func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error)
+	drain        func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error)
+	read         func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error)
+	checkpoint   func(*velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionNonAdmissionResult, error)
+	terminalRead func(*velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error)
+}
+
+func (client *exclusionCollectorClient) InspectStageTerminalNonAdmission(_ context.Context, request *velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest, _ ...grpc.CallOption) (*velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse, error) {
+	result, err := client.terminalRead(request.Scope)
+	return &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse{Result: result}, err
 }
 
 func (client *exclusionCollectorClient) InspectStageAllocationDrain(_ context.Context, request *velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest, _ ...grpc.CallOption) (*velav1.ModelRuntimeServiceInspectStageAllocationDrainResponse, error) {
@@ -218,6 +228,11 @@ func TestTerminalExecutionExclusionDiscardsLateCheckpointReply(t *testing.T) {
 	var checkpoints atomic.Int64
 	for index := range f.config.Members {
 		f.config.Members[index].Client = &exclusionCollectorClient{
+			terminalRead: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+				result := terminalExclusionReply(t, f, scope)
+				result.Checkpoint = nil
+				return result, nil
+			},
 			drain: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error) {
 				result := drainCollectorReply(scope)
 				result.Checkpoint = nil
@@ -254,6 +269,11 @@ func TestTerminalExecutionExclusionCheckpointsResidentMemberAfterPeerProfileReti
 			for index := range f.config.Members {
 				id := f.config.Members[index].ID
 				f.config.Members[index].Client = &exclusionCollectorClient{
+					terminalRead: func(scope *velav1.ModelRuntimeTerminalAllocationScope) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+						result := terminalExclusionReply(t, f, scope)
+						result.Checkpoint = nil
+						return result, nil
+					},
 					drain: func(scope *velav1.ModelRuntimeExecutionDrainScope) (*velav1.ModelRuntimeExecutionDrainResult, error) {
 						result := drainCollectorReply(scope)
 						if id == residentID || !peerDrained {

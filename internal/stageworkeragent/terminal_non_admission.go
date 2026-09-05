@@ -48,41 +48,20 @@ func (agent *Agent) terminalAllocationMemberScope(disposition *velav1.StageTermi
 
 func (agent *Agent) collectMemberTerminalNonAdmission(ctx context.Context, id string, disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation, target *velav1.ModelRuntimeIdentity, checkpoint bool) (ExecutionExclusionProof, error) {
 	proof := ExecutionExclusionProof{}
-	if err := ctx.Err(); err != nil {
-		return proof, err
-	}
-	scope, err := agent.terminalAllocationMemberScope(disposition, allocation, id, target, true)
+	result, err := agent.inspectMemberTerminalNonAdmission(ctx, id, disposition, allocation, target)
 	if err != nil {
 		return proof, err
 	}
-	verified, err := modelruntimetransport.ValidateTerminalAllocationScope(agent.floor.validator, scope, true)
-	if err != nil {
-		return proof, err
-	}
-	client := agent.members[id]
-	response, err := client.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: proto.Clone(scope).(*velav1.ModelRuntimeTerminalAllocationScope)})
-	if err != nil {
-		return proof, err
-	}
-	if err := ctx.Err(); err != nil {
-		return proof, err
-	}
-	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 {
-		return proof, errors.New("terminal non-admission inspection wrapper is invalid")
-	}
-	result := response.GetResult()
-	if err := modelruntimetransport.ValidateTerminalNonAdmissionResult(agent.floor.validator, scope, verified.Digest, result); err != nil {
-		return proof, err
-	}
-	if result.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
-		return proof, errors.New("terminal non-admission inspection rejected")
-	}
-	if result.GetCheckpoint() == nil && checkpoint {
-		scope, err = agent.terminalAllocationMemberScope(disposition, allocation, id, nil, false)
+	if result == nil && checkpoint {
+		scope, err := agent.terminalAllocationMemberScope(disposition, allocation, id, nil, false)
 		if err != nil {
 			return proof, err
 		}
-		response, err := client.CheckpointStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest{Scope: proto.Clone(scope).(*velav1.ModelRuntimeTerminalAllocationScope)})
+		verified, err := modelruntimetransport.ValidateTerminalAllocationScope(agent.floor.validator, scope, false)
+		if err != nil {
+			return proof, err
+		}
+		response, err := agent.members[id].CheckpointStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest{Scope: proto.Clone(scope).(*velav1.ModelRuntimeTerminalAllocationScope)})
 		if err != nil {
 			return proof, err
 		}
@@ -102,4 +81,42 @@ func (agent *Agent) collectMemberTerminalNonAdmission(ctx context.Context, id st
 	}
 	proof.TerminalNeverAdmitted = proto.Clone(result).(*velav1.ModelRuntimeTerminalNonAdmissionResult)
 	return proof, nil
+}
+
+// A nil result without error means a valid accepted read found no checkpoint.
+// Invalid or rejected observations must not fall through to another proof kind.
+func (agent *Agent) inspectMemberTerminalNonAdmission(ctx context.Context, id string, disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation, target *velav1.ModelRuntimeIdentity) (*velav1.ModelRuntimeTerminalNonAdmissionResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	scope, err := agent.terminalAllocationMemberScope(disposition, allocation, id, target, true)
+	if err != nil {
+		return nil, err
+	}
+	verified, err := modelruntimetransport.ValidateTerminalAllocationScope(agent.floor.validator, scope, true)
+	if err != nil {
+		return nil, err
+	}
+	client := agent.members[id]
+	response, err := client.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: proto.Clone(scope).(*velav1.ModelRuntimeTerminalAllocationScope)})
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 {
+		return nil, errors.New("terminal non-admission inspection wrapper is invalid")
+	}
+	result := response.GetResult()
+	if err := modelruntimetransport.ValidateTerminalNonAdmissionResult(agent.floor.validator, scope, verified.Digest, result); err != nil {
+		return nil, err
+	}
+	if result.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		return nil, errors.New("terminal non-admission inspection rejected")
+	}
+	if result.GetCheckpoint() == nil {
+		return nil, nil
+	}
+	return proto.Clone(result).(*velav1.ModelRuntimeTerminalNonAdmissionResult), nil
 }
