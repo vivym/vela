@@ -223,8 +223,9 @@ type ProductionAgent struct {
 }
 
 type DiscoveryResult struct {
-	Assignment *velav1.StageAssignment
-	RetryAfter time.Duration
+	Assignment       *velav1.StageAssignment
+	AcquireCommandID uuid.UUID
+	RetryAfter       time.Duration
 }
 
 type capacityPublication struct {
@@ -856,7 +857,9 @@ func (agent *ProductionAgent) acquire(
 		if barrierGeneration <= 0 {
 			return DiscoveryResult{}, errors.New("stage worker acquire has no ready ModelRuntime barrier")
 		}
+		acquireID := uuid.New()
 		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: acquireID.String(),
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
 				AcquireStage: &velav1.AcquireStageRequest{
 					WorkerInstanceId:            identity.GetWorkerInstanceId(),
@@ -872,9 +875,13 @@ func (agent *ProductionAgent) acquire(
 			return DiscoveryResult{}, fmt.Errorf("acquire StageAssignment: %w", err)
 		}
 		if assignment := response.GetStageAssignment(); assignment != nil {
+			if response.GetRequestId() != acquireID.String() {
+				return DiscoveryResult{}, errors.New("stage worker assignment does not match its Acquire command ID")
+			}
 			agent.acquireCursor = (index + 1) % len(agent.runtimeIdentities)
 			return DiscoveryResult{
-				Assignment: proto.Clone(assignment).(*velav1.StageAssignment),
+				Assignment:       proto.Clone(assignment).(*velav1.StageAssignment),
+				AcquireCommandID: acquireID,
 			}, nil
 		}
 		if noWork := response.GetNoWork(); noWork != nil && noWork.GetRetryAfter() != nil {

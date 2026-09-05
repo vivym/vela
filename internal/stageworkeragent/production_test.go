@@ -1339,6 +1339,7 @@ func (control *productionExecutionControl) Exchange(
 			assignment := control.assignment
 			control.assignment = nil
 			return &velav1.StageWorkerControlServiceConnectResponse{
+				RequestId: request.GetRequestId(),
 				Result: &velav1.StageWorkerControlServiceConnectResponse_StageAssignment{
 					StageAssignment: assignment,
 				},

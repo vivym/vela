@@ -69,10 +69,27 @@ failure injection, cross-component Stop/Resolve/Prepare recovery and full
 multi-node workloads have not been validated for this component. No protocol or
 database migration changed in this increment.
 
+## Acquire identity handoff
+
+The follow-up to `3c12e18` gives each production Acquire request its canonical UUID
+before Exchange. A returned assignment must echo exactly that ID, and
+DiscoveryResult now returns it as AcquireCommandID alongside a cloned assignment.
+The identity is the original transmitted command ID, not a later reconstruction.
+Missing, malformed, nil, different and noncanonical response IDs reject. A direct
+discovery-to-journal test verifies the recorded ID equals the actual request ID;
+distinct polls use distinct IDs.
+
+For this follow-up, `go test ./...` and `make lint` pass. Race checks of
+stageworkeragent, stageworkertransport and the production Worker command pass
+(12.722 s, cached, and 5.572 s respectively). The transport already preserves
+canonical caller-selected request IDs; the existing production execution mock
+now echoes the request ID as the real transport does.
+
 ## Required integration
 
-Preserve the original Acquire command ID through production discovery and
-execution. Wire Begin before any Resolve/download, EnterRuntime before Prepare,
+Carry DiscoveryResult.AcquireCommandID through Run/startAndMonitor into the
+durable gate. The existing RunAssignment API also needs explicit original lookup
+evidence before it can use that gate. Wire Begin before any Resolve/download, EnterRuntime before Prepare,
 and closure into Stop, failure and materialization, without holding the admission
 mutex across downloads or Control RPCs. Preserve correct recovery on reattach and
 provide trusted Runtime binding refresh as Fleet epochs change.
