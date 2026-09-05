@@ -163,9 +163,20 @@ operation persists input exclusion before all-member Runtime collection;
 partial failure retains the local floor. CPU tests cover blocked resolution,
 real UDS, response loss and recovery while preserving resident fake backends.
 Full unit, related-module race, lint and non-root Linux checks pass. Default
-bootstrap/configuration, historical inspection, writer drain, retirement and
+bootstrap/configuration, backend inspection, writer drain, retirement and
 automatic recovery remain open; schema-1 local journals require a separate
 validated migration and must not be discarded.
+The [read-only execution inspection](execution-inspection-evidence-2026-09-06.md)
+now accepts exact historical envelopes through Runtime/UDS and authenticated
+member forwarding without installing authority, renewing watchdogs or changing
+execution/admission state. FakeRuntime supports this explicit capability;
+unsupported backends have no Status fallback. Missing, superseded, evicted or
+restarted records never imply STOPPED. Slow queries do not hold the Service
+execution lock and cannot delay cancellation or watchdog entry. Full unit,
+related-module race, lint, protobuf compatibility, Linux amd64 compilation and
+Linux arm64 non-root transport checks pass. ProcessBackend inspection remains
+open because its existing RPC timeout terminates the resident driver. No
+observation is a durable writer-drain checkpoint or scratch deletion permit.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

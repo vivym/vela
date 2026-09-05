@@ -26,6 +26,7 @@ const (
 	ModelRuntimeService_StartStage_FullMethodName                 = "/vela.v1.ModelRuntimeService/StartStage"
 	ModelRuntimeService_CancelStage_FullMethodName                = "/vela.v1.ModelRuntimeService/CancelStage"
 	ModelRuntimeService_Status_FullMethodName                     = "/vela.v1.ModelRuntimeService/Status"
+	ModelRuntimeService_InspectExecution_FullMethodName           = "/vela.v1.ModelRuntimeService/InspectExecution"
 	ModelRuntimeService_SealOutput_FullMethodName                 = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
@@ -40,6 +41,7 @@ type ModelRuntimeServiceClient interface {
 	StartStage(ctx context.Context, in *ModelRuntimeServiceStartStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceStartStageResponse, error)
 	CancelStage(ctx context.Context, in *ModelRuntimeServiceCancelStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceCancelStageResponse, error)
 	Status(ctx context.Context, in *ModelRuntimeServiceStatusRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceStatusResponse, error)
+	InspectExecution(ctx context.Context, in *ModelRuntimeServiceInspectExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectExecutionResponse, error)
 	SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error)
 }
 
@@ -121,6 +123,16 @@ func (c *modelRuntimeServiceClient) Status(ctx context.Context, in *ModelRuntime
 	return out, nil
 }
 
+func (c *modelRuntimeServiceClient) InspectExecution(ctx context.Context, in *ModelRuntimeServiceInspectExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectExecutionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceInspectExecutionResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_InspectExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelRuntimeServiceSealOutputResponse)
@@ -142,6 +154,7 @@ type ModelRuntimeServiceServer interface {
 	StartStage(context.Context, *ModelRuntimeServiceStartStageRequest) (*ModelRuntimeServiceStartStageResponse, error)
 	CancelStage(context.Context, *ModelRuntimeServiceCancelStageRequest) (*ModelRuntimeServiceCancelStageResponse, error)
 	Status(context.Context, *ModelRuntimeServiceStatusRequest) (*ModelRuntimeServiceStatusResponse, error)
+	InspectExecution(context.Context, *ModelRuntimeServiceInspectExecutionRequest) (*ModelRuntimeServiceInspectExecutionResponse, error)
 	SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error)
 	mustEmbedUnimplementedModelRuntimeServiceServer()
 }
@@ -173,6 +186,9 @@ func (UnimplementedModelRuntimeServiceServer) CancelStage(context.Context, *Mode
 }
 func (UnimplementedModelRuntimeServiceServer) Status(context.Context, *ModelRuntimeServiceStatusRequest) (*ModelRuntimeServiceStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Status not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) InspectExecution(context.Context, *ModelRuntimeServiceInspectExecutionRequest) (*ModelRuntimeServiceInspectExecutionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectExecution not implemented")
 }
 func (UnimplementedModelRuntimeServiceServer) SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SealOutput not implemented")
@@ -324,6 +340,24 @@ func _ModelRuntimeService_Status_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelRuntimeService_InspectExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceInspectExecutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).InspectExecution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_InspectExecution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).InspectExecution(ctx, req.(*ModelRuntimeServiceInspectExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModelRuntimeService_SealOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ModelRuntimeServiceSealOutputRequest)
 	if err := dec(in); err != nil {
@@ -376,6 +410,10 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Status",
 			Handler:    _ModelRuntimeService_Status_Handler,
+		},
+		{
+			MethodName: "InspectExecution",
+			Handler:    _ModelRuntimeService_InspectExecution_Handler,
 		},
 		{
 			MethodName: "SealOutput",

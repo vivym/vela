@@ -191,7 +191,7 @@ func (server *Server) authorize(
 	ctx context.Context,
 	targetMemberID string,
 	authority *velav1.StageAuthority,
-	cancellation bool,
+	historical bool,
 ) (*velav1.ModelRuntimeIdentity, [32]byte, error) {
 	if server == nil || server.authenticator == nil || server.validator == nil || server.runtime == nil {
 		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member server is not configured")
@@ -204,9 +204,9 @@ func (server *Server) authorize(
 		return nil, [32]byte{}, status.Error(codes.Unauthenticated, "authenticate Stage Worker member peer")
 	}
 	var verified stageauthority.Verified
-	if cancellation {
-		// This grants no execution time. Runtime must still require an exact
-		// installed authority before acknowledging an expired cancellation.
+	if historical {
+		// This grants no execution time. Runtime separately requires an exact
+		// known envelope for cancellation or read-only execution inspection.
 		verified, err = server.validator.ValidateEnvelopeForReplay(authority, server.maxClockSkew)
 	} else {
 		verified, err = server.validator.ValidateEnvelopeWithClockSkew(authority, server.maxClockSkew)

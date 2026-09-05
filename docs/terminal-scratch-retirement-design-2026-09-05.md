@@ -28,6 +28,11 @@ entry and renewal, and retains outstanding input handles and execution records.
 Its constructor requires explicit first bootstrap; normal recovery cannot
 initialize empty replacement directories. A schema-1 Worker journal requires
 separate validated migration, not deletion or reinitialization.
+The [read-only inspection RPC](execution-inspection-evidence-2026-09-06.md) now
+provides exact historical observation through Runtime/UDS and authenticated
+member forwarding. FakeRuntime implements the explicit backend capability;
+ProcessBackend inspection remains open. Missing history stays unknown, and no
+inspection changes admission, renews authority or certifies writer drain.
 Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
@@ -176,13 +181,20 @@ deletion. A process being stopped while another local writer remains active is
 insufficient. If draining fails, keep the retirement intent pending and preserve
 the files.
 
-The existing ModelRuntime Status RPC can support bounded historical queries:
-an expired signed authority may query the exact matching execution or return an
-already persisted stopped receipt, without creating, installing, renewing, or
-starting an execution. A stopped checkpoint obtained before restart can be
-replayed from trusted local storage. Without such evidence after restart, the
-Agent must not infer STOPPED from absence; a supervisor recovery path must first
-prove that the old execution cannot still run.
+The independent `InspectExecution` RPC supports bounded historical observations:
+an expired signed authority can query its exact known envelope without creating,
+installing, renewing or starting an execution. Ordinary `Status` retains its
+fresh execution/renewal contract. Inspection currently reads the exact active
+backend record through an explicit read-only capability, or an existing
+process-local sealed receipt. Unsupported backends reject; missing, superseded,
+evicted and restarted records remain unknown. Inspection does not stop a
+watchdog, update Service state or mark a Worker reusable, even after observing
+STOPPED. It never yields a durable stopped checkpoint. A future checkpoint
+obtained before restart must be replayed from trusted local storage; without
+that evidence, supervisor recovery must first prove that the old execution and
+its writers cannot still run. The existing ProcessBackend RPC timeout terminates
+the whole resident driver, so it cannot supply the new read-only capability
+without a separate transport/inspection design.
 
 A local retirement intent must retain the exact authority and expected membership
 before they can be forgotten. Persist the control response, namespace admission

@@ -23,6 +23,8 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceCancelStageResponse);
   rpc Status(ModelRuntimeServiceStatusRequest)
       returns (ModelRuntimeServiceStatusResponse);
+  rpc InspectExecution(ModelRuntimeServiceInspectExecutionRequest)
+      returns (ModelRuntimeServiceInspectExecutionResponse);
   rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
       returns (ModelRuntimeServiceSealOutputResponse);
 }
@@ -185,6 +187,27 @@ message ModelRuntimeServiceCancelStageResponse {
 
 message ModelRuntimeServiceStatusRequest {
   StageAuthority authority = 1;
+}
+
+// Read-only exact-envelope lookup, including after expiry or admission closure.
+// This never installs or renews authority, changes execution state, or drains it.
+message ModelRuntimeServiceInspectExecutionRequest {
+  uint32 schema_version = 1;
+  StageAuthority authority = 2;
+}
+
+message ModelRuntimeServiceInspectExecutionResponse {
+  uint32 schema_version = 1;
+  bytes authority_digest = 2;
+  ModelRuntimeIdentity runtime_identity = 3;
+  ModelRuntimeCommandDecision decision = 4;
+  // Missing, evicted, superseded and restarted records are unknown, not STOPPED.
+  bool known = 5;
+  ModelRuntimeExecutionState state = 6;
+  int64 sequence = 7;
+  google.protobuf.Timestamp observed_at = 8;
+  // Even a known STOPPED observation is not a durable writer-drain checkpoint.
+  string detail = 9;
 }
 
 message ModelRuntimeFailureEvidence {

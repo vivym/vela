@@ -23,6 +23,7 @@ const (
 	StageWorkerMemberService_StartStage_FullMethodName                 = "/vela.v1.StageWorkerMemberService/StartStage"
 	StageWorkerMemberService_CancelStage_FullMethodName                = "/vela.v1.StageWorkerMemberService/CancelStage"
 	StageWorkerMemberService_Status_FullMethodName                     = "/vela.v1.StageWorkerMemberService/Status"
+	StageWorkerMemberService_InspectExecution_FullMethodName           = "/vela.v1.StageWorkerMemberService/InspectExecution"
 	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
 )
 
@@ -34,6 +35,7 @@ type StageWorkerMemberServiceClient interface {
 	StartStage(ctx context.Context, in *StageWorkerMemberServiceStartStageRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceStartStageResponse, error)
 	CancelStage(ctx context.Context, in *StageWorkerMemberServiceCancelStageRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCancelStageResponse, error)
 	Status(ctx context.Context, in *StageWorkerMemberServiceStatusRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceStatusResponse, error)
+	InspectExecution(ctx context.Context, in *StageWorkerMemberServiceInspectExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 }
 
@@ -85,6 +87,16 @@ func (c *stageWorkerMemberServiceClient) Status(ctx context.Context, in *StageWo
 	return out, nil
 }
 
+func (c *stageWorkerMemberServiceClient) InspectExecution(ctx context.Context, in *StageWorkerMemberServiceInspectExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectExecutionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceInspectExecutionResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_InspectExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *stageWorkerMemberServiceClient) InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StageWorkerMemberServiceInstallStageExecutionFloorResponse)
@@ -103,6 +115,7 @@ type StageWorkerMemberServiceServer interface {
 	StartStage(context.Context, *StageWorkerMemberServiceStartStageRequest) (*StageWorkerMemberServiceStartStageResponse, error)
 	CancelStage(context.Context, *StageWorkerMemberServiceCancelStageRequest) (*StageWorkerMemberServiceCancelStageResponse, error)
 	Status(context.Context, *StageWorkerMemberServiceStatusRequest) (*StageWorkerMemberServiceStatusResponse, error)
+	InspectExecution(context.Context, *StageWorkerMemberServiceInspectExecutionRequest) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 	mustEmbedUnimplementedStageWorkerMemberServiceServer()
 }
@@ -125,6 +138,9 @@ func (UnimplementedStageWorkerMemberServiceServer) CancelStage(context.Context, 
 }
 func (UnimplementedStageWorkerMemberServiceServer) Status(context.Context, *StageWorkerMemberServiceStatusRequest) (*StageWorkerMemberServiceStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Status not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) InspectExecution(context.Context, *StageWorkerMemberServiceInspectExecutionRequest) (*StageWorkerMemberServiceInspectExecutionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectExecution not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
@@ -223,6 +239,24 @@ func _StageWorkerMemberService_Status_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StageWorkerMemberService_InspectExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceInspectExecutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).InspectExecution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_InspectExecution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).InspectExecution(ctx, req.(*StageWorkerMemberServiceInspectExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StageWorkerMemberService_InstallStageExecutionFloor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
 	if err := dec(in); err != nil {
@@ -263,6 +297,10 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Status",
 			Handler:    _StageWorkerMemberService_Status_Handler,
+		},
+		{
+			MethodName: "InspectExecution",
+			Handler:    _StageWorkerMemberService_InspectExecution_Handler,
 		},
 		{
 			MethodName: "InstallStageExecutionFloor",
