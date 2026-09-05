@@ -508,6 +508,11 @@ class/current slices, and all eight planned node/GPU UUID/PCI BDF identities.
 It emits only bounded PASS/FAIL reason codes and performs no actuation. The
 current checkout has no canonical production release bundle or reachable local
 GPU/DRA environment, so no successful live report exists.
+The [launch Registry binding repair](launch-registry-binding-evidence-2026-09-06.md)
+rejects DeviceSet, membership and member identity digests that differ from the
+approved actuation. Three CPU counterexamples previously produced evidence;
+the repaired regressions, full unit suite, related-module race and lint pass.
+Complete device-subset propagation remains open; this is no live Launch Receipt.
 Slice 46 (`760cd7a`, review closure `431bf3f`) pins the Control/Storage
 JetStream workload to the exact NATS `2.10.22` `linux/amd64` OCI manifest and
 verifies that identity through the final Kustomize render. It does not provide

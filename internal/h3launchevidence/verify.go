@@ -211,6 +211,7 @@ func verifyRegistryWorker(
 		registry.Lifecycle != "READY" || registry.Reachability != "HEALTHY" ||
 		registry.DeviceSetID == uuid.Nil || !hexDigestPattern.MatchString(registry.DeviceSetDigest) ||
 		!hexDigestPattern.MatchString(registry.MembershipDigest) ||
+		registry.DeviceSetDigest != worker.DeviceSetDigest || registry.MembershipDigest != worker.MembershipDigest ||
 		len(registry.Members) != len(worker.Members) ||
 		len(registry.Residencies) != len(worker.ModelRuntimes) {
 		return WorkerEvidence{}, invalid("WorkerInstance %s Fleet authority is missing, stale, or not READY", worker.ID)
@@ -231,6 +232,7 @@ func verifyRegistryWorker(
 			member.NodeIdentity != expected.NodeIdentity || member.ComputeNodeID == uuid.Nil ||
 			member.Readiness != "READY" || !hexDigestPattern.MatchString(member.DeviceSubsetDigest) ||
 			!hexDigestPattern.MatchString(member.IdentityDigest) ||
+			member.IdentityDigest != expected.IdentityDigest ||
 			len(member.Devices) != len(expected.DeviceConstraints) {
 			return WorkerEvidence{}, invalid("WorkerMember %s Fleet authority is missing, stale, or not READY", expected.ID)
 		}

@@ -113,6 +113,29 @@ func TestVerifyAcceptsAllocationWithoutOptionalTimestamp(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsRegistryDigestMismatchAgainstApprovedLaunch(t *testing.T) {
+	for _, field := range []string{"device set", "membership", "member identity"} {
+		t.Run(field, func(t *testing.T) {
+			input := exactLaunchInput(t)
+			worker := input.Rollout.WorkerBundles[0].WorkerInstances[0]
+			input.Registry.Workers[0].DeviceSetDigest = worker.DeviceSetDigest
+			input.Registry.Workers[0].MembershipDigest = worker.MembershipDigest
+			input.Registry.Workers[0].Members[0].IdentityDigest = worker.Members[0].IdentityDigest
+			switch field {
+			case "device set":
+				input.Registry.Workers[0].DeviceSetDigest = digestHex('f')
+			case "membership":
+				input.Registry.Workers[0].MembershipDigest = digestHex('f')
+			case "member identity":
+				input.Registry.Workers[0].Members[0].IdentityDigest = digestHex('f')
+			}
+			if evidence, err := h3launchevidence.Verify(input); !errors.Is(err, h3launchevidence.ErrInvalidLaunchEvidence) {
+				t.Fatalf("mismatched %s yielded evidence for %d workers: %v", field, len(evidence.Workers), err)
+			}
+		})
+	}
+}
+
 func TestVerifyRejectsStaleOrInventedLaunchEvidence(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -417,7 +440,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 				ResidencyPlanRevisionID: planID, WorkerBundleID: bundleID,
 				WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
 				Lifecycle: "READY", Reachability: "HEALTHY", DeviceSetID: deviceSetID,
-				DeviceSetDigest: digestHex('6'), MembershipDigest: digestHex('7'),
+				DeviceSetDigest: digestHex('8'), MembershipDigest: digestHex('9'),
 				Members: []h3launchevidence.RegistryMember{{
 					ID: memberID, Key: "member-0", MemberEpoch: 11, ComputeNodeID: computeNodeID,
 					NodeIdentity: "gpu-node-01", Readiness: "READY",
