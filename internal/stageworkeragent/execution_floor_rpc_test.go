@@ -14,6 +14,7 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -22,20 +23,32 @@ import (
 )
 
 func TestExecutionFloorCollectionRPCPersistsCompleteMemberHistoryWithoutDrain(t *testing.T) {
-	f := newFloorCollectorFixture(t)
+	f := newAssignmentFloorFixture(t)
+	gate := f.open(t)
 	base := t.TempDir()
 	group := startFloorCollectorRuntimes(t, f, base, true, true)
 	agent := f.agent(t)
+	handle := beginAdmission(t, gate, f.assignment, f.acquireID)
+	if err := handle.EnterRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	handle.Release()
+	stream, err := stageworkeragent.NewDurableStreamAgent(stageworkeragent.DurableStreamConfig{
+		Runtime: agent, Admission: gate, Control: &recordingStreamControl{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if started, err := agent.PrepareAndStart(t.Context(), f.assignment); err != nil || !started.BarrierPassed {
 		t.Fatalf("start two-member fixture: %+v %v", started, err)
 	}
-	first, err := agent.InstallExecutionFloor(t.Context(), f.disposition)
-	if err == nil || first.AllInstalled || len(first.Acknowledgements) != 1 {
+	first, err := stream.InstallExecutionFloor(t.Context(), f.disposition)
+	if err == nil || first.Input == nil || first.Runtimes.AllInstalled || len(first.Runtimes.Acknowledgements) != 1 {
 		t.Fatalf("lost member response became complete floor: %+v %v", first, err)
 	}
 	// Even the member whose response was lost must retain its restriction.
 	assertCollectorHistoryRejected(t, f, group.clients)
-	if result, err := agent.InstallExecutionFloor(t.Context(), f.disposition); err != nil || !result.AllInstalled || len(result.Acknowledgements) != 2 {
+	if result, err := stream.InstallExecutionFloor(t.Context(), f.disposition); err != nil || result.Input.Cutoff != 7 || !result.Runtimes.AllInstalled || len(result.Runtimes.Acknowledgements) != 2 {
 		t.Fatalf("durable all-member retry: %+v %v", result, err)
 	}
 	verified, err := f.admissionFixture.config.Validator.ValidateEnvelopeForReplay(f.assignment.Authority, 0)
@@ -51,9 +64,22 @@ func TestExecutionFloorCollectionRPCPersistsCompleteMemberHistoryWithoutDrain(t 
 	// Test process teardown is separate from Stage drain. Recover the same
 	// synthetic topology with no execution entry and without initializing state.
 	group.close()
+	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gate = f.open(t)
+	if snapshot := admissionSnapshot(t, gate); snapshot.Floor != 7 || snapshot.Latest.Phase != stageworkeragent.AssignmentRuntimeEntered {
+		t.Fatalf("Worker restart lost floor or runtime recovery intent: %+v", snapshot)
+	}
 	group = startFloorCollectorRuntimes(t, f, base, false, false)
 	assertCollectorHistoryRejected(t, f, group.clients)
-	if result, err := f.agent(t).InstallExecutionFloor(t.Context(), f.disposition); err != nil || !result.AllInstalled {
+	stream, err = stageworkeragent.NewDurableStreamAgent(stageworkeragent.DurableStreamConfig{
+		Runtime: f.agent(t), Admission: gate, Control: &recordingStreamControl{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := stream.InstallExecutionFloor(t.Context(), f.disposition); err != nil || result.Input.Cutoff != 7 || !result.Runtimes.AllInstalled {
 		t.Fatalf("recovered all-member floor: %+v %v", result, err)
 	}
 	next := collectorHistoryAuthority(t, f, f.disposition.Allocations[1])

@@ -22,6 +22,12 @@ The [launch topology contract](launch-topology-authority-evidence-2026-09-06.md)
 now carries trusted member identity/subset digests from v2 Fleet actuation into
 v2 Runtime manifests; explicit floor assembly derives its members from that
 manifest and rejects conflicting configuration before backend startup.
+The [Worker admission floor](worker-admission-floor-evidence-2026-09-06.md) now
+persists the signed cutoff before Runtime dispatch, closes initial input/Runtime
+entry and renewal, and retains outstanding input handles and execution records.
+Its constructor requires explicit first bootstrap; normal recovery cannot
+initialize empty replacement directories. A schema-1 Worker journal requires
+separate validated migration, not deletion or reinitialization.
 Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
@@ -300,6 +306,12 @@ Persist failure prevents side effects; missing or damaged state on a reused
 root cannot be treated as first use. Keep unfinished retirement intents under
 backpressure rather than evicting them. FileProductionState's current behavior
 of initializing a missing session/capacity file is not this recovery contract.
+The explicit assignment admission component now enforces that distinction for
+its own journal. Its signed floor API records C and its witness, and the Stream
+floor operation persists this local restriction before collecting Runtime
+acknowledgements. Partial remote failure does not reopen input. Waiting for an
+input handle's Release covers its in-process resolver only; after a Worker crash,
+the persisted intent still needs independent recovery and writer-drain evidence.
 
 An observed sequence watermark alone does not cover all issued attempts. For
 example, this Worker may have observed allocation `n`, while Control has already

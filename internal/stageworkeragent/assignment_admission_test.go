@@ -39,7 +39,9 @@ func newAdmissionFixture(t *testing.T) admissionFixture {
 			t.Fatal(err)
 		}
 	}
-	return admissionFixtureAt(t, base)
+	fixture := admissionFixtureAt(t, base)
+	fixture.config.Initialize = true
+	return fixture
 }
 
 func admissionFixtureAt(t *testing.T, base string) admissionFixture {
@@ -72,6 +74,7 @@ func admissionFixtureAt(t *testing.T, base string) admissionFixture {
 		binding.ModelRuntimeEpoch = 9
 		config.Bindings = append(config.Bindings, stageworkeragent.AdmissionRuntimeBinding{
 			Runtime: binding, IdentityDigest: [sha256.Size]byte(bytes.Repeat([]byte{byte(0x75 + index)}, 32)),
+			DeviceSubsetDigest: [sha256.Size]byte(bytes.Repeat([]byte{byte(0x30 + index)}, 32)),
 		})
 	}
 	return admissionFixture{
@@ -81,12 +84,13 @@ func admissionFixtureAt(t *testing.T, base string) admissionFixture {
 	}
 }
 
-func (fixture admissionFixture) open(t *testing.T) *stageworkeragent.FileAssignmentAdmission {
+func (fixture *admissionFixture) open(t *testing.T) *stageworkeragent.FileAssignmentAdmission {
 	t.Helper()
 	gate, err := stageworkeragent.NewFileAssignmentAdmission(fixture.config)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fixture.config.Initialize = false
 	t.Cleanup(func() {
 		if err := gate.Close(); err != nil {
 			t.Error(err)

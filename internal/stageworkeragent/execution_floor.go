@@ -204,12 +204,17 @@ func (agent *Agent) executionFloorTargets(value *velav1.StageTerminalDisposition
 
 func (binding ExecutionFloorBinding) matches(value *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation, member *velav1.StageTerminalMember) bool {
 	runtime := binding.Runtime
+	return runtime.ModelResidencyID == allocation.GetModelResidencyId() && runtime.ModelRuntimeIdentity == allocation.GetModelRuntimeIdentity() &&
+		runtime.ModelRuntimeEpoch == member.GetModelRuntimeEpoch() && runtime.StageProfileRevisionID == allocation.GetStageProfileRevisionId() &&
+		binding.matchesTopology(value, allocation, member)
+}
+
+func (binding ExecutionFloorBinding) matchesTopology(value *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation, member *velav1.StageTerminalMember) bool {
+	runtime := binding.Runtime
 	if runtime.WorkerInstanceID != value.GetWorkerInstanceId() || runtime.WorkerInstanceEpoch != value.GetWorkerInstanceEpoch() ||
 		runtime.WorkerMemberID != member.GetWorkerMemberId() || runtime.WorkerMemberEpoch != member.GetMemberEpoch() ||
 		!bytes.Equal(runtime.DeviceSetDigest, value.GetDeviceSetDigest()) || !bytes.Equal(runtime.MembershipDigest, value.GetMembershipDigest()) ||
 		!bytes.Equal(binding.IdentityDigest[:], member.GetIdentityDigest()) || !bytes.Equal(binding.DeviceSubsetDigest[:], member.GetDeviceSubsetDigest()) ||
-		runtime.ModelResidencyID != allocation.GetModelResidencyId() || runtime.ModelRuntimeIdentity != allocation.GetModelRuntimeIdentity() ||
-		runtime.ModelRuntimeEpoch != member.GetModelRuntimeEpoch() || runtime.StageProfileRevisionID != allocation.GetStageProfileRevisionId() ||
 		len(runtime.Devices) != len(value.GetDevices()) || len(runtime.Members) != len(allocation.GetMembers()) {
 		return false
 	}

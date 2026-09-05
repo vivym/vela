@@ -52,7 +52,9 @@ func durableFixtureAdmission(t *testing.T, fixture singleMemberMaterializationFi
 	journal.config.WorkerInstanceEpoch = authority.WorkerInstanceEpoch
 	journal.config.WorkerMemberID = uuid.MustParse(member.WorkerMemberId)
 	journal.config.Validator = validator
-	journal.config.Bindings = []stageworkeragent.AdmissionRuntimeBinding{{Runtime: binding, IdentityDigest: [32]byte(member.IdentityDigest)}}
+	journal.config.Bindings = []stageworkeragent.AdmissionRuntimeBinding{{
+		Runtime: binding, IdentityDigest: [32]byte(member.IdentityDigest), DeviceSubsetDigest: [32]byte(bytes.Repeat([]byte{0x30}, 32)),
+	}}
 	journal.signer, journal.assignment = signer, fixture.assignment
 	return journal
 }

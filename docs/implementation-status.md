@@ -154,6 +154,18 @@ and H3 campaign evidence integration, lint, deployment, cross-build and non-root
 Linux checks pass. Old launch/actuation schemas reject and require complete
 trusted v2 reconstruction. Default startup bootstrap/recovery and the remaining
 Worker/drain/retirement lifecycle are still open; database schema stays 90.
+The [Worker admission floor repair](worker-admission-floor-evidence-2026-09-06.md)
+reproduces complete local state loss reopening a closed execution, then replaces
+automatic initialization with explicit bootstrap and recovery-only default
+construction. Its schema-2 Worker journal persists signed terminal cutoffs and
+rejects old input entry, late Runtime entry and renewal. The explicit Stream
+operation persists input exclusion before all-member Runtime collection;
+partial failure retains the local floor. CPU tests cover blocked resolution,
+real UDS, response loss and recovery while preserving resident fake backends.
+Full unit, related-module race, lint and non-root Linux checks pass. Default
+bootstrap/configuration, historical inspection, writer drain, retirement and
+automatic recovery remain open; schema-1 local journals require a separate
+validated migration and must not be discarded.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

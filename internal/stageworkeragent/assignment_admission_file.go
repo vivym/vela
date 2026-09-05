@@ -50,6 +50,8 @@ type assignmentAdmissionState struct {
 	Lock                admissionDirectoryIdentity    `json:"lock"`
 	MaxRecords          int                           `json:"max_records"`
 	Watermark           int64                         `json:"watermark"`
+	Floor               int64                         `json:"floor"`
+	FloorWire           []byte                        `json:"floor_disposition"`
 	Latest              *assignmentAdmissionEntry     `json:"latest"`
 	Pending             []assignmentAdmissionEntry    `json:"pending"`
 }
@@ -96,12 +98,11 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 			}
 		}
 	}
-	freshLock := true
-	lock, err := files.roots[0].OpenFile(admissionLockFile, os.O_CREATE|os.O_EXCL|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		freshLock = false
-		lock, err = files.roots[0].OpenFile(admissionLockFile, os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	flags := os.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	if config.Initialize {
+		flags |= os.O_CREATE | os.O_EXCL
 	}
+	lock, err := files.roots[0].OpenFile(admissionLockFile, flags, 0o600)
 	if err != nil {
 		return nil, assignmentAdmissionState{}, err
 	}
@@ -114,8 +115,8 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 		return nil, assignmentAdmissionState{}, fmt.Errorf("lock assignment admission: %w", err)
 	}
 	var state assignmentAdmissionState
-	if freshLock {
-		// Any existing state/root content makes automatic initialization ambiguous.
+	if config.Initialize {
+		// Explicit bootstrap still cannot reuse existing state or content roots.
 		for i, root := range files.roots {
 			exception := ""
 			if i == 0 {
@@ -125,7 +126,7 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 				return nil, state, err
 			}
 		}
-		state = assignmentAdmissionState{SchemaVersion: 1, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
+		state = assignmentAdmissionState{SchemaVersion: 2, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
 		for i, info := range files.infos {
 			state.Directories[i] = admissionFileIdentity(info)
 		}

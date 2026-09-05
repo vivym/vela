@@ -81,6 +81,56 @@ func TestAssignmentAdmissionRejectsMissingOrCorruptHistory(t *testing.T) {
 	}
 }
 
+func TestAssignmentAdmissionRecoveryRejectsCompleteStateLoss(t *testing.T) {
+	fixture := newAdmissionFixture(t)
+	gate := fixture.open(t)
+	beginAdmission(t, gate, fixture.assignment, fixture.acquireID).Release()
+	if err := gate.CloseExecution(t.Context(), fixture.assignment.Authority); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{fixture.config.Directory, fixture.config.InputRoot, fixture.config.OutputRoot} {
+		if err := os.Rename(path, path+".retained"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if recovered, err := stageworkeragent.NewFileAssignmentAdmission(fixture.config); err == nil {
+		defer func() { _ = recovered.Close() }()
+		handle, beginErr := recovered.Begin(t.Context(), fixture.assignment, fixture.acquireID)
+		if handle != nil {
+			handle.Release()
+		}
+		t.Fatalf("complete state loss initialized a new journal; old execution admission error=%v", beginErr)
+	}
+}
+
+func TestAssignmentAdmissionRequiresExplicitFirstBootstrap(t *testing.T) {
+	fixture := newAdmissionFixture(t)
+	config := fixture.config
+	config.Initialize = false
+	if gate, err := stageworkeragent.NewFileAssignmentAdmission(config); err == nil {
+		_ = gate.Close()
+		t.Fatal("empty directories were treated as bootstrap authority")
+	}
+	if entries, err := os.ReadDir(config.Directory); err != nil || len(entries) != 0 {
+		t.Fatalf("recovery created state: %v %v", entries, err)
+	}
+	gate := fixture.open(t)
+	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	config.Initialize = true
+	if gate, err := stageworkeragent.NewFileAssignmentAdmission(config); err == nil {
+		_ = gate.Close()
+		t.Fatal("bootstrap reused an initialized journal")
+	}
+}
+
 func TestAssignmentAdmissionRejectsUntrustedFilesystem(t *testing.T) {
 	for _, mutation := range []string{"reused-inputs", "reused-outputs", "overlap", "root-symlink", "root-writable", "state-symlink", "state-fifo", "state-hardlink", "state-readable", "lock-fifo", "marker-fifo", "marker-mismatch"} {
 		t.Run(mutation, func(t *testing.T) {

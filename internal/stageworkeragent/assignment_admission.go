@@ -33,11 +33,15 @@ const (
 
 // AdmissionRuntimeBinding is trusted configuration/discovery, not assignment data.
 type AdmissionRuntimeBinding struct {
-	Runtime        stageauthority.RuntimeBinding
-	IdentityDigest [sha256.Size]byte
+	Runtime            stageauthority.RuntimeBinding
+	IdentityDigest     [sha256.Size]byte
+	DeviceSubsetDigest [sha256.Size]byte
 }
 
 type AssignmentAdmissionConfig struct {
+	// Initialize is a separate, explicitly authorized first bootstrap. Recovery
+	// must leave it false even when every local directory has been replaced.
+	Initialize          bool
 	Directory           string
 	InputRoot           string
 	OutputRoot          string
@@ -60,9 +64,11 @@ type AssignmentAdmissionRecord struct {
 }
 
 type AssignmentAdmissionSnapshot struct {
-	Watermark int64
-	Latest    *AssignmentAdmissionRecord
-	Pending   []AssignmentAdmissionRecord
+	Watermark   int64
+	Floor       int64
+	Disposition *velav1.StageTerminalDisposition
+	Latest      *AssignmentAdmissionRecord
+	Pending     []AssignmentAdmissionRecord
 }
 
 type FileAssignmentAdmission struct {
@@ -94,7 +100,7 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 	bindings := make([]AdmissionRuntimeBinding, 0, len(config.Bindings))
 	for _, binding := range config.Bindings {
 		if binding.Runtime.WorkerInstanceID != config.WorkerInstanceID.String() || binding.Runtime.WorkerInstanceEpoch != config.WorkerInstanceEpoch ||
-			binding.Runtime.WorkerMemberID == "" || binding.IdentityDigest == ([sha256.Size]byte{}) {
+			binding.Runtime.WorkerMemberID == "" || binding.IdentityDigest == ([sha256.Size]byte{}) || binding.DeviceSubsetDigest == ([sha256.Size]byte{}) {
 			return nil, errors.New("assignment admission Runtime binding is invalid")
 		}
 		binding.Runtime.Devices = slices.Clone(binding.Runtime.Devices)
@@ -322,7 +328,14 @@ func (gate *FileAssignmentAdmission) Snapshot(ctx context.Context) (AssignmentAd
 	if err := gate.available(ctx); err != nil {
 		return AssignmentAdmissionSnapshot{}, err
 	}
-	result := AssignmentAdmissionSnapshot{Watermark: gate.state.Watermark}
+	result := AssignmentAdmissionSnapshot{Watermark: gate.state.Watermark, Floor: gate.state.Floor}
+	if gate.state.Floor > 0 {
+		var err error
+		result.Disposition, err = gate.decodeFloor(gate.state)
+		if err != nil {
+			return AssignmentAdmissionSnapshot{}, err
+		}
+	}
 	if gate.state.Latest != nil {
 		record, err := gate.record(*gate.state.Latest)
 		if err != nil {
@@ -363,6 +376,9 @@ func (gate *FileAssignmentAdmission) verifyCurrent(authority *velav1.StageAuthor
 		return stageauthority.Verified{}, err
 	}
 	if verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 {
+		return stageauthority.Verified{}, ErrAdmissionClosed
+	}
+	if verified.Authority.GetExecutionSequence() <= gate.state.Floor {
 		return stageauthority.Verified{}, ErrAdmissionClosed
 	}
 	for _, member := range verified.Authority.GetMembers() {
@@ -446,10 +462,18 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 }
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
-	if state.SchemaVersion != 1 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
+	if state.SchemaVersion != 2 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
 		state.MaxRecords < 1 || state.MaxRecords > 64 || state.Watermark < 0 || len(state.Pending) >= state.MaxRecords ||
 		(state.Latest == nil && (state.Watermark != 0 || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")
+	}
+	if state.Floor < 0 || (state.Floor == 0) != (len(state.FloorWire) == 0) {
+		return errors.New("assignment admission floor witness is invalid")
+	}
+	if state.Floor > 0 {
+		if _, err := gate.decodeFloor(state); err != nil {
+			return err
+		}
 	}
 	entries := slices.Clone(state.Pending)
 	if state.Latest != nil {
