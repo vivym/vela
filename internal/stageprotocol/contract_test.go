@@ -81,6 +81,7 @@ func TestModelRuntimeProtocolHasOnlyLongLivedRuntimeOperations(t *testing.T) {
 		"InspectExecution",
 		"DrainStageExecution",
 		"InspectStageExecutionDrain",
+		"InspectStageAllocationDrain",
 		"SealOutput",
 	}
 	if !slices.Equal(got, want) {

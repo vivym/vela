@@ -19,17 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName  = "/vela.v1.ModelRuntimeService/DiscoverRuntimeIdentities"
-	ModelRuntimeService_ProbeReadiness_FullMethodName             = "/vela.v1.ModelRuntimeService/ProbeReadiness"
-	ModelRuntimeService_InstallStageExecutionFloor_FullMethodName = "/vela.v1.ModelRuntimeService/InstallStageExecutionFloor"
-	ModelRuntimeService_PrepareStage_FullMethodName               = "/vela.v1.ModelRuntimeService/PrepareStage"
-	ModelRuntimeService_StartStage_FullMethodName                 = "/vela.v1.ModelRuntimeService/StartStage"
-	ModelRuntimeService_CancelStage_FullMethodName                = "/vela.v1.ModelRuntimeService/CancelStage"
-	ModelRuntimeService_Status_FullMethodName                     = "/vela.v1.ModelRuntimeService/Status"
-	ModelRuntimeService_InspectExecution_FullMethodName           = "/vela.v1.ModelRuntimeService/InspectExecution"
-	ModelRuntimeService_DrainStageExecution_FullMethodName        = "/vela.v1.ModelRuntimeService/DrainStageExecution"
-	ModelRuntimeService_InspectStageExecutionDrain_FullMethodName = "/vela.v1.ModelRuntimeService/InspectStageExecutionDrain"
-	ModelRuntimeService_SealOutput_FullMethodName                 = "/vela.v1.ModelRuntimeService/SealOutput"
+	ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName   = "/vela.v1.ModelRuntimeService/DiscoverRuntimeIdentities"
+	ModelRuntimeService_ProbeReadiness_FullMethodName              = "/vela.v1.ModelRuntimeService/ProbeReadiness"
+	ModelRuntimeService_InstallStageExecutionFloor_FullMethodName  = "/vela.v1.ModelRuntimeService/InstallStageExecutionFloor"
+	ModelRuntimeService_PrepareStage_FullMethodName                = "/vela.v1.ModelRuntimeService/PrepareStage"
+	ModelRuntimeService_StartStage_FullMethodName                  = "/vela.v1.ModelRuntimeService/StartStage"
+	ModelRuntimeService_CancelStage_FullMethodName                 = "/vela.v1.ModelRuntimeService/CancelStage"
+	ModelRuntimeService_Status_FullMethodName                      = "/vela.v1.ModelRuntimeService/Status"
+	ModelRuntimeService_InspectExecution_FullMethodName            = "/vela.v1.ModelRuntimeService/InspectExecution"
+	ModelRuntimeService_DrainStageExecution_FullMethodName         = "/vela.v1.ModelRuntimeService/DrainStageExecution"
+	ModelRuntimeService_InspectStageExecutionDrain_FullMethodName  = "/vela.v1.ModelRuntimeService/InspectStageExecutionDrain"
+	ModelRuntimeService_InspectStageAllocationDrain_FullMethodName = "/vela.v1.ModelRuntimeService/InspectStageAllocationDrain"
+	ModelRuntimeService_SealOutput_FullMethodName                  = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
 // ModelRuntimeServiceClient is the client API for ModelRuntimeService service.
@@ -46,6 +47,7 @@ type ModelRuntimeServiceClient interface {
 	InspectExecution(ctx context.Context, in *ModelRuntimeServiceInspectExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectExecutionResponse, error)
 	DrainStageExecution(ctx context.Context, in *ModelRuntimeServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
+	InspectStageAllocationDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error)
 	SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error)
 }
 
@@ -157,6 +159,16 @@ func (c *modelRuntimeServiceClient) InspectStageExecutionDrain(ctx context.Conte
 	return out, nil
 }
 
+func (c *modelRuntimeServiceClient) InspectStageAllocationDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceInspectStageAllocationDrainResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_InspectStageAllocationDrain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelRuntimeServiceSealOutputResponse)
@@ -181,6 +193,7 @@ type ModelRuntimeServiceServer interface {
 	InspectExecution(context.Context, *ModelRuntimeServiceInspectExecutionRequest) (*ModelRuntimeServiceInspectExecutionResponse, error)
 	DrainStageExecution(context.Context, *ModelRuntimeServiceDrainStageExecutionRequest) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(context.Context, *ModelRuntimeServiceInspectStageExecutionDrainRequest) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
+	InspectStageAllocationDrain(context.Context, *ModelRuntimeServiceInspectStageAllocationDrainRequest) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error)
 	SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error)
 	mustEmbedUnimplementedModelRuntimeServiceServer()
 }
@@ -221,6 +234,9 @@ func (UnimplementedModelRuntimeServiceServer) DrainStageExecution(context.Contex
 }
 func (UnimplementedModelRuntimeServiceServer) InspectStageExecutionDrain(context.Context, *ModelRuntimeServiceInspectStageExecutionDrainRequest) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectStageExecutionDrain not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) InspectStageAllocationDrain(context.Context, *ModelRuntimeServiceInspectStageAllocationDrainRequest) (*ModelRuntimeServiceInspectStageAllocationDrainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageAllocationDrain not implemented")
 }
 func (UnimplementedModelRuntimeServiceServer) SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SealOutput not implemented")
@@ -426,6 +442,24 @@ func _ModelRuntimeService_InspectStageExecutionDrain_Handler(srv interface{}, ct
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelRuntimeService_InspectStageAllocationDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceInspectStageAllocationDrainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).InspectStageAllocationDrain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_InspectStageAllocationDrain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).InspectStageAllocationDrain(ctx, req.(*ModelRuntimeServiceInspectStageAllocationDrainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModelRuntimeService_SealOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ModelRuntimeServiceSealOutputRequest)
 	if err := dec(in); err != nil {
@@ -490,6 +524,10 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectStageExecutionDrain",
 			Handler:    _ModelRuntimeService_InspectStageExecutionDrain_Handler,
+		},
+		{
+			MethodName: "InspectStageAllocationDrain",
+			Handler:    _ModelRuntimeService_InspectStageAllocationDrain_Handler,
 		},
 		{
 			MethodName: "SealOutput",

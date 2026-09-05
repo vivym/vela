@@ -29,6 +29,8 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceDrainStageExecutionResponse);
   rpc InspectStageExecutionDrain(ModelRuntimeServiceInspectStageExecutionDrainRequest)
       returns (ModelRuntimeServiceInspectStageExecutionDrainResponse);
+  rpc InspectStageAllocationDrain(ModelRuntimeServiceInspectStageAllocationDrainRequest)
+      returns (ModelRuntimeServiceInspectStageAllocationDrainResponse);
   rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
       returns (ModelRuntimeServiceSealOutputResponse);
 }
@@ -256,6 +258,17 @@ message ModelRuntimeServiceInspectStageExecutionDrainRequest {
 }
 
 message ModelRuntimeServiceInspectStageExecutionDrainResponse {
+  ModelRuntimeExecutionDrainResult result = 1;
+}
+
+// Read an existing checkpoint for the same immutable allocation. The result's
+// authority_digest echoes the query; its checkpoint keeps the actually drained
+// signed envelope, which may be a different renewal. Never creates drain proof.
+message ModelRuntimeServiceInspectStageAllocationDrainRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceInspectStageAllocationDrainResponse {
   ModelRuntimeExecutionDrainResult result = 1;
 }
 

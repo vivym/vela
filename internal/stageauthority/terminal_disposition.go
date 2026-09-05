@@ -119,41 +119,53 @@ func (validator *Validator) ValidateTerminalDisposition(
 	}
 	d, a := verified.Disposition, original.Authority
 	if a.GetSchemaVersion() != SchemaVersionV2 || !bytes.Equal(d.GetOriginalAuthorityDigest(), original.Digest[:]) ||
-		d.GetJobId() != a.GetJobId() || d.GetAttemptId() != a.GetAttemptId() || d.GetStageRunId() != a.GetStageRunId() ||
 		d.GetStageAttemptId() != a.GetStageAttemptId() || d.GetStageAllocationId() != a.GetStageAllocationId() || d.GetStageLeaseId() != a.GetStageLeaseId() ||
-		d.GetWorkerInstanceId() != a.GetWorkerInstanceId() || d.GetWorkerInstanceEpoch() != a.GetWorkerInstanceEpoch() ||
-		d.GetWorkerMemberId() != workerMemberID || d.GetControlSessionEpoch() != sessionEpoch ||
-		d.GetStageFence() < a.GetStageFence() || d.GetStageVersion() <= a.GetStageVersion() ||
-		d.GetObservedAt().AsTime().Before(a.GetIssuedAt().AsTime()) ||
-		!bytes.Equal(d.GetDeviceSetDigest(), a.GetDeviceSetDigest()) || !bytes.Equal(d.GetMembershipDigest(), a.GetMembershipDigest()) ||
-		len(d.GetDevices()) != len(a.GetDevices()) {
+		d.GetWorkerMemberId() != workerMemberID || d.GetControlSessionEpoch() != sessionEpoch {
 		return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
-	}
-	for i, device := range d.GetDevices() {
-		if !proto.Equal(device, a.GetDevices()[i]) {
-			return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
-		}
 	}
 	for _, allocation := range d.GetAllocations() {
 		if allocation.GetStageAllocationId() != a.GetStageAllocationId() {
 			continue
 		}
-		if allocation.GetExecutionSequence() != a.GetExecutionSequence() || !bytes.Equal(allocation.GetExecutionNonce(), a.GetExecutionNonce()) ||
-			allocation.GetModelResidencyId() != a.GetModelResidencyId() || allocation.GetModelRuntimeIdentity() != a.GetModelRuntimeIdentity() ||
-			allocation.GetStageProfileRevisionId() != a.GetStageProfileRevisionId() || allocation.GetBarrierGeneration() != a.GetModelRuntimeBarrierGeneration() ||
-			len(allocation.GetMembers()) != len(a.GetMembers()) {
-			return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
-		}
-		for i, member := range allocation.GetMembers() {
-			expected := a.GetMembers()[i]
-			if member.GetWorkerMemberId() != expected.GetWorkerMemberId() || member.GetMemberEpoch() != expected.GetMemberEpoch() ||
-				member.GetModelRuntimeEpoch() != expected.GetModelRuntimeEpoch() || !bytes.Equal(member.GetIdentityDigest(), expected.GetIdentityDigest()) {
-				return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
-			}
+		if err := ValidateTerminalAllocation(d, allocation, a); err != nil {
+			return VerifiedTerminalDisposition{}, err
 		}
 		return verified, nil
 	}
 	return VerifiedTerminalDisposition{}, ErrInvalidTerminalDisposition
+}
+
+// ValidateTerminalAllocation binds an allocation from a verified terminal history
+// to a separately verified execution envelope. It performs no signature/freshness
+// validation and grants no execution, drain or deletion permission.
+func ValidateTerminalAllocation(d *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation, a *velav1.StageAuthority) error {
+	if d == nil || allocation == nil || a == nil || a.GetSchemaVersion() != SchemaVersionV2 ||
+		d.GetJobId() != a.GetJobId() || d.GetAttemptId() != a.GetAttemptId() || d.GetStageRunId() != a.GetStageRunId() ||
+		d.GetWorkerInstanceId() != a.GetWorkerInstanceId() || d.GetWorkerInstanceEpoch() != a.GetWorkerInstanceEpoch() ||
+		d.GetStageFence() < a.GetStageFence() || d.GetStageVersion() <= a.GetStageVersion() ||
+		d.GetObservedAt().AsTime().Before(a.GetIssuedAt().AsTime()) ||
+		!bytes.Equal(d.GetDeviceSetDigest(), a.GetDeviceSetDigest()) || !bytes.Equal(d.GetMembershipDigest(), a.GetMembershipDigest()) ||
+		len(d.GetDevices()) != len(a.GetDevices()) || len(allocation.GetMembers()) != len(a.GetMembers()) ||
+		allocation.GetStageAttemptId() != a.GetStageAttemptId() || allocation.GetStageAllocationId() != a.GetStageAllocationId() ||
+		allocation.GetStageLeaseId() != a.GetStageLeaseId() || allocation.GetExecutionSequence() != a.GetExecutionSequence() ||
+		!bytes.Equal(allocation.GetExecutionNonce(), a.GetExecutionNonce()) || allocation.GetModelResidencyId() != a.GetModelResidencyId() ||
+		allocation.GetModelRuntimeIdentity() != a.GetModelRuntimeIdentity() || allocation.GetStageProfileRevisionId() != a.GetStageProfileRevisionId() ||
+		allocation.GetBarrierGeneration() != a.GetModelRuntimeBarrierGeneration() {
+		return ErrInvalidTerminalDisposition
+	}
+	for i, device := range d.GetDevices() {
+		if !proto.Equal(device, a.GetDevices()[i]) {
+			return ErrInvalidTerminalDisposition
+		}
+	}
+	for i, member := range allocation.GetMembers() {
+		expected := a.GetMembers()[i]
+		if member.GetWorkerMemberId() != expected.GetWorkerMemberId() || member.GetMemberEpoch() != expected.GetMemberEpoch() ||
+			member.GetModelRuntimeEpoch() != expected.GetModelRuntimeEpoch() || !bytes.Equal(member.GetIdentityDigest(), expected.GetIdentityDigest()) {
+			return ErrInvalidTerminalDisposition
+		}
+	}
+	return nil
 }
 
 func terminalDispositionPayload(value *velav1.StageTerminalDisposition) ([]byte, error) {

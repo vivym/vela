@@ -13,7 +13,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// ExecutionDrainResult covers one exact execution across its complete membership.
+// ExecutionDrainResult covers one queried execution across its complete membership.
+// Member checkpoints retain the exact envelopes actually drained.
 // It does not establish a signed floor, input exclusion or permission to delete.
 type ExecutionDrainResult struct {
 	AuthorityDigest   [sha256.Size]byte
@@ -26,17 +27,17 @@ type ExecutionDrainResult struct {
 // DrainExecution uses the same independently trusted member bindings as floor
 // installation. It never substitutes cancellation or Status for a checkpoint.
 func (agent *Agent) DrainExecution(ctx context.Context, authority *velav1.StageAuthority) (ExecutionDrainResult, error) {
-	return agent.collectExecutionDrain(ctx, authority, nil, false)
+	return agent.collectExecutionDrain(ctx, authority, nil, false, false)
 }
 
 // InspectExecutionDrain reads existing checkpoints from explicitly named current
 // journal owners, including after epoch/profile changes. Every owner must match
 // independent configuration; targets cannot add or omit execution members.
 func (agent *Agent) InspectExecutionDrain(ctx context.Context, authority *velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (ExecutionDrainResult, error) {
-	return agent.collectExecutionDrain(ctx, authority, targets, true)
+	return agent.collectExecutionDrain(ctx, authority, targets, true, false)
 }
 
-func (agent *Agent) collectExecutionDrain(ctx context.Context, authority *velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity, historical bool) (ExecutionDrainResult, error) {
+func (agent *Agent) collectExecutionDrain(ctx context.Context, authority *velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity, historical, allocation bool) (ExecutionDrainResult, error) {
 	result := ExecutionDrainResult{}
 	if agent == nil || agent.floor == nil || ctx == nil {
 		return result, errors.New("execution drain collection is not configured")
@@ -75,7 +76,17 @@ func (agent *Agent) collectExecutionDrain(ctx context.Context, authority *velav1
 			sent := proto.Clone(scope).(*velav1.ModelRuntimeExecutionDrainScope)
 			var response *velav1.ModelRuntimeExecutionDrainResult
 			var err error
-			if historical {
+			if allocation {
+				var wrapper *velav1.ModelRuntimeServiceInspectStageAllocationDrainResponse
+				wrapper, err = client.InspectStageAllocationDrain(ctx, &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: sent})
+				if err == nil {
+					if wrapper == nil || len(wrapper.ProtoReflect().GetUnknown()) != 0 {
+						err = errors.New("invalid allocation drain inspection response")
+					} else {
+						response = wrapper.GetResult()
+					}
+				}
+			} else if historical {
 				var wrapper *velav1.ModelRuntimeServiceInspectStageExecutionDrainResponse
 				wrapper, err = client.InspectStageExecutionDrain(ctx, &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: sent})
 				if err == nil {
@@ -100,7 +111,11 @@ func (agent *Agent) collectExecutionDrain(ctx context.Context, authority *velav1
 				err = ctx.Err()
 			}
 			if err == nil {
-				err = modelruntimetransport.ValidateExecutionDrainResult(scope, verified.Digest, response)
+				if allocation {
+					err = modelruntimetransport.ValidateAllocationDrainResult(agent.floor.validator, scope, verified.Digest, response)
+				} else {
+					err = modelruntimetransport.ValidateExecutionDrainResult(scope, verified.Digest, response)
+				}
 			}
 			if err == nil && (response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || response.GetCheckpoint() == nil) {
 				err = errors.New("member execution writer drain is unproven")

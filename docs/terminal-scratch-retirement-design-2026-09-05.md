@@ -54,6 +54,12 @@ member forwarding, including historical reads from current trusted journal owner
 An expired CANCELING execution can checkpoint explicit backend drain without
 inventing terminal state, reusable health or slot release. Collection for one
 execution does not cover the StageRun's complete signed allocation history.
+The subsequent [terminal allocation drain inspector](terminal-execution-drain-evidence-2026-09-06.md)
+now validates and queries every allocation/member pair in that signed Worker
+history. Its separate read-only allocation RPC preserves checkpoints at different
+renewals, including through alternate current readers after profile retirement.
+Exact-envelope queries remain exact. This observes existing checkpoints only;
+pending and absent history stays unproven, including undelivered allocations.
 Default command assembly, automatic startup reconciliation, complete-history drain
 orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across

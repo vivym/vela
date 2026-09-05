@@ -58,6 +58,31 @@ func validDrainTarget(identity *velav1.ModelRuntimeIdentity, authority *velav1.S
 // ValidateExecutionDrainResult binds both the current journal owner and original
 // execution. An accepted result without a checkpoint is still unproven.
 func ValidateExecutionDrainResult(scope *velav1.ModelRuntimeExecutionDrainScope, digest [sha256.Size]byte, result *velav1.ModelRuntimeExecutionDrainResult) error {
+	return validateExecutionDrainResult(scope, digest, result, scope.GetAuthority(), digest)
+}
+
+// ValidateAllocationDrainResult verifies the actual signed checkpoint envelope
+// independently. A different renewal can prove allocation drain, never exact
+// envelope drain or execution time for the query.
+func ValidateAllocationDrainResult(validator *stageauthority.Validator, scope *velav1.ModelRuntimeExecutionDrainScope, digest [sha256.Size]byte, result *velav1.ModelRuntimeExecutionDrainResult) error {
+	checkpoint := result.GetCheckpoint()
+	if checkpoint == nil {
+		return ValidateExecutionDrainResult(scope, digest, result)
+	}
+	if proto.Size(checkpoint.GetAuthority()) > 64<<10 {
+		return errors.New("allocation drain authority exceeds its bound")
+	}
+	verified, err := validator.ValidateEnvelopeForReplay(checkpoint.GetAuthority(), 0)
+	if err != nil {
+		return err
+	}
+	if !proto.Equal(verified.Authority, checkpoint.GetAuthority()) || stageauthority.ValidateSameExecution(scope.GetAuthority(), verified.Authority) != nil {
+		return errors.New("allocation drain checkpoint belongs to another execution")
+	}
+	return validateExecutionDrainResult(scope, digest, result, verified.Authority, verified.Digest)
+}
+
+func validateExecutionDrainResult(scope *velav1.ModelRuntimeExecutionDrainScope, digest [sha256.Size]byte, result *velav1.ModelRuntimeExecutionDrainResult, checkpointAuthority *velav1.StageAuthority, checkpointDigest [sha256.Size]byte) error {
 	invalid := errors.New("execution drain result is invalid")
 	if scope == nil || scope.GetAuthority() == nil || scope.GetIdentity() == nil || result == nil ||
 		result.GetSchemaVersion() != 1 || len(result.ProtoReflect().GetUnknown()) != 0 ||
@@ -80,7 +105,7 @@ func ValidateExecutionDrainResult(scope *velav1.ModelRuntimeExecutionDrainScope,
 		return nil
 	}
 	if checkpoint.GetSchemaVersion() != 1 || len(checkpoint.ProtoReflect().GetUnknown()) != 0 ||
-		!proto.Equal(checkpoint.GetAuthority(), scope.GetAuthority()) || !bytes.Equal(checkpoint.GetAuthorityDigest(), digest[:]) ||
+		!proto.Equal(checkpoint.GetAuthority(), checkpointAuthority) || !bytes.Equal(checkpoint.GetAuthorityDigest(), checkpointDigest[:]) ||
 		checkpoint.GetWorkerMemberId() != scope.GetIdentity().GetWorkerMemberId() ||
 		checkpoint.GetExecutionSequence() <= 0 || checkpoint.GetExecutionSequence() != scope.GetAuthority().GetExecutionSequence() ||
 		checkpoint.GetContract() != ExecutionDrainContract || checkpoint.GetDrainedAt() == nil ||

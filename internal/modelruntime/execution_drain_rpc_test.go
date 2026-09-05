@@ -137,6 +137,61 @@ func TestExecutionDrainRPCRejectsInvalidScopesWithoutBackendEntry(t *testing.T) 
 			if err == nil || read != nil {
 				t.Fatalf("invalid inspection accepted: %v %v", read, err)
 			}
+			allocation, err := client.InspectStageAllocationDrain(ctx, &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+			if err == nil || allocation != nil {
+				t.Fatalf("invalid allocation inspection accepted: %v %v", allocation, err)
+			}
 		})
+	}
+}
+
+func TestAllocationDrainRPCPreservesActualRenewalAcrossEpochs(t *testing.T) {
+	directory := privateExecutionStateDirectory(t)
+	backend := &executionDrainBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
+	f := newExecutionDrainFixture(t, directory, backend)
+	client := dialExecutionFloorServer(t, f.supervisor)
+	scope := &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: discoverExecutionFloorIdentity(t, client, f.bindings[0]), Authority: f.authorities[0]}
+	readyDrainOutput(t, f, backend.FakeRuntime, scope.Authority)
+	read, err := client.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+	if err != nil || read.GetResult().GetCheckpoint() != nil || backend.drainCalls.Load() != 0 {
+		t.Fatalf("pending history entered backend or invented drain: %v %v", read, err)
+	}
+	f.clock.Advance(time.Second)
+	renewal := renewWatchdogAuthority(t, f.signer, scope.Authority, f.clock.Now())
+	sealed, err := client.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: renewal})
+	if err != nil || sealed.GetReceipt() == nil {
+		t.Fatalf("seal renewal: %v %v", sealed, err)
+	}
+	read, err = client.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+	if err != nil || !proto.Equal(read.GetResult().GetCheckpoint().GetAuthority(), renewal) || backend.drainCalls.Load() != 1 {
+		t.Fatalf("allocation read replaced actual authority or repeated drain: %v %v", read, err)
+	}
+	verified, err := modelruntimetransport.ValidateExecutionDrainScope(f.validator, scope, 0, true)
+	if err != nil || modelruntimetransport.ValidateAllocationDrainResult(f.validator, scope, verified.Digest, read.Result) != nil ||
+		modelruntimetransport.ValidateExecutionDrainResult(scope, verified.Digest, read.Result) == nil {
+		t.Fatal("allocation result escaped its distinct validation contract")
+	}
+	exact, err := client.InspectStageExecutionDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: scope})
+	if err != nil || exact.GetResult().GetCheckpoint() != nil {
+		t.Fatalf("exact query inherited renewal checkpoint: %v %v", exact, err)
+	}
+	saved := proto.Clone(read.Result.Checkpoint).(*velav1.ModelRuntimeExecutionDrainCheckpoint)
+	f.supervisor.Close()
+	recovered := durableExecutionFixture(t, directory, false, "", 10, f.clock.Now().Add(2*time.Minute))
+	client = dialExecutionFloorServer(t, recovered.supervisor)
+	scope.Identity = discoverExecutionFloorIdentity(t, client, recovered.bindings[0])
+	read, err = client.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+	if err != nil || !proto.Equal(saved, read.GetResult().GetCheckpoint()) {
+		t.Fatalf("allocation checkpoint did not survive epoch recovery: %v %v", read, err)
+	}
+	scope.Authority = proto.Clone(scope.Authority).(*velav1.StageAuthority)
+	scope.Authority.ExecutionNonce[0] ^= 1
+	scope.Authority, err = recovered.signer.Sign(scope.Authority)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err = client.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+	if err != nil || read.GetResult().GetCheckpoint() != nil {
+		t.Fatalf("same allocation id with different nonce inherited proof: %v %v", read, err)
 	}
 }

@@ -334,17 +334,46 @@ func ValidateRenewal(current, renewed *velav1.StageAuthority) error {
 		return ErrRenewalMismatch
 	}
 	for _, authority := range []*velav1.StageAuthority{currentCanonical, renewedCanonical} {
-		authority.StageVersion = 0
-		authority.SigningKeyId = ""
-		authority.IssuedAt = nil
-		authority.ExpiresAt = nil
-		authority.MonotonicValidFor = nil
-		authority.Signature = nil
+		clearRenewalFields(authority)
 	}
 	if !proto.Equal(currentCanonical, renewedCanonical) {
 		return ErrRenewalMismatch
 	}
 	return nil
+}
+
+// ValidateSameExecution compares immutable allocation identity only. Callers
+// must independently verify both signatures; this grants no execution or renewal.
+func ValidateSameExecution(left, right *velav1.StageAuthority) error {
+	a, err := canonicalize(left)
+	if err != nil {
+		return err
+	}
+	b, err := canonicalize(right)
+	if err != nil {
+		return err
+	}
+	if err := validateShape(a, true); err != nil {
+		return err
+	}
+	if err := validateShape(b, true); err != nil {
+		return err
+	}
+	clearRenewalFields(a)
+	clearRenewalFields(b)
+	if !proto.Equal(a, b) {
+		return ErrRenewalMismatch
+	}
+	return nil
+}
+
+func clearRenewalFields(authority *velav1.StageAuthority) {
+	authority.StageVersion = 0
+	authority.SigningKeyId = ""
+	authority.IssuedAt = nil
+	authority.ExpiresAt = nil
+	authority.MonotonicValidFor = nil
+	authority.Signature = nil
 }
 
 func validateKeyring(keys map[string][]byte) (map[string][]byte, error) {

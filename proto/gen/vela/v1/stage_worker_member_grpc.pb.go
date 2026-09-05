@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StageWorkerMemberService_PrepareStage_FullMethodName               = "/vela.v1.StageWorkerMemberService/PrepareStage"
-	StageWorkerMemberService_StartStage_FullMethodName                 = "/vela.v1.StageWorkerMemberService/StartStage"
-	StageWorkerMemberService_CancelStage_FullMethodName                = "/vela.v1.StageWorkerMemberService/CancelStage"
-	StageWorkerMemberService_Status_FullMethodName                     = "/vela.v1.StageWorkerMemberService/Status"
-	StageWorkerMemberService_InspectExecution_FullMethodName           = "/vela.v1.StageWorkerMemberService/InspectExecution"
-	StageWorkerMemberService_DrainStageExecution_FullMethodName        = "/vela.v1.StageWorkerMemberService/DrainStageExecution"
-	StageWorkerMemberService_InspectStageExecutionDrain_FullMethodName = "/vela.v1.StageWorkerMemberService/InspectStageExecutionDrain"
-	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
+	StageWorkerMemberService_PrepareStage_FullMethodName                = "/vela.v1.StageWorkerMemberService/PrepareStage"
+	StageWorkerMemberService_StartStage_FullMethodName                  = "/vela.v1.StageWorkerMemberService/StartStage"
+	StageWorkerMemberService_CancelStage_FullMethodName                 = "/vela.v1.StageWorkerMemberService/CancelStage"
+	StageWorkerMemberService_Status_FullMethodName                      = "/vela.v1.StageWorkerMemberService/Status"
+	StageWorkerMemberService_InspectExecution_FullMethodName            = "/vela.v1.StageWorkerMemberService/InspectExecution"
+	StageWorkerMemberService_DrainStageExecution_FullMethodName         = "/vela.v1.StageWorkerMemberService/DrainStageExecution"
+	StageWorkerMemberService_InspectStageExecutionDrain_FullMethodName  = "/vela.v1.StageWorkerMemberService/InspectStageExecutionDrain"
+	StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName = "/vela.v1.StageWorkerMemberService/InspectStageAllocationDrain"
+	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName  = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
 )
 
 // StageWorkerMemberServiceClient is the client API for StageWorkerMemberService service.
@@ -40,6 +41,7 @@ type StageWorkerMemberServiceClient interface {
 	InspectExecution(ctx context.Context, in *StageWorkerMemberServiceInspectExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	DrainStageExecution(ctx context.Context, in *StageWorkerMemberServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageExecutionDrainResponse, error)
+	InspectStageAllocationDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
 	InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 }
 
@@ -121,6 +123,16 @@ func (c *stageWorkerMemberServiceClient) InspectStageExecutionDrain(ctx context.
 	return out, nil
 }
 
+func (c *stageWorkerMemberServiceClient) InspectStageAllocationDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceInspectStageAllocationDrainResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *stageWorkerMemberServiceClient) InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StageWorkerMemberServiceInstallStageExecutionFloorResponse)
@@ -142,6 +154,7 @@ type StageWorkerMemberServiceServer interface {
 	InspectExecution(context.Context, *StageWorkerMemberServiceInspectExecutionRequest) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	DrainStageExecution(context.Context, *StageWorkerMemberServiceDrainStageExecutionRequest) (*StageWorkerMemberServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(context.Context, *StageWorkerMemberServiceInspectStageExecutionDrainRequest) (*StageWorkerMemberServiceInspectStageExecutionDrainResponse, error)
+	InspectStageAllocationDrain(context.Context, *StageWorkerMemberServiceInspectStageAllocationDrainRequest) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
 	InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 	mustEmbedUnimplementedStageWorkerMemberServiceServer()
 }
@@ -173,6 +186,9 @@ func (UnimplementedStageWorkerMemberServiceServer) DrainStageExecution(context.C
 }
 func (UnimplementedStageWorkerMemberServiceServer) InspectStageExecutionDrain(context.Context, *StageWorkerMemberServiceInspectStageExecutionDrainRequest) (*StageWorkerMemberServiceInspectStageExecutionDrainResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectStageExecutionDrain not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) InspectStageAllocationDrain(context.Context, *StageWorkerMemberServiceInspectStageAllocationDrainRequest) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageAllocationDrain not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
@@ -325,6 +341,24 @@ func _StageWorkerMemberService_InspectStageExecutionDrain_Handler(srv interface{
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StageWorkerMemberService_InspectStageAllocationDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceInspectStageAllocationDrainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).InspectStageAllocationDrain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).InspectStageAllocationDrain(ctx, req.(*StageWorkerMemberServiceInspectStageAllocationDrainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StageWorkerMemberService_InstallStageExecutionFloor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
 	if err := dec(in); err != nil {
@@ -377,6 +411,10 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectStageExecutionDrain",
 			Handler:    _StageWorkerMemberService_InspectStageExecutionDrain_Handler,
+		},
+		{
+			MethodName: "InspectStageAllocationDrain",
+			Handler:    _StageWorkerMemberService_InspectStageAllocationDrain_Handler,
 		},
 		{
 			MethodName: "InstallStageExecutionFloor",

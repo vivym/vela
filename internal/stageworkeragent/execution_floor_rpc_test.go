@@ -132,6 +132,7 @@ func collectorHistoryAuthority(t *testing.T, f *floorCollectorFixture, allocatio
 type floorCollectorRuntimes struct {
 	clients        []velav1.ModelRuntimeServiceClient
 	activeBackends []*floorCollectorBackend
+	backends       map[string]map[string]*floorCollectorBackend
 	close          func()
 }
 
@@ -147,7 +148,7 @@ func (backend *floorCollectorBackend) Close() error {
 
 func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base string, initialize, loseResponse bool) *floorCollectorRuntimes {
 	t.Helper()
-	group := &floorCollectorRuntimes{}
+	group := &floorCollectorRuntimes{backends: make(map[string]map[string]*floorCollectorBackend)}
 	var closers []func()
 	var once sync.Once
 	group.close = func() {
@@ -159,6 +160,7 @@ func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base st
 	}
 	t.Cleanup(group.close)
 	for index, member := range f.config.Members {
+		group.backends[member.ID] = make(map[string]*floorCollectorBackend)
 		directory := filepath.Join(base, member.ID)
 		if initialize {
 			if err := os.Mkdir(directory, 0o700); err != nil {
@@ -181,6 +183,7 @@ func startFloorCollectorRuntimes(t *testing.T, f *floorCollectorFixture, base st
 				continue
 			}
 			backend := &floorCollectorBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
+			group.backends[member.ID][binding.Runtime.ModelResidencyID] = backend
 			if binding.Runtime.ModelResidencyID == f.assignment.Authority.ModelResidencyId {
 				group.activeBackends = append(group.activeBackends, backend)
 			}

@@ -21,6 +21,8 @@ service StageWorkerMemberService {
       returns (StageWorkerMemberServiceDrainStageExecutionResponse);
   rpc InspectStageExecutionDrain(StageWorkerMemberServiceInspectStageExecutionDrainRequest)
       returns (StageWorkerMemberServiceInspectStageExecutionDrainResponse);
+  rpc InspectStageAllocationDrain(StageWorkerMemberServiceInspectStageAllocationDrainRequest)
+      returns (StageWorkerMemberServiceInspectStageAllocationDrainResponse);
   rpc InstallStageExecutionFloor(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
       returns (StageWorkerMemberServiceInstallStageExecutionFloorResponse);
 }
@@ -91,6 +93,15 @@ message StageWorkerMemberServiceInspectStageExecutionDrainRequest {
 
 message StageWorkerMemberServiceInspectStageExecutionDrainResponse {
   ModelRuntimeServiceInspectStageExecutionDrainResponse result = 1;
+}
+
+message StageWorkerMemberServiceInspectStageAllocationDrainRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceInspectStageAllocationDrainRequest command = 2;
+}
+
+message StageWorkerMemberServiceInspectStageAllocationDrainResponse {
+  ModelRuntimeServiceInspectStageAllocationDrainResponse result = 1;
 }
 
 message StageWorkerMemberServiceInstallStageExecutionFloorResponse {

@@ -115,6 +115,11 @@ capabilities dropped and a private `/tmp` tmpfs. Selections:
 
 ## Remaining Boundary
 
+The subsequent [terminal allocation drain inspector](terminal-execution-drain-evidence-2026-09-06.md)
+adds complete signed allocation/member collection and a separate read-only query
+that preserves the actual checkpoint envelope across partial renewals. Exact
+queries above remain unchanged; absent or pending records still prove nothing.
+
 Worker retirement still needs complete signed terminal allocation history, durable
 retirement intent/receipt recovery, signed floors and Worker input-writer exclusion
 combined with these per-execution proofs. Pending historical writers, durable sealed

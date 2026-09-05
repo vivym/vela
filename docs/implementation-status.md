@@ -225,6 +225,18 @@ related race, lint, protobuf compatibility, reproducible generation and Linux ar
 non-root transport/collector checks pass. Complete terminal allocation history,
 Worker retirement journaling and input-writer exclusion still need orchestration;
 default scratch retention, schema versions and Production Gates remain unchanged.
+The [terminal allocation drain inspection](terminal-execution-drain-evidence-2026-09-06.md)
+now handles members whose persisted checkpoints bind different renewals of the
+same immutable execution. A separate read-only allocation RPC retains and verifies
+each actual signed checkpoint; exact-envelope queries keep their original meaning.
+The Worker validates complete signed allocation history and trusted current readers
+before dispatch, and requires every allocation/member proof under one deadline.
+Two-member/two-allocation UDS, partial-renewal/profile-retirement recovery, mTLS
+forwarding, eight PostgreSQL terminal-history/disposition tests, full unit, related
+race, lint, generation, compatibility and Linux non-root checks pass. This is
+observation only: Worker retirement journaling, floor/input exclusion orchestration,
+pending historical writers, never-admitted allocation proof and checkpoint
+reclamation remain open; default scratch retention stays active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

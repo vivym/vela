@@ -174,6 +174,16 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 // Runtime epoch change. Missing or pending history returns nil, never an inferred
 // drain result. This local API neither enters a backend nor changes admission.
 func (supervisor *Supervisor) InspectExecutionDrain(ctx context.Context, authority *velav1.StageAuthority) (*ExecutionDrainCheckpoint, error) {
+	return supervisor.inspectExecutionDrain(ctx, authority, false)
+}
+
+// InspectAllocationDrain returns only an existing durable checkpoint, retaining
+// the exact signed envelope actually drained, including partial renewal history.
+func (supervisor *Supervisor) InspectAllocationDrain(ctx context.Context, authority *velav1.StageAuthority) (*ExecutionDrainCheckpoint, error) {
+	return supervisor.inspectExecutionDrain(ctx, authority, true)
+}
+
+func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authority *velav1.StageAuthority, allocation bool) (*ExecutionDrainCheckpoint, error) {
 	if supervisor == nil || supervisor.floor == nil || ctx == nil {
 		return nil, ErrExecutionDrainUnproven
 	}
@@ -197,9 +207,17 @@ func (supervisor *Supervisor) InspectExecutionDrain(ctx context.Context, authori
 		return nil, ErrExecutionDrainUnproven
 	}
 	for _, record := range admission.store.state.Executions {
-		if record.Drain != nil && record.Drain.Result.AuthorityDigest == verified.Digest {
+		if record.Drain == nil {
+			continue
+		}
+		drained, err := admission.store.retainedAuthority(record.Drain.Authority)
+		if err != nil {
+			return nil, err
+		}
+		if record.Drain.Result.AuthorityDigest == verified.Digest ||
+			(allocation && stageauthority.ValidateSameExecution(verified.Authority, drained.Authority) == nil) {
 			return &ExecutionDrainCheckpoint{WorkerMemberID: supervisor.services[0].binding.WorkerMemberID,
-				Authority: proto.Clone(verified.Authority).(*velav1.StageAuthority),
+				Authority: proto.Clone(drained.Authority).(*velav1.StageAuthority),
 				Result:    record.Drain.Result, DrainedAt: record.Drain.DrainedAt}, nil
 		}
 	}

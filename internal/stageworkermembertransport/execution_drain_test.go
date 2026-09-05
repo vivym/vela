@@ -52,6 +52,9 @@ func TestMemberDrainTLSUnixLostReplyAndHistoricalRecovery(t *testing.T) {
 	if response, err := nonleader.InspectStageExecutionDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: scope}); response != nil || status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("nonleader read remote checkpoint: %v %v", response, err)
 	}
+	if response, err := nonleader.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope}); response != nil || status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("nonleader read allocation checkpoint: %v %v", response, err)
+	}
 	chain.dropDrainResponse.Store(true)
 	if response, err := chain.client.DrainStageExecution(t.Context(), &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope}); response != nil || status.Code(err) != codes.Unavailable {
 		t.Fatalf("lost acknowledgement claimed proof: %v %v", response, err)
@@ -86,13 +89,17 @@ func TestMemberDrainTLSUnixLostReplyAndHistoricalRecovery(t *testing.T) {
 	if err != nil || read.GetResult().GetCheckpoint() != nil {
 		t.Fatalf("unseen renewal inherited proof: %v %v", read, err)
 	}
+	allocation, err := chain.client.InspectStageAllocationDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: unseen})
+	if err != nil || !proto.Equal(saved, allocation.GetResult().GetCheckpoint()) {
+		t.Fatalf("allocation query did not preserve actual historical checkpoint: %v %v", allocation, err)
+	}
 }
 
 func TestMemberDrainRejectsMalformedEvidenceAtBothHops(t *testing.T) {
-	for _, historical := range []bool{false, true} {
+	for _, mode := range []string{"drain", "exact", "allocation"} {
 		for _, boundary := range []string{"runtime", "member"} {
-			for _, fault := range []string{"missing", "schema", "digest", "owner", "unknown", "checkpoint-schema", "checkpoint-digest", "checkpoint-authority", "checkpoint-sequence", "checkpoint-member", "contract", "timestamp", "unknown-time", "rejected-proof", "decision", "late", "request-mutation"} {
-				t.Run(boundary+"/"+fault+"/historical="+map[bool]string{false: "false", true: "true"}[historical], func(t *testing.T) {
+			for _, fault := range []string{"missing", "schema", "digest", "owner", "unknown", "checkpoint-schema", "checkpoint-digest", "checkpoint-authority", "checkpoint-sequence", "checkpoint-member", "signed-other-nonce", "signed-other-token", "future-proof", "contract", "timestamp", "unknown-time", "rejected-proof", "decision", "late", "request-mutation"} {
+				t.Run(boundary+"/"+fault+"/"+mode, func(t *testing.T) {
 					f, _, _ := newMemberFloorFixture(t)
 					scope := &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: proto.Clone(f.runtime.identity).(*velav1.ModelRuntimeIdentity), Authority: proto.Clone(f.authority).(*velav1.StageAuthority)}
 					result := memberDrainResult(t, scope)
@@ -119,6 +126,26 @@ func TestMemberDrainRejectsMalformedEvidenceAtBothHops(t *testing.T) {
 						result.Checkpoint.ExecutionSequence++
 					case "checkpoint-member":
 						result.Checkpoint.WorkerMemberId = f.leader.ID
+					case "signed-other-nonce", "signed-other-token", "future-proof":
+						switch fault {
+						case "signed-other-nonce":
+							result.Checkpoint.Authority.ExecutionNonce[0] ^= 1
+						case "signed-other-token":
+							result.Checkpoint.Authority.LeaseToken[0] ^= 1
+						case "future-proof":
+							result.Checkpoint.Authority.IssuedAt = timestamppb.New(result.Checkpoint.Authority.IssuedAt.AsTime().Add(time.Hour))
+							result.Checkpoint.Authority.ExpiresAt = timestamppb.New(result.Checkpoint.Authority.ExpiresAt.AsTime().Add(time.Hour))
+						}
+						var signErr error
+						result.Checkpoint.Authority, signErr = f.signer.Sign(result.Checkpoint.Authority)
+						if signErr != nil {
+							t.Fatal(signErr)
+						}
+						digest, digestErr := stageauthority.Digest(result.Checkpoint.Authority)
+						if digestErr != nil {
+							t.Fatal(digestErr)
+						}
+						result.Checkpoint.AuthorityDigest = digest[:]
 					case "contract":
 						result.Checkpoint.Contract = "STOPPED"
 					case "timestamp":
@@ -143,16 +170,22 @@ func TestMemberDrainRejectsMalformedEvidenceAtBothHops(t *testing.T) {
 					var err error
 					if boundary == "runtime" {
 						f.server.runtime = &drainRuntimeReply{reply: reply}
-						if historical {
+						switch mode {
+						case "allocation":
+							_, err = f.server.InspectStageAllocationDrain(ctx, &velav1.StageWorkerMemberServiceInspectStageAllocationDrainRequest{TargetWorkerMemberId: f.local.ID, Command: &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope}})
+						case "exact":
 							_, err = f.server.InspectStageExecutionDrain(ctx, &velav1.StageWorkerMemberServiceInspectStageExecutionDrainRequest{TargetWorkerMemberId: f.local.ID, Command: &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: scope}})
-						} else {
+						default:
 							_, err = f.server.DrainStageExecution(ctx, &velav1.StageWorkerMemberServiceDrainStageExecutionRequest{TargetWorkerMemberId: f.local.ID, Command: &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope}})
 						}
 					} else {
 						client := floorTestClient(f, &drainMemberReply{reply: reply})
-						if historical {
+						switch mode {
+						case "allocation":
+							_, err = client.InspectStageAllocationDrain(ctx, &velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest{Scope: scope})
+						case "exact":
 							_, err = client.InspectStageExecutionDrain(ctx, &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: scope})
-						} else {
+						default:
 							_, err = client.DrainStageExecution(ctx, &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
 						}
 					}
@@ -191,6 +224,10 @@ func (r *drainRuntimeReply) InspectStageExecutionDrain(_ context.Context, reques
 	return &velav1.ModelRuntimeServiceInspectStageExecutionDrainResponse{Result: r.reply(request.Scope)}, nil
 }
 
+func (r *drainRuntimeReply) InspectStageAllocationDrain(_ context.Context, request *velav1.ModelRuntimeServiceInspectStageAllocationDrainRequest, _ ...grpc.CallOption) (*velav1.ModelRuntimeServiceInspectStageAllocationDrainResponse, error) {
+	return &velav1.ModelRuntimeServiceInspectStageAllocationDrainResponse{Result: r.reply(request.Scope)}, nil
+}
+
 type drainMemberReply struct {
 	velav1.StageWorkerMemberServiceClient
 	reply func(*velav1.ModelRuntimeExecutionDrainScope) *velav1.ModelRuntimeExecutionDrainResult
@@ -201,4 +238,8 @@ func (r *drainMemberReply) DrainStageExecution(_ context.Context, request *velav
 }
 func (r *drainMemberReply) InspectStageExecutionDrain(_ context.Context, request *velav1.StageWorkerMemberServiceInspectStageExecutionDrainRequest, _ ...grpc.CallOption) (*velav1.StageWorkerMemberServiceInspectStageExecutionDrainResponse, error) {
 	return &velav1.StageWorkerMemberServiceInspectStageExecutionDrainResponse{Result: &velav1.ModelRuntimeServiceInspectStageExecutionDrainResponse{Result: r.reply(request.Command.Scope)}}, nil
+}
+
+func (r *drainMemberReply) InspectStageAllocationDrain(_ context.Context, request *velav1.StageWorkerMemberServiceInspectStageAllocationDrainRequest, _ ...grpc.CallOption) (*velav1.StageWorkerMemberServiceInspectStageAllocationDrainResponse, error) {
+	return &velav1.StageWorkerMemberServiceInspectStageAllocationDrainResponse{Result: &velav1.ModelRuntimeServiceInspectStageAllocationDrainResponse{Result: r.reply(request.Command.Scope)}}, nil
 }
