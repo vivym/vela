@@ -20,8 +20,9 @@ projection records `vela-lab-worker-1` as leader, `vela-lab-worker-2` as
 follower, and RKE2 `v1.35.7+rke2r1`. It does not retain Pod UIDs, scheduling
 events, or before/after node-readiness snapshots.
 
-The projection records the live Vela database at migration `00033` with zero
-Production Gate receipts, while the current repository contract is `00067`.
+The projection records the historical Vela database at migration `00033` with
+zero Production Gate receipts, while the current repository contract is
+`00069`.
 This version gap is why the existing control deployment was not used for
 Stage/Fleet orchestration or upgraded in place. The projection does not retain
 the raw database queries or other Catalog/SLO observations.
@@ -119,4 +120,4 @@ It also does not prove Fleet Controller actuation, database-backed StageLease or
 StageAttempt authority, StageArtifact transfer, ModelResidency, GPU/DRA
 identity, real model behavior, output equivalence, performance, soak, HA/DR,
 release provenance, or on-call operation. It cannot advance any Production Gate
-and does not reduce the recorded live schema gap from `00033` to `00067`.
+and does not reduce the recorded historical schema gap from `00033` to `00069`.

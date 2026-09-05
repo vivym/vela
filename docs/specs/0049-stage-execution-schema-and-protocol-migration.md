@@ -23,7 +23,7 @@ inventory, and release-bound typed reachability evidence. Migration `00058`
 performs the irreversible schema-v2 contraction and ships with the legacy
 runtime/protocol/query/deployment/release deletion. Migrations `00059` through
 `00062` add runtime epoch registration, multi-member barriers, gang authority,
-and member identity. Post-contraction migrations `00063` through `00067` bind
+and member identity. Post-contraction migrations `00063` through `00069` bind
 the frozen H3 execution/root-input snapshot, replace Worker-level capacity
 routing with exact ModelRuntime-to-CapacityPool authority, and add durable,
 fair exact-cache admission/hit reconciliation. Migration `00066` adds durable
@@ -31,7 +31,10 @@ Stage Worker control-session takeover, read-only stale-session synchronization,
 and strict monotonic capacity sequence/replay/lease authority. Migration
 `00067` filters unstarted graphs when their Project running limit is exhausted;
 the existing StartStage compare-and-swap remains the concurrent-change guard.
-The clean current schema is therefore version `00067`, and the repository satisfies the permanent
+Migration `00068` accepts exact input Connector revisions in certified pre-active
+states, and migration `00069` revalidates TransferTicket and capacity expiry
+against a post-lock PostgreSQL server-clock sample. The clean current schema is
+therefore version `00069`, and the repository satisfies the permanent
 reachability contract. Repository evidence does not advance a Production Gate;
 real cluster, N/N-1, performance, fault, and Launch Receipt evidence remains
 pending at `0/9 PASS`.
