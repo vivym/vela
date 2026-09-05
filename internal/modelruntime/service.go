@@ -236,7 +236,7 @@ func (service *Service) PrepareStage(
 
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	replayed, release, err := service.executionAdmission().prepare(service, verified)
+	replayed, release, err := service.executionAdmission().prepare(service, &verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		if errors.Is(err, errSharedSlotBusy) {
@@ -281,7 +281,7 @@ func (service *Service) StartStage(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, verified, false)
+	_, release, err := service.executionAdmission().begin(service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -349,14 +349,14 @@ func (service *Service) CancelStage(
 	}
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	aboveFloor, release, err := service.executionAdmission().begin(service, verified, true)
+	admissionAllowsRenewal, release, err := service.executionAdmission().begin(service, &verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
 	defer release()
-	allowRenewal = allowRenewal && aboveFloor
+	allowRenewal = allowRenewal && admissionAllowsRenewal
 	if service.sealedReceipt(verified.Digest) != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
@@ -413,7 +413,7 @@ func (service *Service) Status(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, verified, false)
+	_, release, err := service.executionAdmission().begin(service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -503,7 +503,7 @@ func (service *Service) SealOutput(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, verified, false)
+	_, release, err := service.executionAdmission().begin(service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -674,7 +674,7 @@ func (service *Service) expire(generation uint64) {
 	}
 	verified := service.active.verified
 	service.mu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, verified, true)
+	_, release, err := service.executionAdmission().begin(service, &verified, true)
 	if err != nil {
 		return
 	}

@@ -40,9 +40,12 @@ func (service *Service) executionAdmission() *executionAdmission {
 }
 
 // The caller owns service.operationMu throughout the returned operation.
-func (admission *executionAdmission) prepare(service *Service, verified stageauthority.Verified) (bool, func(), error) {
+func (admission *executionAdmission) prepare(service *Service, verified *stageauthority.Verified) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
+	if _, err := service.refreshExecutionAuthority(verified, false); err != nil {
+		return false, nil, err
+	}
 	sequence := verified.Authority.GetExecutionSequence()
 	if sequence <= admission.floor {
 		return false, nil, errExecutionFloor
@@ -62,27 +65,49 @@ func (admission *executionAdmission) prepare(service *Service, verified stageaut
 		// A backend failure cannot reopen an allocation, including on another profile.
 		admission.highest = sequence
 		service.active = &activeExecution{
-			verified: verified,
+			verified: *verified,
 			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
 		}
-		service.resetWatchdogLocked(verified)
+		service.resetWatchdogLocked(*verified)
 		return false, admission.registerLocked(service, sequence), nil
 	}
-	if _, err := service.renewActiveLocked(verified, true); err != nil {
+	if _, err := service.renewActiveLocked(*verified, true); err != nil {
 		return false, nil, err
 	}
 	return true, admission.registerLocked(service, sequence), nil
 }
 
-func (admission *executionAdmission) begin(service *Service, verified stageauthority.Verified, cancellation bool) (bool, func(), error) {
+func (admission *executionAdmission) begin(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
+	allowRenewal, err := service.refreshExecutionAuthority(verified, cancellation)
+	if err != nil {
+		return false, nil, err
+	}
 	sequence := verified.Authority.GetExecutionSequence()
 	aboveFloor := sequence > admission.floor
 	if !aboveFloor && !cancellation {
 		return false, nil, errExecutionFloor
 	}
-	return aboveFloor, admission.registerLocked(service, sequence), nil
+	return allowRenewal && aboveFloor, admission.registerLocked(service, sequence), nil
+}
+
+// Initial validation precedes operationMu, which can wait behind backend work.
+// Revalidate the canonical envelope and its remaining lifetime at admission.
+func (service *Service) refreshExecutionAuthority(verified *stageauthority.Verified, cancellation bool) (bool, error) {
+	var fresh stageauthority.Verified
+	var err error
+	allowRenewal := true
+	if cancellation {
+		fresh, allowRenewal, err = service.verifyCancellation(verified.Authority)
+	} else {
+		fresh, err = service.verify(verified.Authority)
+	}
+	if err != nil {
+		return false, err
+	}
+	*verified = fresh
+	return allowRenewal, nil
 }
 
 func (admission *executionAdmission) registerLocked(service *Service, sequence int64) func() {

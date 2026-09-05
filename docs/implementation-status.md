@@ -118,6 +118,10 @@ installs a monotonic floor across Prepare, Start and implicit renewal. CPU and
 race tests cover late commands and blocked backend calls. This checkpoint is
 non-durable and waiting for admitted calls is not writer drain. Durable floor
 recovery, floor RPC/default assembly and terminal retirement remain open.
+The same admission boundary now revalidates authority after waiting for the
+Service operation lock. Blocking CPU mocks reproduced expired queued execution
+and a watchdog deadline extended by queue time; both regressions pass after the
+freshness repair, alongside full unit, related-module race and lint checks.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

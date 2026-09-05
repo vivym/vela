@@ -1,6 +1,7 @@
 # Runtime execution admission floor evidence
 
-Status: local CPU-only increment based on `002ae93`, schema 90. All Supervisors
+Status: local CPU-only shared-admission checkpoint `c5bd070`, schema 90, plus the
+queued-authority freshness repair described below. All Supervisors
 now share execution admission across their resident Services. Explicit signed
 floor installation is available through `NewSupervisorWithExecutionFloor` and
 `InstallExecutionFloor` as an **in-process, non-durable** component. There is no
@@ -66,10 +67,43 @@ floor RPC or default production floor configuration. Production Gates remain
   Prepare is rejected after an intervening cutoff. None of these operations
   calls backend Close. The initial Seal fixture omitted Start and was corrected
   to reach OUTPUT_READY before testing the blocked Seal.
-- `go test ./...`: PASS; modelruntime 11.738 s, stageworkeragent 11.335 s.
+- `go test ./...` after the freshness repair: PASS; modelruntime 6.372 s,
+  stageworkeragent 7.200 s.
 - `go test -race ./internal/modelruntime ./internal/stageworkeragent ./internal/stageworkermembertransport ./internal/stageworkertransport ./cmd/vela-model-runtime`:
-  PASS; 11.572 s, 12.520 s, cached, cached and 3.084 s respectively.
+  PASS after the freshness repair; 12.767 s, 13.002 s, cached, cached and
+  3.910 s respectively.
 - `make lint`: PASS, 0 issues after correcting error-string capitalization.
+
+## Queued authority freshness
+
+The follow-up CPU test reproduces an additional pre-existing timing error at
+`c5bd070`: Service validates an authority before waiting for operationMu, and
+uses the pre-wait remaining lifetime after acquiring the lock. A blocked Prepare
+allows a queued Start or Status to outlive its signed authority and still return
+ACCEPTED. Prepare replays the expired authority; Seal and Cancel with an unseen
+renewal reach backend work instead of rejecting it as STALE at admission.
+
+The test observes the queued request's initial validation before advancing the
+manual clock. It deliberately delays watchdog timer delivery, representing a
+scheduler delay while proving that RPC admission enforces validity independently.
+After the fix, all five queued operations return STALE without a second backend
+call. Cancellation of an exact installed historical authority retains its
+existing signature-only stop path; an expired renewal cannot be installed.
+
+A second test keeps the queued renewal valid. Issued at 08:00:01 UTC with a
+30-second monotonic window and wall expiry 08:01:01, it reaches admission at
+08:00:11. Its correct remaining lifetime is `min(50, 30 - 10) = 20` seconds,
+so its watchdog deadline is 08:00:31. The old code produced 08:00:41, adding the
+10-second wait to the deadline. The assertion uses the minimum of both signed
+time bounds; wall expiry alone is not the expected monotonic deadline.
+
+The shared admission boundary now revalidates the already canonical envelope
+after acquiring the operation and admission locks, then replaces the remaining
+lifetime before Prepare, renewal or backend entry. Initial validation remains
+outside the operation lock so invalid envelopes can be rejected before waiting.
+This adds a second signature verification per admitted RPC; no performance
+improvement is claimed or benchmarked. Pre-admitted backend work still needs its
+independent cancellation/drain contract.
 
 ## Evidence limits and next work
 
