@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  GOPROXY: "https://goproxy.cn|https://proxy.golang.org|direct"
+  GOPROXY: "https://proxy.golang.org|https://goproxy.cn|direct"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -47,10 +47,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ripgrep
 
+      - name: Lint Go source
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.13.1
+
       - name: Verify Go source and deployment contracts
         run: |
           go vet ./...
-          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1 run ./...
           go test ./...
           make test-cross
           make validate-deployment
