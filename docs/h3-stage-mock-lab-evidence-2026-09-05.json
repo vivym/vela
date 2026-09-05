@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "sanitized-operator-observation-projection",
+  "result": "PASS",
+  "scope": "non-production-lab-cpu-mock-four-stage-execution",
+  "primary_observation_ended_at": "2026-09-05T02:24:55Z",
+  "projection_completed_at": "2026-09-05T02:55:53Z",
+  "binding": {
+    "raw_evidence_committed": false,
+    "raw_evidence_file_count": 68,
+    "raw_evidence_manifest_path": "SHA256SUMS.final",
+    "raw_evidence_manifest_entries": 67,
+    "raw_evidence_manifest_sha256": "e7ac304610e31869a80745446a65d9586ee1590f941684680ba3976555154b0a",
+    "superseded_manifest": {
+      "path": "SHA256SUMS",
+      "sha256": "a733290bf93d5c4f1f0d0e89e119d81c5211e2865e648e63be3de105cb1ff881",
+      "reason": "rollout-monitor.log was still being appended when this manifest was created"
+    },
+    "raw_evidence_access": {
+      "owner": "root",
+      "directory_mode": "0700",
+      "file_mode": "0600",
+      "verified_date": "2026-09-05"
+    },
+    "selected_raw_files": [
+      {
+        "path": "asset-derivation.json",
+        "sha256": "1a1ad51cfb523fb44498da88c04b3ffc4da3fbb040e626ce8a7f662877190839"
+      },
+      {
+        "path": "final-database-state.txt",
+        "sha256": "edde1d656d54174f503a0af39bad1a25d79596daf097a1504a4f84519c5a60cf"
+      },
+      {
+        "path": "final-image-refs.txt",
+        "sha256": "30a632e8ad1ee17d514c0124317a46ac2441577b74b56838111ff8af319838a7"
+      },
+      {
+        "path": "final-nodes.txt",
+        "sha256": "91e6804a7864a4eda6e6b4436020bcc6e1073bf66a4ed345296c82b7e56d9a15"
+      },
+      {
+        "path": "final-warning-events.json",
+        "sha256": "799859cc70e12c5d12b00d048c060d60020f8d9abd5feafc6b9dfa86440065c8"
+      },
+      {
+        "path": "final-post-ready-warning-events.json",
+        "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+      },
+      {
+        "path": "smoke-1.log",
+        "sha256": "5b4c9d19a946d6c772a09e96f2586d1c4c6f37b722ad2d5e8c2aed9f7d02c69e"
+      },
+      {
+        "path": "smoke-2.log",
+        "sha256": "199347465d5209e7b0a7a9b279e4e7b9abb48ee884606fabf27f403443da3498"
+      },
+      {
+        "path": "stability-3m-summary.json",
+        "sha256": "be0a4bf4d7ac6c3cce2c5405f1a79c1f8ae1b005b8da74ef23fa1beca536a9f3"
+      }
+    ]
+  },
+  "source": {
+    "revision": "f715e40673a7b0e7c9491daf6b2195630c29efc6",
+    "archive_sha256": "d90add6d5bcbc691c96f518e4d00257f42289bb0b96f7f915afafba2909f3b9d",
+    "source_asset_manifest_sha256": "d9e7f6bf069160ee9060c2f4999730084b815c5a5f64e2a8bfb767c092b92d99",
+    "derived_asset_manifest_sha256": "67aed21c45c6e3f945e1bb285210925564e887c9634f22bca6ce67c48b0069f3"
+  },
+  "images": [
+    {
+      "component": "vela-control",
+      "repository": "vela-lab-v2/vela-control",
+      "digest": "sha256:4ebc904686a899a86afad3c5a65562804d43170432c9148dfbfb4ba340c820f6"
+    },
+    {
+      "component": "vela-fleet-controller",
+      "repository": "vela-lab-v2/vela-fleet-controller",
+      "digest": "sha256:d34c68053e315d3380954b97b56aa280a4b3a664597f31b2a077c939da25ea72"
+    },
+    {
+      "component": "vela-stage-worker-agent",
+      "repository": "vela-lab-v2/vela-stage-worker-agent",
+      "digest": "sha256:351c57cc085bec22379e282397f91b9f26d51e88c7a118337febdb62304bc4be"
+    },
+    {
+      "component": "vela-h3-stage-runtime",
+      "repository": "vela-lab-v2/vela-h3-stage-runtime",
+      "digest": "sha256:c9ce01a7c86172deeb6fafa4673e3a9e5fcd110dc907ce3bae3364eb5ed67494"
+    },
+    {
+      "component": "vela-lab-bootstrap",
+      "repository": "vela-lab-v2/vela-lab-bootstrap",
+      "digest": "sha256:4f639eecdb8b4ca91ddad4d1c5a0b272f1347377c3b3c9def7eccd12d1a87690"
+    }
+  ],
+  "database": {
+    "schema_version": 69,
+    "jobs": {
+      "SUCCEEDED": 2
+    },
+    "stage_runs": {
+      "SUCCEEDED": 8,
+      "by_stage": {
+        "encoder": 2,
+        "dit": 2,
+        "vae": 2,
+        "thumbnail": 2
+      }
+    },
+    "stage_artifacts": {
+      "conditioning": 2,
+      "latent": 2,
+      "video": 2,
+      "thumbnail": 2
+    },
+    "final_artifacts": {
+      "VIDEO": 2,
+      "THUMBNAIL": 2
+    },
+    "worker_instances": {
+      "READY_CONNECTED": 3
+    },
+    "production_gate_receipts": 0
+  },
+  "post_seal_database_observation": {
+    "captured_at": "2026-09-05T02:55:53Z",
+    "capture_kind": "live-read-only-aggregate-and-identity-projection",
+    "included_in_raw_evidence_manifest": false,
+    "artifact_transfer": {
+      "consumed_transfer_tickets": 6,
+      "active_execution_pins": 6,
+      "tickets": [
+        {
+          "ticket_id": "06cc8fee-d1fd-5948-b653-b11f68881960",
+          "stage_artifact_id": "e1ef69ee-12d1-594f-934d-515c742fbf10",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000103",
+          "outcome_sha256": "72014a486e2f8e6e0c0db606a8cce82fd2ace0afe383d1560fb5be992996ecd2"
+        },
+        {
+          "ticket_id": "2e2d134b-ff11-5bec-9d36-588718889fbe",
+          "stage_artifact_id": "848d056e-29b9-54fe-96f3-6fd8f5f78d0f",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000103",
+          "outcome_sha256": "79c5c272132a62fa21fc4e26dda60df629821e11595f6baad41049a1ffad108e"
+        },
+        {
+          "ticket_id": "32b8e16f-274b-5743-9588-06dd7a3f2330",
+          "stage_artifact_id": "2a61bec4-551a-5792-a608-0d12f5dd21d5",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000102",
+          "outcome_sha256": "58768df2223441187074df33778897b7bb110826329bbc565c6e63ba7135ffa7"
+        },
+        {
+          "ticket_id": "8ae77c1f-1dbf-590b-8748-405f345888f4",
+          "stage_artifact_id": "8f8c2853-8544-59ea-951c-4e9cdabfddb5",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000101",
+          "outcome_sha256": "780a570b4014cc601bf3e530541cf55bfdaae4fdea76f24603fa1eded08c8c42"
+        },
+        {
+          "ticket_id": "c1c18c8b-f555-5b4b-a1a7-7be357bd3f96",
+          "stage_artifact_id": "85ee70ee-3c6a-5d45-9e1d-745866fd9bd0",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000102",
+          "outcome_sha256": "dc4204a6d25ec7e269fcba3e7fff1a77c615347b9693ebba1178fafa1bbc48f0"
+        },
+        {
+          "ticket_id": "fb1510f9-adb6-5587-aaa5-12f80ad46da8",
+          "stage_artifact_id": "da7e8d70-8806-533c-a722-f338f7862265",
+          "destination_worker_instance_id": "84000000-0000-0000-0000-000000000101",
+          "outcome_sha256": "dc28c55710b2cf2730cf4c6a61cbea036a0339eb4614cb3db22594c445e899ef"
+        }
+      ]
+    },
+    "exact_cache": {
+      "result": "NOT_EXERCISED",
+      "stage_cache_entries": 0,
+      "total_hit_count": 0,
+      "stage_cache_references": 0,
+      "h3_exact_cache_admission_receipts": 0
+    }
+  },
+  "smoke_jobs": [
+    {
+      "job_id": "c274dd05-2f95-478e-9d5b-3aaf09371bf4",
+      "state": "SUCCEEDED",
+      "artifact_set_id": "79afbedb-9347-4b33-97b4-fb2d3e32e943",
+      "artifacts": [
+        {
+          "kind": "THUMBNAIL",
+          "size_bytes": 164,
+          "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58"
+        },
+        {
+          "kind": "VIDEO",
+          "size_bytes": 12953,
+          "sha256": "72014a486e2f8e6e0c0db606a8cce82fd2ace0afe383d1560fb5be992996ecd2"
+        }
+      ]
+    },
+    {
+      "job_id": "7cfaa142-b4c0-4f73-88fd-34c9deef12f7",
+      "state": "SUCCEEDED",
+      "artifact_set_id": "a39d96d5-1f22-4429-b1f9-5719e939a59a",
+      "artifacts": [
+        {
+          "kind": "THUMBNAIL",
+          "size_bytes": 164,
+          "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58"
+        },
+        {
+          "kind": "VIDEO",
+          "size_bytes": 12953,
+          "sha256": "79c5c272132a62fa21fc4e26dda60df629821e11595f6baad41049a1ffad108e"
+        }
+      ]
+    }
+  ],
+  "cluster_observation": {
+    "nodes_ready": 3,
+    "node_gpu_allocatable": [
+      0,
+      8,
+      8
+    ],
+    "samples": 91,
+    "sample_interval_seconds": 2,
+    "started_at": "2026-09-05T02:21:38Z",
+    "ended_at": "2026-09-05T02:24:55Z",
+    "min_pods": 13,
+    "max_pods": 13,
+    "max_failed_pods": 0,
+    "max_running_not_ready": 0,
+    "max_restarts": 0,
+    "max_gpu_requests": 0,
+    "startup_warning_event_objects": 4,
+    "startup_warning_occurrences": 7,
+    "post_ready_warning_event_objects": 0
+  },
+  "failed_bootstrap_recovery": {
+    "error": "existing StageProfile 49000000-0000-0000-0000-000000000040 does not match the lab asset set",
+    "diagnostic_reproduction_preserved": true,
+    "failed_pod_deletion_actor_established": false,
+    "post_failure_pg_dump_sha256": "f283086175c7a0bfc039fdcb83b59a9e1e0f25c8bb607e6ea7b863e107fdfc81",
+    "pg_restore_list_lines": 2349,
+    "isolated_test_restore_performed": false,
+    "archived_data_directory_retained": true
+  },
+  "production_gate": false,
+  "production_gate_result": "0/9 PASS",
+  "limitations": [
+    "CPU-only mock stages",
+    "no Vela GPU request or DRA actuation",
+    "no real H3 model weights or execution",
+    "no performance, N/N-1, soak, HA, DR, or supply-chain acceptance",
+    "raw evidence is host-retained rather than committed",
+    "operator projection is not an independent witness or Launch Receipt"
+  ]
+}

@@ -23,11 +23,13 @@ intentionally excluded.
   `vela.ai.evidence-boundary=NON_PRODUCTION_MOCK_REHEARSAL`.
 - Historical `vela-lab` PostgreSQL remains at migration `33`.
 - The isolated `vela-lab-v2` deployment binds source revision
-  `a50897d55854bde67ff24292e593b1ccc65ce913` and runs a fresh PostgreSQL schema
+  `f715e40673a7b0e7c9491daf6b2195630c29efc6` and runs a fresh PostgreSQL schema
   at migration `69`, matching that deployed source revision.
 - Two digest-bound CPU-only four-Stage smoke Jobs passed with all eight
   StageRuns succeeded. They requested no GPU and are mock control,
-  transport/lifecycle, Artifact-transfer, and exact-cache evidence only.
+  transport/lifecycle and Artifact-transfer evidence only. The live database
+  contained no exact-cache entry, reference, or admission receipt, so exact
+  cache remains unverified in this deployment.
 
 The historical deployment remains behind the current repository by both source
 and schema identity. The isolated deployment closes that source/schema gap for
@@ -149,14 +151,15 @@ database and separate namespace/release identities:
 1. Preserved the existing `vela-lab` namespace and receipt tree as the historical
    comparison baseline.
 2. Built the control, Fleet, Worker, runtime, and bootstrap images from exact
-   source revision `a50897d55854bde67ff24292e593b1ccc65ce913`, published them
+   source revision `f715e40673a7b0e7c9491daf6b2195630c29efc6`, published them
    once to the private registry, and deployed only immutable digest references.
 3. Bootstrapped migrations `1..69` into a fresh database after the empty-install
    checks required by migration `58`.
 4. Deployed a separate Stage-only control and CPU mock environment with zero GPU
    requests; external GPU workloads remained excluded.
-5. Ran readiness, four-Stage lifecycle, Artifact-transfer, exact-cache, and
-   bounded observation checks against the new database.
+5. Ran readiness, four-Stage lifecycle, Artifact-transfer, and bounded
+   observation checks against the new database. The intended exact-cache path
+   was not exercised and remains a follow-up.
 6. Retained digest-bound success and failure evidence while keeping all nine
    Production Gates at `NOT PASS` until real typed evidence exists.
 
@@ -240,6 +243,40 @@ partial `vela-lab-v2` resources before retrying `install-assets.sh` with the
 same verified asset directory. The rollback preserves the namespace and
 hostPath data.
 
+The lab Catalog deliberately treats StageProfile, ExecutionProfile, and Stage
+cutover revisions as immutable and binds them to exact runtime image digests.
+Installing a new runtime asset set over retained PostgreSQL data therefore
+fails closed instead of rewriting an existing revision. This fresh-database
+path applies when the bootstrap-bound `RUNTIME_IMAGE` or `BOOTSTRAP_IMAGE`
+(the thumbnail runtime) digest changes incompatibly with the retained Catalog.
+A control, Fleet controller, or Worker Agent image change alone does not require
+database replacement.
+
+The repository does not yet provide a tested `vela-lab-v2` operator command that
+atomically closes Admission and emits a quiescence receipt. Until it does, do
+not use this checklist or `rollback.sh` to replace a retained database. The
+required command must close Admission before its consistent database snapshot,
+bind both actions into one success receipt, and require zero Jobs, StageRuns,
+and StageAttempts outside their terminal states plus zero `ACTIVE` StageLeases.
+An unreachable source, concurrent Admission, stale snapshot, or nonzero count
+must fail closed.
+
+After that receipt exists, use `umask 077` to create a root-owned raw evidence
+directory at mode `0700` and retain files at mode `0600`; never commit the raw
+PostgreSQL dump, credentials, Secret payloads, or unredacted cluster objects.
+Create a custom-format `pg_dump`, restore it into an isolated PostgreSQL
+instance, and compare the migration level and the recorded authority counts.
+Parsing `pg_restore --list` alone is not restore validation.
+
+If the new bootstrap has already failed, preserve its Job, event, and diagnostic
+evidence. Only after the quiescence and isolated-restore checks pass, run the
+identity-bound rollback and archive the complete
+`/var/lib/vela-lab-v2/control-plane` directory by renaming it on the same
+filesystem. Then rerun `prepare-host.sh control --apply` before installing the
+verified asset set. Keep both the protected raw evidence and the archived data
+directory until the replacement deployment and restore procedure have been
+independently validated under the lab retention policy.
+
 ## Deployed `vela-lab-v2` checkpoint
 
 The control host runs Docker Server `29.1.3`, Docker Buildx `0.30.1`, and
@@ -248,14 +285,14 @@ the existing private registry, and deployed at these immutable identities:
 
 | Component | Immutable image |
 | --- | --- |
-| Control | `10.1.200.17:5443/vela-lab-v2/vela-control@sha256:32295b8896583444c198fbef680fa6e9571f3c765578160dcf62e6a7498d4bb5` |
-| Fleet controller | `10.1.200.17:5443/vela-lab-v2/vela-fleet-controller@sha256:ade5cdab854ea7a7ccc93242b1c5992d02fcdf147a139ad2f65ef37e7168a7ec` |
-| Stage Worker Agent | `10.1.200.17:5443/vela-lab-v2/vela-stage-worker-agent@sha256:6ce28fc769b57eee16b96f1e89efbc4dd850cb0bd05f87fbce97f935a63a4f2f` |
-| H3 Stage runtime | `10.1.200.17:5443/vela-lab-v2/vela-h3-stage-runtime@sha256:fbd334340dabc10d66c4a3d0f4525bb4c83c53058bc325da684fb9781dba1ac6` |
-| Lab bootstrap and CPU thumbnail | `10.1.200.17:5443/vela-lab-v2/vela-lab-bootstrap@sha256:ce1ba60172d16fb6367a08ba51df15bfa0a5a6c79e6f420d2fda86d6054e5656` |
+| Control | `10.1.200.17:5443/vela-lab-v2/vela-control@sha256:4ebc904686a899a86afad3c5a65562804d43170432c9148dfbfb4ba340c820f6` |
+| Fleet controller | `10.1.200.17:5443/vela-lab-v2/vela-fleet-controller@sha256:d34c68053e315d3380954b97b56aa280a4b3a664597f31b2a077c939da25ea72` |
+| Stage Worker Agent | `10.1.200.17:5443/vela-lab-v2/vela-stage-worker-agent@sha256:351c57cc085bec22379e282397f91b9f26d51e88c7a118337febdb62304bc4be` |
+| H3 Stage runtime | `10.1.200.17:5443/vela-lab-v2/vela-h3-stage-runtime@sha256:c9ce01a7c86172deeb6fafa4673e3a9e5fcd110dc907ce3bae3364eb5ed67494` |
+| Lab bootstrap and CPU thumbnail | `10.1.200.17:5443/vela-lab-v2/vela-lab-bootstrap@sha256:4f639eecdb8b4ca91ddad4d1c5a0b272f1347377c3b3c9def7eccd12d1a87690` |
 
 The protected asset manifest SHA-256 is
-`d9e7f6bf069160ee9060c2f4999730084b815c5a5f64e2a8bfb767c092b92d99`.
+`67aed21c45c6e3f945e1bb285210925564e887c9634f22bca6ce67c48b0069f3`.
 The repository unit tests, manifest render contract, ShellCheck, PostgreSQL 17
 migration/bootstrap replay through schema `69`, focused integration tests, and
 `make verify` pass for the deployed revision. Migration `68` accepts the
@@ -265,22 +302,53 @@ clock sample plus live capacity authority.
 
 The two post-deployment smoke Jobs were:
 
-- `311c1246-e478-412e-8740-ce6841e76755`;
-- `b881917b-5611-44c5-8684-cc26d9b19d43`.
+- `c274dd05-2f95-478e-9d5b-3aaf09371bf4`;
+- `7cfaa142-b4c0-4f73-88fd-34c9deef12f7`.
 
 Both Jobs reached `SUCCEEDED`. All eight StageRuns reached `SUCCEEDED`, with two
 each for `encoder`, `dit`, `vae`, and `thumbnail`; the durable result inventory
-contained `VIDEO=2` and `THUMBNAIL=2`. Across 138 two-second monitor samples,
+contained `VIDEO=2` and `THUMBNAIL=2`. Across 91 two-second monitor samples,
 `max_restarts=0` and `max_gpu_requests=0`. Node GPU allocatable remained
 `0/8/8`: the control node ran only control/storage services and the CPU
 thumbnail Worker, while both eight-GPU nodes remained pure Worker nodes. The
 database reported schema `69`, zero Production Gate receipts, and
-`production_gates=0/9`.
+`production_gates=0/9`. Four distinct transient Warning event objects comprising
+seven occurrences were observed during startup; there were no new Warning
+events after the deployment reached Ready or during the bounded stability
+observation.
 
 The successful evidence tree is retained at
-`/home/marslab/vela-lab-v2-a50897d-success-20260905T000417Z`. Its
-`SHA256SUMS` file has SHA-256
-`de167b29b5904f2c6044ec8c157a1c57fcfde9cdea61deb77d6bb1acb28b2411`.
+`/home/marslab/vela-lab-v2-f715e40-rollout-20260905T012555Z`. After the rollout
+monitor stopped, it contained 68 regular files covering the pre-cutover
+PostgreSQL dumps, failed bootstrap diagnostics, identity-bound rollback, asset
+installation, successful rollout, two smoke Jobs, database authority, image
+identities, registry validation, and the stability observation. The final
+`SHA256SUMS.final` validates all 67 other files and has SHA-256
+`e7ac304610e31869a80745446a65d9586ee1590f941684680ba3976555154b0a`.
+The original `SHA256SUMS` with SHA-256
+`a733290bf93d5c4f1f0d0e89e119d81c5211e2865e648e63be3de105cb1ff881`
+is retained but superseded because `rollout-monitor.log` was still being
+appended when that manifest was created.
+The tree is root-owned; every directory is mode `0700` and every regular file is
+mode `0600`. Only the credential-free projection needed to review the claims is
+committed as `docs/h3-stage-mock-lab-evidence-2026-09-05.json`. The projection
+binds selected raw files to the protected manifest but is not a substitute for
+the raw evidence, an independent witness, or a Launch Receipt.
+
+The first `f715e40` bootstrap attempt reused the previous runtime-bound Catalog
+and failed closed with `existing StageProfile 49000000-0000-0000-0000-000000000040
+does not match the lab asset set`. The failed Pod was absent when collection
+started; the available evidence does not establish which actor deleted it. A
+one-attempt diagnostic Job reproduced and preserved the exact error. The
+post-failure custom-format PostgreSQL dump has SHA-256
+`f283086175c7a0bfc039fdcb83b59a9e1e0f25c8bb607e6ea7b863e107fdfc81`
+and a successfully parsed 2,349-line restore list. That dump was not restored
+into an isolated PostgreSQL instance, so the list proves format readability but
+not complete recoverability. The former `89M` control-plane data directory is
+retained at
+`/var/lib/vela-lab-v2/control-plane.pre-f715e40-20260905T021500Z` as the intended
+rollback copy, but recovery from it has not been exercised. The fresh validated
+directory used `84M` at the final checkpoint.
 
 The first deployment of revision `96a1dd3` failed because a Worker clock was
 about 300 ms behind the control authority, causing a START event timestamp to
@@ -295,8 +363,9 @@ out-of-window events.
 
 ## Image and transfer execution
 
-The clean repository archive was about `2.7MB` compressed. To minimize SSH
-traffic, the deployment:
+The clean repository archive was about `2.7MB` compressed and had SHA-256
+`d90add6d5bcbc691c96f518e4d00257f42289bb0b96f7f915afafba2909f3b9d`.
+To minimize SSH traffic, the deployment:
 
 - transferred only the small, commit-bound source archive and its digest;
 - built the images on the control host with an explicit Go module proxy;
@@ -308,9 +377,9 @@ layers and avoid image pruning while the new environment is being verified.
 
 ## Capacity and disk
 
-At the historical observation time, the control host had about `511G` free. The
+At the final observation time, the control host had about `498G` free. The
 deployment tree used about `764M`, and RKE2 used about `12G`. No remote image
 pruning was performed because the running deployment and shared registry layers
 must remain available. The local Go build cache was cleaned after verification
 and is about `8KiB`; the `2.1G` module cache was retained. Local free space is
-about `17GiB` at this checkpoint.
+about `59GiB` at this checkpoint.

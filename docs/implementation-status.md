@@ -79,10 +79,10 @@ fail-closed start, and recovery with two Worker names. Its committed projection
 does not bind the raw cluster bundle or independently prove physical placement.
 It does not exercise Fleet actuation, database StageLease authority, Artifact
 transfer, GPU/DRA, or model execution. This is not complete acceptance closure.
-The isolated three-host `vela-lab-v2` deployment at source revision `a50897d`
+The isolated three-host `vela-lab-v2` deployment at source revision `f715e40`
 now runs schema `69` and passed two digest-bound CPU-only four-Stage smoke Jobs:
 two Jobs, eight StageRuns, two VIDEO Artifacts, and two THUMBNAIL Artifacts all
-reached their expected successful state. A 138-sample observation recorded zero
+reached their expected successful state. A 91-sample observation recorded zero
 Pod restarts and zero GPU requests. Real H3, N/N-1, GPU/DRA, performance, soak,
 and Production Gate evidence are still pending.
 The read-only H3 preflight and launch collector additionally bind every
@@ -135,7 +135,7 @@ has up to `5s` idle assignment-discovery latency.
 | Schema and protocol migration | Schema-v2 through migration `00069`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, Stage Worker control-session/capacity authority, Project running-limit scheduling, certified Connector state acceptance, server-clock transfer validity, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
-| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage deployment passed two remote smoke Jobs with eight successful StageRuns, two VIDEO Artifacts, two THUMBNAIL Artifacts, zero restarts, and zero GPU requests; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete real H3 and Production Gate evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/three-host-lab-environment.md` |
+| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage deployment passed two remote smoke Jobs with eight successful StageRuns, two VIDEO Artifacts, two THUMBNAIL Artifacts, zero restarts, and zero GPU requests; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete real H3 and Production Gate evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/h3-stage-mock-lab-evidence-2026-09-05.json`, `docs/three-host-lab-environment.md` |
 
 Historical migrations still describe the predecessor machine-level contract,
 but migration `00058` removes it from the current schema and the corresponding
