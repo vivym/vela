@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vivym/vela/internal/driverchannel"
 )
 
 func testPair(t *testing.T) (*Client, *net.UnixConn) {
@@ -18,7 +20,7 @@ func testPair(t *testing.T) (*Client, *net.UnixConn) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := fromFile(childFile)
+	child, err := driverchannel.FromFile(childFile)
 	_ = childFile.Close()
 	if err != nil {
 		_ = parent.Close()

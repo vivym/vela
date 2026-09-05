@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/vivym/vela/internal/driverdrain"
 	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/h3stagemock"
 	"golang.org/x/sys/unix"
@@ -44,6 +45,13 @@ func run(ctx context.Context) error {
 	if inspection != nil {
 		defer func() { _ = inspection.Close() }()
 	}
+	drain, err := driverdrain.OpenInherited(os.Getenv(driverdrain.Environment))
+	if err != nil {
+		return err
+	}
+	if drain != nil {
+		defer func() { _ = drain.Close() }()
+	}
 	input := os.Stdin
 	if ctx.Done() != nil {
 		deadlineInput, err := duplicateDeadlineInput(os.Stdin)
@@ -55,7 +63,7 @@ func run(ctx context.Context) error {
 	}
 	return h3stagemock.Run(ctx, h3stagemock.Config{
 		Component: component, Mode: mode, Stdin: input, Stdout: os.Stdout,
-		Inspection: inspection,
+		Inspection: inspection, Drain: drain,
 	})
 }
 

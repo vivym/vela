@@ -15,10 +15,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/driverdrain"
 	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/h3mockbackend"
 	"github.com/vivym/vela/internal/securefile"
@@ -84,6 +86,7 @@ type Config struct {
 	Stdout     io.Writer
 	Now        func() time.Time
 	Inspection *net.UnixConn
+	Drain      *net.UnixConn
 }
 
 type requestV1 struct {
@@ -136,6 +139,7 @@ type probeRequestV1 struct {
 }
 
 type stageIdentityV1 struct {
+	ExecutionSequence      int64  `json:"execution_sequence,omitempty"`
 	AuthorityDigest        string `json:"authority_digest"`
 	JobID                  string `json:"job_id"`
 	AttemptID              string `json:"attempt_id"`
@@ -168,6 +172,7 @@ type responseV1 struct {
 	Acknowledged       bool           `json:"acknowledged,omitempty"`
 	Initialized        bool           `json:"initialized,omitempty"`
 	InspectionProtocol string         `json:"inspection_protocol,omitempty"`
+	DrainProtocol      string         `json:"drain_protocol,omitempty"`
 	Probe              *probeResultV1 `json:"probe,omitempty"`
 	Status             *statusV1      `json:"status,omitempty"`
 	Output             *outputV1      `json:"output,omitempty"`
@@ -206,6 +211,7 @@ type outputV1 struct {
 }
 
 type session struct {
+	commandMu          sync.Mutex
 	component          string
 	mode               Mode
 	now                func() time.Time
@@ -214,6 +220,8 @@ type session struct {
 	retiredAuthorities map[string]struct{}
 	inspectionEnabled  bool
 	inspection         atomic.Pointer[inspectionSnapshot]
+	drainEnabled       bool
+	highestSequence    int64
 	scratchRoot        *os.Root
 	inputRoot          *os.Root
 	outputRoot         *os.Root
@@ -225,6 +233,7 @@ type inspectionSnapshot struct {
 }
 
 type execution struct {
+	drained          bool
 	identity         stageIdentityV1
 	specification    []byte
 	state            executionState
@@ -307,6 +316,7 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		component: config.Component, mode: config.Mode, now: config.Now,
 		retiredAuthorities: make(map[string]struct{}),
 		inspectionEnabled:  config.Inspection != nil,
+		drainEnabled:       config.Drain != nil,
 	}
 	defer func() {
 		if closeErr := runtime.close(); closeErr != nil {
@@ -324,6 +334,18 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		defer func() {
 			cancelInspection()
 			<-inspectionDone
+		}()
+	}
+	if config.Drain != nil {
+		drainCtx, cancelDrain := context.WithCancel(ctx)
+		drainDone := make(chan struct{})
+		go func() {
+			defer close(drainDone)
+			_ = driverdrain.Serve(drainCtx, config.Drain, runtime.drainExecution)
+		}()
+		defer func() {
+			cancelDrain()
+			<-drainDone
 		}()
 	}
 	reader := bufio.NewReaderSize(config.Stdin, maximumMessageBytes+2)
@@ -419,6 +441,8 @@ func validateRequestShape(request requestV1) error {
 }
 
 func (runtime *session) handle(request requestV1) (responseV1, bool) {
+	runtime.commandMu.Lock()
+	defer runtime.commandMu.Unlock()
 	// Publish no state during a command. Inspectors cannot see a stale terminal
 	// snapshot while execution or output cleanup is changing it.
 	runtime.inspection.Store(nil)
@@ -434,6 +458,9 @@ func (runtime *session) handle(request requestV1) (responseV1, bool) {
 			response.Initialized = true
 			if runtime.inspectionEnabled {
 				response.InspectionProtocol = driverinspection.Protocol
+			}
+			if runtime.drainEnabled {
+				response.DrainProtocol = driverdrain.Protocol
 			}
 		}
 	case operationProbe:
@@ -478,6 +505,27 @@ func (runtime *session) inspect(digest string) driverinspection.Observation {
 		return driverinspection.Observation{}
 	}
 	return snapshot.observation
+}
+
+func (runtime *session) drainExecution(identity driverdrain.Identity) bool {
+	// Every mock writer runs synchronously under commandMu and closes its files
+	// before returning. There are no execution child processes or async tasks.
+	if !runtime.commandMu.TryLock() {
+		return false
+	}
+	defer runtime.commandMu.Unlock()
+	active := runtime.active
+	if runtime.initialization == nil || active == nil || identity.ExecutionSequence <= 0 ||
+		identity.AuthorityDigest != active.identity.AuthorityDigest ||
+		identity.ExecutionSequence != active.identity.ExecutionSequence {
+		return false
+	}
+	if active.state != stateStopped && active.state != stateOutputSealed && active.state != stateFailed {
+		return false
+	}
+	// Freezing also excludes future cleanup of this execution's namespace.
+	active.drained = true
+	return true
 }
 
 func (runtime *session) initialize(initialization *initializeV1) error {
@@ -570,8 +618,15 @@ func (runtime *session) prepare(request *prepareRequestV1) error {
 	if err := validateStageIdentity(request.Identity, runtime.initialization.StageProfileRevisionID); err != nil {
 		return err
 	}
+	if runtime.highestSequence > 0 && request.Identity.ExecutionSequence <= runtime.highestSequence &&
+		(runtime.active == nil || !sameStageIdentity(runtime.active.identity, request.Identity)) {
+		return errors.New("H3 Stage mock execution sequence has already retired")
+	}
 	if runtime.active != nil {
 		if sameStageIdentity(runtime.active.identity, request.Identity) {
+			if runtime.active.drained {
+				return errors.New("H3 Stage mock execution has been drained")
+			}
 			if bytes.Equal(runtime.active.specification, request.ExecutionSpec) {
 				return nil
 			}
@@ -591,6 +646,7 @@ func (runtime *session) prepare(request *prepareRequestV1) error {
 			return err
 		}
 	}
+	runtime.highestSequence = max(runtime.highestSequence, request.Identity.ExecutionSequence)
 	prepared, err := runtime.prepareExecution(request.Identity, request.ExecutionSpec)
 	if err != nil {
 		return err
@@ -643,6 +699,9 @@ func (runtime *session) start(identity stageIdentityV1) error {
 	active, err := runtime.requireActive(identity)
 	if err != nil {
 		return err
+	}
+	if active.drained {
+		return errors.New("H3 Stage mock execution has been drained")
 	}
 	if active.state == stateRunning || active.state == stateOutputReady || active.state == stateOutputSealed || active.state == stateFailed {
 		return nil
@@ -714,6 +773,9 @@ func (runtime *session) cancel(request *cancelRequestV1) error {
 	if active.state == stateStopped {
 		return nil
 	}
+	if active.drained {
+		return errors.New("H3 Stage mock execution has been drained")
+	}
 	if err := runtime.discardUnsealedOutput(active); err != nil {
 		return err
 	}
@@ -738,7 +800,7 @@ func (runtime *session) seal(identity stageIdentityV1) (*outputV1, error) {
 }
 
 func (runtime *session) shutdown() error {
-	if runtime.active == nil || runtime.active.state == stateOutputSealed {
+	if runtime.active == nil || runtime.active.drained || runtime.active.state == stateOutputSealed {
 		return nil
 	}
 	if err := runtime.discardUnsealedOutput(runtime.active); err != nil {
@@ -752,6 +814,8 @@ func (runtime *session) shutdown() error {
 }
 
 func (runtime *session) close() error {
+	runtime.commandMu.Lock()
+	defer runtime.commandMu.Unlock()
 	cleanupErr := runtime.shutdown()
 	var closeErrors []error
 	for _, root := range []*os.Root{runtime.outputRoot, runtime.inputRoot, runtime.scratchRoot} {
@@ -865,7 +929,7 @@ func (runtime *session) fail(active *execution, failureClass, detail string) {
 }
 
 func (runtime *session) discardUnsealedOutput(active *execution) error {
-	if active == nil || active.state == stateOutputSealed || active.outputPath == "" {
+	if active == nil || active.drained || active.state == stateOutputSealed || active.outputPath == "" {
 		return nil
 	}
 	if runtime.outputRoot == nil {
@@ -1100,6 +1164,7 @@ func validateStageIdentity(identity stageIdentityV1, profile string) error {
 		!canonicalUUID(identity.AttemptID) || !canonicalUUID(identity.StageRunID) ||
 		!canonicalUUID(identity.StageAttemptID) || !canonicalUUID(identity.StageLeaseID) ||
 		identity.AttemptFence <= 0 || identity.StageFence <= 0 || identity.StageVersion <= 0 ||
+		identity.ExecutionSequence < 0 ||
 		identity.StageProfileRevisionID != profile {
 		return errors.New("H3 Stage mock lineage identity is invalid")
 	}

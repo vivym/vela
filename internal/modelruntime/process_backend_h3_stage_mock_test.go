@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,11 +73,15 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 		t.Fatalf("probe H3 Stage mock = %#v error=%v; stderr=%s", probe, err, stderr.String())
 	}
 	authority := processBackendAuthority(1)
+	authority.Authority.ExecutionSequence = 1
 	if err := backend.Prepare(context.Background(), authority, &velav1.StageExecutionSpec{
 		ParametersJson:             []byte(`{"seed":17}`),
 		ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
 	}); err != nil {
 		t.Fatalf("prepare H3 Stage mock: %v; stderr=%s", err, stderr.String())
+	}
+	if _, err := backend.DrainExecution(context.Background(), authority); !errors.Is(err, ErrExecutionDrainUnproven) {
+		t.Fatalf("prepared execution produced drain proof: %v", err)
 	}
 	inspection, err := backend.InspectExecution(context.Background(), authority)
 	if err != nil || !inspection.Known || inspection.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED {
@@ -102,6 +107,18 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 	sealed, err := backend.Seal(context.Background(), renewed)
 	if err != nil || sealed.TotalSizeBytes <= 0 {
 		t.Fatalf("seal H3 Stage mock=%#v error=%v; stderr=%s", sealed, err, stderr.String())
+	}
+	if _, err := backend.DrainExecution(context.Background(), authority); !errors.Is(err, ErrExecutionDrainUnproven) {
+		t.Fatalf("superseded authority produced drain proof: %v", err)
+	}
+	for range 2 {
+		result, err := backend.DrainExecution(context.Background(), renewed)
+		if err != nil || validateBackendDrain(result, renewed) != nil {
+			t.Fatalf("exact sealed drain failed: %+v %v", result, err)
+		}
+	}
+	if err := backend.Start(context.Background(), renewed); err == nil {
+		t.Fatal("drained execution accepted Start")
 	}
 	for range 3 {
 		inspection, err := backend.InspectExecution(context.Background(), renewed)
@@ -131,8 +148,31 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 	if digest := sha256.Sum256(payload); digest != parsed.PayloadSHA256 || int64(len(payload)) != parsed.SizeBytes {
 		t.Fatal("H3 Stage mock output does not match LocalOutputManifestV1")
 	}
+	second := processBackendAuthority(2)
+	second.Authority.ExecutionSequence = 2
+	if err := backend.Prepare(context.Background(), second, &velav1.StageExecutionSpec{
+		ParametersJson: []byte(`{"seed":18}`), ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Cancel(context.Background(), second, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := backend.DrainExecution(context.Background(), second); err != nil || validateBackendDrain(result, second) != nil {
+		t.Fatalf("second execution stopped drain: %+v %v", result, err)
+	}
+	if _, err := backend.DrainExecution(context.Background(), renewed); !errors.Is(err, ErrExecutionDrainUnproven) {
+		t.Fatal("replaced execution was inferred drained")
+	}
+	probe, err = backend.Probe(context.Background(), velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP)
+	if err != nil || !probe.Ready || backend.Err() != nil {
+		t.Fatalf("drain unloaded resident model: %+v %v", probe, err)
+	}
 	if err := backend.Close(); err != nil {
 		t.Fatalf("close H3 Stage mock ProcessBackend: %v; stderr=%s", err, stderr.String())
 	}
 	closed = true
+	if retained, err := os.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(manifest.LocalLocator))); err != nil || !bytes.Equal(retained, payload) {
+		t.Fatalf("drain/reuse/shutdown modified sealed output: %v", err)
+	}
 }

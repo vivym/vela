@@ -42,11 +42,14 @@ drain evidence or restore steady-state progress.
 The [durable Runtime drain increment](durable-execution-drain-evidence-2026-09-06.md)
 now retains bounded execution history before backend entry and checkpoints the
 explicit backend writer-drain contract before durable Services release terminal
-slots. FakeRuntime implements that contract; ProcessBackend does not yet.
+slots. FakeRuntime implements that contract. The subsequent [process drain
+channel](process-drain-evidence-2026-09-06.md) now gives ProcessBackend negotiated
+fd-4 drain support; H3/thumbnail mocks join synchronous command work and freeze
+exact terminal execution without unloading resident models or cleaning its files.
 Unproven recovered records block new execution/readiness. Runtime journal schema
 2 rejects schema 1 pending validated migration and historical writer recovery.
 Default command assembly, automatic startup reconciliation,
-ProcessBackend/all-member drain and the retirement journal below remain open. These
+all-member drain, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
 

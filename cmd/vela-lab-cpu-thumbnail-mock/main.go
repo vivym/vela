@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/vivym/vela/internal/driverdrain"
 	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/h3stagemock"
 	"golang.org/x/sys/unix"
@@ -55,10 +56,17 @@ func run(
 	if inspection != nil {
 		defer func() { _ = inspection.Close() }()
 	}
+	drain, err := driverdrain.OpenInherited(os.Getenv(driverdrain.Environment))
+	if err != nil {
+		return err
+	}
+	if drain != nil {
+		defer func() { _ = drain.Close() }()
+	}
 	return h3stagemock.Run(ctx, h3stagemock.Config{
 		Component: "CPU_MEDIA", Mode: h3stagemock.ModeSuccess,
 		Stdin: input, Stdout: output,
-		Inspection: inspection,
+		Inspection: inspection, Drain: drain,
 	})
 }
 

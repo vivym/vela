@@ -19,6 +19,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/driverchannel"
+	"github.com/vivym/vela/internal/driverdrain"
 	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/strictjson"
@@ -74,6 +76,8 @@ type ProcessBackend struct {
 	shutdownTimeout    time.Duration
 	inspection         *driverinspection.Client
 	inspectionProtocol string
+	drain              *driverdrain.Client
+	drainProtocol      string
 
 	rpcGate   chan struct{}
 	nextID    uint64
@@ -127,6 +131,7 @@ type driverProbeRequestV1 struct {
 }
 
 type driverStageIdentityV1 struct {
+	ExecutionSequence      int64  `json:"execution_sequence,omitempty"`
 	AuthorityDigest        string `json:"authority_digest"`
 	JobID                  string `json:"job_id"`
 	AttemptID              string `json:"attempt_id"`
@@ -159,6 +164,7 @@ type driverResponseV1 struct {
 	Acknowledged       bool                 `json:"acknowledged,omitempty"`
 	Initialized        bool                 `json:"initialized,omitempty"`
 	InspectionProtocol string               `json:"inspection_protocol,omitempty"`
+	DrainProtocol      string               `json:"drain_protocol,omitempty"`
 	Probe              *driverProbeResultV1 `json:"probe,omitempty"`
 	Status             *driverStatusV1      `json:"status,omitempty"`
 	Output             *driverOutputV1      `json:"output,omitempty"`
@@ -223,16 +229,26 @@ func NewProcessBackend(
 		return nil, fmt.Errorf("open ModelRuntime inspection channel: %w", err)
 	}
 	defer func() { _ = inspectionChild.Close() }()
-	inspectionOwned := false
+	channelsOwned := false
 	defer func() {
-		if !inspectionOwned {
+		if !channelsOwned {
 			_ = inspectionConn.Close()
 		}
 	}()
-	command.ExtraFiles = []*os.File{inspectionChild}
+	drainConn, drainChild, err := driverchannel.Pair()
+	if err != nil {
+		return nil, fmt.Errorf("open ModelRuntime drain channel: %w", err)
+	}
+	defer func() { _ = drainChild.Close() }()
+	defer func() {
+		if !channelsOwned {
+			_ = drainConn.Close()
+		}
+	}()
+	command.ExtraFiles = []*os.File{inspectionChild, drainChild}
 	command.Dir = config.ScratchRoot
 	command.Env = append(os.Environ(), config.Environment...)
-	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1", driverinspection.Environment+"=3")
+	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1", driverinspection.Environment+"=3", driverdrain.Environment+"=4")
 	stderrWriter := config.Stderr
 	if stderrWriter == nil {
 		stderrWriter = os.Stderr
@@ -287,8 +303,9 @@ func NewProcessBackend(
 		rpcGate:         make(chan struct{}, 1),
 		shutdownTimeout: config.ShutdownTimeout,
 		inspection:      driverinspection.NewClient(inspectionConn),
+		drain:           driverdrain.NewClient(drainConn),
 	}
-	inspectionOwned = true
+	channelsOwned = true
 	if backend.shutdownTimeout == 0 {
 		backend.shutdownTimeout = defaultShutdownTimeout
 	}
@@ -320,7 +337,21 @@ func NewProcessBackend(
 		return nil, errors.Join(errors.New("resident ModelRuntime driver did not complete load and warmup"), cleanupErr)
 	}
 	backend.inspectionProtocol = response.InspectionProtocol
+	backend.drainProtocol = response.DrainProtocol
 	return backend, nil
+}
+
+func (backend *ProcessBackend) DrainExecution(ctx context.Context, authority stageauthority.Verified) (BackendDrain, error) {
+	if backend == nil || backend.drainProtocol != driverdrain.Protocol || authority.Authority == nil {
+		return BackendDrain{}, ErrExecutionDrainUnproven
+	}
+	identity := driverdrain.Identity{AuthorityDigest: hex.EncodeToString(authority.Digest[:]),
+		ExecutionSequence: authority.Authority.GetExecutionSequence()}
+	if err := backend.drain.Drain(ctx, identity); err != nil {
+		return BackendDrain{}, errors.Join(ErrExecutionDrainUnproven, err)
+	}
+	return BackendDrain{Contract: driverdrain.Contract, AuthorityDigest: authority.Digest,
+		ExecutionSequence: identity.ExecutionSequence}, nil
 }
 
 func (backend *ProcessBackend) InspectExecution(ctx context.Context, authority stageauthority.Verified) (ExecutionInspection, error) {
@@ -372,7 +403,7 @@ func (backend *ProcessBackend) Prepare(
 	response, err := backend.call(ctx, driverRequestV1{
 		Operation: "prepare",
 		Prepare: &driverPrepareRequestV1{
-			Identity: driverStageIdentity(authority), ExecutionSpec: encoded,
+			Identity: backend.stageIdentity(authority), ExecutionSpec: encoded,
 		},
 	})
 	return requireDriverAcknowledgement(response, err, "prepare")
@@ -383,7 +414,7 @@ func (backend *ProcessBackend) Start(
 	authority stageauthority.Verified,
 ) error {
 	response, err := backend.call(ctx, driverRequestV1{
-		Operation: "start", Stage: &driverStageRequestV1{Identity: driverStageIdentity(authority)},
+		Operation: "start", Stage: &driverStageRequestV1{Identity: backend.stageIdentity(authority)},
 	})
 	return requireDriverAcknowledgement(response, err, "start")
 }
@@ -396,7 +427,7 @@ func (backend *ProcessBackend) Cancel(
 	response, err := backend.call(ctx, driverRequestV1{
 		Operation: "cancel",
 		Cancel: &driverCancelRequestV1{
-			Identity: driverStageIdentity(authority), Reason: reason.String(),
+			Identity: backend.stageIdentity(authority), Reason: reason.String(),
 		},
 	})
 	return requireDriverAcknowledgement(response, err, "cancel")
@@ -407,7 +438,7 @@ func (backend *ProcessBackend) Status(
 	authority stageauthority.Verified,
 ) (BackendStatus, error) {
 	response, err := backend.call(ctx, driverRequestV1{
-		Operation: "status", Stage: &driverStageRequestV1{Identity: driverStageIdentity(authority)},
+		Operation: "status", Stage: &driverStageRequestV1{Identity: backend.stageIdentity(authority)},
 	})
 	if err != nil {
 		return BackendStatus{}, err
@@ -423,7 +454,7 @@ func (backend *ProcessBackend) Seal(
 	authority stageauthority.Verified,
 ) (SealedOutput, error) {
 	response, err := backend.call(ctx, driverRequestV1{
-		Operation: "seal", Stage: &driverStageRequestV1{Identity: driverStageIdentity(authority)},
+		Operation: "seal", Stage: &driverStageRequestV1{Identity: backend.stageIdentity(authority)},
 	})
 	if err != nil {
 		return SealedOutput{}, err
@@ -701,6 +732,7 @@ func (backend *ProcessBackend) abort() error {
 func (backend *ProcessBackend) terminate() error {
 	backend.killOnce.Do(func() {
 		_ = backend.inspection.Close()
+		_ = backend.drain.Close()
 		_ = backend.stdin.Close()
 		backend.killErr = killDriverProcessGroup(backend.command.Process)
 		if backend.killErr != nil {
@@ -733,6 +765,15 @@ func initializeDriverRequest(
 		request.Members = append(request.Members, driverEpochV1{ID: member.ID, Epoch: member.Epoch})
 	}
 	return request
+}
+
+func (backend *ProcessBackend) stageIdentity(authority stageauthority.Verified) driverStageIdentityV1 {
+	identity := driverStageIdentity(authority)
+	// Legacy strict drivers keep their original wire shape.
+	if backend.drainProtocol == driverdrain.Protocol {
+		identity.ExecutionSequence = authority.Authority.GetExecutionSequence()
+	}
+	return identity
 }
 
 func driverStageIdentity(authority stageauthority.Verified) driverStageIdentityV1 {

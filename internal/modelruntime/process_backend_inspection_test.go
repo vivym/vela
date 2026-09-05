@@ -10,10 +10,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/driverdrain"
 	"github.com/vivym/vela/internal/driverinspection"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
@@ -119,6 +121,9 @@ func TestProcessBackendInspectionDriverHelper(t *testing.T) {
 	released := make(chan struct{})
 	var release sync.Once
 	defer release.Do(func() { close(released) })
+	if strings.HasPrefix(mode, "drain-") {
+		go serveFaultyDrain(strings.TrimPrefix(mode, "drain-"), released)
+	}
 	go func() {
 		packet := make([]byte, 1025)
 		for {
@@ -162,6 +167,9 @@ func TestProcessBackendInspectionDriverHelper(t *testing.T) {
 		switch request.Operation {
 		case "initialize":
 			response.Initialized, response.InspectionProtocol = true, driverinspection.Protocol
+			if strings.HasPrefix(mode, "drain-") {
+				response.DrainProtocol = driverdrain.Protocol
+			}
 		case "cancel":
 			release.Do(func() { close(released) })
 		case "probe":

@@ -53,10 +53,11 @@ With durable admission configured:
 The nonpersistent Service path preserves its existing behavior and does not
 claim durable drain. FakeRuntime implements the capability: it owns synchronous
 mutex-protected state and no execution goroutines, files or child processes.
-Drain joins those state changes and fences reentry by sequence. ProcessBackend,
-the H3 subprocess driver and CPU-media adapter do **not** yet implement this
-capability. A ProcessBackend with durable admission therefore retains its terminal
-slot. Its independent read-only inspection channel remains observation only.
+Drain joins those state changes and fences reentry by sequence. This checkpoint
+covered FakeRuntime. The subsequent [process drain increment](process-drain-evidence-2026-09-06.md)
+adds negotiated ProcessBackend/H3/thumbnail support; unnegotiated drivers and the
+optional in-process CPU-media adapter still retain durable terminal slots. The
+independent read-only inspection channel remains observation only.
 
 ## Local Retry And Recovery
 
@@ -106,8 +107,8 @@ UID/GID 65534, private `/tmp` tmpfs and a read-only binary mount. Selection:
 
 ## Remaining Work
 
-Implement ProcessBackend/H3 drain without driver teardown; authenticated all-member
-drain collection; durable Worker retirement history combined with signed floors
+Implement authenticated all-member drain collection, validated external-driver
+containment and durable Worker retirement history combined with signed floors
 and input-writer exclusion; unresolved historical writer recovery; durable sealed
 receipts; checkpoint reclamation; trusted bootstrap/default assembly and validated
 schema-1 migration. Default Worker `RetainScratchRetirer` remains active, so automatic
