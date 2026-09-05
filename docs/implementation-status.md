@@ -263,6 +263,16 @@ recovery, sync/reply faults, full unit, Worker race, lint and non-root Linux che
 pass. Runtime journal stays 3, launch/Fleet stays 2 and database stays 90. Recovery
 of unknown writers, default assembly, complete retirement orchestration and
 bounded evidence reclamation remain open.
+The [terminal allocation non-admission increment](terminal-allocation-non-admission-evidence-2026-09-06.md)
+addresses allocations canceled before any signed assignment exists. A local
+Runtime API checkpoints their signed terminal identity directly after a durable
+floor, original local residency and exclusion of every execution intent at that
+sequence. Existing proof can be read after restart; missing old-epoch proof stays
+unknown. Runtime journal is now 4, with explicit validated schema-3 or schema-2
+upgrades; Worker stays 3, launch/Fleet stays 2 and database stays 90. PostgreSQL
+unsigned-retry integration, full unit, Runtime race, lint and non-root Linux checks
+pass. Member RPC/collector support for this proof, retirement orchestration and
+bounded reclamation remain open; default scratch retention remains active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

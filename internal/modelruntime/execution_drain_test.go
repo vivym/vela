@@ -404,7 +404,7 @@ func TestExecutionDrainHistoryBackpressureNeverEvictsAndDoesNotPoisonReads(t *te
 		t.Fatalf("history overflow failed open or poisoned admission: %v %v", response, err)
 	}
 	assertExecutionDrainCheckpoint(t, f.supervisor, f.authorities[0], true)
-	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 3 {
+	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 4 {
 		t.Fatalf("history overflow consumed new authority: %+v", state)
 	}
 }

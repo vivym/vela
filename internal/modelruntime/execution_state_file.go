@@ -36,17 +36,18 @@ type executionFileIdentity struct {
 }
 
 type executionDiskState struct {
-	SchemaVersion int                         `json:"schema_version"`
-	ID            uuid.UUID                   `json:"journal_id"`
-	Scope         [sha256.Size]byte           `json:"scope"`
-	Root          executionFileIdentity       `json:"root"`
-	Lock          executionFileIdentity       `json:"lock"`
-	Highest       int64                       `json:"highest"`
-	Authority     []byte                      `json:"highest_authority"`
-	Floor         int64                       `json:"floor"`
-	Disposition   []byte                      `json:"floor_disposition"`
-	Executions    []retainedExecution         `json:"executions"`
-	NonAdmissions []executionDiskNonAdmission `json:"non_admissions,omitempty"`
+	SchemaVersion         int                         `json:"schema_version"`
+	ID                    uuid.UUID                   `json:"journal_id"`
+	Scope                 [sha256.Size]byte           `json:"scope"`
+	Root                  executionFileIdentity       `json:"root"`
+	Lock                  executionFileIdentity       `json:"lock"`
+	Highest               int64                       `json:"highest"`
+	Authority             []byte                      `json:"highest_authority"`
+	Floor                 int64                       `json:"floor"`
+	Disposition           []byte                      `json:"floor_disposition"`
+	Executions            []retainedExecution         `json:"executions"`
+	NonAdmissions         []executionDiskNonAdmission `json:"non_admissions,omitempty"`
+	TerminalNonAdmissions []terminalDiskNonAdmission  `json:"terminal_non_admissions,omitempty"`
 }
 
 type retainedExecution struct {
@@ -77,8 +78,8 @@ type executionStateFile struct {
 }
 
 func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor) (*executionStateFile, error) {
-	if config.Initialize && config.UpgradeV2 {
-		return nil, errors.New("ModelRuntime execution state upgrade cannot initialize state")
+	if config.Initialize && (config.UpgradeV2 || config.UpgradeV3) || config.UpgradeV2 && config.UpgradeV3 {
+		return nil, errors.New("ModelRuntime execution state bootstrap and upgrades are mutually exclusive")
 	}
 	if !filepath.IsAbs(config.Directory) || filepath.Clean(config.Directory) != config.Directory {
 		return nil, errors.New("ModelRuntime execution state requires an absolute clean directory")
@@ -125,7 +126,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		if err := executionStateDirectoryEmpty(root); err != nil {
 			return nil, err
 		}
-		state := executionDiskState{SchemaVersion: 3, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
+		state := executionDiskState{SchemaVersion: 4, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
 		store.lockID = state.ID
 		if _, err := store.lock.WriteString(state.ID.String()); err != nil {
 			return nil, err
@@ -162,8 +163,9 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
-	upgrade := !config.Initialize && config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0
-	if (store.state.SchemaVersion != 3 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
+	upgrade := !config.Initialize && len(store.state.TerminalNonAdmissions) == 0 &&
+		(config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0 || config.UpgradeV3 && store.state.SchemaVersion == 3)
+	if (store.state.SchemaVersion != 4 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
@@ -186,7 +188,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 	}
 	if upgrade {
 		next := store.state
-		next.SchemaVersion = 3
+		next.SchemaVersion = 4
 		if err := store.persist(next); err != nil {
 			return nil, fmt.Errorf("upgrade ModelRuntime execution state: %w", err)
 		}
@@ -258,7 +260,10 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 	if err := store.validateRetainedExecutions(); err != nil {
 		return err
 	}
-	return store.validateNonAdmissions()
+	if err := store.validateNonAdmissions(); err != nil {
+		return err
+	}
+	return store.validateTerminalNonAdmissions()
 }
 
 func (supervisor *Supervisor) matchRetainedExecutionScope(authority *velav1.StageAuthority) error {

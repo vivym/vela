@@ -37,7 +37,7 @@ func TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent(
 		t.Fatalf("current unseen allocation checkpoint: %+v %v", proof, err)
 	}
 	state := readDurableExecutionState(t, directory)
-	if state.SchemaVersion != 3 || state.Highest != 10 || len(state.NonAdmissions) == 0 {
+	if state.SchemaVersion != 4 || state.Highest != 10 || len(state.NonAdmissions) == 0 {
 		t.Fatalf("proof returned before persistence or changed admission watermark: %+v", state)
 	}
 	assertFloorCommandsRejected(t, f.supervisor, unseen)
@@ -315,7 +315,7 @@ func TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn(t *t
 				t.Fatal(err)
 			}
 			after := readDurableExecutionState(t, directory)
-			if after.SchemaVersion != 3 || after.ID != legacy.ID || after.Highest != legacy.Highest || after.Floor != legacy.Floor ||
+			if after.SchemaVersion != 4 || after.ID != legacy.ID || after.Highest != legacy.Highest || after.Floor != legacy.Floor ||
 				!bytes.Equal(after.Executions, legacy.Executions) || !bytes.Equal(after.Authority, legacy.Authority) || !bytes.Equal(after.Disposition, legacy.Disposition) || len(after.NonAdmissions) != 0 {
 				t.Fatal("upgrade changed retained evidence or invented absence proof")
 			}

@@ -75,6 +75,14 @@ Resolver completion is persisted before Runtime entry and after failure/Stop;
 missing historical handles cannot prove input drain. Unknown input records block
 new admission, and completed retries must establish a fresh checkpoint. Existing
 Runtime journal 3, launch/Fleet 2 and database 90 versions stay unchanged.
+The subsequent [terminal allocation non-admission increment](terminal-allocation-non-admission-evidence-2026-09-06.md)
+uses signed terminal allocation identity directly in a local durable Runtime API,
+including allocations canceled before any signed assignment was created. It
+requires the selected original local residency, an independently persisted floor
+and no execution intent at that sequence. Runtime journal is now 4 with explicit
+validated schema-3/schema-2 upgrades; Worker remains 3. Existing proof survives
+restart; missing old-epoch proof stays unknown. Authenticated member RPC and
+complete-history collectors do not yet consume this new proof format.
 Default command assembly, automatic startup reconciliation, complete-history drain
 orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across

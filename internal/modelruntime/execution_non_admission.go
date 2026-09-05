@@ -81,6 +81,9 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
 		return nil, ErrExecutionNonAdmissionUnproven
 	}
 	store := admission.store
+	if err := store.matchTerminalNonAdmissionAuthority(verified.Authority); err != nil {
+		return nil, err
+	}
 	if saved, err := store.nonAdmissionCheckpoint(verified); err != nil || saved != nil {
 		return saved, err
 	}
