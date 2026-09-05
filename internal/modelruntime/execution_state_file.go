@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/securefile"
@@ -24,8 +25,9 @@ import (
 const (
 	executionStateName     = "execution-admission.json"
 	executionStateLockName = "execution-admission.lock"
-	maxExecutionStateBytes = 5 << 20
+	maxExecutionStateBytes = 12 << 20
 	maxExecutionWireBytes  = 64 << 10
+	maxRetainedExecutions  = 32
 )
 
 type executionFileIdentity struct {
@@ -43,6 +45,18 @@ type executionDiskState struct {
 	Authority     []byte                `json:"highest_authority"`
 	Floor         int64                 `json:"floor"`
 	Disposition   []byte                `json:"floor_disposition"`
+	Executions    []retainedExecution   `json:"executions"`
+}
+
+type retainedExecution struct {
+	Authority []byte              `json:"authority"`
+	Drain     *executionDiskDrain `json:"drain"`
+}
+
+type executionDiskDrain struct {
+	Authority []byte       `json:"authority"`
+	Result    BackendDrain `json:"result"`
+	DrainedAt time.Time    `json:"drained_at"`
 }
 
 // The enclosing admission mutex owns this store and its lifetime lock.
@@ -57,6 +71,7 @@ type executionStateFile struct {
 	stateInfo     os.FileInfo
 	stateDigest   [sha256.Size]byte
 	state         executionDiskState
+	recoveryDrain bool
 	syncDirectory func(*os.Root) error
 }
 
@@ -106,7 +121,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		if err := executionStateDirectoryEmpty(root); err != nil {
 			return nil, err
 		}
-		state := executionDiskState{SchemaVersion: 1, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
+		state := executionDiskState{SchemaVersion: 2, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
 		store.lockID = state.ID
 		if _, err := store.lock.WriteString(state.ID.String()); err != nil {
 			return nil, err
@@ -143,7 +158,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
-	if store.state.SchemaVersion != 1 || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
+	if store.state.SchemaVersion != 2 || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
@@ -151,6 +166,9 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		return nil, err
 	}
 	if !config.Initialize {
+		for _, record := range store.state.Executions {
+			store.recoveryDrain = store.recoveryDrain || record.Drain == nil
+		}
 		if err := store.removeUnpublished(); err != nil {
 			return nil, err
 		}
@@ -225,7 +243,7 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 			return err
 		}
 	}
-	return nil
+	return store.validateRetainedExecutions()
 }
 
 func (supervisor *Supervisor) matchRetainedExecutionScope(authority *velav1.StageAuthority) error {
@@ -255,6 +273,9 @@ func (supervisor *Supervisor) matchRetainedExecutionScope(authority *velav1.Stag
 
 func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority) error {
 	state := store.state
+	if len(state.Executions) >= maxRetainedExecutions {
+		return ErrExecutionHistoryFull
+	}
 	if authority.GetExecutionSequence() <= state.Highest {
 		return errors.New("ModelRuntime execution watermark cannot regress")
 	}
@@ -263,6 +284,7 @@ func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority) e
 		return errors.New("ModelRuntime execution authority exceeds its persistence bound")
 	}
 	state.Highest, state.Authority = authority.GetExecutionSequence(), wire
+	state.Executions = append(slices.Clone(state.Executions), retainedExecution{Authority: bytes.Clone(wire)})
 	return store.persist(state)
 }
 

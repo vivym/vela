@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -83,7 +84,10 @@ func TestMemberFloorTLSAndUnixJournalSurviveResponseLossAndRestart(t *testing.T)
 		response, err := chain.client.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: a, ExecutionSpec: f.spec})
 		want := velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		if sequence > 11 {
-			want = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
+			want = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			if !strings.Contains(response.GetDetail(), modelruntime.ErrExecutionDrainUnproven.Error()) {
+				t.Fatalf("recovered member omitted unresolved writer drain: %v %v", response, err)
+			}
 		}
 		if err != nil || response.GetDecision() != want {
 			t.Fatalf("recovered admission sequence=%d: %v %v", sequence, response, err)

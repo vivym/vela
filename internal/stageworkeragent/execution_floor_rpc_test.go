@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -91,8 +92,9 @@ func TestExecutionFloorCollectionRPCPersistsCompleteMemberHistoryWithoutDrain(t 
 	}
 	for _, client := range group.clients {
 		response, err := client.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: next, ExecutionSpec: f.assignment.ExecutionSpec})
-		if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
-			t.Fatalf("recovered floor blocked newer allocation: %v %v", response, err)
+		if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED ||
+			!strings.Contains(response.GetDetail(), modelruntime.ErrExecutionDrainUnproven.Error()) {
+			t.Fatalf("recovered floor admitted new work without historical writer drain: %v %v", response, err)
 		}
 	}
 }

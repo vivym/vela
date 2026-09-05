@@ -57,7 +57,16 @@ func (service *Service) checkReadinessAdmission() error {
 	service.mu.Unlock()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	return admission.checkStateLocked()
+	if err := admission.checkStateLocked(); err != nil {
+		return err
+	}
+	if admission.store != nil && admission.store.recoveryDrain {
+		return ErrExecutionDrainUnproven
+	}
+	if admission.store != nil && len(admission.store.state.Executions) >= maxRetainedExecutions {
+		return ErrExecutionHistoryFull
+	}
+	return nil
 }
 
 // The caller owns service.operationMu throughout the returned operation.
@@ -96,9 +105,15 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		if sequence <= admission.highest {
 			return false, nil, errors.New("StageAllocation execution sequence is retired")
 		}
+		if admission.store != nil && admission.store.recoveryDrain {
+			return false, nil, ErrExecutionDrainUnproven
+		}
 		// A backend failure cannot reopen an allocation, including on another profile.
 		if admission.store != nil {
 			if err := admission.store.saveHighest(verified.Authority); err != nil {
+				if errors.Is(err, ErrExecutionHistoryFull) {
+					return false, nil, err
+				}
 				return false, nil, admission.failStateLocked(err)
 			}
 		}

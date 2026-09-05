@@ -70,7 +70,7 @@ func TestExecutionFloorRPCPersistsWhileBackendIsBlockedAndReplays(t *testing.T) 
 	}
 	recovered := durableExecutionFixture(t, directory, false, "", 10, f.clock.Now())
 	assertFloorCommandsRejected(t, recovered.supervisor, recovered.authority(t, 1, 11))
-	prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+	assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 1, 12))
 }
 
 func TestExecutionFloorRPCRejectsUntrustedAndNonDurableInstallation(t *testing.T) {

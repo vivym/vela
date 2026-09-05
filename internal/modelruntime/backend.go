@@ -67,6 +67,8 @@ type FakeRuntime struct {
 	state           velav1.ModelRuntimeExecutionState
 	sequence        int64
 	activeDigest    [32]byte
+	drainedDigest   [32]byte
+	drainedThrough  int64
 	cancelRequested bool
 	outputManifest  []byte
 	outputSize      int64
@@ -122,6 +124,9 @@ func (runtime *FakeRuntime) Prepare(
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
+	if runtime.drainedThrough > 0 && authority.Authority.GetExecutionSequence() <= runtime.drainedThrough {
+		return errors.New("fake ModelRuntime execution was drained")
+	}
 	if runtime.activeDigest != ([32]byte{}) && runtime.activeDigest != authority.Digest &&
 		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED &&
 		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED &&
@@ -143,6 +148,9 @@ func (runtime *FakeRuntime) Start(
 ) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
+	if runtime.drainedThrough > 0 && authority.Authority.GetExecutionSequence() <= runtime.drainedThrough {
+		return errors.New("fake ModelRuntime execution was drained")
+	}
 	if runtime.activeDigest != authority.Digest ||
 		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED {
 		return errors.New("fake ModelRuntime StageAttempt is not prepared")
@@ -159,6 +167,9 @@ func (runtime *FakeRuntime) Cancel(
 ) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
+	if runtime.drainedThrough > 0 && authority.Authority.GetExecutionSequence() <= runtime.drainedThrough {
+		return errors.New("fake ModelRuntime execution was drained")
+	}
 	if runtime.activeDigest != authority.Digest {
 		return errors.New("fake ModelRuntime cancellation authority is stale")
 	}
@@ -179,6 +190,9 @@ func (runtime *FakeRuntime) Status(
 ) (BackendStatus, error) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
+	if runtime.drainedThrough > 0 && authority.Authority.GetExecutionSequence() <= runtime.drainedThrough && authority.Digest != runtime.activeDigest {
+		return BackendStatus{}, errors.New("fake ModelRuntime execution was drained")
+	}
 	if runtime.activeDigest != authority.Digest && runtime.activeDigest != stableDigest(authority) {
 		// Authority renewal changes the signed envelope digest. The Service already
 		// proves the stable execution identity before presenting it to the backend.
@@ -204,6 +218,9 @@ func (runtime *FakeRuntime) Seal(
 ) (SealedOutput, error) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
+	if runtime.drainedThrough > 0 && authority.Authority.GetExecutionSequence() <= runtime.drainedThrough {
+		return SealedOutput{}, errors.New("fake ModelRuntime execution was drained")
+	}
 	if runtime.activeDigest != authority.Digest {
 		runtime.activeDigest = authority.Digest
 	}
@@ -245,7 +262,7 @@ func (runtime *FakeRuntime) FinishStop() {
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if !runtime.cancelRequested {
+	if !runtime.cancelRequested || runtime.activeDigest == runtime.drainedDigest {
 		return
 	}
 	runtime.state = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED

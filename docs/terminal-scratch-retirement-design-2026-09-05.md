@@ -39,8 +39,14 @@ removes direct filesystem deletion from command assembly: unproven retirement
 preserves scratch and confirmed materialization records and pauses subsequent
 Worker discovery. This contains the premature cleanup path; it does not supply
 drain evidence or restore steady-state progress.
+The [durable Runtime drain increment](durable-execution-drain-evidence-2026-09-06.md)
+now retains bounded execution history before backend entry and checkpoints the
+explicit backend writer-drain contract before durable Services release terminal
+slots. FakeRuntime implements that contract; ProcessBackend does not yet.
+Unproven recovered records block new execution/readiness. Runtime journal schema
+2 rejects schema 1 pending validated migration and historical writer recovery.
 Default command assembly, automatic startup reconciliation,
-execution drain and the retirement journal below remain open. These
+ProcessBackend/all-member drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
 
@@ -78,8 +84,10 @@ neither gates Worker input resolution nor establishes backend descendant quiesce
 retry, and `Agent.Cancel` explicitly returns `AllStopped=false` after signaling
 members. `Agent.Status` checks every member's runtime identity, authority digest,
 and STOPPED state, but `ModelRuntime.Status` rejects expired authority before
-reading that state. A process restart does not currently supply durable proof
-that a historical execution stopped.
+reading that state. A process restart cannot supply proof that a historical
+execution stopped. Schema-2 Runtime state can replay a checkpoint actually
+persisted before restart; a pending record remains unproven and blocks new
+execution/readiness.
 
 The [input cancellation repair](input-stop-evidence-2026-09-05.md) now makes a
 matching Stop visible during input resolution and prevents Runtime admission

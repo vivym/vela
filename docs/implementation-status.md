@@ -191,6 +191,18 @@ hold the command gate. Old drivers without negotiation reject inspection.
 Full unit, related-module race, lint, generated checks, Linux amd64 compilation
 and Linux arm64 non-root process/channel tests pass. Backend writer drain and
 durable retirement remain open, as does the optional CPU-media adapter capability.
+The [durable Runtime execution drain](durable-execution-drain-evidence-2026-09-06.md)
+adds schema-2 local execution history, with 32 retained records and no eviction.
+Durable Services checkpoint the explicit backend drain contract before releasing
+Seal, STOPPED, reusable FAILED or partially failed Prepare identities. FakeRuntime
+supports the contract; unsupported ProcessBackend drain retains the slot.
+Recovered pending records block new Prepare/readiness; exact persisted checkpoints
+remain inspectable across Runtime epochs. CPU writer-handle, failure, renewal,
+crash-recovery, backpressure and transport regressions pass, alongside full unit,
+related race, lint and Linux non-root checks. The local drain API has no member
+RPC yet; ProcessBackend drain, input exclusion/retirement orchestration, sealed
+receipt recovery and checkpoint reclamation remain open. Default Worker scratch
+retention remains enabled. Schema-1 Runtime journals require validated migration.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

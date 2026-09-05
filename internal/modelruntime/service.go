@@ -76,13 +76,14 @@ type Service struct {
 const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
-	verified       stageauthority.Verified
-	state          velav1.ModelRuntimeExecutionState
-	workerReusable bool
-	startedAt      time.Time
-	timer          Timer
-	timerCancel    chan struct{}
-	receipt        *velav1.LocalMaterializationReceipt
+	verified        stageauthority.Verified
+	state           velav1.ModelRuntimeExecutionState
+	workerReusable  bool
+	reuseAfterDrain bool
+	startedAt       time.Time
+	timer           Timer
+	timerCancel     chan struct{}
+	receipt         *velav1.LocalMaterializationReceipt
 }
 
 func NewService(config Config) (*Service, error) {
@@ -247,7 +248,7 @@ func (service *Service) PrepareStage(
 	replayed, release, err := service.executionAdmission().prepare(service, &verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
-		if errors.Is(err, errSharedSlotBusy) {
+		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) {
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		}
 		response.Detail = boundedDetail(err.Error())
@@ -261,7 +262,13 @@ func (service *Service) PrepareStage(
 		return response, nil
 	}
 	if err := service.backend.Prepare(ctx, verified, request.GetExecutionSpec()); err != nil {
-		service.clearActive(verified.Digest)
+		service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
+		service.setReuseAfterDrain(verified.Digest, true)
+		if drainErr := service.checkpointExecutionDrain(ctx, verified); drainErr == nil {
+			service.clearActive(verified.Digest)
+		} else {
+			err = errors.Join(err, drainErr)
+		}
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
@@ -452,6 +459,14 @@ func (service *Service) Status(
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
+	currentState := service.activeState()
+	if terminalState(currentState) && (!terminalState(status.State) ||
+		(currentState == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED && status.State != currentState)) {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.State = currentState
+		response.Detail = "backend status contradicts terminal execution"
+		return response, nil
+	}
 	if receipt := service.activeReceipt(verified.Digest); receipt != nil {
 		if (status.LocalReceiptID != "" && status.LocalReceiptID != receipt.GetReceiptId()) ||
 			(len(status.LocalReceiptDigest) != 0 &&
@@ -464,9 +479,17 @@ func (service *Service) Status(
 		status.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
 	}
 	service.setActiveState(verified.Digest, status.State)
+	service.setReuseAfterDrain(verified.Digest, status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
+		(status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable))
 	if status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 		(status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED &&
 			status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable) {
+		if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.State = status.State
+			response.Detail = boundedDetail(err.Error())
+			return response, nil
+		}
 		service.setActiveWorkerReusable(verified.Digest)
 	}
 	if terminalState(status.State) {
@@ -532,10 +555,30 @@ func (service *Service) SealOutput(
 		return response, nil
 	}
 	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
+		if service.activeReceipt(verified.Digest) == nil {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.State = state
+			response.Detail = "sealed output lacks its retained receipt"
+			return response, nil
+		}
+		if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.State = state
+			response.Detail = boundedDetail(err.Error())
+			return response, nil
+		}
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = state
 		response.Receipt = service.activeReceipt(verified.Digest)
+		service.rememberSealedReceipt(verified.Digest, response.Receipt)
+		service.clearActive(verified.Digest)
 		response.Detail = "output already sealed"
+		return response, nil
+	}
+	if terminalState(state) {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.State = state
+		response.Detail = "terminal StageAttempt cannot seal new output"
 		return response, nil
 	}
 	status, err := service.backend.Status(ctx, verified)
@@ -568,6 +611,19 @@ func (service *Service) SealOutput(
 		ReceiptId: receiptID.String(), ManifestSha256: digest[:],
 		TotalSizeBytes: sealed.TotalSizeBytes, SealedAt: timestamppb.New(service.clock.Now()),
 		OutputManifestJson: append([]byte(nil), sealed.OutputManifestJSON...),
+	}
+	// Seal cannot be repeated if a subsequent drain or fsync fails. Retain the
+	// receipt and execution slot until the exact drain checkpoint is durable.
+	service.mu.Lock()
+	service.active.state = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+	service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
+	service.cancelWatchdogLocked()
+	service.mu.Unlock()
+	if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
 	}
 	service.rememberSealedReceipt(verified.Digest, receipt)
 	service.clearActive(verified.Digest)
@@ -722,6 +778,17 @@ func (service *Service) setActiveWorkerReusable(digest [32]byte) {
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == digest {
 		service.active.workerReusable = true
+	}
+}
+
+func (service *Service) setReuseAfterDrain(digest [32]byte, reusable bool) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.active != nil && service.active.verified.Digest == digest {
+		service.active.reuseAfterDrain = reusable
+		if !reusable {
+			service.active.workerReusable = false
+		}
 	}
 }
 

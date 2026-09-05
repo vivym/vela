@@ -37,6 +37,11 @@ func TestDurableExecutionStatePersistsBeforeBackendAndRestoresRestrictions(t *te
 	if state.Highest != 10 || state.Floor != 0 || len(state.Authority) == 0 {
 		t.Fatalf("backend entered before durable watermark: %+v", state)
 	}
+	var retained []retainedExecutionDocument
+	if err := json.Unmarshal(state.Executions, &retained); err != nil || len(retained) != 1 || retained[0].Drain != nil ||
+		!bytes.Equal(retained[0].Authority, state.Authority) {
+		t.Fatalf("backend entered without a retained pending execution: %+v %v", retained, err)
+	}
 	checkpoint, err := f.supervisor.InstallExecutionFloor(context.Background(), f.disposition(t))
 	if err != nil || !checkpoint.Durable || checkpoint.Cutoff != 11 {
 		t.Fatalf("durable floor: %+v %v", checkpoint, err)
@@ -58,7 +63,7 @@ func TestDurableExecutionStatePersistsBeforeBackendAndRestoresRestrictions(t *te
 	recovered := durableExecutionFixture(t, directory, false, "", 10, f.clock.Now().Add(2*time.Minute))
 	assertFloorCommandsRejected(t, recovered.supervisor, recovered.authorities[0])
 	assertFloorCommandsRejected(t, recovered.services[1], recovered.authorities[1])
-	prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 0, 12))
+	assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 0, 12))
 	if err := recovered.supervisor.Shutdown(); err != nil {
 		t.Fatal(err)
 	}
@@ -66,12 +71,12 @@ func TestDurableExecutionStatePersistsBeforeBackendAndRestoresRestrictions(t *te
 	// Even an erroneously reused Runtime epoch cannot reset a consumed sequence.
 	again := durableExecutionFixture(t, directory, false, "", 10, recovered.clock.Now())
 	old, err := again.supervisor.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{
-		Authority: again.authority(t, 1, 12), ExecutionSpec: runtimeExecutionSpec(),
+		Authority: again.authority(t, 1, 10), ExecutionSpec: runtimeExecutionSpec(),
 	})
 	if err != nil || old.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
 		t.Fatalf("recovered watermark reset across profiles: %v %v", old, err)
 	}
-	prepareFloorRuntime(t, again.supervisor, again.authority(t, 1, 13))
+	assertRecoveryDrainBlocks(t, again, again.authority(t, 1, 13))
 }
 
 func TestDurableExecutionStateRequiresExplicitInitializationAndExclusiveOwnership(t *testing.T) {
@@ -324,7 +329,11 @@ func TestDurableExecutionStateWriteFailurePreventsPrepareAndRenewal(t *testing.T
 			if _, err := recovered.supervisor.InstallExecutionFloor(context.Background(), recovered.disposition(t)); err != nil {
 				t.Fatal(err)
 			}
-			prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			if operation == "floor" {
+				assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 1, 12))
+			} else {
+				prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			}
 		})
 	}
 }
@@ -557,7 +566,11 @@ func TestDurableExecutionStateRecoversUncertainRenameWithoutReopeningAdmission(t
 					t.Fatalf("uncertain allocation reopened: %v %v", response, err)
 				}
 			}
-			prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			if operation == "prepare" {
+				assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 1, 12))
+			} else {
+				prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			}
 		})
 	}
 }
@@ -583,7 +596,7 @@ func TestDurableExecutionStateChecksLifetimeAfterPersistence(t *testing.T) {
 	if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
 		t.Fatalf("expired entry reopened on recovery: %v %v", response, err)
 	}
-	prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 11))
+	assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 1, 11))
 }
 
 func TestDurableExecutionStateRejectsReplacementAfterRename(t *testing.T) {
@@ -719,7 +732,11 @@ func TestDurableExecutionStateSurvivesProcessExitBeforeRuntimeReturn(t *testing.
 			} else {
 				assertFloorCommandsRejected(t, recovered.supervisor, recovered.authorities[1])
 			}
-			prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			if mode == "prepare" {
+				assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 1, 12))
+			} else {
+				prepareFloorRuntime(t, recovered.supervisor, recovered.authority(t, 1, 12))
+			}
 		})
 	}
 }
@@ -787,6 +804,7 @@ type durableExecutionStateDocument struct {
 	Authority     []byte          `json:"highest_authority"`
 	Floor         int64           `json:"floor"`
 	Disposition   []byte          `json:"floor_disposition"`
+	Executions    json.RawMessage `json:"executions"`
 }
 
 func readDurableExecutionState(t *testing.T, directory string) durableExecutionStateDocument {
