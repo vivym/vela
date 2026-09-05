@@ -64,6 +64,13 @@ has not been changed by this campaign; subsequent lifecycle work remains open.
 
 ## Current closure priorities
 
+The schema-89 [terminal history reader](terminal-history-evidence-2026-09-05.md)
+now covers allocated but undelivered retries and historical Runtime scopes in
+local PostgreSQL tests. Its output is internal candidate evidence; complete
+signed-authority matching, disposition signing and local writer exclusion remain
+open. Control's exact database startup privilege contract now requires schema 89.
+This incremental result does not supersede the schema-88 campaign receipts.
+
 1. Complete Worker namespace gating and drain all input resolvers/download writers
    before scratch deletion. Runtime RPC ordering alone cannot exclude these users.
 2. Establish complete backend process stop proof, typed historical terminal

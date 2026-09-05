@@ -323,6 +323,7 @@ func verifyStageWorkerControlPrivileges(
 			"vela_complete_stage_worker_acquire(jsonb)",
 			"vela_read_stage_authority_snapshot(uuid,bigint)",
 			"vela_read_stage_allocation_execution_sequence(uuid,uuid)",
+			"vela_read_stage_terminal_history(jsonb)",
 			"vela_is_stage_failure_authority_replayable(jsonb)",
 			"vela_read_stage_authority_member_epochs(uuid)",
 			"vela_start_stage_worker_command(jsonb)",

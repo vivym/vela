@@ -343,11 +343,11 @@ func TestStageFailureReplayMigrationRoundTripPreservesEntrypoints(t *testing.T) 
 	if err := veladb.VerifyRole(context.Background(), workerPool, veladb.RoleStageWorkerControl); err == nil {
 		t.Fatal("new control startup accepted schema86 without execution sequence capability")
 	}
-	if err := goose.UpTo(database.Admin, migrations, 88); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 89); err != nil {
 		t.Fatal(err)
 	}
 	if err := veladb.VerifyRole(context.Background(), workerPool, veladb.RoleStageWorkerControl); err != nil {
-		t.Fatalf("schema88 role contract: %v", err)
+		t.Fatalf("schema89 role contract: %v", err)
 	}
 	if err := goose.DownTo(database.Admin, migrations, 85); err != nil {
 		t.Fatal(err)
