@@ -146,6 +146,20 @@ func (gate *FileAssignmentAdmission) retireTerminalDirectories(ctx context.Conte
 					return err
 				}
 			}
+		} else {
+			// A crash can leave an unlink visible without its parent being synced.
+			// Persist that absence before the journal can acknowledge RETIRED.
+			parent := gate.files.roots[directories[index].Root]
+			if len(binding.components) > 0 {
+				parent = binding.components[len(binding.components)-1].root
+			}
+			syncParent := gate.retirementSyncAbsentParent
+			if syncParent == nil {
+				syncParent = func(root *os.Root) error { return syncScratchDirectory(root, ".") }
+			}
+			if err := syncParent(parent); err != nil {
+				return err
+			}
 		}
 		first := 0
 		if directories[index].Root == 1 {

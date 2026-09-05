@@ -94,6 +94,9 @@ expiry or Runtime profile changes. It cannot promote INTENT without fresh
 history and complete proof. Replaced/new namespaces reject. Do not remove or
 rewrite the journal or root markers to bypass recovery. Completed records are
 still bounded and retained; journal capacity reclamation is not implemented.
+Missing namespaces still require syncing their bound surviving parent before
+RETIRED. A sync error retains READY and must not be replaced by a manual phase
+edit merely because the directory is absent.
 
 Worker admission journal is now schema 4, independently of materialization
 journal schema 2. Explicit `AssignmentAdmissionConfig.UpgradeV3` or `UpgradeV2`

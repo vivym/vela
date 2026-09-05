@@ -70,6 +70,13 @@ relative to bound `os.Root` handles. The shared `stage-runs` parent and unrelate
 input/output namespaces remain. A deletion failure leaves `READY`; a final
 journal sync failure requires reopen before further action.
 
+The follow-up audit over `6b5151a` found that a missing namespace during recovery
+could bypass directory sync: an earlier process may have unlinked it without
+persisting the parent before exiting. Recovery now syncs the nearest existing
+parent through its bound handle even when the target is already absent. Sync
+failure leaves `READY`; it cannot acknowledge `RETIRED`. This also covers a
+missing shared `stage-runs` ancestor by syncing the bound input root.
+
 The retained record bound is `MaxRecords`, with no eviction, plus the existing
 16 MiB whole-journal bound. Each encoded proof is separately bounded. Completed
 records are retained. This increment does not establish sustained reclamation
@@ -103,6 +110,15 @@ intent, lost floor replies, READY sync/reply failures, concurrent replay, bounde
 history, explicit schema migration, corrupted proof/signature/member/contract,
 directory replacement and permissions. A subprocess exits directly after input
 deletion; its parent reopens `READY` and finishes only the remaining owned files.
+
+`TestTerminalScratchRetirementSyncsMissingNamespaceBeforeRetired` first failed
+for missing input, input-parent and output namespaces on the pre-fix path. It
+models unlink without parent sync, reopens the Worker journal with Runtime
+sockets closed, injects parent-sync failure and checks that `READY` is retained.
+A successful retry must sync the correct surviving parent before `RETIRED` and
+preserve unrelated data. The fix passes the full unit suite, Worker race, lint
+and the non-root Linux selection below. This is filesystem protocol fault
+injection; it is not a physical power-loss or storage-device durability test.
 
 The PostgreSQL regression allocates a retry and cancels before its execution
 envelope is ever signed. It now follows authenticated Control history through

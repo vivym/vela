@@ -291,7 +291,9 @@ proofs with actual inode-bound scratch cleanup. Worker journal 4 persists
 INTENT/READY/RETIRED; schema 3 or 2 requires explicit validated upgrade. READY
 resumes partial deletion after process exit and query/profile/epoch changes
 without contacting a backend. The retired StageRun stays closed while unrelated
-later work can enter. Mixed two-member UDS, PostgreSQL-to-filesystem integration,
+later work can enter. Recovery now also syncs the bound surviving parent when a
+namespace is already missing; injected sync failure preserves READY before any
+RETIRED acknowledgement. Mixed two-member UDS, PostgreSQL-to-filesystem integration,
 terminal materialization rejection/replay, corrupted evidence, directory
 replacement, full unit, Worker race, lint and non-root Linux checks pass. Runtime
 journal stays 4, database 90 and launch/Fleet 2. Default wiring, unknown historical

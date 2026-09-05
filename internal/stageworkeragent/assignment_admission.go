@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -79,15 +80,16 @@ type AssignmentAdmissionSnapshot struct {
 }
 
 type FileAssignmentAdmission struct {
-	mu                       sync.Mutex
-	files                    *assignmentAdmissionFiles
-	state                    assignmentAdmissionState
-	validator                *stageauthority.Validator
-	bindings                 []AdmissionRuntimeBinding
-	maxSkew                  time.Duration
-	active                   *AssignmentAdmission
-	failed                   error
-	retirementAfterDirectory func(int) error
+	mu                         sync.Mutex
+	files                      *assignmentAdmissionFiles
+	state                      assignmentAdmissionState
+	validator                  *stageauthority.Validator
+	bindings                   []AdmissionRuntimeBinding
+	maxSkew                    time.Duration
+	active                     *AssignmentAdmission
+	failed                     error
+	retirementAfterDirectory   func(int) error
+	retirementSyncAbsentParent func(*os.Root) error
 }
 
 // AssignmentAdmission owns an in-process input writer slot. Release is called

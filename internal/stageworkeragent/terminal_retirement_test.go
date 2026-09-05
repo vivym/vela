@@ -267,6 +267,89 @@ func TestTerminalScratchRetirementSchema3UpgradePreservesEvidence(t *testing.T) 
 	}
 }
 
+func TestTerminalScratchRetirementSyncsMissingNamespaceBeforeRetired(t *testing.T) {
+	for _, missing := range []string{"input", "input-parent", "output"} {
+		t.Run(missing, func(t *testing.T) {
+			f := newAssignmentFloorFixture(t)
+			gate := f.open(t)
+			group := startFloorCollectorRuntimes(t, f, t.TempDir(), true, false)
+			paths := retirementScratch(t, f)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			writes := 0
+			restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
+				writes++
+				err := sync()
+				if writes == 2 {
+					cancel()
+				}
+				return err
+			})
+			if _, err := terminalRetirer(t, gate, f).Retire(ctx, f.disposition, nil, drainCollectorTargets(f)); !errors.Is(err, context.Canceled) {
+				t.Fatalf("READY checkpoint: %v", err)
+			}
+			restore()
+			assertRetirementScratch(t, paths, true)
+			parent := filepath.Join(f.admissionFixture.config.InputRoot, "stage-runs")
+			target := filepath.Join(parent, f.disposition.StageRunId)
+			switch missing {
+			case "input-parent":
+				target, parent = parent, f.admissionFixture.config.InputRoot
+			case "output":
+				target, parent = filepath.Dir(paths[1]), f.admissionFixture.config.OutputRoot
+			}
+			// Model the visible filesystem after unlink but before its parent sync.
+			// A process restart does not make that deletion power-loss durable.
+			if err := os.RemoveAll(target); err != nil {
+				t.Fatal(err)
+			}
+			parent, err := filepath.EvalSymlinks(parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := gate.Close(); err != nil {
+				t.Fatal(err)
+			}
+			group.close()
+			gate = f.open(t)
+			retirer := terminalRetirer(t, gate, f)
+			stageRunID := uuid.MustParse(f.disposition.StageRunId)
+			syncErr := errors.New("injected missing-parent sync failure")
+			syncs := 0
+			restore = stageworkeragent.SetTerminalRetirementAbsentParentSyncHookForTest(gate, func(name string, _ func() error) error {
+				syncs++
+				if name != parent {
+					t.Errorf("sync parent = %s, want %s", name, parent)
+				}
+				return syncErr
+			})
+			result, err := retirer.Resume(t.Context(), stageRunID)
+			restore()
+			if !errors.Is(err, syncErr) || result.Phase != stageworkeragent.TerminalRetirementReady || syncs != 1 {
+				t.Fatalf("absence bypassed directory durability: %+v %v, syncs=%d", result, err, syncs)
+			}
+			if state := admissionSnapshot(t, gate); state.Retirements[0].Phase != stageworkeragent.TerminalRetirementReady {
+				t.Fatal("failed namespace sync persisted RETIRED")
+			}
+			if missing != "output" {
+				assertRetirementScratch(t, paths[1:], true)
+			}
+			synced := make(map[string]bool)
+			restore = stageworkeragent.SetTerminalRetirementAbsentParentSyncHookForTest(gate, func(name string, sync func() error) error {
+				synced[name] = true
+				return sync()
+			})
+			result, err = retirer.Resume(t.Context(), stageRunID)
+			restore()
+			if err != nil || result.Phase != stageworkeragent.TerminalRetirementRetired || !synced[parent] {
+				t.Fatalf("durable absence recovery: %+v %v, synced=%v", result, err, synced)
+			}
+			assertRetirementScratch(t, paths, false)
+			assertRetirementScratch(t, []string{filepath.Join(f.admissionFixture.config.InputRoot, "unrelated", "keep"), filepath.Join(f.admissionFixture.config.OutputRoot, "unrelated", "keep")}, true)
+		})
+	}
+}
+
 func TestTerminalScratchRetirementRejectsDirectoryReplacementAndNewNamespaces(t *testing.T) {
 	for _, fault := range []string{"input", "output", "symlink", "appeared", "nested-link", "writable"} {
 		t.Run(fault, func(t *testing.T) {

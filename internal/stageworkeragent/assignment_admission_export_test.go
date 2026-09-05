@@ -34,6 +34,20 @@ func SetTerminalRetirementDirectoryHookForTest(gate *FileAssignmentAdmission, ho
 	}
 }
 
+func SetTerminalRetirementAbsentParentSyncHookForTest(gate *FileAssignmentAdmission, hook func(string, func() error) error) func() {
+	gate.mu.Lock()
+	original := gate.retirementSyncAbsentParent
+	gate.retirementSyncAbsentParent = func(root *os.Root) error {
+		return hook(root.Name(), func() error { return syncScratchDirectory(root, ".") })
+	}
+	gate.mu.Unlock()
+	return func() {
+		gate.mu.Lock()
+		defer gate.mu.Unlock()
+		gate.retirementSyncAbsentParent = original
+	}
+}
+
 func CorruptTerminalRetirementForTest(document []byte, fault string) ([]byte, error) {
 	var state assignmentAdmissionState
 	if err := json.Unmarshal(document, &state); err != nil {
