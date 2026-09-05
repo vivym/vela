@@ -89,6 +89,10 @@ The subsequent [ProcessBackend teardown repair](process-backend-teardown-evidenc
 passes unit, lint, cross-build, macOS race and Linux CPU checks. It preserves
 residency and reports incomplete output drain; it does not close terminal
 scratch retirement or replace the earlier source-bound load receipts.
+The [input Stop repair](input-stop-evidence-2026-09-05.md) cancels pending
+resolution and rejects late resolver success before Runtime admission. Its unit,
+related-module race and lint checks pass; persistent namespace exclusion and
+complete terminal scratch retirement remain open.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

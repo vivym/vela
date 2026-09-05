@@ -81,6 +81,9 @@ func (resolver *HTTPSRootInputResolver) Resolve(
 	}
 	defer func() { _ = root.Close() }()
 	for index, input := range inputs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		fetch := assignment.GetRootInputFetches()[index]
 		var digest [sha256.Size]byte
 		copy(digest[:], input.GetSha256())
@@ -101,7 +104,7 @@ func (resolver *HTTPSRootInputResolver) Resolve(
 			return fmt.Errorf("materialize H3 root input %d: %w", index, err)
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 func (resolver *HTTPSRootInputResolver) download(
@@ -127,6 +130,9 @@ func (resolver *HTTPSRootInputResolver) download(
 	}
 	if response.ContentLength >= 0 && response.ContentLength != expectedSize {
 		return errors.New("H3 root input Content-Length does not match execution spec")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	directory := path.Dir(finalPath)
 	if err := root.MkdirAll(directory, 0o700); err != nil {
@@ -160,6 +166,9 @@ func (resolver *HTTPSRootInputResolver) download(
 	}
 	if written != expectedSize || !equalDigest(digest.Sum(nil), expectedDigest) {
 		return errors.New("H3 root input failed exact integrity verification")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := root.Link(pendingPath, finalPath); err != nil {
 		verified, verifyErr := verifyRootInputFile(root, finalPath, expectedDigest, expectedSize)

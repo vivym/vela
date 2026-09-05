@@ -38,6 +38,13 @@ and STOPPED state, but `ModelRuntime.Status` rejects expired authority before
 reading that state. A process restart does not currently supply durable proof
 that a historical execution stopped.
 
+The [input cancellation repair](input-stop-evidence-2026-09-05.md) now makes a
+matching Stop visible during input resolution and prevents Runtime admission
+after cancellation, even when Resolve returns nil. Its ephemeral input slot
+does not persist a watermark, prohibit later replay, or authorize deletion.
+Resolver completion is still required before treating its local writers as
+drained; Stop returns without asserting AllStopped.
+
 ## Recommended boundary
 
 Reuse the authenticated Connect transport, with a typed read-only request and

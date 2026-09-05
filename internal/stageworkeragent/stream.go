@@ -40,10 +40,17 @@ type StreamAgent struct {
 	materialization   *streamMaterialization
 	materializationMu sync.Mutex
 	assignmentMu      sync.Mutex
+	inputMu           sync.Mutex
+	pendingInputs     *pendingAssignmentInputs
 	runtimeMu         sync.Mutex
 	startingAuthority *velav1.StageAuthority
 	mu                sync.Mutex
 	active            *velav1.StageAuthority
+}
+
+type pendingAssignmentInputs struct {
+	authorityDigest [sha256.Size]byte
+	cancel          context.CancelFunc
 }
 
 type AssignmentExecutionResult struct {
@@ -152,6 +159,9 @@ func (agent *StreamAgent) RunControlCommands(ctx context.Context) error {
 }
 
 func (agent *StreamAgent) handleUnsolicitedStop(ctx context.Context, stop *velav1.StopStage) error {
+	if canceled, err := agent.cancelPendingInputs(stop); canceled || err != nil {
+		return err
+	}
 	agent.runtimeMu.Lock()
 	defer agent.runtimeMu.Unlock()
 	stopDigest, err := stageauthority.Digest(stop.GetAuthority())
@@ -179,7 +189,7 @@ func (agent *StreamAgent) ExecuteAssignment(
 	assignment *velav1.StageAssignment,
 ) (AssignmentExecutionResult, error) {
 	result := AssignmentExecutionResult{}
-	if agent == nil || agent.runtime == nil || agent.control == nil {
+	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
 		return result, errors.New("missing configured Stage Worker stream Agent")
 	}
 	agent.assignmentMu.Lock()
@@ -187,6 +197,26 @@ func (agent *StreamAgent) ExecuteAssignment(
 	if agent.activeAuthority() != nil {
 		return result, ErrStageWorkerBusy
 	}
+	if _, _, err := agent.runtime.validateAssignment(assignment); err != nil {
+		return result, err
+	}
+	digest, err := stageauthority.Digest(assignment.GetAuthority())
+	if err != nil {
+		return result, err
+	}
+	ctx, cancelInputs := context.WithCancel(ctx)
+	inputs := &pendingAssignmentInputs{authorityDigest: digest, cancel: cancelInputs}
+	agent.inputMu.Lock()
+	agent.pendingInputs = inputs
+	agent.inputMu.Unlock()
+	defer func() {
+		cancelInputs()
+		agent.inputMu.Lock()
+		if agent.pendingInputs == inputs {
+			agent.pendingInputs = nil
+		}
+		agent.inputMu.Unlock()
+	}()
 	if agent.materialization != nil {
 		if err := agent.materialization.journal.EnsureCapacity(ctx); err != nil {
 			return result, fmt.Errorf("reserve local materialization recovery capacity: %w", err)
@@ -202,6 +232,16 @@ func (agent *StreamAgent) ExecuteAssignment(
 		}
 	}
 	agent.runtimeMu.Lock()
+	// Stop either closes input admission here or follows the serialized Runtime
+	// path after this transition. It never waits for the input download itself.
+	agent.inputMu.Lock()
+	inputErr := ctx.Err()
+	agent.pendingInputs = nil
+	agent.inputMu.Unlock()
+	if inputErr != nil {
+		agent.runtimeMu.Unlock()
+		return result, inputErr
+	}
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)
 	result.StartBarrierResult = barrier
 	if err != nil {
@@ -537,9 +577,30 @@ func (agent *StreamAgent) HandleStop(
 	if agent == nil {
 		return CancellationResult{}, errors.New("missing Stage Worker stream Agent")
 	}
+	if canceled, err := agent.cancelPendingInputs(stop); canceled || err != nil {
+		return CancellationResult{}, err
+	}
 	agent.runtimeMu.Lock()
 	defer agent.runtimeMu.Unlock()
 	return agent.handleStop(ctx, stop)
+}
+
+func (agent *StreamAgent) cancelPendingInputs(stop *velav1.StopStage) (bool, error) {
+	if stop.GetReason() == velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_UNSPECIFIED {
+		return false, errors.New("invalid Stage Worker StopStage command")
+	}
+	digest, err := stageauthority.Digest(stop.GetAuthority())
+	if err != nil {
+		return false, errors.New("invalid Stage Worker StopStage authority")
+	}
+	agent.inputMu.Lock()
+	defer agent.inputMu.Unlock()
+	if agent.pendingInputs == nil || agent.pendingInputs.authorityDigest != digest {
+		return false, nil
+	}
+	agent.pendingInputs.cancel()
+	// Cancellation signals the resolver; its return establishes local drain.
+	return true, nil
 }
 
 func (agent *StreamAgent) handleStop(

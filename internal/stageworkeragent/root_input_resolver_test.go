@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,6 +94,58 @@ func TestHTTPSRootInputResolverRejectsDigestDriftWithoutPublishingFile(t *testin
 		t.Fatalf("digest-drift material was published: %v", err)
 	}
 }
+
+func TestHTTPSRootInputResolverRejectsBodyCompletedAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	payload := []byte("complete but canceled input")
+	digest := sha256.Sum256(payload)
+	fixture := newSingleMemberMaterializationFixture(t)
+	assignment := rootInputAssignment(t, fixture.assignment, digest, int64(len(payload)), "https://example.test/input")
+	inputRoot := t.TempDir()
+	client := &http.Client{Transport: rootInputTransportFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK, ContentLength: int64(len(payload)), Request: request,
+			Body: &cancelingRootInputBody{Reader: bytes.NewReader(payload), cancel: cancel},
+		}, nil
+	})}
+	resolver, err := stageworkeragent.NewHTTPSRootInputResolver(stageworkeragent.HTTPSRootInputResolverConfig{
+		InputRoot: inputRoot, Client: client,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.Resolve(ctx, assignment); !errors.Is(err, context.Canceled) {
+		t.Errorf("Resolve after body canceled context = %v, want context.Canceled", err)
+	}
+	if err := filepath.WalkDir(inputRoot, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.Type().IsRegular() {
+			t.Errorf("canceled body published or retained input: %s", path)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type rootInputTransportFunc func(*http.Request) (*http.Response, error)
+
+func (transport rootInputTransportFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+type cancelingRootInputBody struct {
+	io.Reader
+	cancel context.CancelFunc
+}
+
+func (body *cancelingRootInputBody) Read(payload []byte) (int, error) {
+	n, err := body.Reader.Read(payload)
+	body.cancel()
+	return n, err
+}
+
+func (*cancelingRootInputBody) Close() error { return nil }
 
 func rootInputAssignment(
 	t *testing.T,
