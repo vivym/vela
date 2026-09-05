@@ -10,13 +10,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/h3mockbackend"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
@@ -77,9 +80,10 @@ type Config struct {
 	Mode      Mode
 	// Stdin must support read deadlines when ctx is cancellable so cancellation
 	// can interrupt an otherwise idle protocol read without leaking a goroutine.
-	Stdin  io.Reader
-	Stdout io.Writer
-	Now    func() time.Time
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Now        func() time.Time
+	Inspection *net.UnixConn
 }
 
 type requestV1 struct {
@@ -159,14 +163,15 @@ type cancelRequestV1 struct {
 }
 
 type responseV1 struct {
-	SchemaVersion int            `json:"schema_version"`
-	RequestID     uint64         `json:"request_id"`
-	Acknowledged  bool           `json:"acknowledged,omitempty"`
-	Initialized   bool           `json:"initialized,omitempty"`
-	Probe         *probeResultV1 `json:"probe,omitempty"`
-	Status        *statusV1      `json:"status,omitempty"`
-	Output        *outputV1      `json:"output,omitempty"`
-	Error         string         `json:"error,omitempty"`
+	SchemaVersion      int            `json:"schema_version"`
+	RequestID          uint64         `json:"request_id"`
+	Acknowledged       bool           `json:"acknowledged,omitempty"`
+	Initialized        bool           `json:"initialized,omitempty"`
+	InspectionProtocol string         `json:"inspection_protocol,omitempty"`
+	Probe              *probeResultV1 `json:"probe,omitempty"`
+	Status             *statusV1      `json:"status,omitempty"`
+	Output             *outputV1      `json:"output,omitempty"`
+	Error              string         `json:"error,omitempty"`
 }
 
 type probeResultV1 struct {
@@ -207,9 +212,16 @@ type session struct {
 	initialization     *initializeV1
 	active             *execution
 	retiredAuthorities map[string]struct{}
+	inspectionEnabled  bool
+	inspection         atomic.Pointer[inspectionSnapshot]
 	scratchRoot        *os.Root
 	inputRoot          *os.Root
 	outputRoot         *os.Root
+}
+
+type inspectionSnapshot struct {
+	digest      string
+	observation driverinspection.Observation
 }
 
 type execution struct {
@@ -294,12 +306,26 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	runtime := &session{
 		component: config.Component, mode: config.Mode, now: config.Now,
 		retiredAuthorities: make(map[string]struct{}),
+		inspectionEnabled:  config.Inspection != nil,
 	}
 	defer func() {
 		if closeErr := runtime.close(); closeErr != nil {
 			runErr = errors.Join(runErr, closeErr)
 		}
 	}()
+	if config.Inspection != nil {
+		inspectionCtx, cancelInspection := context.WithCancel(ctx)
+		inspectionDone := make(chan struct{})
+		go func() {
+			defer close(inspectionDone)
+			// An inspection protocol failure closes this channel only.
+			_ = driverinspection.Serve(inspectionCtx, config.Inspection, runtime.inspect)
+		}()
+		defer func() {
+			cancelInspection()
+			<-inspectionDone
+		}()
+	}
 	reader := bufio.NewReaderSize(config.Stdin, maximumMessageBytes+2)
 	encoder := json.NewEncoder(config.Stdout)
 	encoder.SetEscapeHTML(false)
@@ -393,6 +419,10 @@ func validateRequestShape(request requestV1) error {
 }
 
 func (runtime *session) handle(request requestV1) (responseV1, bool) {
+	// Publish no state during a command. Inspectors cannot see a stale terminal
+	// snapshot while execution or output cleanup is changing it.
+	runtime.inspection.Store(nil)
+	defer runtime.publishInspection()
 	response := responseV1{SchemaVersion: protocolVersion, RequestID: request.RequestID}
 	var err error
 	shutdown := false
@@ -402,6 +432,9 @@ func (runtime *session) handle(request requestV1) (responseV1, bool) {
 		if err == nil {
 			response.Acknowledged = true
 			response.Initialized = true
+			if runtime.inspectionEnabled {
+				response.InspectionProtocol = driverinspection.Protocol
+			}
 		}
 	case operationProbe:
 		response.Probe, err = runtime.probe(request.Probe)
@@ -427,6 +460,24 @@ func (runtime *session) handle(request requestV1) (responseV1, bool) {
 		response.Error = boundedError(err)
 	}
 	return response, shutdown
+}
+
+func (runtime *session) publishInspection() {
+	if runtime.active == nil {
+		return
+	}
+	runtime.inspection.Store(&inspectionSnapshot{
+		digest:      runtime.active.identity.AuthorityDigest,
+		observation: driverinspection.Observation{Known: true, State: string(runtime.active.state), Sequence: runtime.active.sequence},
+	})
+}
+
+func (runtime *session) inspect(digest string) driverinspection.Observation {
+	snapshot := runtime.inspection.Load()
+	if snapshot == nil || snapshot.digest != digest {
+		return driverinspection.Observation{}
+	}
+	return snapshot.observation
 }
 
 func (runtime *session) initialize(initialization *initializeV1) error {

@@ -99,6 +99,9 @@ func TestProcessBackendLoadsOnceAndStaysResidentAcrossAssignments(t *testing.T) 
 				if err := backend.Start(context.Background(), verified); err != nil {
 					t.Fatalf("Start assignment %d: %v", assignment, err)
 				}
+				if observation, err := backend.InspectExecution(context.Background(), verified); err == nil || observation.Known {
+					t.Fatalf("legacy driver supplied inspection without negotiation: %+v %v", observation, err)
+				}
 				status, err := backend.Status(context.Background(), verified)
 				if err != nil || status.State !=
 					velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING {

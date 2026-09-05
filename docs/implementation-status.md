@@ -174,9 +174,17 @@ unsupported backends have no Status fallback. Missing, superseded, evicted or
 restarted records never imply STOPPED. Slow queries do not hold the Service
 execution lock and cannot delay cancellation or watchdog entry. Full unit,
 related-module race, lint, protobuf compatibility, Linux amd64 compilation and
-Linux arm64 non-root transport checks pass. ProcessBackend inspection remains
-open because its existing RPC timeout terminates the resident driver. No
-observation is a durable writer-drain checkpoint or scratch deletion permit.
+Linux arm64 non-root transport checks pass. No observation is a durable
+writer-drain checkpoint or scratch deletion permit.
+The [resident process inspection channel](process-inspection-evidence-2026-09-06.md)
+now gives ProcessBackend a negotiated Unix datagram side channel independent of
+command RPCs. H3 and lab CPU thumbnail mocks publish immutable exact-digest
+snapshots; command execution temporarily reports unknown. Query timeout, late
+responses, malformed packets and backpressure cannot terminate the driver or
+hold the command gate. Old drivers without negotiation reject inspection.
+Full unit, related-module race, lint, generated checks, Linux amd64 compilation
+and Linux arm64 non-root process/channel tests pass. Backend writer drain and
+durable retirement remain open, as does the optional CPU-media adapter capability.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

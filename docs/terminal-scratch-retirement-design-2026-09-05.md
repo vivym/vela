@@ -31,7 +31,8 @@ separate validated migration, not deletion or reinitialization.
 The [read-only inspection RPC](execution-inspection-evidence-2026-09-06.md) now
 provides exact historical observation through Runtime/UDS and authenticated
 member forwarding. FakeRuntime implements the explicit backend capability;
-ProcessBackend inspection remains open. Missing history stays unknown, and no
+ProcessBackend now uses the [independent inspection channel](process-inspection-evidence-2026-09-06.md)
+when the driver negotiates support. Missing history stays unknown, and no
 inspection changes admission, renews authority or certifies writer drain.
 Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
@@ -192,9 +193,13 @@ watchdog, update Service state or mark a Worker reusable, even after observing
 STOPPED. It never yields a durable stopped checkpoint. A future checkpoint
 obtained before restart must be replayed from trusted local storage; without
 that evidence, supervisor recovery must first prove that the old execution and
-its writers cannot still run. The existing ProcessBackend RPC timeout terminates
-the whole resident driver, so it cannot supply the new read-only capability
-without a separate transport/inspection design.
+its writers cannot still run. ProcessBackend uses a separately inherited Unix
+datagram socket for negotiated inspection, with bounded deadlines and exact
+request-ID/digest responses. Its command RPC timeout still terminates the whole
+resident driver; that command path is never used for inspection. The H3 mock
+publishes a copied state snapshot after each command and reports unknown during
+commands. Neither that snapshot nor its STOPPED state establishes a durable
+execution-specific writer-drain checkpoint.
 
 A local retirement intent must retain the exact authority and expected membership
 before they can be forgotten. Persist the control response, namespace admission

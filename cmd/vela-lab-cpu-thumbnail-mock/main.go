@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/h3stagemock"
 	"golang.org/x/sys/unix"
 )
@@ -47,9 +48,17 @@ func run(
 	if protocol != "stdio-json-v1" {
 		return errors.New("VELA_MODEL_DRIVER_PROTOCOL must be stdio-json-v1")
 	}
+	inspection, err := driverinspection.OpenInherited(os.Getenv(driverinspection.Environment))
+	if err != nil {
+		return err
+	}
+	if inspection != nil {
+		defer func() { _ = inspection.Close() }()
+	}
 	return h3stagemock.Run(ctx, h3stagemock.Config{
 		Component: "CPU_MEDIA", Mode: h3stagemock.ModeSuccess,
 		Stdin: input, Stdout: output,
+		Inspection: inspection,
 	})
 }
 

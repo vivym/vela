@@ -51,6 +51,18 @@ initialize -> probe -> prepare -> start -> status -> seal -> shutdown
                                \-> cancel
 ```
 
+An optional read-only inspection channel is separate from this command stream.
+ProcessBackend passes a connected Unix datagram socket at inherited descriptor 3
+and declares `VELA_MODEL_DRIVER_INSPECTION_FD=3`. Supporting commands consume
+that descriptor, mark it close-on-exec, and advertise
+`inspection_protocol: "vela-driver-inspection-v1"` in the successful initialize
+response. No declaration means inspection is unsupported; Status is never a
+fallback. The [inspection protocol and evidence](../process-inspection-evidence-2026-09-06.md)
+define bounded query deadlines, exact digest lookup and late-response rejection.
+The driver reads immutable state snapshots through this channel, reports unknown
+during commands, and never renews authority, touches output files or stops the
+resident model for a query. These observations do not certify writer drain.
+
 Initialization binds the Worker instance/member epochs, DeviceSet and
 membership digests, model residency/runtime epoch, Stage profile revision,
 component revision, one exact local GPU identity, and canonical private

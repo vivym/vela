@@ -82,6 +82,10 @@ docker run --rm --network none --read-only --cap-drop ALL \
 
 ## Remaining Work
 
+The subsequent [resident process inspection channel](process-inspection-evidence-2026-09-06.md)
+implements the separate ProcessBackend/H3 mock capability described below.
+This section records the boundary at the original `ea177a5` checkpoint.
+
 ProcessBackend and CPU-media adapters do not yet implement the optional backend
 inspection capability. In particular, `ProcessBackend.call` terminates the
 resident driver on a canceled request or protocol failure, and H3 mock `status`

@@ -78,10 +78,17 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("prepare H3 Stage mock: %v; stderr=%s", err, stderr.String())
 	}
+	inspection, err := backend.InspectExecution(context.Background(), authority)
+	if err != nil || !inspection.Known || inspection.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED {
+		t.Fatalf("inspect H3 Stage mock prepared state: %+v %v", inspection, err)
+	}
 	renewed := authority
 	renewed.Authority = proto.Clone(authority.Authority).(*velav1.StageAuthority)
 	renewed.Authority.StageVersion++
 	renewed.Digest = sha256.Sum256([]byte("renewed H3 Stage mock authority"))
+	if inspection, err := backend.InspectExecution(context.Background(), renewed); err != nil || inspection.Known {
+		t.Fatalf("inspection installed an unseen renewal: %+v %v", inspection, err)
+	}
 	if err := backend.Start(context.Background(), renewed); err != nil {
 		t.Fatalf("start H3 Stage mock: %v; stderr=%s", err, stderr.String())
 	}
@@ -89,9 +96,18 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {
 		t.Fatalf("H3 Stage mock status=%#v error=%v; stderr=%s", status, err, stderr.String())
 	}
+	if inspection, err := backend.InspectExecution(context.Background(), authority); err != nil || inspection.Known {
+		t.Fatalf("inspection recognized superseded authority: %+v %v", inspection, err)
+	}
 	sealed, err := backend.Seal(context.Background(), renewed)
 	if err != nil || sealed.TotalSizeBytes <= 0 {
 		t.Fatalf("seal H3 Stage mock=%#v error=%v; stderr=%s", sealed, err, stderr.String())
+	}
+	for range 3 {
+		inspection, err := backend.InspectExecution(context.Background(), renewed)
+		if err != nil || !inspection.Known || inspection.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
+			t.Fatalf("inspect H3 Stage mock sealed state: %+v %v", inspection, err)
+		}
 	}
 	var manifest struct {
 		OutputPort   string `json:"output_port"`

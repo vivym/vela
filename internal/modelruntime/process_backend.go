@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/driverinspection"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/strictjson"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -62,15 +63,17 @@ type ProcessBackendConfig struct {
 }
 
 type ProcessBackend struct {
-	command         *exec.Cmd
-	stdin           io.WriteCloser
-	stdout          io.ReadCloser
-	stderr          io.ReadCloser
-	writer          *bufio.Writer
-	responses       chan driverReadResult
-	done            chan struct{}
-	readStop        chan struct{}
-	shutdownTimeout time.Duration
+	command            *exec.Cmd
+	stdin              io.WriteCloser
+	stdout             io.ReadCloser
+	stderr             io.ReadCloser
+	writer             *bufio.Writer
+	responses          chan driverReadResult
+	done               chan struct{}
+	readStop           chan struct{}
+	shutdownTimeout    time.Duration
+	inspection         *driverinspection.Client
+	inspectionProtocol string
 
 	rpcGate   chan struct{}
 	nextID    uint64
@@ -151,14 +154,15 @@ type driverCancelRequestV1 struct {
 }
 
 type driverResponseV1 struct {
-	SchemaVersion int                  `json:"schema_version"`
-	RequestID     uint64               `json:"request_id"`
-	Acknowledged  bool                 `json:"acknowledged,omitempty"`
-	Initialized   bool                 `json:"initialized,omitempty"`
-	Probe         *driverProbeResultV1 `json:"probe,omitempty"`
-	Status        *driverStatusV1      `json:"status,omitempty"`
-	Output        *driverOutputV1      `json:"output,omitempty"`
-	Error         string               `json:"error,omitempty"`
+	SchemaVersion      int                  `json:"schema_version"`
+	RequestID          uint64               `json:"request_id"`
+	Acknowledged       bool                 `json:"acknowledged,omitempty"`
+	Initialized        bool                 `json:"initialized,omitempty"`
+	InspectionProtocol string               `json:"inspection_protocol,omitempty"`
+	Probe              *driverProbeResultV1 `json:"probe,omitempty"`
+	Status             *driverStatusV1      `json:"status,omitempty"`
+	Output             *driverOutputV1      `json:"output,omitempty"`
+	Error              string               `json:"error,omitempty"`
 }
 
 type driverProbeResultV1 struct {
@@ -214,9 +218,21 @@ func NewProcessBackend(
 	if err := configureDriverProcess(command); err != nil {
 		return nil, err
 	}
+	inspectionConn, inspectionChild, err := driverinspection.Pair()
+	if err != nil {
+		return nil, fmt.Errorf("open ModelRuntime inspection channel: %w", err)
+	}
+	defer func() { _ = inspectionChild.Close() }()
+	inspectionOwned := false
+	defer func() {
+		if !inspectionOwned {
+			_ = inspectionConn.Close()
+		}
+	}()
+	command.ExtraFiles = []*os.File{inspectionChild}
 	command.Dir = config.ScratchRoot
 	command.Env = append(os.Environ(), config.Environment...)
-	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1")
+	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1", driverinspection.Environment+"=3")
 	stderrWriter := config.Stderr
 	if stderrWriter == nil {
 		stderrWriter = os.Stderr
@@ -270,7 +286,9 @@ func NewProcessBackend(
 		readStop:        make(chan struct{}),
 		rpcGate:         make(chan struct{}, 1),
 		shutdownTimeout: config.ShutdownTimeout,
+		inspection:      driverinspection.NewClient(inspectionConn),
 	}
+	inspectionOwned = true
 	if backend.shutdownTimeout == 0 {
 		backend.shutdownTimeout = defaultShutdownTimeout
 	}
@@ -301,7 +319,26 @@ func NewProcessBackend(
 		}
 		return nil, errors.Join(errors.New("resident ModelRuntime driver did not complete load and warmup"), cleanupErr)
 	}
+	backend.inspectionProtocol = response.InspectionProtocol
 	return backend, nil
+}
+
+func (backend *ProcessBackend) InspectExecution(ctx context.Context, authority stageauthority.Verified) (ExecutionInspection, error) {
+	if backend == nil || backend.inspectionProtocol != driverinspection.Protocol {
+		return ExecutionInspection{}, errors.New("ModelRuntime driver does not support read-only execution inspection")
+	}
+	observation, err := backend.inspection.Inspect(ctx, hex.EncodeToString(authority.Digest[:]))
+	if err != nil {
+		return ExecutionInspection{}, err
+	}
+	inspection := ExecutionInspection{Known: observation.Known, Sequence: observation.Sequence}
+	if observation.Known {
+		inspection.State = velav1.ModelRuntimeExecutionState(velav1.ModelRuntimeExecutionState_value["MODEL_RUNTIME_EXECUTION_STATE_"+observation.State])
+	}
+	if err := validateExecutionInspection(inspection); err != nil {
+		return ExecutionInspection{}, err
+	}
+	return inspection, nil
 }
 
 func (backend *ProcessBackend) Probe(
@@ -663,6 +700,7 @@ func (backend *ProcessBackend) abort() error {
 
 func (backend *ProcessBackend) terminate() error {
 	backend.killOnce.Do(func() {
+		_ = backend.inspection.Close()
 		_ = backend.stdin.Close()
 		backend.killErr = killDriverProcessGroup(backend.command.Process)
 		if backend.killErr != nil {
