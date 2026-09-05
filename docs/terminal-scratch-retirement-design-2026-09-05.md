@@ -3,8 +3,10 @@
 Status: the [history reader](terminal-history-evidence-2026-09-05.md), verification
 of the complete signed original, and the [signed terminal disposition over
 authenticated Control](terminal-disposition-evidence-2026-09-05.md) are implemented
-and locally tested at schema 90. Persistent Worker admission, Runtime floors,
-execution drain and the retirement journal below remain design work. These
+and locally tested at schema 90. The standalone [persistent Worker admission
+component](assignment-admission-evidence-2026-09-05.md) now has local replay,
+filesystem-fault and process-restart tests. Its production wiring, Runtime floors,
+execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
 

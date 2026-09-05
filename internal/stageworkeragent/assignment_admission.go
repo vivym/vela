@@ -125,6 +125,14 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 	if _, err := stageassignment.Validate(assignment); err != nil {
 		return nil, err
 	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if err := gate.available(ctx); err != nil {
+		return nil, err
+	}
+	if gate.active != nil {
+		return nil, ErrStageWorkerBusy
+	}
 	verified, err := gate.verifyCurrent(assignment.GetAuthority())
 	if err != nil {
 		return nil, err
@@ -136,14 +144,6 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 	wire, err := admissionAuthorityWire(verified.Authority)
 	if err != nil {
 		return nil, err
-	}
-	gate.mu.Lock()
-	defer gate.mu.Unlock()
-	if err := gate.available(ctx); err != nil {
-		return nil, err
-	}
-	if gate.active != nil {
-		return nil, ErrStageWorkerBusy
 	}
 	next := cloneAdmissionState(gate.state)
 	sequence := verified.Authority.GetExecutionSequence()
@@ -195,10 +195,6 @@ func (handle *AssignmentAdmission) EnterRuntime(ctx context.Context) error {
 		return ErrAdmissionClosed
 	}
 	gate := handle.gate
-	// Input resolution can outlive the execution window; verify again before RPCs.
-	if _, err := gate.verifyCurrent(handle.authority); err != nil {
-		return err
-	}
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
 	if err := gate.available(ctx); err != nil {
@@ -206,6 +202,10 @@ func (handle *AssignmentAdmission) EnterRuntime(ctx context.Context) error {
 	}
 	if gate.active != handle || gate.state.Latest == nil || gate.state.Latest.Identity != handle.identity || gate.state.Latest.Phase != AssignmentInputsPending {
 		return ErrAdmissionClosed
+	}
+	// Input resolution and waiting for the lock can outlive the execution window.
+	if _, err := gate.verifyCurrent(handle.authority); err != nil {
+		return err
 	}
 	next := cloneAdmissionState(gate.state)
 	next.Latest.Phase = AssignmentRuntimeEntered
@@ -218,7 +218,7 @@ func (gate *FileAssignmentAdmission) CloseExecution(ctx context.Context, authori
 	if gate == nil || ctx == nil {
 		return ErrAdmissionClosed
 	}
-	verified, err := gate.validator.ValidateEnvelopeForReplay(authority, 0)
+	verified, err := gate.validator.ValidateEnvelopeForReplay(authority, gate.maxSkew)
 	if err != nil {
 		return err
 	}

@@ -97,6 +97,11 @@ The [late control response repair](late-control-stop-evidence-2026-09-05.md)
 also prevents a matching Stop from being overwritten by delayed START,
 HEARTBEAT or REATTACH acceptance. Unit, related-module race and lint checks pass;
 the process-local response guard does not establish durable stopped state.
+The standalone [durable assignment admission component](assignment-admission-evidence-2026-09-05.md)
+adds a bounded Worker-wide watermark, original Acquire/renewal history and a
+persistent Runtime-entry intent. Local replay, filesystem-fault, process-restart,
+macOS race and Linux CPU tests pass at schema 90. Production pre-Resolve wiring,
+Runtime floors, execution drain and retirement of pending records remain open.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

@@ -100,7 +100,7 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 	lock, err := files.roots[0].OpenFile(admissionLockFile, os.O_CREATE|os.O_EXCL|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		freshLock = false
-		lock, err = files.roots[0].OpenFile(admissionLockFile, os.O_RDWR|syscall.O_NOFOLLOW, 0)
+		lock, err = files.roots[0].OpenFile(admissionLockFile, os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	}
 	if err != nil {
 		return nil, assignmentAdmissionState{}, err
