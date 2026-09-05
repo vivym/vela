@@ -148,6 +148,12 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 		last.Sequence != snapshot.Cutoff {
 		t.Fatalf("cutoff does not cover undelivered allocation: %+v cutoff=%d", last, snapshot.Cutoff)
 	}
+	reader := newTerminalHistoryReaderForTest(t, fixture, authority)
+	verifiedHistory, err := reader.Read(context.Background(), command, authority, command.CommandID)
+	if err != nil || verifiedHistory == nil || verifiedHistory.Cutoff != last.Sequence ||
+		len(verifiedHistory.Allocations) != 2 || verifiedHistory.Allocations[1].StageAllocationID != next.StageAllocationID {
+		t.Fatalf("verified history missed undelivered retry: history=%v error=%v", verifiedHistory, err)
+	}
 	// Global issuance can advance independently; it is not this StageRun's cutoff.
 	if _, err := fixture.database.Admin.Exec(`SELECT nextval('stage_allocation_execution_sequence')`); err != nil {
 		t.Fatal(err)
@@ -232,6 +238,11 @@ func TestStageTerminalHistorySurvivesJobMetadataExpiry(t *testing.T) {
 	if !snapshot.Eligible || snapshot.TerminalState != "FAILED" || snapshot.Cutoff != authority.GetExecutionSequence() {
 		t.Fatalf("retained roots did not preserve terminal history: eligible=%t reason=%s", snapshot.Eligible, snapshot.Reason)
 	}
+	reader := newTerminalHistoryReaderForTest(t, fixture, authority)
+	if history, err := reader.Read(context.Background(), command, authority, command.CommandID); err != nil || history == nil ||
+		history.StageRunID.String() != authority.GetStageRunId() {
+		t.Fatalf("verified history after metadata expiry=%v error=%v", history, err)
+	}
 }
 
 func TestStageTerminalHistoryReadsRenewalWithoutAcquireID(t *testing.T) {
@@ -277,6 +288,11 @@ func TestStageTerminalHistoryReadsRenewalWithoutAcquireID(t *testing.T) {
 	var recorded velav1.StageAuthority
 	if err := proto.Unmarshal(wire, &recorded); err != nil || !proto.Equal(&recorded, started.Authority) {
 		t.Fatalf("recorded renewal differs: %v", err)
+	}
+	reader := newTerminalHistoryReaderForTest(t, fixture, started.Authority)
+	if history, err := reader.Read(context.Background(), command, started.Authority, uuid.Nil); err != nil || history == nil ||
+		history.OriginalAuthorityDigest != started.Digest {
+		t.Fatalf("verified history did not match recorded renewal: history=%v error=%v", history, err)
 	}
 	request["authority_digest"] = hex.EncodeToString(make([]byte, sha256.Size))
 	if changed := readTerminalHistory(t, fixture, request); changed.Eligible || changed.Reason != "SIGNED_HISTORY_UNAVAILABLE" {

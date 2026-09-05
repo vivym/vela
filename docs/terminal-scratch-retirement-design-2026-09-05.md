@@ -1,8 +1,8 @@
 # Terminal Stage scratch retirement: minimum closure
 
 Status: retirement protocol remains design work. The schema-89
-[SQL history reader](terminal-history-evidence-2026-09-05.md) is implemented and
-locally tested as an internal candidate reader. This does not establish writer
+[history reader](terminal-history-evidence-2026-09-05.md) and Go verification of
+the complete signed original are implemented and locally tested. This does not establish writer
 exclusion or bounded scratch usage across terminal Stage executions, including
 delayed duplicates after success.
 

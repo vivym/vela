@@ -94,8 +94,15 @@ func TestStageTerminalHistoryPreservesHistoricalRuntimeScopesWhileDraining(t *te
 		t.Fatal("retry did not bind the same StageRun to the new Runtime scope")
 	}
 	failTerminalHistoryAssignment(t, fixture, current)
+	reader := newTerminalHistoryReaderForTest(t, fixture, old)
 	assertHistory := func() {
 		t.Helper()
+		history, err := reader.Read(ctx, command, old, command.CommandID)
+		if err != nil || history == nil || history.Cutoff != current.GetExecutionSequence() || len(history.Allocations) != 2 ||
+			history.Allocations[0].Members[0].ModelRuntimeEpoch != old.GetMembers()[0].GetModelRuntimeEpoch() ||
+			history.Allocations[1].Members[0].ModelRuntimeEpoch != member.GetModelRuntimeEpoch() {
+			t.Fatalf("verified history did not retain both Runtime epochs: history=%v error=%v", history, err)
+		}
 		snapshot := readTerminalHistory(t, fixture, request)
 		if !snapshot.Eligible || snapshot.TerminalState != "FAILED" ||
 			snapshot.Cutoff != current.GetExecutionSequence() || len(snapshot.Allocations) != 2 {
