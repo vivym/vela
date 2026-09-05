@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -28,6 +29,7 @@ type ClientConfig struct {
 	TargetIdentityDigest []byte
 	TransportCredentials credentials.TransportCredentials
 	Dialer               Dialer
+	FloorValidator       *stageauthority.Validator
 }
 
 type Client struct {
@@ -35,6 +37,7 @@ type Client struct {
 	service              velav1.StageWorkerMemberServiceClient
 	targetID             string
 	targetIdentityDigest [sha256.Size]byte
+	floorValidator       *stageauthority.Validator
 }
 
 func Dial(ctx context.Context, config ClientConfig) (*Client, error) {
@@ -79,6 +82,7 @@ func Dial(ctx context.Context, config ClientConfig) (*Client, error) {
 		service:              velav1.NewStageWorkerMemberServiceClient(connection),
 		targetID:             config.TargetWorkerMemberID,
 		targetIdentityDigest: [sha256.Size]byte(config.TargetIdentityDigest),
+		floorValidator:       config.FloorValidator,
 	}, nil
 }
 
@@ -187,14 +191,6 @@ func (*Client) ProbeReadiness(
 	...grpc.CallOption,
 ) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "remote ModelRuntime readiness is not exposed")
-}
-
-func (*Client) InstallStageExecutionFloor(
-	context.Context,
-	*velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest,
-	...grpc.CallOption,
-) (*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "remote ModelRuntime floor installation is not exposed")
 }
 
 func (*Client) SealOutput(

@@ -14,7 +14,9 @@ Service boundary and explicit signed cutoff installation. The optional
 recovers that floor and the allocation watermark, with fail-closed state binding.
 The [signed floor RPC](runtime-floor-rpc-evidence-2026-09-06.md) now supplies local
 private-socket delivery with explicit durable server configuration.
-Default command assembly, cross-member floor forwarding, automatic startup reconciliation,
+The [member forwarding path](member-floor-forwarding-evidence-2026-09-06.md) adds
+authenticated leader delivery and validates both acknowledgements.
+Default command assembly, all-member installation collection, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -373,8 +375,9 @@ It registers admitted calls under the common lock without holding that lock over
 backend calls. Optional journal configuration now persists/replays restrictions
 across profile and local Runtime epoch changes without granting historical
 execution or drain. Missing/replaced state fails closed. The local signed floor
-RPC now reports identity/digest-bound durable installation. Authenticated
-cross-member forwarding and default command assembly remain open. WaitAcceptedOperations joins
+RPC now reports identity/digest-bound durable installation, including forwarding
+through an authenticated member. All-member collection and default command
+assembly remain open. WaitAcceptedOperations joins
 only the calls registered before that installation, not asynchronous backend
 writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency

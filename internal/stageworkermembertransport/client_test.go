@@ -61,8 +61,8 @@ func TestClientWrapsExactTargetAndDoesNotExposeDiscovery(t *testing.T) {
 	); err == nil {
 		t.Fatal("remote runtime identity discovery was exposed")
 	}
-	if response, err := client.InstallStageExecutionFloor(context.Background(), &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{}); response != nil || status.Code(err) != codes.Unimplemented {
-		t.Fatalf("unsupported remote floor forwarding returned a receipt: %v %v", response, err)
+	if response, err := client.InstallStageExecutionFloor(context.Background(), &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{}); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("remote floor forwarding without a verifier returned a receipt: %v %v", response, err)
 	}
 	mismatched := &velav1.StageAuthority{Members: []*velav1.StageAuthorityMemberEpoch{{
 		WorkerMemberId: target, IdentityDigest: bytesOf('x'),

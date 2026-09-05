@@ -1,5 +1,8 @@
 # Signed Runtime floor RPC evidence
 
+Follow-up: [authenticated member floor forwarding](member-floor-forwarding-evidence-2026-09-06.md)
+adds the mTLS member hop. This document retains the preceding local-RPC evidence.
+
 Status: local CPU-only increment over `70b582b`, schema 90. The versioned
 `InstallStageExecutionFloor` RPC now delivers a signed restriction over the
 existing private ModelRuntime Unix socket. Explicit RuntimeServer configuration

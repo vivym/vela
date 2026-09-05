@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StageWorkerMemberService_PrepareStage_FullMethodName = "/vela.v1.StageWorkerMemberService/PrepareStage"
-	StageWorkerMemberService_StartStage_FullMethodName   = "/vela.v1.StageWorkerMemberService/StartStage"
-	StageWorkerMemberService_CancelStage_FullMethodName  = "/vela.v1.StageWorkerMemberService/CancelStage"
-	StageWorkerMemberService_Status_FullMethodName       = "/vela.v1.StageWorkerMemberService/Status"
+	StageWorkerMemberService_PrepareStage_FullMethodName               = "/vela.v1.StageWorkerMemberService/PrepareStage"
+	StageWorkerMemberService_StartStage_FullMethodName                 = "/vela.v1.StageWorkerMemberService/StartStage"
+	StageWorkerMemberService_CancelStage_FullMethodName                = "/vela.v1.StageWorkerMemberService/CancelStage"
+	StageWorkerMemberService_Status_FullMethodName                     = "/vela.v1.StageWorkerMemberService/Status"
+	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
 )
 
 // StageWorkerMemberServiceClient is the client API for StageWorkerMemberService service.
@@ -33,6 +34,7 @@ type StageWorkerMemberServiceClient interface {
 	StartStage(ctx context.Context, in *StageWorkerMemberServiceStartStageRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceStartStageResponse, error)
 	CancelStage(ctx context.Context, in *StageWorkerMemberServiceCancelStageRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCancelStageResponse, error)
 	Status(ctx context.Context, in *StageWorkerMemberServiceStatusRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceStatusResponse, error)
+	InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 }
 
 type stageWorkerMemberServiceClient struct {
@@ -83,6 +85,16 @@ func (c *stageWorkerMemberServiceClient) Status(ctx context.Context, in *StageWo
 	return out, nil
 }
 
+func (c *stageWorkerMemberServiceClient) InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceInstallStageExecutionFloorResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StageWorkerMemberServiceServer is the server API for StageWorkerMemberService service.
 // All implementations must embed UnimplementedStageWorkerMemberServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type StageWorkerMemberServiceServer interface {
 	StartStage(context.Context, *StageWorkerMemberServiceStartStageRequest) (*StageWorkerMemberServiceStartStageResponse, error)
 	CancelStage(context.Context, *StageWorkerMemberServiceCancelStageRequest) (*StageWorkerMemberServiceCancelStageResponse, error)
 	Status(context.Context, *StageWorkerMemberServiceStatusRequest) (*StageWorkerMemberServiceStatusResponse, error)
+	InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
 	mustEmbedUnimplementedStageWorkerMemberServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedStageWorkerMemberServiceServer) CancelStage(context.Context, 
 }
 func (UnimplementedStageWorkerMemberServiceServer) Status(context.Context, *StageWorkerMemberServiceStatusRequest) (*StageWorkerMemberServiceStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Status not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) mustEmbedUnimplementedStageWorkerMemberServiceServer() {
 }
@@ -207,6 +223,24 @@ func _StageWorkerMemberService_Status_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StageWorkerMemberService_InstallStageExecutionFloor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).InstallStageExecutionFloor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).InstallStageExecutionFloor(ctx, req.(*StageWorkerMemberServiceInstallStageExecutionFloorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StageWorkerMemberService_ServiceDesc is the grpc.ServiceDesc for StageWorkerMemberService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -229,6 +263,10 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Status",
 			Handler:    _StageWorkerMemberService_Status_Handler,
+		},
+		{
+			MethodName: "InstallStageExecutionFloor",
+			Handler:    _StageWorkerMemberService_InstallStageExecutionFloor_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

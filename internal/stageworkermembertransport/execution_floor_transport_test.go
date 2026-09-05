@@ -1,0 +1,327 @@
+package stageworkermembertransport
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"fmt"
+	"math/big"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkertransport"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+)
+
+func TestMemberFloorTLSAndUnixJournalSurviveResponseLossAndRestart(t *testing.T) {
+	f, request, _ := newMemberFloorFixture(t)
+	directory := privateMemberFloorDirectory(t)
+	chain := startMemberFloorChain(t, f, request.Command.Disposition, directory, true, true)
+	prepared, err := chain.client.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authority, ExecutionSpec: f.spec})
+	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("pre-floor execution did not reach Runtime: %v %v", prepared, err)
+	}
+	if response, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command); response != nil || status.Code(err) != codes.Unavailable {
+		t.Fatalf("response-loss injection failed: %v %v", response, err)
+	}
+	started, err := chain.client.StartStage(context.Background(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: f.authority})
+	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+		t.Fatalf("lost acknowledgement reopened execution: %v %v", started, err)
+	}
+	for range 2 {
+		response, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command)
+		if err != nil || !response.GetDurable() || response.GetInstalledCutoff() != 11 {
+			t.Fatalf("replay after lost acknowledgement: %v %v", response, err)
+		}
+	}
+	canceled, err := chain.client.CancelStage(context.Background(), &velav1.ModelRuntimeServiceCancelStageRequest{
+		Authority: f.authority, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+	})
+	if err != nil || !canceled.GetCancellationAcknowledged() {
+		t.Fatalf("floor prevented exact stop signaling: %v %v", canceled, err)
+	}
+	if chain.backend.closed.Load() {
+		t.Fatal("floor installation unloaded resident backend")
+	}
+	// A valid nonleader certificate can connect but cannot install a restriction.
+	nonleader := chain.dial(t, chain.followerCredentials)
+	if response, err := nonleader.InstallStageExecutionFloor(context.Background(), request.Command); response != nil || status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("nonleader mTLS peer installed a floor: %v %v", response, err)
+	}
+	chain.close()
+	chain = startMemberFloorChain(t, f, request.Command.Disposition, directory, false, false)
+	if response, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command); err != nil || response.GetInstalledCutoff() != 11 {
+		t.Fatalf("member/runtime restart lost persisted floor: %v %v", response, err)
+	}
+	for _, sequence := range []int64{11, 12} {
+		a := proto.Clone(f.authority).(*velav1.StageAuthority)
+		a.ExecutionSequence = sequence
+		a.StageAttemptId, a.StageAllocationId, a.StageLeaseId = uuid.NewString(), uuid.NewString(), uuid.NewString()
+		a, err = f.signer.Sign(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := chain.client.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: a, ExecutionSpec: f.spec})
+		want := velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		if sequence > 11 {
+			want = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
+		}
+		if err != nil || response.GetDecision() != want {
+			t.Fatalf("recovered admission sequence=%d: %v %v", sequence, response, err)
+		}
+	}
+}
+
+func TestMemberFloorTLSForwardsCompleteLargeHistory(t *testing.T) {
+	f, request, _ := newMemberFloorFixture(t)
+	d := request.Command.Disposition
+	members := d.Allocations[0].Members
+	for len(members) < 64 {
+		member := proto.Clone(members[0]).(*velav1.StageTerminalMember)
+		member.WorkerMemberId = fmt.Sprintf("f0000000-0000-0000-0000-%012d", len(members))
+		members = append(members, member)
+	}
+	for len(d.Allocations) < 256 {
+		allocation := proto.Clone(d.Allocations[0]).(*velav1.StageTerminalAllocation)
+		allocation.StageAttemptId, allocation.StageAllocationId, allocation.StageLeaseId = uuid.NewString(), uuid.NewString(), uuid.NewString()
+		allocation.ExecutionSequence = int64(10 + len(d.Allocations))
+		d.Allocations = append(d.Allocations, allocation)
+	}
+	for _, allocation := range d.Allocations {
+		allocation.Members = members
+	}
+	d.Cutoff = d.Allocations[len(d.Allocations)-1].ExecutionSequence
+	var err error
+	request.Command.Disposition, err = f.signer.SignTerminalDisposition(d)
+	if err != nil || proto.Size(request.Command.Disposition) <= 1<<20 {
+		t.Fatalf("large terminal history: size=%d err=%v", proto.Size(request.Command.Disposition), err)
+	}
+	directory := privateMemberFloorDirectory(t)
+	chain := startMemberFloorChain(t, f, request.Command.Disposition, directory, true, false)
+	if response, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command); err != nil || response.GetInstalledCutoff() != d.GetCutoff() {
+		t.Fatalf("large history failed across TLS/UDS: %v %v", response, err)
+	}
+	chain.close()
+	chain = startMemberFloorChain(t, f, request.Command.Disposition, directory, false, false)
+	if response, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command); err != nil || response.GetInstalledCutoff() != d.GetCutoff() {
+		t.Fatalf("large history failed after journal recovery: %v %v", response, err)
+	}
+}
+
+type memberFloorChain struct {
+	client              *Client
+	backend             *memberFloorBackend
+	address             string
+	f                   *serverFixture
+	followerCredentials credentials.TransportCredentials
+	close               func()
+}
+
+type memberFloorBackend struct {
+	*modelruntime.FakeRuntime
+	closed atomic.Bool
+}
+
+func (backend *memberFloorBackend) Close() error {
+	backend.closed.Store(true)
+	return nil
+}
+
+func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.StageTerminalDisposition, directory string, initialize, loseResponse bool) *memberFloorChain {
+	t.Helper()
+	identity := f.runtime.identity
+	binding := stageauthority.RuntimeBinding{
+		WorkerInstanceID: identity.WorkerInstanceId, WorkerInstanceEpoch: identity.WorkerInstanceEpoch,
+		WorkerMemberID: identity.WorkerMemberId, WorkerMemberEpoch: identity.WorkerMemberEpoch,
+		DeviceSetDigest: identity.DeviceSetDigest, MembershipDigest: identity.MembershipDigest,
+		ModelResidencyID: identity.ModelResidencyId, ModelRuntimeIdentity: identity.RuntimeIdentity,
+		StageProfileRevisionID: identity.StageProfileRevisionId,
+	}
+	for _, device := range disposition.Devices {
+		binding.Devices = append(binding.Devices, stageauthority.DeviceEpoch{ID: device.DeviceId, Epoch: device.DeviceEpoch})
+	}
+	floor := modelruntime.ExecutionFloorConfig{Validator: f.server.validator, State: &modelruntime.ExecutionFloorStateConfig{Directory: directory, Initialize: initialize}}
+	var memberBindings []MemberBinding
+	for _, member := range disposition.Allocations[0].Members {
+		binding.Members = append(binding.Members, stageauthority.MemberEpoch{ID: member.WorkerMemberId, Epoch: member.MemberEpoch})
+		memberBindings = append(memberBindings, MemberBinding{ID: member.WorkerMemberId, Epoch: member.MemberEpoch})
+		floor.Members = append(floor.Members, modelruntime.ExecutionFloorMember{
+			WorkerMemberID: member.WorkerMemberId, MemberEpoch: member.MemberEpoch,
+			IdentityDigest: member.IdentityDigest, DeviceSubsetDigest: member.DeviceSubsetDigest,
+		})
+	}
+	backend := &memberFloorBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
+	service, err := modelruntime.NewService(modelruntime.Config{
+		Binding: binding, Backend: backend, Validator: f.server.validator, CancelTimeout: time.Second,
+		EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return identity.ModelRuntimeEpoch, nil }),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	supervisor, err := modelruntime.NewSupervisorWithExecutionFloor(floor, service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(supervisor.Close)
+	root, err := os.MkdirTemp("/tmp", "vela-floor-uds-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	path := filepath.Join(root, "runtime.sock")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	localServer := grpc.NewServer(grpc.MaxRecvMsgSize(4 << 20))
+	velav1.RegisterModelRuntimeServiceServer(localServer, supervisor)
+	localDone := make(chan error, 1)
+	go func() { localDone <- localServer.Serve(listener) }()
+	t.Cleanup(localServer.Stop)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	localClient, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: path, ExpectedUID: uint32(os.Geteuid())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = localClient.Close() })
+	member, err := NewServer(ServerConfig{
+		Authenticator: stageworkertransport.PeerAuthenticator{}, Validator: f.server.validator, Runtime: localClient,
+		LocalIdentities: []*velav1.ModelRuntimeIdentity{identity}, Members: memberBindings,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTLS, leaderTLS, followerTLS := memberFloorTLS(t, f)
+	var lost atomic.Bool
+	memberServer := grpc.NewServer(grpc.Creds(serverTLS), grpc.MaxRecvMsgSize(4<<20), grpc.UnaryInterceptor(func(ctx context.Context, request any, info *grpc.UnaryServerInfo, next grpc.UnaryHandler) (any, error) {
+		response, err := next(ctx, request)
+		if err == nil && loseResponse && info.FullMethod == velav1.StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName && lost.CompareAndSwap(false, true) {
+			return nil, status.Error(codes.Unavailable, "injected lost floor acknowledgement")
+		}
+		return response, err
+	}))
+	velav1.RegisterStageWorkerMemberServiceServer(memberServer, member)
+	memberListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberDone := make(chan error, 1)
+	go func() { memberDone <- memberServer.Serve(memberListener) }()
+	t.Cleanup(memberServer.Stop)
+	chain := &memberFloorChain{backend: backend, address: memberListener.Addr().String(), f: f, followerCredentials: followerTLS}
+	chain.client = chain.dial(t, leaderTLS)
+	var once sync.Once
+	chain.close = func() {
+		once.Do(func() {
+			_ = chain.client.Close()
+			memberServer.Stop()
+			_ = memberListener.Close()
+			<-memberDone
+			_ = localClient.Close()
+			localServer.Stop()
+			_ = listener.Close()
+			<-localDone
+			if err := supervisor.Shutdown(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	t.Cleanup(chain.close)
+	return chain
+}
+
+func (chain *memberFloorChain) dial(t *testing.T, transport credentials.TransportCredentials) *Client {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := Dial(ctx, ClientConfig{
+		Address: chain.address, TargetWorkerMemberID: chain.f.local.ID, TargetIdentityDigest: chain.f.authority.Members[1].IdentityDigest,
+		TransportCredentials: transport, FloorValidator: chain.f.server.validator,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func memberFloorTLS(t *testing.T, f *serverFixture) (credentials.TransportCredentials, credentials.TransportCredentials, credentials.TransportCredentials) {
+	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Vela floor test CA"}, IsCA: true,
+		BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, ca, ca, key.Public(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err = x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	certificate := func(serial int64, spiffe string) tls.Certificate {
+		_, leafKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity, err := url.Parse(spiffe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaf := &x509.Certificate{
+			SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "floor-member.test"}, DNSNames: []string{"floor-member.test"},
+			URIs: []*url.URL{identity}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+			NotBefore: ca.NotBefore, NotAfter: ca.NotAfter,
+		}
+		der, err := x509.CreateCertificate(rand.Reader, leaf, ca, leafKey.Public(), key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: leafKey}
+	}
+	leader, follower := certificate(2, f.leaderSPIFFE), certificate(3, f.localSPIFFE)
+	server := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{follower}, ClientCAs: roots, ClientAuth: tls.RequireAndVerifyClientCert})
+	client := func(certificate tls.Certificate) credentials.TransportCredentials {
+		return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}, RootCAs: roots, ServerName: "floor-member.test"})
+	}
+	return server, client(leader), client(follower)
+}
+
+func privateMemberFloorDirectory(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}

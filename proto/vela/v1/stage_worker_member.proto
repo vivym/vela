@@ -15,6 +15,8 @@ service StageWorkerMemberService {
       returns (StageWorkerMemberServiceCancelStageResponse);
   rpc Status(StageWorkerMemberServiceStatusRequest)
       returns (StageWorkerMemberServiceStatusResponse);
+  rpc InstallStageExecutionFloor(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
+      returns (StageWorkerMemberServiceInstallStageExecutionFloorResponse);
 }
 
 message StageWorkerMemberServicePrepareStageRequest {
@@ -51,4 +53,13 @@ message StageWorkerMemberServiceStatusRequest {
 
 message StageWorkerMemberServiceStatusResponse {
   ModelRuntimeServiceStatusResponse result = 1;
+}
+
+message StageWorkerMemberServiceInstallStageExecutionFloorRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceInstallStageExecutionFloorRequest command = 2;
+}
+
+message StageWorkerMemberServiceInstallStageExecutionFloorResponse {
+  ModelRuntimeServiceInstallStageExecutionFloorResponse result = 1;
 }

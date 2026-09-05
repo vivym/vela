@@ -303,6 +303,7 @@ func newProductionRuntimeUsing(
 						TargetWorkerMemberID: member.workerMemberID.String(),
 						TargetIdentityDigest: member.identityDigest[:],
 						TransportCredentials: clientCredentials,
+						FloorValidator:       stageAuthorityValidator,
 					},
 				)
 				cancel()

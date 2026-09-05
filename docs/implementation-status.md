@@ -125,9 +125,13 @@ checks pass. The subsequent [signed floor RPC](runtime-floor-rpc-evidence-2026-0
 adds durable installation over the private Runtime Unix socket, strict client
 acknowledgement binding and explicit RuntimeServer assembly. Unit, race, lint,
 protocol compatibility, Linux cross-build and non-root Linux execution pass.
-Waiting for admitted calls is not writer drain. Default command assembly,
-authenticated cross-member floor forwarding, automatic startup reconciliation
-and terminal retirement remain open.
+The [authenticated member floor path](member-floor-forwarding-evidence-2026-09-06.md)
+now validates the deterministic leader, pinned target identity, complete history
+and both forwarding acknowledgements. Real loopback TLS 1.3 to private UDS and
+journal tests cover response loss, restart and large signed histories; unit,
+race, lint and Linux checks pass. Waiting for admitted calls is not writer drain.
+All-member installation collection, default Runtime configuration, automatic
+startup reconciliation and terminal retirement remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

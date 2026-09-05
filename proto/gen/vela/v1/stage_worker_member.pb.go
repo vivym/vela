@@ -405,6 +405,102 @@ func (x *StageWorkerMemberServiceStatusResponse) GetResult() *ModelRuntimeServic
 	return nil
 }
 
+type StageWorkerMemberServiceInstallStageExecutionFloorRequest struct {
+	state                protoimpl.MessageState                                `protogen:"open.v1"`
+	TargetWorkerMemberId string                                                `protobuf:"bytes,1,opt,name=target_worker_member_id,json=targetWorkerMemberId,proto3" json:"target_worker_member_id,omitempty"`
+	Command              *ModelRuntimeServiceInstallStageExecutionFloorRequest `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorRequest) Reset() {
+	*x = StageWorkerMemberServiceInstallStageExecutionFloorRequest{}
+	mi := &file_vela_v1_stage_worker_member_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StageWorkerMemberServiceInstallStageExecutionFloorRequest) ProtoMessage() {}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_stage_worker_member_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StageWorkerMemberServiceInstallStageExecutionFloorRequest.ProtoReflect.Descriptor instead.
+func (*StageWorkerMemberServiceInstallStageExecutionFloorRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_stage_worker_member_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorRequest) GetTargetWorkerMemberId() string {
+	if x != nil {
+		return x.TargetWorkerMemberId
+	}
+	return ""
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorRequest) GetCommand() *ModelRuntimeServiceInstallStageExecutionFloorRequest {
+	if x != nil {
+		return x.Command
+	}
+	return nil
+}
+
+type StageWorkerMemberServiceInstallStageExecutionFloorResponse struct {
+	state         protoimpl.MessageState                                 `protogen:"open.v1"`
+	Result        *ModelRuntimeServiceInstallStageExecutionFloorResponse `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorResponse) Reset() {
+	*x = StageWorkerMemberServiceInstallStageExecutionFloorResponse{}
+	mi := &file_vela_v1_stage_worker_member_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StageWorkerMemberServiceInstallStageExecutionFloorResponse) ProtoMessage() {}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_stage_worker_member_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StageWorkerMemberServiceInstallStageExecutionFloorResponse.ProtoReflect.Descriptor instead.
+func (*StageWorkerMemberServiceInstallStageExecutionFloorResponse) Descriptor() ([]byte, []int) {
+	return file_vela_v1_stage_worker_member_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *StageWorkerMemberServiceInstallStageExecutionFloorResponse) GetResult() *ModelRuntimeServiceInstallStageExecutionFloorResponse {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
 var File_vela_v1_stage_worker_member_proto protoreflect.FileDescriptor
 
 const file_vela_v1_stage_worker_member_proto_rawDesc = "" +
@@ -429,13 +525,19 @@ const file_vela_v1_stage_worker_member_proto_rawDesc = "" +
 	"\x17target_worker_member_id\x18\x01 \x01(\tR\x14targetWorkerMemberId\x12C\n" +
 	"\acommand\x18\x02 \x01(\v2).vela.v1.ModelRuntimeServiceStatusRequestR\acommand\"l\n" +
 	"&StageWorkerMemberServiceStatusResponse\x12B\n" +
-	"\x06result\x18\x01 \x01(\v2*.vela.v1.ModelRuntimeServiceStatusResponseR\x06result2\xf3\x03\n" +
+	"\x06result\x18\x01 \x01(\v2*.vela.v1.ModelRuntimeServiceStatusResponseR\x06result\"\xcb\x01\n" +
+	"9StageWorkerMemberServiceInstallStageExecutionFloorRequest\x125\n" +
+	"\x17target_worker_member_id\x18\x01 \x01(\tR\x14targetWorkerMemberId\x12W\n" +
+	"\acommand\x18\x02 \x01(\v2=.vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequestR\acommand\"\x94\x01\n" +
+	":StageWorkerMemberServiceInstallStageExecutionFloorResponse\x12V\n" +
+	"\x06result\x18\x01 \x01(\v2>.vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponseR\x06result2\x9b\x05\n" +
 	"\x18StageWorkerMemberService\x12{\n" +
 	"\fPrepareStage\x124.vela.v1.StageWorkerMemberServicePrepareStageRequest\x1a5.vela.v1.StageWorkerMemberServicePrepareStageResponse\x12u\n" +
 	"\n" +
 	"StartStage\x122.vela.v1.StageWorkerMemberServiceStartStageRequest\x1a3.vela.v1.StageWorkerMemberServiceStartStageResponse\x12x\n" +
 	"\vCancelStage\x123.vela.v1.StageWorkerMemberServiceCancelStageRequest\x1a4.vela.v1.StageWorkerMemberServiceCancelStageResponse\x12i\n" +
-	"\x06Status\x12..vela.v1.StageWorkerMemberServiceStatusRequest\x1a/.vela.v1.StageWorkerMemberServiceStatusResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"\x06Status\x12..vela.v1.StageWorkerMemberServiceStatusRequest\x1a/.vela.v1.StageWorkerMemberServiceStatusResponse\x12\xa5\x01\n" +
+	"\x1aInstallStageExecutionFloor\x12B.vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest\x1aC.vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_stage_worker_member_proto_rawDescOnce sync.Once
@@ -449,47 +551,55 @@ func file_vela_v1_stage_worker_member_proto_rawDescGZIP() []byte {
 	return file_vela_v1_stage_worker_member_proto_rawDescData
 }
 
-var file_vela_v1_stage_worker_member_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_vela_v1_stage_worker_member_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_vela_v1_stage_worker_member_proto_goTypes = []any{
-	(*StageWorkerMemberServicePrepareStageRequest)(nil),  // 0: vela.v1.StageWorkerMemberServicePrepareStageRequest
-	(*StageWorkerMemberServicePrepareStageResponse)(nil), // 1: vela.v1.StageWorkerMemberServicePrepareStageResponse
-	(*StageWorkerMemberServiceStartStageRequest)(nil),    // 2: vela.v1.StageWorkerMemberServiceStartStageRequest
-	(*StageWorkerMemberServiceStartStageResponse)(nil),   // 3: vela.v1.StageWorkerMemberServiceStartStageResponse
-	(*StageWorkerMemberServiceCancelStageRequest)(nil),   // 4: vela.v1.StageWorkerMemberServiceCancelStageRequest
-	(*StageWorkerMemberServiceCancelStageResponse)(nil),  // 5: vela.v1.StageWorkerMemberServiceCancelStageResponse
-	(*StageWorkerMemberServiceStatusRequest)(nil),        // 6: vela.v1.StageWorkerMemberServiceStatusRequest
-	(*StageWorkerMemberServiceStatusResponse)(nil),       // 7: vela.v1.StageWorkerMemberServiceStatusResponse
-	(*ModelRuntimeServicePrepareStageRequest)(nil),       // 8: vela.v1.ModelRuntimeServicePrepareStageRequest
-	(*ModelRuntimeServicePrepareStageResponse)(nil),      // 9: vela.v1.ModelRuntimeServicePrepareStageResponse
-	(*ModelRuntimeServiceStartStageRequest)(nil),         // 10: vela.v1.ModelRuntimeServiceStartStageRequest
-	(*ModelRuntimeServiceStartStageResponse)(nil),        // 11: vela.v1.ModelRuntimeServiceStartStageResponse
-	(*ModelRuntimeServiceCancelStageRequest)(nil),        // 12: vela.v1.ModelRuntimeServiceCancelStageRequest
-	(*ModelRuntimeServiceCancelStageResponse)(nil),       // 13: vela.v1.ModelRuntimeServiceCancelStageResponse
-	(*ModelRuntimeServiceStatusRequest)(nil),             // 14: vela.v1.ModelRuntimeServiceStatusRequest
-	(*ModelRuntimeServiceStatusResponse)(nil),            // 15: vela.v1.ModelRuntimeServiceStatusResponse
+	(*StageWorkerMemberServicePrepareStageRequest)(nil),                // 0: vela.v1.StageWorkerMemberServicePrepareStageRequest
+	(*StageWorkerMemberServicePrepareStageResponse)(nil),               // 1: vela.v1.StageWorkerMemberServicePrepareStageResponse
+	(*StageWorkerMemberServiceStartStageRequest)(nil),                  // 2: vela.v1.StageWorkerMemberServiceStartStageRequest
+	(*StageWorkerMemberServiceStartStageResponse)(nil),                 // 3: vela.v1.StageWorkerMemberServiceStartStageResponse
+	(*StageWorkerMemberServiceCancelStageRequest)(nil),                 // 4: vela.v1.StageWorkerMemberServiceCancelStageRequest
+	(*StageWorkerMemberServiceCancelStageResponse)(nil),                // 5: vela.v1.StageWorkerMemberServiceCancelStageResponse
+	(*StageWorkerMemberServiceStatusRequest)(nil),                      // 6: vela.v1.StageWorkerMemberServiceStatusRequest
+	(*StageWorkerMemberServiceStatusResponse)(nil),                     // 7: vela.v1.StageWorkerMemberServiceStatusResponse
+	(*StageWorkerMemberServiceInstallStageExecutionFloorRequest)(nil),  // 8: vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest
+	(*StageWorkerMemberServiceInstallStageExecutionFloorResponse)(nil), // 9: vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse
+	(*ModelRuntimeServicePrepareStageRequest)(nil),                     // 10: vela.v1.ModelRuntimeServicePrepareStageRequest
+	(*ModelRuntimeServicePrepareStageResponse)(nil),                    // 11: vela.v1.ModelRuntimeServicePrepareStageResponse
+	(*ModelRuntimeServiceStartStageRequest)(nil),                       // 12: vela.v1.ModelRuntimeServiceStartStageRequest
+	(*ModelRuntimeServiceStartStageResponse)(nil),                      // 13: vela.v1.ModelRuntimeServiceStartStageResponse
+	(*ModelRuntimeServiceCancelStageRequest)(nil),                      // 14: vela.v1.ModelRuntimeServiceCancelStageRequest
+	(*ModelRuntimeServiceCancelStageResponse)(nil),                     // 15: vela.v1.ModelRuntimeServiceCancelStageResponse
+	(*ModelRuntimeServiceStatusRequest)(nil),                           // 16: vela.v1.ModelRuntimeServiceStatusRequest
+	(*ModelRuntimeServiceStatusResponse)(nil),                          // 17: vela.v1.ModelRuntimeServiceStatusResponse
+	(*ModelRuntimeServiceInstallStageExecutionFloorRequest)(nil),       // 18: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest
+	(*ModelRuntimeServiceInstallStageExecutionFloorResponse)(nil),      // 19: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
 }
 var file_vela_v1_stage_worker_member_proto_depIdxs = []int32{
-	8,  // 0: vela.v1.StageWorkerMemberServicePrepareStageRequest.command:type_name -> vela.v1.ModelRuntimeServicePrepareStageRequest
-	9,  // 1: vela.v1.StageWorkerMemberServicePrepareStageResponse.result:type_name -> vela.v1.ModelRuntimeServicePrepareStageResponse
-	10, // 2: vela.v1.StageWorkerMemberServiceStartStageRequest.command:type_name -> vela.v1.ModelRuntimeServiceStartStageRequest
-	11, // 3: vela.v1.StageWorkerMemberServiceStartStageResponse.result:type_name -> vela.v1.ModelRuntimeServiceStartStageResponse
-	12, // 4: vela.v1.StageWorkerMemberServiceCancelStageRequest.command:type_name -> vela.v1.ModelRuntimeServiceCancelStageRequest
-	13, // 5: vela.v1.StageWorkerMemberServiceCancelStageResponse.result:type_name -> vela.v1.ModelRuntimeServiceCancelStageResponse
-	14, // 6: vela.v1.StageWorkerMemberServiceStatusRequest.command:type_name -> vela.v1.ModelRuntimeServiceStatusRequest
-	15, // 7: vela.v1.StageWorkerMemberServiceStatusResponse.result:type_name -> vela.v1.ModelRuntimeServiceStatusResponse
-	0,  // 8: vela.v1.StageWorkerMemberService.PrepareStage:input_type -> vela.v1.StageWorkerMemberServicePrepareStageRequest
-	2,  // 9: vela.v1.StageWorkerMemberService.StartStage:input_type -> vela.v1.StageWorkerMemberServiceStartStageRequest
-	4,  // 10: vela.v1.StageWorkerMemberService.CancelStage:input_type -> vela.v1.StageWorkerMemberServiceCancelStageRequest
-	6,  // 11: vela.v1.StageWorkerMemberService.Status:input_type -> vela.v1.StageWorkerMemberServiceStatusRequest
-	1,  // 12: vela.v1.StageWorkerMemberService.PrepareStage:output_type -> vela.v1.StageWorkerMemberServicePrepareStageResponse
-	3,  // 13: vela.v1.StageWorkerMemberService.StartStage:output_type -> vela.v1.StageWorkerMemberServiceStartStageResponse
-	5,  // 14: vela.v1.StageWorkerMemberService.CancelStage:output_type -> vela.v1.StageWorkerMemberServiceCancelStageResponse
-	7,  // 15: vela.v1.StageWorkerMemberService.Status:output_type -> vela.v1.StageWorkerMemberServiceStatusResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	10, // 0: vela.v1.StageWorkerMemberServicePrepareStageRequest.command:type_name -> vela.v1.ModelRuntimeServicePrepareStageRequest
+	11, // 1: vela.v1.StageWorkerMemberServicePrepareStageResponse.result:type_name -> vela.v1.ModelRuntimeServicePrepareStageResponse
+	12, // 2: vela.v1.StageWorkerMemberServiceStartStageRequest.command:type_name -> vela.v1.ModelRuntimeServiceStartStageRequest
+	13, // 3: vela.v1.StageWorkerMemberServiceStartStageResponse.result:type_name -> vela.v1.ModelRuntimeServiceStartStageResponse
+	14, // 4: vela.v1.StageWorkerMemberServiceCancelStageRequest.command:type_name -> vela.v1.ModelRuntimeServiceCancelStageRequest
+	15, // 5: vela.v1.StageWorkerMemberServiceCancelStageResponse.result:type_name -> vela.v1.ModelRuntimeServiceCancelStageResponse
+	16, // 6: vela.v1.StageWorkerMemberServiceStatusRequest.command:type_name -> vela.v1.ModelRuntimeServiceStatusRequest
+	17, // 7: vela.v1.StageWorkerMemberServiceStatusResponse.result:type_name -> vela.v1.ModelRuntimeServiceStatusResponse
+	18, // 8: vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest.command:type_name -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest
+	19, // 9: vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse.result:type_name -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
+	0,  // 10: vela.v1.StageWorkerMemberService.PrepareStage:input_type -> vela.v1.StageWorkerMemberServicePrepareStageRequest
+	2,  // 11: vela.v1.StageWorkerMemberService.StartStage:input_type -> vela.v1.StageWorkerMemberServiceStartStageRequest
+	4,  // 12: vela.v1.StageWorkerMemberService.CancelStage:input_type -> vela.v1.StageWorkerMemberServiceCancelStageRequest
+	6,  // 13: vela.v1.StageWorkerMemberService.Status:input_type -> vela.v1.StageWorkerMemberServiceStatusRequest
+	8,  // 14: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:input_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest
+	1,  // 15: vela.v1.StageWorkerMemberService.PrepareStage:output_type -> vela.v1.StageWorkerMemberServicePrepareStageResponse
+	3,  // 16: vela.v1.StageWorkerMemberService.StartStage:output_type -> vela.v1.StageWorkerMemberServiceStartStageResponse
+	5,  // 17: vela.v1.StageWorkerMemberService.CancelStage:output_type -> vela.v1.StageWorkerMemberServiceCancelStageResponse
+	7,  // 18: vela.v1.StageWorkerMemberService.Status:output_type -> vela.v1.StageWorkerMemberServiceStatusResponse
+	9,  // 19: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:output_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse
+	15, // [15:20] is the sub-list for method output_type
+	10, // [10:15] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_stage_worker_member_proto_init() }
@@ -504,7 +614,7 @@ func file_vela_v1_stage_worker_member_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_stage_worker_member_proto_rawDesc), len(file_vela_v1_stage_worker_member_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
