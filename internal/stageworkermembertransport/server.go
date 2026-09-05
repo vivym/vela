@@ -92,7 +92,7 @@ func (server *Server) PrepareStage(
 		return nil, status.Error(codes.InvalidArgument, "Stage Worker member prepare request is incomplete")
 	}
 	authority := request.GetCommand().GetAuthority()
-	identity, digest, err := server.authorize(ctx, request.GetTargetWorkerMemberId(), authority)
+	identity, digest, err := server.authorize(ctx, request.GetTargetWorkerMemberId(), authority, false)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (server *Server) StartStage(
 		return nil, status.Error(codes.InvalidArgument, "Stage Worker member start request is incomplete")
 	}
 	identity, digest, err := server.authorize(
-		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(),
+		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(), false,
 	)
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func (server *Server) CancelStage(
 		return nil, status.Error(codes.InvalidArgument, "Stage Worker member cancel request is incomplete")
 	}
 	identity, digest, err := server.authorize(
-		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(),
+		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(), true,
 	)
 	if err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ func (server *Server) Status(
 		return nil, status.Error(codes.InvalidArgument, "Stage Worker member status request is incomplete")
 	}
 	identity, digest, err := server.authorize(
-		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(),
+		ctx, request.GetTargetWorkerMemberId(), request.GetCommand().GetAuthority(), false,
 	)
 	if err != nil {
 		return nil, err
@@ -191,6 +191,7 @@ func (server *Server) authorize(
 	ctx context.Context,
 	targetMemberID string,
 	authority *velav1.StageAuthority,
+	cancellation bool,
 ) (*velav1.ModelRuntimeIdentity, [32]byte, error) {
 	if server == nil || server.authenticator == nil || server.validator == nil || server.runtime == nil {
 		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member server is not configured")
@@ -202,10 +203,14 @@ func (server *Server) authorize(
 	if err != nil {
 		return nil, [32]byte{}, status.Error(codes.Unauthenticated, "authenticate Stage Worker member peer")
 	}
-	verified, err := server.validator.ValidateEnvelopeWithClockSkew(
-		authority,
-		server.maxClockSkew,
-	)
+	var verified stageauthority.Verified
+	if cancellation {
+		// This grants no execution time. Runtime must still require an exact
+		// installed authority before acknowledging an expired cancellation.
+		verified, err = server.validator.ValidateEnvelopeForReplay(authority, server.maxClockSkew)
+	} else {
+		verified, err = server.validator.ValidateEnvelopeWithClockSkew(authority, server.maxClockSkew)
+	}
 	if err != nil {
 		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority is invalid or stale")
 	}

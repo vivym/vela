@@ -130,6 +130,11 @@ now validates the deterministic leader, pinned target identity, complete history
 and both forwarding acknowledgements. Real loopback TLS 1.3 to private UDS and
 journal tests cover response loss, restart and large signed histories; unit,
 race, lint and Linux checks pass. Waiting for admitted calls is not writer drain.
+The subsequent [historical member cancellation repair](member-cancellation-evidence-2026-09-06.md)
+allows expired exact Cancel through the authenticated member hop while Runtime
+still rejects unseen renewals/allocations. Execution and Status retain freshness
+checks. Real TLS-to-UDS, restart, full unit, related-module race, lint and non-root
+Linux checks pass; cancellation acknowledgement does not establish writer drain.
 All-member installation collection, default Runtime configuration, automatic
 startup reconciliation and terminal retirement remain open.
 The same admission boundary now revalidates authority after waiting for the

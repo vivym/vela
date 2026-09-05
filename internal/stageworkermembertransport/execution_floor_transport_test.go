@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestMemberFloorTLSAndUnixJournalSurviveResponseLossAndRestart(t *testing.T) {
@@ -126,6 +127,85 @@ func TestMemberFloorTLSForwardsCompleteLargeHistory(t *testing.T) {
 	}
 }
 
+func TestMemberCancellationAfterFloorAllowsOnlyInstalledExpiredAuthority(t *testing.T) {
+	f, request, _ := newMemberFloorFixture(t)
+	var wall atomic.Int64
+	wall.Store(campaignNow().UnixNano())
+	validator, err := stageauthority.NewValidator(map[string][]byte{"authority-v1": []byte("0123456789abcdef0123456789abcdef")}, func() time.Time {
+		return time.Unix(0, wall.Load())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.server.validator = validator
+	directory := privateMemberFloorDirectory(t)
+	chain := startMemberFloorChain(t, f, request.Command.Disposition, directory, true, false)
+	prepared, err := chain.client.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authority, ExecutionSpec: f.spec})
+	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("prepare cancellation fixture: %v %v", prepared, err)
+	}
+	if _, err := chain.client.InstallStageExecutionFloor(context.Background(), request.Command); err != nil {
+		t.Fatal(err)
+	}
+	wall.Add(int64(10 * time.Minute))
+	_, prepareErr := chain.client.PrepareStage(context.Background(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authority, ExecutionSpec: f.spec})
+	_, startErr := chain.client.StartStage(context.Background(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: f.authority})
+	_, statusErr := chain.client.Status(context.Background(), &velav1.ModelRuntimeServiceStatusRequest{Authority: f.authority})
+	for _, err := range []error{prepareErr, startErr, statusErr} {
+		if status.Code(err) != codes.FailedPrecondition {
+			t.Fatalf("execution or inspection accepted expired authority: %v", err)
+		}
+	}
+	for _, mutation := range []string{"unseen renewal", "unseen allocation", "future", "runtime epoch", "signature"} {
+		a := proto.Clone(f.authority).(*velav1.StageAuthority)
+		switch mutation {
+		case "unseen renewal":
+			a.IssuedAt = timestamppb.New(a.IssuedAt.AsTime().Add(time.Second))
+			a.ExpiresAt = timestamppb.New(a.ExpiresAt.AsTime().Add(time.Second))
+		case "unseen allocation":
+			a.StageAttemptId, a.StageAllocationId, a.StageLeaseId = uuid.NewString(), uuid.NewString(), uuid.NewString()
+		case "future":
+			a.IssuedAt = timestamppb.New(time.Unix(0, wall.Load()).Add(time.Hour))
+			a.ExpiresAt = timestamppb.New(a.IssuedAt.AsTime().Add(a.MonotonicValidFor.AsDuration()))
+		case "runtime epoch":
+			a.Members[1].ModelRuntimeEpoch++
+		}
+		a, err = f.signer.Sign(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mutation == "signature" {
+			a.Signature[0] ^= 1
+		}
+		response, err := chain.client.CancelStage(context.Background(), &velav1.ModelRuntimeServiceCancelStageRequest{
+			Authority: a, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+		})
+		if response.GetCancellationAcknowledged() || chain.backend.cancelCalls.Load() != 0 || err == nil && response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+			t.Fatalf("%s canceled or renewed installed execution: %v %v", mutation, response, err)
+		}
+	}
+	response, err := chain.client.CancelStage(context.Background(), &velav1.ModelRuntimeServiceCancelStageRequest{
+		Authority: f.authority, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+	})
+	if err != nil || !response.GetCancellationAcknowledged() || chain.backend.cancelCalls.Load() != 1 || chain.backend.closed.Load() {
+		t.Fatalf("expired exact authority could not signal installed execution: %v %v calls=%d", response, err, chain.backend.cancelCalls.Load())
+	}
+	nonleader := chain.dial(t, chain.followerCredentials)
+	if response, err := nonleader.CancelStage(context.Background(), &velav1.ModelRuntimeServiceCancelStageRequest{
+		Authority: f.authority, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+	}); response.GetCancellationAcknowledged() || status.Code(err) != codes.PermissionDenied || chain.backend.cancelCalls.Load() != 1 {
+		t.Fatalf("historical cancellation bypassed leader authorization: %v %v", response, err)
+	}
+	chain.close()
+	chain = startMemberFloorChain(t, f, request.Command.Disposition, directory, false, false)
+	response, err = chain.client.CancelStage(context.Background(), &velav1.ModelRuntimeServiceCancelStageRequest{
+		Authority: f.authority, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+	})
+	if err != nil || response.GetCancellationAcknowledged() || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE || chain.backend.cancelCalls.Load() != 0 {
+		t.Fatalf("empty replacement Runtime acknowledged unknown historical execution: %v %v", response, err)
+	}
+}
+
 type memberFloorChain struct {
 	client              *Client
 	backend             *memberFloorBackend
@@ -137,7 +217,13 @@ type memberFloorChain struct {
 
 type memberFloorBackend struct {
 	*modelruntime.FakeRuntime
-	closed atomic.Bool
+	closed      atomic.Bool
+	cancelCalls atomic.Int64
+}
+
+func (backend *memberFloorBackend) Cancel(ctx context.Context, verified stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
+	backend.cancelCalls.Add(1)
+	return backend.FakeRuntime.Cancel(ctx, verified, reason)
 }
 
 func (backend *memberFloorBackend) Close() error {
