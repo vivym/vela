@@ -101,7 +101,8 @@ func TestStageStreamMaterializationJournalReplaysLostResponseAfterTTL(t *testing
 			}
 			unused := unusedMaterializationReplayDependencies{}
 			backend, err := stageworkercontrol.NewPostgresOperationBackend(stageworkercontrol.PostgresOperationConfig{
-				WorkerEvidence: unused, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
+				TerminalDispositions: unused,
+				WorkerEvidence:       unused, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
 				StageArtifacts: repository, StageAttempts: coordinator, Reattachments: unused, Transfers: unused,
 			})
 			if err != nil {

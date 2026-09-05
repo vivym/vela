@@ -68,8 +68,9 @@ SQL `eligible=true` means candidate history only. The original assignment lookup
 uses an optional Acquire command ID to locate stored wire. The Go reader described
 below now decodes and authenticates that evidence before returning metadata.
 Stored wire may contain Customer Content and remains inside Control, without
-logging. A typed transport operation and domain-separated signed disposition
-remain unimplemented.
+logging. The later [typed transport operation and domain-separated signed
+disposition](terminal-disposition-evidence-2026-09-05.md) now authenticates these
+facts for Worker/Runtime verification, without granting deletion permission.
 
 Persistent Worker input admission, all relevant Runtime floors and drain proof,
 the retirement journal and restart/failure campaign remain open. This evidence

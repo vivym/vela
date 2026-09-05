@@ -16,6 +16,7 @@ const (
 	operationAuthorityNone operationAuthorityKind = iota
 	operationAuthorityStage
 	operationAuthorityMaterialization
+	operationAuthorityHistoricalStage
 )
 
 type operationDescriptor struct {
@@ -29,6 +30,13 @@ type operationDescriptor struct {
 // operationDescriptors is the single metadata registry for every protocol
 // operation. Protobuf oneof decoding and typed backend dispatch remain explicit.
 var operationDescriptors = map[Operation]operationDescriptor{
+	OperationReadStageTerminalDisposition: {
+		authority: operationAuthorityHistoricalStage,
+		stageAuthority: func(request *velav1.StageWorkerControlServiceConnectRequest) *velav1.StageAuthority {
+			return request.GetReadStageTerminalDisposition().GetAuthority()
+		},
+		validate: validateReadStageTerminalDisposition,
+	},
 	OperationRegisterWorkerEvidence: {
 		validate: validateRegisterWorkerEvidence,
 	},
@@ -144,9 +152,20 @@ func operationFromRequest(request *velav1.StageWorkerControlServiceConnectReques
 		return OperationResolveInputTransfer
 	case *velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer:
 		return OperationConsumeInputTransfer
+	case *velav1.StageWorkerControlServiceConnectRequest_ReadStageTerminalDisposition:
+		return OperationReadStageTerminalDisposition
 	default:
 		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED
 	}
+}
+
+func validateReadStageTerminalDisposition(request *velav1.StageWorkerControlServiceConnectRequest, authorities VerifiedAuthorities) error {
+	value := request.GetReadStageTerminalDisposition()
+	if value == nil || value.GetSchemaVersion() != 1 || authorities.Stage == nil ||
+		(value.GetAcquireCommandId() != "" && parseUUID(value.GetAcquireCommandId()) == uuid.Nil) {
+		return errors.New("terminal Stage disposition request is invalid")
+	}
+	return nil
 }
 
 func validateRegisterWorkerEvidence(

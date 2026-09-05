@@ -6,6 +6,7 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "vela/v1/model_runtime.proto";
 import "vela/v1/stage_authority.proto";
+import "vela/v1/stage_terminal_disposition.proto";
 
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
@@ -44,6 +45,7 @@ enum StageWorkerOperation {
   STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST = 10;
   STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER = 11;
   STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER = 12;
+  STAGE_WORKER_OPERATION_READ_STAGE_TERMINAL_DISPOSITION = 13;
 }
 
 message StageWorkerControlServiceConnectRequest {
@@ -62,6 +64,7 @@ message StageWorkerControlServiceConnectRequest {
     ReportMaterializationSourceLostRequest report_materialization_source_lost = 19;
     ResolveInputTransferRequest resolve_input_transfer = 20;
     ConsumeInputTransferRequest consume_input_transfer = 21;
+    ReadStageTerminalDispositionRequest read_stage_terminal_disposition = 22;
   }
 }
 
@@ -75,6 +78,7 @@ message StageWorkerControlServiceConnectResponse {
     StopStage stop_stage = 14;
     MaterializationAuthority materialization_authority = 15;
     ResolvedInputTransfer resolved_input_transfer = 16;
+    StageTerminalDispositionResult stage_terminal_disposition_result = 17;
   }
 }
 

@@ -66,6 +66,7 @@ type SealResult struct {
 }
 
 type OperationBackend interface {
+	ReadStageTerminalDisposition(context.Context, CommandContext, *velav1.ReadStageTerminalDispositionRequest, VerifiedAuthorities) (*velav1.StageTerminalDispositionResult, error)
 	RegisterWorkerEvidence(
 		context.Context,
 		CommandContext,
@@ -171,6 +172,18 @@ func (executor *ProductionExecutor) Execute(
 	}
 
 	switch operation {
+	case OperationReadStageTerminalDisposition:
+		result, err := executor.backend.ReadStageTerminalDisposition(ctx, command, request.GetReadStageTerminalDisposition(), authorities)
+		if err != nil {
+			return nil, fmt.Errorf("read terminal Stage disposition: %w", err)
+		}
+		if err := validateTerminalDispositionResult(result, authorities); err != nil {
+			return nil, err
+		}
+		return &velav1.StageWorkerControlServiceConnectResponse{
+			RequestId: request.GetRequestId(),
+			Result:    &velav1.StageWorkerControlServiceConnectResponse_StageTerminalDispositionResult{StageTerminalDispositionResult: result},
+		}, nil
 	case OperationRegisterWorkerEvidence:
 		result, err := executor.backend.RegisterWorkerEvidence(
 			ctx, command, request.GetRegisterWorkerEvidence(),

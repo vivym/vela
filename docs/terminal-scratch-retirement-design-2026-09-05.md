@@ -1,10 +1,12 @@
 # Terminal Stage scratch retirement: minimum closure
 
-Status: retirement protocol remains design work. The schema-89
-[history reader](terminal-history-evidence-2026-09-05.md) and Go verification of
-the complete signed original are implemented and locally tested. This does not establish writer
-exclusion or bounded scratch usage across terminal Stage executions, including
-delayed duplicates after success.
+Status: the [history reader](terminal-history-evidence-2026-09-05.md), verification
+of the complete signed original, and the [signed terminal disposition over
+authenticated Control](terminal-disposition-evidence-2026-09-05.md) are implemented
+and locally tested at schema 90. Persistent Worker admission, Runtime floors,
+execution drain and the retirement journal below remain design work. These
+prerequisites do not establish writer exclusion or bounded scratch usage across
+terminal Stage executions, including delayed duplicates after success.
 
 ## Current ownership and evidence
 
@@ -31,8 +33,8 @@ successful materialization and old SOURCE_LOST outputs as well as terminal input
 The local schema-88 [ordered execution repair](runtime-execution-order-2026-09-05.md)
 now prevents this Runtime reentry using an immutable allocation sequence and a
 per-epoch watermark. Persistent Runtime epoch advancement rejects old envelopes
-after restart. The rest of this document remains design work: the repair neither
-gates Worker input resolution nor establishes backend descendant quiescence.
+after restart. The Worker/Runtime retirement path remains design work: the repair
+neither gates Worker input resolution nor establishes backend descendant quiescence.
 
 `StopStage` currently conveys expired or revoked authority. Either can lead to
 retry, and `Agent.Cancel` explicitly returns `AllStopped=false` after signaling
@@ -175,7 +177,15 @@ longer holds and a durable disposition protocol is required.
 
 ## Historical control reader contract
 
-The proposed request is
+The typed Connect operation and signed response in this section are now
+implemented. `ReadStageTerminalDispositionRequest` requires the original Acquire
+ID for ASSIGN evidence; an exact recorded renewal can omit it. The result signs
+only INPUTS_UNUSED. RETAIN has no signed disposition. Fresh observations are
+valid for at most five minutes, with no future clock allowance. Expiry cannot
+authorize lowering an already installed floor; floor installation and recovery
+are still separate implementation work.
+
+The request is
 `ReadStageTerminalDispositionRequest{schema_version=1, StageAuthority authority}`
 on the existing Connect stream. It accepts no caller-selected paths. The typed
 response carries `INPUTS_UNUSED` or `RETAIN`, a reason, the exact original
@@ -200,7 +210,7 @@ and coordinator-command foreign keys to those roots. Absence of an expired
 live `jobs` or `attempts` row alone is not missing history and must not force
 retention when the immutable roots and complete execution evidence remain.
 
-The proposed `vela_read_stage_terminal_disposition(jsonb)` is a read-only
+The implemented `vela_read_stage_terminal_history(jsonb)` is a read-only
 `STABLE SECURITY DEFINER` function owned by
 `vela_attempt_coordinator_owner`, with execute granted only to the Stage Worker
 control role. Validate its fixed search path and effective role capabilities.
@@ -214,13 +224,13 @@ snapshot readers require current READY/capacity/latest-renewal state; they do no
 provide this historical contract. Do not relax those existing execution readers
 to make terminal inspection work.
 
-The original-envelope lookup is still an implementation prerequisite.
+The original-envelope lookup is implemented by the authenticated Go reader.
 `stage_leases.token_digest` hashes the lease token, not the full StageAuthority.
-The recorded acquire result contains protobuf `assignment_wire`, while
-`stage_authority_renewals` separately retains a complete renewal and its authority
-digest. Locate the original wire through retained assignment identity, decode it
-with the existing protobuf API in trusted Go code, and verify the complete
-canonical authority before signing a disposition. Missing original/renewal
+Schema 90 retains canonical `authority_wire` separately from retireable
+`assignment_wire`, while `stage_authority_renewals` retains a complete renewal
+and its authority digest. Locate the original wire through retained assignment
+identity, decode it with the existing protobuf API in trusted Go code, and verify
+the complete canonical authority before signing a disposition. Missing original/renewal
 evidence must yield RETAIN; substituting a token digest is insufficient. Verify
 the reader owner's SELECT permissions on the retained identity roots as part of
 the integration test, rather than relying on a privileged test connection.

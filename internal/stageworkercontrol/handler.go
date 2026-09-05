@@ -27,6 +27,7 @@ const (
 	OperationReportMaterializationSourceLost = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST
 	OperationResolveInputTransfer            = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER
 	OperationConsumeInputTransfer            = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER
+	OperationReadStageTerminalDisposition    = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_READ_STAGE_TERMINAL_DISPOSITION
 )
 
 type Authorizer interface {
@@ -166,6 +167,15 @@ func (handler *Handler) Handle(
 			ctx, identity, sessionEpoch, operation, request,
 			VerifiedAuthorities{Materialization: &verified},
 		)
+	}
+	// Historical reads have their own role-scoped database authentication. They
+	// cannot use the active execution reader or authorize any state transition.
+	if operation == OperationReadStageTerminalDisposition {
+		verified, err := handler.validator.ValidateEnvelopeForReplay(authority, 0)
+		if err != nil {
+			return staleResponse(request.GetRequestId(), operation, err.Error()), nil
+		}
+		return handler.execute(ctx, identity, sessionEpoch, operation, request, VerifiedAuthorities{Stage: &verified})
 	}
 	verified, err := handler.validator.ValidateEnvelopeWithClockSkew(
 		authority,

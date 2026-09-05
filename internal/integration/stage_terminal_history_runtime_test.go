@@ -95,8 +95,15 @@ func TestStageTerminalHistoryPreservesHistoricalRuntimeScopesWhileDraining(t *te
 	}
 	failTerminalHistoryAssignment(t, fixture, current)
 	reader := newTerminalHistoryReaderForTest(t, fixture, old)
+	handler, validator, _ := terminalDispositionControl(t, fixture)
 	assertHistory := func() {
 		t.Helper()
+		disposition := readSignedTerminalDisposition(t, handler, validator, command, old)
+		if disposition.GetCutoff() != current.GetExecutionSequence() || len(disposition.GetAllocations()) != 2 ||
+			disposition.GetAllocations()[0].GetMembers()[0].GetModelRuntimeEpoch() != old.GetMembers()[0].GetModelRuntimeEpoch() ||
+			disposition.GetAllocations()[1].GetMembers()[0].GetModelRuntimeEpoch() != member.GetModelRuntimeEpoch() {
+			t.Fatal("signed disposition omitted historical Runtime scope")
+		}
 		history, err := reader.Read(ctx, command, old, command.CommandID)
 		if err != nil || history == nil || history.Cutoff != current.GetExecutionSequence() || len(history.Allocations) != 2 ||
 			history.Allocations[0].Members[0].ModelRuntimeEpoch != old.GetMembers()[0].GetModelRuntimeEpoch() ||

@@ -617,5 +617,27 @@ Local validation, using disposable PostgreSQL 17 instances and no GPU:
   adds the schema-90 SQL types and acquire-result lifecycle columns only.
 
 No remote rollout, GPU execution, new load/CNPG campaign, or Production Gate
-advancement is claimed. Signed terminal disposition, persistent input admission,
-writer drain and the local retirement journal remain the next lifecycle work.
+advancement is claimed. At that checkpoint, signed terminal disposition,
+persistent input admission, writer drain and the retirement journal remained open.
+
+## Signed terminal disposition
+
+The next [protocol increment](terminal-disposition-evidence-2026-09-05.md), based
+on `474cde8`, adds a typed historical query to authenticated Stage Worker Control
+and a domain-separated Ed25519 response. The unchanged schema-90 reader supplies
+the complete scoped allocation cutoff and historical Runtime membership.
+Client verification binds that response to the original authority and current
+query session. RETAIN contains no signed facts; expired execution authority can
+authenticate history but cannot regain execution time.
+
+Local mTLS/role-scoped PostgreSQL integration passes. The focused race batch
+passes in 16.152 s, including allocated but undelivered retry and multiple
+historical Runtime epochs before/after Fleet Drain. Signature/domain/shape and
+transport unit tests pass with the race detector. `go test ./...`, `make lint`
+(0 issues), and `make generate` pass. Compatibility results and the earlier
+fixture failure are recorded in the linked evidence report.
+
+Persistent Worker input admission, Supervisor/Runtime floor enforcement,
+execution-specific writer drain and the crash-safe retirement journal remain
+unimplemented. The new response is not a cleanup action and does not establish
+terminal scratch bounds. Production Gates remain **0/9**.

@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package vela.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vela/v1/stage_authority.proto";
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+enum StageTerminalState {
+  STAGE_TERMINAL_STATE_UNSPECIFIED = 0;
+  STAGE_TERMINAL_STATE_SUCCEEDED = 1;
+  STAGE_TERMINAL_STATE_FAILED = 2;
+  STAGE_TERMINAL_STATE_CANCELED = 3;
+}
+
+enum StageInputDisposition {
+  STAGE_INPUT_DISPOSITION_UNSPECIFIED = 0;
+  STAGE_INPUT_DISPOSITION_RETAIN = 1;
+  STAGE_INPUT_DISPOSITION_INPUTS_UNUSED = 2;
+}
+
+message StageTerminalMember {
+  string worker_member_id = 1;
+  int64 member_epoch = 2;
+  int64 model_runtime_epoch = 3;
+  bytes identity_digest = 4;
+  bytes device_subset_digest = 5;
+}
+
+message StageTerminalAllocation {
+  string stage_attempt_id = 1;
+  string stage_allocation_id = 2;
+  string stage_lease_id = 3;
+  int64 execution_sequence = 4;
+  bytes execution_nonce = 5;
+  string model_residency_id = 6;
+  string model_runtime_identity = 7;
+  int64 barrier_generation = 8;
+  string stage_profile_revision_id = 9;
+  repeated StageTerminalMember members = 10;
+}
+
+// Signed historical fact. It neither proves writer drain nor authorizes deletion.
+message StageTerminalDisposition {
+  uint32 schema_version = 1;
+  StageInputDisposition input_disposition = 2;
+  bytes original_authority_digest = 3;
+  string organization_id = 4;
+  string project_id = 5;
+  string job_id = 6;
+  string attempt_id = 7;
+  string stage_run_id = 8;
+  string stage_attempt_id = 9;
+  string stage_allocation_id = 10;
+  string stage_lease_id = 11;
+  StageTerminalState terminal_state = 12;
+  int64 stage_fence = 13;
+  int64 stage_version = 14;
+  string worker_instance_id = 15;
+  int64 worker_instance_epoch = 16;
+  string worker_member_id = 17;
+  int64 control_session_epoch = 18;
+  bytes device_set_digest = 19;
+  bytes membership_digest = 20;
+  repeated StageAuthorityDeviceEpoch devices = 21;
+  int64 cutoff = 22;
+  repeated StageTerminalAllocation allocations = 23;
+  google.protobuf.Timestamp observed_at = 24;
+  google.protobuf.Timestamp expires_at = 25;
+  string signing_key_id = 26;
+  bytes signature = 27;
+}
+
+message ReadStageTerminalDispositionRequest {
+  uint32 schema_version = 1;
+  StageAuthority authority = 2;
+  // Optional original Acquire identity; omitted for an exact renewal lookup.
+  string acquire_command_id = 3;
+}
+
+message StageTerminalDispositionResult {
+  uint32 schema_version = 1;
+  StageInputDisposition input_disposition = 2;
+  string reason = 3;
+  bytes original_authority_digest = 4;
+  StageTerminalDisposition disposition = 5;
+}

@@ -32,6 +32,10 @@ func TestOperationDescriptorsCoverEveryProtocolOperation(t *testing.T) {
 				descriptor.activeState != nil {
 				t.Fatalf("materialization-authorized operation %s has inconsistent metadata", name)
 			}
+		case operationAuthorityHistoricalStage:
+			if descriptor.stageAuthority == nil || descriptor.materializationAuthority != nil || descriptor.activeState != nil {
+				t.Fatalf("historical operation %s has inconsistent metadata", name)
+			}
 		default:
 			t.Fatalf("operation %s has unknown authority kind %d", name, descriptor.authority)
 		}

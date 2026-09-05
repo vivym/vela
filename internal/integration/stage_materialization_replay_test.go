@@ -254,6 +254,7 @@ type materializationReplayFixture struct {
 // These paths are deliberately unavailable: COMMIT and SOURCE_LOST below use
 // the real production backend and role-scoped PostgreSQL repository throughout.
 type unusedMaterializationReplayDependencies struct {
+	stageworkercontrol.TerminalDispositionOperations
 	stageworkercontrol.WorkerEvidenceOperations
 	stageworkercontrol.AssignmentOperations
 	stageworkercontrol.ExecutionOperations
@@ -325,7 +326,8 @@ func newMaterializationReplayFixtureAtSchema(t *testing.T, kind string, ttl time
 	}
 	unused := unusedMaterializationReplayDependencies{}
 	backend, err := stageworkercontrol.NewPostgresOperationBackend(stageworkercontrol.PostgresOperationConfig{
-		WorkerEvidence: unused, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
+		TerminalDispositions: unused,
+		WorkerEvidence:       unused, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
 		StageArtifacts: repository, StageAttempts: coordinator, Reattachments: unused, Transfers: unused,
 	})
 	if err != nil {

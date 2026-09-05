@@ -284,8 +284,17 @@ func newStageWorkerControlAdapter(
 	if err != nil {
 		return nil, err
 	}
+	terminalHistory, err := stageworkercontrol.NewPostgresTerminalHistoryReader(controlPool, stageValidator)
+	if err != nil {
+		return nil, err
+	}
+	terminalDispositions, err := stageworkercontrol.NewTerminalDispositionBackend(terminalHistory, stageSigner, stageValidator, configuration.leaseActiveKeyID)
+	if err != nil {
+		return nil, err
+	}
 	operations, err := stageworkercontrol.NewPostgresOperationBackend(
 		stageworkercontrol.PostgresOperationConfig{
+			TerminalDispositions:  terminalDispositions,
 			WorkerEvidence:        workerEvidence,
 			Assignments:           assignments,
 			Execution:             execution,

@@ -92,6 +92,7 @@ type ReattachmentOperations interface {
 }
 
 type PostgresOperationConfig struct {
+	TerminalDispositions  TerminalDispositionOperations
 	WorkerEvidence        WorkerEvidenceOperations
 	Assignments           AssignmentOperations
 	Execution             ExecutionOperations
@@ -106,6 +107,7 @@ type PostgresOperationConfig struct {
 // behind the StageWorkerControl operation surface. Each dependency must retain
 // durable replay and fencing; the backend never substitutes Worker-local state.
 type PostgresOperationBackend struct {
+	terminalDispositions  TerminalDispositionOperations
 	workerEvidence        WorkerEvidenceOperations
 	assignments           AssignmentOperations
 	execution             ExecutionOperations
@@ -119,11 +121,12 @@ type PostgresOperationBackend struct {
 func NewPostgresOperationBackend(config PostgresOperationConfig) (*PostgresOperationBackend, error) {
 	if config.WorkerEvidence == nil || config.Assignments == nil || config.Execution == nil ||
 		config.MaterializationIssuer == nil || config.StageArtifacts == nil ||
-		config.StageAttempts == nil || config.Reattachments == nil || config.Transfers == nil {
+		config.StageAttempts == nil || config.Reattachments == nil || config.Transfers == nil || config.TerminalDispositions == nil {
 		return nil, errors.New("PostgreSQL Stage Worker operation dependencies are incomplete")
 	}
 	return &PostgresOperationBackend{
-		workerEvidence: config.WorkerEvidence, assignments: config.Assignments,
+		terminalDispositions: config.TerminalDispositions,
+		workerEvidence:       config.WorkerEvidence, assignments: config.Assignments,
 		execution: config.Execution, materializationIssuer: config.MaterializationIssuer,
 		stageArtifacts: config.StageArtifacts, stageAttempts: config.StageAttempts,
 		reattachments: config.Reattachments, transfers: config.Transfers,

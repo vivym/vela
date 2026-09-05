@@ -831,6 +831,14 @@ type recordingOperationBackend struct {
 	err       error
 }
 
+func (backend *recordingOperationBackend) ReadStageTerminalDisposition(_ context.Context, command stageworkercontrol.CommandContext, _ *velav1.ReadStageTerminalDispositionRequest, authorities stageworkercontrol.VerifiedAuthorities) (*velav1.StageTerminalDispositionResult, error) {
+	backend.record(command, stageworkercontrol.OperationReadStageTerminalDisposition)
+	return &velav1.StageTerminalDispositionResult{
+		SchemaVersion: 1, InputDisposition: velav1.StageInputDisposition_STAGE_INPUT_DISPOSITION_RETAIN,
+		Reason: "HISTORY_UNAVAILABLE", OriginalAuthorityDigest: authorities.Stage.Digest[:],
+	}, backend.err
+}
+
 func (backend *recordingOperationBackend) record(
 	command stageworkercontrol.CommandContext,
 	operation stageworkercontrol.Operation,

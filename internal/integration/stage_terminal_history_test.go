@@ -100,7 +100,7 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 	authority := acquired.Assignment.GetAuthority()
 	request := terminalHistoryRequest(t, command, authority)
 	started := startTerminalHistoryAssignment(t, fixture, authority)
-	failedAt := time.Now()
+	failedAt := terminalHistoryDatabaseTime(t, fixture)
 	fingerprint := sha256.Sum256([]byte("retry before terminal history"))
 	failed, err := fixture.coordinator.Apply(context.Background(), attemptcoordinator.FailStageCommand{
 		CommandID: uuid.New(), AttemptID: uuid.MustParse(authority.GetAttemptId()),
@@ -153,6 +153,12 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 	if err != nil || verifiedHistory == nil || verifiedHistory.Cutoff != last.Sequence ||
 		len(verifiedHistory.Allocations) != 2 || verifiedHistory.Allocations[1].StageAllocationID != next.StageAllocationID {
 		t.Fatalf("verified history missed undelivered retry: history=%v error=%v", verifiedHistory, err)
+	}
+	handler, validator, _ := terminalDispositionControl(t, fixture)
+	disposition := readSignedTerminalDisposition(t, handler, validator, command, authority)
+	if disposition.GetCutoff() != last.Sequence || len(disposition.GetAllocations()) != 2 ||
+		disposition.GetAllocations()[1].GetStageAllocationId() != next.StageAllocationID.String() {
+		t.Fatal("signed disposition omitted allocated but undelivered retry")
 	}
 	// Global issuance can advance independently; it is not this StageRun's cutoff.
 	if _, err := fixture.database.Admin.Exec(`SELECT nextval('stage_allocation_execution_sequence')`); err != nil {
@@ -432,13 +438,14 @@ func failTerminalHistoryAssignment(t *testing.T, fixture stageSchedulerFixture, 
 		t.Fatal(err)
 	}
 	fingerprint := sha256.Sum256([]byte("terminal history fixture failure"))
+	failedAt := terminalHistoryDatabaseTime(t, fixture)
 	decision, err := fixture.coordinator.Apply(context.Background(), attemptcoordinator.FailStageCommand{
 		CommandID: uuid.New(), AttemptID: uuid.MustParse(authority.GetAttemptId()),
 		StageRunID: uuid.MustParse(authority.GetStageRunId()), StageAttemptID: uuid.MustParse(authority.GetStageAttemptId()),
 		StageLeaseID: uuid.MustParse(authority.GetStageLeaseId()), ExpectedAttemptFence: authority.GetAttemptFence(),
 		ExpectedStageFence: authority.GetStageFence(), ExpectedStageVersion: started.StageVersion,
 		FailureClass: "WORKER_LOST", FailureFingerprint: fingerprint[:], ConsumedResourceUnits: units,
-		FailedAt: time.Now(), RetryAt: time.Now().Add(time.Second),
+		FailedAt: failedAt, RetryAt: failedAt.Add(time.Second),
 	})
 	if err != nil || decision.State != "FAILED" {
 		t.Fatalf("terminal FAIL = %+v error=%v", decision, err)
@@ -447,15 +454,26 @@ func failTerminalHistoryAssignment(t *testing.T, fixture stageSchedulerFixture, 
 
 func startTerminalHistoryAssignment(t *testing.T, fixture stageSchedulerFixture, authority *velav1.StageAuthority) attemptcoordinator.StageDecision {
 	t.Helper()
+	startedAt := terminalHistoryDatabaseTime(t, fixture)
 	started, err := fixture.coordinator.Apply(context.Background(), attemptcoordinator.StartStageCommand{
 		CommandID: uuid.New(), AttemptID: uuid.MustParse(authority.GetAttemptId()),
 		StageRunID: uuid.MustParse(authority.GetStageRunId()), StageAttemptID: uuid.MustParse(authority.GetStageAttemptId()),
 		StageLeaseID: uuid.MustParse(authority.GetStageLeaseId()), ExpectedAttemptFence: authority.GetAttemptFence(),
 		ExpectedStageFence: authority.GetStageFence(), ExpectedStageVersion: authority.GetStageVersion(),
-		StartedAt: time.Now(),
+		StartedAt: startedAt,
 	})
 	if err != nil || started.State != "RUNNING" {
-		t.Fatalf("START before terminal FAIL = %+v error=%v", started, err)
+		t.Fatalf("START before terminal FAIL = %+v error=%v; started_at=%s issued_at=%s expires_at=%s", started, err, startedAt, authority.GetIssuedAt().AsTime(), authority.GetExpiresAt().AsTime())
 	}
 	return started
+}
+
+func terminalHistoryDatabaseTime(t *testing.T, fixture stageSchedulerFixture) time.Time {
+	t.Helper()
+	// These fixtures call the coordinator directly, without ingress clock policy.
+	var now time.Time
+	if err := fixture.database.Admin.QueryRow(`SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	return now
 }
