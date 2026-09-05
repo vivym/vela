@@ -135,8 +135,15 @@ allows expired exact Cancel through the authenticated member hop while Runtime
 still rejects unseen renewals/allocations. Execution and Status retain freshness
 checks. Real TLS-to-UDS, restart, full unit, related-module race, lint and non-root
 Linux checks pass; cancellation acknowledgement does not establish writer drain.
-All-member installation collection, default Runtime configuration, automatic
-startup reconciliation and terminal retirement remain open.
+The explicit [all-member floor collector](all-member-floor-evidence-2026-09-06.md)
+now validates complete trusted historical routes before dispatch and requires
+durable identity/digest-bound acknowledgements from every member. Partial
+installation, lost responses and timeouts remain incomplete; retry reconfirms
+all members. Two live local Runtime Supervisors with independent journals and
+multiple profiles pass UDS response-loss and restart checks. Full unit,
+related-module race, lint and non-root Linux checks pass. Default trusted
+Runtime/Worker configuration, automatic startup reconciliation, writer drain
+and terminal retirement remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

@@ -31,12 +31,14 @@ type RuntimeMember struct {
 type Config struct {
 	Members             []RuntimeMember
 	CancellationTimeout time.Duration
+	ExecutionFloor      *ExecutionFloorConfig
 }
 
 type Agent struct {
 	members             map[string]velav1.ModelRuntimeServiceClient
 	ids                 []string
 	cancellationTimeout time.Duration
+	floor               *executionFloorCollector
 }
 
 type StartBarrierResult struct {
@@ -89,8 +91,13 @@ func New(config Config) (*Agent, error) {
 		ids = append(ids, member.ID)
 	}
 	slices.Sort(ids)
+	floor, err := newExecutionFloorCollector(config.ExecutionFloor, ids)
+	if err != nil {
+		return nil, err
+	}
 	return &Agent{
 		members: members, ids: ids, cancellationTimeout: config.CancellationTimeout,
+		floor: floor,
 	}, nil
 }
 

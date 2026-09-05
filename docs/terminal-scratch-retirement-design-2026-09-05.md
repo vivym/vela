@@ -15,8 +15,10 @@ recovers that floor and the allocation watermark, with fail-closed state binding
 The [signed floor RPC](runtime-floor-rpc-evidence-2026-09-06.md) now supplies local
 private-socket delivery with explicit durable server configuration.
 The [member forwarding path](member-floor-forwarding-evidence-2026-09-06.md) adds
-authenticated leader delivery and validates both acknowledgements.
-Default command assembly, all-member installation collection, automatic startup reconciliation,
+authenticated leader delivery and validates both acknowledgements. The explicit
+[all-member collector](all-member-floor-evidence-2026-09-06.md) now validates
+complete trusted history and reconfirms every member's durable installation.
+Default command assembly, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -376,8 +378,10 @@ backend calls. Optional journal configuration now persists/replays restrictions
 across profile and local Runtime epoch changes without granting historical
 execution or drain. Missing/replaced state fails closed. The local signed floor
 RPC now reports identity/digest-bound durable installation, including forwarding
-through an authenticated member. All-member collection and default command
-assembly remain open. WaitAcceptedOperations joins
+through an authenticated member. An explicitly configured Worker collector now
+validates complete historical Runtime routes and requires all-member durable
+acknowledgements, with full retry after partial installation. Default command
+assembly and persistent retirement orchestration remain open. WaitAcceptedOperations joins
 only the calls registered before that installation, not asynchronous backend
 writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency
@@ -387,7 +391,8 @@ An alternative is an independently proven barrier that invalidates every old
 authority before execution drain. Advancing only a local counter, observing
 one lease expire, or finding an empty active-execution map does not establish
 that barrier. The local protocol now has a signed terminal-cutoff installation
-RPC; complete member delivery and combined retirement recovery remain open.
+RPC and explicit all-member collection; default wiring and combined retirement
+recovery remain open.
 
 The runtime epoch store persists an epoch, not terminal receipts or namespace
 intent. The materialization journal covers sealed outputs, not every failed or
