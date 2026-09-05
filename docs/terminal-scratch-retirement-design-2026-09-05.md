@@ -7,8 +7,10 @@ and locally tested at schema 90. The standalone [persistent Worker admission
 component](assignment-admission-evidence-2026-09-05.md) now has local replay,
 filesystem-fault and process-restart tests. The explicit [durable Stream
 integration](durable-stream-admission-evidence-2026-09-05.md) now covers local
-execution, Stop, renewal and materialization. Default command assembly, automatic
-startup reconciliation, Runtime floors,
+execution, Stop, renewal and materialization. The [Runtime admission floor
+component](runtime-execution-floor-evidence-2026-09-05.md) now provides a shared
+Service boundary and explicit signed, process-local cutoff installation.
+Default command assembly, automatic startup reconciliation, durable Runtime floors,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -358,12 +360,16 @@ complete scope. Partial member installation remains restrictive and is safe to
 retry. Any missing installation or drain checkpoint prevents deletion; later
 timeouts or expired request envelopes cannot lower an installed floor.
 
-The current Supervisor only serializes Prepare, and a Service watermark only
-blocks a new installation in `installOrRenew`. Cutoff enforcement must also cover
-already PREPARED executions reaching Start and implicit renewal through Status
-or Seal. Use one Supervisor-level admission boundary across resident profiles,
-register admitted operations under its lock, and drain their work without holding
-the global lock over backend calls. Historical stop inspection must remain
+The shared execution admission component now covers Prepare, already PREPARED
+executions reaching Start, and implicit renewal through Status/Seal, including
+direct Service calls. Its optional signed floor constructor requires trusted
+complete member identity/device-subset digests and exact current local Runtime
+routes for every historical allocation. Missing or replaced runtimes are rejected.
+It registers admitted calls under the common lock without holding that lock over
+backend calls. This floor is process-local; durable FLOOR_INSTALLED still requires
+persistence/recovery and remote protocol assembly. WaitAcceptedOperations joins
+only the calls registered before that installation, not asynchronous backend
+writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency
 and must not call Service.Shutdown as a shortcut.
 

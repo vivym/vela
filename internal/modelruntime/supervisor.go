@@ -16,11 +16,14 @@ import (
 type Supervisor struct {
 	velav1.UnimplementedModelRuntimeServiceServer
 
-	services    []*Service
-	identities  []*velav1.ModelRuntimeIdentity
-	routes      map[runtimeRoute]*Service
-	admissionMu sync.Mutex
+	services   []*Service
+	identities []*velav1.ModelRuntimeIdentity
+	routes     map[runtimeRoute]*Service
+	admission  *executionAdmission
+	floor      *executionFloorVerifier
 }
+
+var supervisorConstructionMu sync.Mutex
 
 type runtimeRoute struct {
 	modelResidencyID       string
@@ -30,6 +33,10 @@ type runtimeRoute struct {
 }
 
 func NewSupervisor(services ...*Service) (*Supervisor, error) {
+	return newSupervisor(nil, services...)
+}
+
+func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervisor, error) {
 	if len(services) == 0 || len(services) > maxLaunchRuntimes {
 		return nil, errors.New("ModelRuntime supervisor service set is invalid")
 	}
@@ -57,6 +64,31 @@ func NewSupervisor(services ...*Service) (*Supervisor, error) {
 		}
 		supervisor.routes[route] = service
 		supervisor.identities = append(supervisor.identities, runtimeIdentityProto(service.binding))
+	}
+	if floor != nil {
+		var err error
+		supervisor.floor, err = newExecutionFloorVerifier(*floor, supervisor)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// Construction may race a direct Service call. No used or already attached
+	// Service can be moved to a fresh gate and lose its allocation watermark.
+	supervisorConstructionMu.Lock()
+	defer supervisorConstructionMu.Unlock()
+	for _, service := range ordered {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+	}
+	for _, service := range ordered {
+		if service.admissionUsed || service.supervised {
+			return nil, errors.New("ModelRuntime supervisor requires unused, unsupervised services")
+		}
+	}
+	supervisor.admission = newExecutionAdmission(ordered)
+	for _, service := range ordered {
+		service.admission = supervisor.admission
+		service.supervised = true
 	}
 	return supervisor, nil
 }
@@ -128,17 +160,6 @@ func (supervisor *Supervisor) PrepareStage(
 			Decision: velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
 			Detail:   "StageAuthority does not name a resident runtime",
 		}, nil
-	}
-	supervisor.admissionMu.Lock()
-	defer supervisor.admissionMu.Unlock()
-	for _, resident := range supervisor.services {
-		if resident != service && resident.hasActiveExecution() {
-			return &velav1.ModelRuntimeServicePrepareStageResponse{
-				RuntimeIdentity: runtimeIdentityProto(service.binding),
-				Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED,
-				Detail:          "WorkerInstance member shared slot is held by another resident runtime",
-			}, nil
-		}
 	}
 	return service.PrepareStage(ctx, request)
 }

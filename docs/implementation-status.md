@@ -110,6 +110,14 @@ closure. Its CPU/race/Linux lifecycle tests pass. Default command assembly and
 automatic startup reconciliation are still pending alongside Runtime drain and
 terminal retirement. The same increment fixes active authority surviving an
 accepted Fail response after concurrent renewal.
+The [Runtime execution admission floor](runtime-execution-floor-evidence-2026-09-05.md)
+adds a shared member-wide watermark and slot boundary to every resident Service,
+including direct calls, and fixes reusable STOPPED profiles retaining the shared
+slot. An explicit in-process constructor verifies signed terminal scope and
+installs a monotonic floor across Prepare, Start and implicit renewal. CPU and
+race tests cover late commands and blocked backend calls. This checkpoint is
+non-durable and waiting for admitted calls is not writer drain. Durable floor
+recovery, floor RPC/default assembly and terminal retirement remain open.
 The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release

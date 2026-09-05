@@ -59,16 +59,18 @@ type Service struct {
 	cancelTimeout time.Duration
 	maxClockSkew  time.Duration
 
-	operationMu              sync.Mutex
-	mu                       sync.Mutex
-	active                   *activeExecution
-	highestExecutionSequence int64
-	sealed                   map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt
-	sealedOrder              [][sha256.Size]byte
-	generation               uint64
-	closed                   chan struct{}
-	closeOnce                sync.Once
-	closeErr                 error
+	operationMu   sync.Mutex
+	mu            sync.Mutex
+	active        *activeExecution
+	admission     *executionAdmission
+	admissionUsed bool
+	supervised    bool
+	sealed        map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt
+	sealedOrder   [][sha256.Size]byte
+	generation    uint64
+	closed        chan struct{}
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 const maxSealedReceiptReplay = 256
@@ -136,7 +138,7 @@ func NewService(config Config) (*Service, error) {
 			return nil, errors.New("ModelRuntime backend factory returned no backend")
 		}
 	}
-	return &Service{
+	service := &Service{
 		binding:       cloneBinding(config.Binding),
 		validator:     config.Validator,
 		backend:       config.Backend,
@@ -145,7 +147,9 @@ func NewService(config Config) (*Service, error) {
 		maxClockSkew:  config.MaxClockSkew,
 		sealed:        make(map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt),
 		closed:        make(chan struct{}),
-	}, nil
+	}
+	service.admission = newExecutionAdmission([]*Service{service})
+	return service, nil
 }
 
 func (service *Service) Close() {
@@ -232,12 +236,16 @@ func (service *Service) PrepareStage(
 
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	replayed, err := service.installOrRenew(verified, true)
+	replayed, release, err := service.executionAdmission().prepare(service, verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		if errors.Is(err, errSharedSlotBusy) {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		}
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
+	defer release()
 	if replayed {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = service.activeState()
@@ -273,6 +281,13 @@ func (service *Service) StartStage(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	_, release, err := service.executionAdmission().begin(service, verified, false)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer release()
 	state, replayed, err := service.requireActive(verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
@@ -334,6 +349,14 @@ func (service *Service) CancelStage(
 	}
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	aboveFloor, release, err := service.executionAdmission().begin(service, verified, true)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer release()
+	allowRenewal = allowRenewal && aboveFloor
 	if service.sealedReceipt(verified.Digest) != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
@@ -390,6 +413,13 @@ func (service *Service) Status(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	_, release, err := service.executionAdmission().begin(service, verified, false)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer release()
 	if receipt := service.sealedReceipt(verified.Digest); receipt != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
@@ -473,6 +503,13 @@ func (service *Service) SealOutput(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	_, release, err := service.executionAdmission().begin(service, verified, false)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer release()
 	if receipt := service.sealedReceipt(verified.Digest); receipt != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
@@ -558,35 +595,6 @@ func (service *Service) verifyCancellation(
 	return verified, false, err
 }
 
-func (service *Service) installOrRenew(
-	verified stageauthority.Verified,
-	allowRenewal bool,
-) (bool, error) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	sequence := verified.Authority.GetExecutionSequence()
-	if sequence <= 0 {
-		return false, errors.New("ModelRuntime execution requires ordered StageAuthority schema v2")
-	}
-	if service.active == nil || service.active.workerReusable &&
-		(service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
-			service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED) {
-		if sequence <= service.highestExecutionSequence {
-			return false, errors.New("StageAllocation execution sequence is retired")
-		}
-		service.cancelWatchdogLocked()
-		// Consume the order before backend.Prepare; failure cannot reopen this attempt.
-		service.highestExecutionSequence = sequence
-		service.active = &activeExecution{
-			verified: verified,
-			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
-		}
-		service.resetWatchdogLocked(verified)
-		return false, nil
-	}
-	return service.renewActiveLocked(verified, allowRenewal)
-}
-
 func (service *Service) requireActive(
 	verified stageauthority.Verified,
 	allowRenewal bool,
@@ -666,6 +674,11 @@ func (service *Service) expire(generation uint64) {
 	}
 	verified := service.active.verified
 	service.mu.Unlock()
+	_, release, err := service.executionAdmission().begin(service, verified, true)
+	if err != nil {
+		return
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
 	defer cancel()
 	if err := service.backend.Cancel(
@@ -770,12 +783,6 @@ func (service *Service) activeState() velav1.ModelRuntimeExecutionState {
 		return velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
 	}
 	return service.active.state
-}
-
-func (service *Service) hasActiveExecution() bool {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	return service.active != nil
 }
 
 func (service *Service) clearActive(digest [32]byte) {
