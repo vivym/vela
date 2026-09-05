@@ -61,12 +61,31 @@ Expired signatures may authenticate an exact historical identity for this read,
 but may not authorize execution or a state change. Missing identity, a future
 issue time, a mismatched Worker, or an unrecognized schema yields no disposition.
 
-No new cryptographic key hierarchy is required for the minimum design. A typed
-response over the existing authenticated control connection, checked against the
-exact request and persisted in the local journal, has the same trust model as a
-confirmed COMMIT. A separate signed capability is useful only if the response
-must later be verified outside that trusted connection/journal boundary. It does
-not by itself prove that the runtime stopped.
+The cutoff must also be verified by each Runtime, outside the original
+Control-to-Worker connection and journal. The minimum disposition therefore
+needs a domain-separated Ed25519 signature from Control, forwarded through the
+existing authenticated member transport or local UDS. A bare `floor(C)` argument
+would expand the Worker's authority: mTLS identifies the caller, while the
+original StageAuthority signature does not bind a new cutoff. The execution
+signature must never be repurposed as a retirement signature.
+
+Reuse the existing key IDs and verifier-key distribution, with a dedicated
+canonical message and signature domain such as
+`vela-stage-terminal-disposition-v1\x00`. Bind the schema, original authority
+digest, complete Job/Attempt/StageRun scope, immutable terminal state/fence/version,
+Worker epoch, complete member/topology and resident Runtime scope, cutoff,
+observation/validity times, and signing key ID. The message accepts no caller
+paths. Verify shape, canonical bytes, signature, scope and time before installing
+any floor; the signature alone never proves that writers stopped.
+
+This reuses the existing trust model rather than establishing a new isolation
+boundary. The current Worker command reads the original signing seeds to
+construct materialization HMAC and TransferTicket verifiers
+(`cmd/vela-stage-worker-agent/runtime.go`). A compromised Worker holding that
+seed can derive the execution signing key. Reusing it for retirement preserves
+protocol integrity checks but cannot establish Control-exclusive signing against
+that Worker. Any stronger threat-model claim requires separate key distribution
+and verifier-only Worker capabilities, assessed across those other protocols.
 
 The Worker combines that control disposition with a persistent retirement gate
 and an independent local stopped checkpoint. The checkpoint covers the original
@@ -172,6 +191,12 @@ do not describe `updated_at` as an immutable terminal timestamp. Missing retaine
 identity evidence yields `RETAIN`, even if independent metadata expiry removed
 the Job source row.
 
+Use `non_content_attempt_roots` and `non_content_job_roots` for the historical
+Job/Attempt identity. Migration 58 rebinds the retained StageRun, StageAttempt
+and coordinator-command foreign keys to those roots. Absence of an expired
+live `jobs` or `attempts` row alone is not missing history and must not force
+retention when the immutable roots and complete execution evidence remain.
+
 The proposed `vela_read_stage_terminal_disposition(jsonb)` is a read-only
 `STABLE SECURITY DEFINER` function owned by
 `vela_attempt_coordinator_owner`, with execute granted only to the Stage Worker
@@ -185,6 +210,17 @@ member identity and Runtime barrier membership. Existing active-authority and
 snapshot readers require current READY/capacity/latest-renewal state; they do not
 provide this historical contract. Do not relax those existing execution readers
 to make terminal inspection work.
+
+The original-envelope lookup is still an implementation prerequisite.
+`stage_leases.token_digest` hashes the lease token, not the full StageAuthority.
+The recorded acquire result contains protobuf `assignment_wire`, while
+`stage_authority_renewals` separately retains a complete renewal and its authority
+digest. Locate the original wire through retained assignment identity, decode it
+with the existing protobuf API in trusted Go code, and verify the complete
+canonical authority before signing a disposition. Missing original/renewal
+evidence must yield RETAIN; substituting a token digest is insufficient. Verify
+the reader owner's SELECT permissions on the retained identity roots as part of
+the integration test, rather than relying on a privileged test connection.
 
 Conservative v1 requires the current WorkerInstance epoch to equal the historical
 lease epoch. A reconnected control session may differ from the original session
@@ -251,6 +287,33 @@ boundary yields RETAIN; computing a maximum over an incomplete subset is not
 proof. The global sequence's `last_value` is not a substitute because it spans
 unrelated Workers and is not a scoped history-completeness check.
 
+Before filtering the history to a Worker, cross-check the complete StageRun's
+`stage_retry_budgets.attempts_consumed` against its unique, contiguous
+`stage_attempts.physical_attempt_number` set. Each physical attempt must have
+its matching ASSIGN coordinator command and exact allocation/lease identities.
+The ASSIGN transaction writes those objects and consumes the budget together;
+a gap, count mismatch, conflicting identity or unnumbered relevant allocation
+must yield RETAIN. A zero budget cannot authenticate a request naming a physical
+allocation. The cutoff query must include allocations whose signed envelope was
+never delivered or recorded.
+
+Compare ASSIGN `result.stage_attempt_id` values with the complete physical
+attempt set one-to-one. Use LEFT JOIN or explicit anti-joins to detect missing
+allocations, original leases and commands; an INNER JOIN must not silently
+reduce the set being checked. Only physical attempt numbers are contiguous.
+Execution sequences can have legitimate gaps from other Workers and rolled-back
+transactions, so no sequence-contiguity requirement applies to C.
+
+This completeness argument assumes the supported role-scoped issuance path and
+the pinned schema. ASSIGN locks the StageRun and requires READY before its
+transaction can commit; observing an irreversible terminal StageRun in one
+consistent snapshot therefore excludes a later supported ASSIGN. The current
+allocation identity triggers protect UPDATE, not arbitrary privileged
+INSERT/DELETE. Repository migrations contain no execution-history deletion
+path, but this is not evidence against hostile owner/superuser SQL. Any added
+history compaction or alternate issuance path must preserve a durable
+completeness bound or make the historical reader return RETAIN.
+
 Persisting Worker watermark `C` only closes the input-resolution entry point.
 Every relevant member/resident Runtime must also establish an irreversible
 admission floor through `C`, and then drain any execution it already accepted.
@@ -259,6 +322,32 @@ watermark `n` after the Worker has closed input admission. A single older
 allocation's STOPPED receipt does not cover the unseen attempt or that second
 entry point. The Runtime set must cover the complete relevant allocation
 history, not just the authority used to query the terminal reader.
+
+Build that Runtime scope from the union of all scoped allocations, preserving
+their selected profiles, residencies, runtime identities and complete historical
+barrier registrations. `stage_allocations.model_runtime_epoch` identifies a
+barrier generation, while each registration has its own
+`local_model_runtime_epoch`; these must not be conflated. Bind member epoch,
+identity digest and device subset digest as well. A SUPERSEDED barrier or a
+currently non-READY member is still part of the history. Missing registrations
+or an incomplete member set yield RETAIN, not a reduced Runtime scope.
+
+Runtime installation has two independently observable states: `FLOOR_INSTALLED`
+and `DRAINED`. The first closes admission through C across every resident profile
+sharing the Worker member; it does not declare accepted work stopped. The
+second requires an exact execution-specific drain checkpoint for the disposition's
+complete scope. Partial member installation remains restrictive and is safe to
+retry. Any missing installation or drain checkpoint prevents deletion; later
+timeouts or expired request envelopes cannot lower an installed floor.
+
+The current Supervisor only serializes Prepare, and a Service watermark only
+blocks a new installation in `installOrRenew`. Cutoff enforcement must also cover
+already PREPARED executions reaching Start and implicit renewal through Status
+or Seal. Use one Supervisor-level admission boundary across resident profiles,
+register admitted operations under its lock, and drain their work without holding
+the global lock over backend calls. Historical stop inspection must remain
+read-only and cannot implicitly renew. Normal Stage drain retains model residency
+and must not call Service.Shutdown as a shortcut.
 
 An alternative is an independently proven barrier that invalidates every old
 authority before execution drain. Advancing only a local counter, observing

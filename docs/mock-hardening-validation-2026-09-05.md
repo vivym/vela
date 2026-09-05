@@ -545,3 +545,22 @@ an old stopped allocation is insufficient to close its StageRun namespace.
 The design now requires complete scoped allocation history and a retirement
 cutoff installed at both Worker input admission and every relevant Runtime,
 followed by independent writer drain. That protocol is not implemented yet.
+
+## Post-checkpoint input and response cancellation
+
+Local commit `3ee8008` fixes Stop arriving during input resolution, including a
+late successful resolver return and an exact HTTP body completed after context
+cancellation. Commit `80239e5` prevents matching Stop from being overwritten by
+late START, HEARTBEAT or REATTACH acceptance, including cancellation RPC failure.
+Both changes pass unit, related-module race and lint checks; see the separate
+[input cancellation](input-stop-evidence-2026-09-05.md) and
+[response ordering](late-control-stop-evidence-2026-09-05.md) receipts. Neither
+process-local guard establishes persistent namespace exclusion or writer drain.
+
+The terminal reader design now specifies complete physical-attempt/ASSIGN/budget
+checks before its scoped cutoff calculation, retained non-content identity roots,
+and a union of historical member Runtime scopes. Runtime enforcement requires a
+domain-separated signed disposition and separate FLOOR_INSTALLED/DRAINED states.
+Original authority lookup from retained protobuf assignment wire, role-scoped
+reader implementation, persistent Worker/Runtime barriers and fault/restart
+campaigns remain open. This design review does not advance an acceptance gate.
