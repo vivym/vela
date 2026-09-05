@@ -79,10 +79,10 @@ fail-closed start, and recovery with two Worker names. Its committed projection
 does not bind the raw cluster bundle or independently prove physical placement.
 It does not exercise Fleet actuation, database StageLease authority, Artifact
 transfer, GPU/DRA, or model execution. This is not complete acceptance closure.
-The isolated three-host `vela-lab-v2` deployment at source revision `a50897d`
+The isolated three-host `vela-lab-v2` deployment at source revision `f715e40`
 now runs schema `69` and passed two digest-bound CPU-only four-Stage smoke Jobs:
 two Jobs, eight StageRuns, two VIDEO Artifacts, and two THUMBNAIL Artifacts all
-reached their expected successful state. A 138-sample observation recorded zero
+reached their expected successful state. A 91-sample observation recorded zero
 Pod restarts and zero GPU requests. Real H3, N/N-1, GPU/DRA, performance, soak,
 and Production Gate evidence are still pending.
 The read-only H3 preflight and launch collector additionally bind every
