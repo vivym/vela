@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"net/http"
 	"path/filepath"
 	"testing"
 	"time"
@@ -145,6 +146,31 @@ func TestStageMaterializationTerminalReplayRequiresDurableReceipt(t *testing.T) 
 					SET state = 'REVOKED', revoked_at = clock_timestamp(), revoke_reason = 'LOCAL_SOURCE_LOST' WHERE id = $1`, fixture.authority.GetStageMaterializationLeaseId()); err != nil {
 					t.Fatal(err)
 				}
+			}
+			before := fixture.snapshot(t)
+			fixture.reject(t, fixture.request, fixture.identity, 1)
+			fixture.unchanged(t, before)
+		})
+	}
+}
+
+func TestStageMaterializationCannotStartAfterTerminalCancellation(t *testing.T) {
+	for _, kind := range []string{"COMMIT", "SOURCE_LOST"} {
+		t.Run(kind, func(t *testing.T) {
+			fixture := newMaterializationReplayFixture(t, kind, time.Minute)
+			var jobID string
+			if err := fixture.database.Admin.QueryRow(`SELECT job_id::text FROM attempts WHERE id = $1`, fixture.assignment.AttemptID).Scan(&jobID); err != nil {
+				t.Fatal(err)
+			}
+			grantRecoveryCancellation(t, fixture.database)
+			server := admissionServerForDatabase(t, fixture.database)
+			response := cancelJob(t, server.URL, testProjectID, jobID, testBearerCredential())
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("cancel materializing Stage: status=%d", response.StatusCode)
+			}
+			var state string
+			if err := fixture.database.Admin.QueryRow(`SELECT state::text FROM stage_runs WHERE id = $1`, fixture.assignment.StageRunID).Scan(&state); err != nil || state != "CANCELED" {
+				t.Fatalf("terminal Stage: state=%s error=%v", state, err)
 			}
 			before := fixture.snapshot(t)
 			fixture.reject(t, fixture.request, fixture.identity, 1)

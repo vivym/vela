@@ -1,5 +1,10 @@
 # Stage Worker Scratch Retirement
 
+Default command assembly uses `RetainScratchRetirer`: it preserves scratch and
+confirmed materialization records until automatic retirement/recovery wiring is
+complete. The filesystem and journal semantics below do not enable deletion by
+themselves. An explicit combined coordinator is described below.
+
 ## Ownership Contract
 
 Production `vela-stage-worker-agent` explicitly selects
@@ -73,6 +78,29 @@ change the version marker, or delete pending records for rollback. Drain legacy
 generic-locator records with their compatible worker before adopting the new
 production filesystem contract. Different worker generations must not operate
 the same journal concurrently.
+
+## Explicit Terminal Coordinator
+
+`NewTerminalScratchRetirement` requires a durable `FileAssignmentAdmission`,
+configured Runtime Agent and `attempt-owned-filesystem-scratch/v1`. `Retire`
+accepts signed terminal history, available original execution envelopes and
+trusted current readers. It persists INTENT and closes the StageRun namespace,
+then requires input completion, every Runtime floor and every allocation/member
+execution proof. READY binds the actual directory identities before deletion;
+RETIRED is written only after cleanup and directory sync.
+
+`Resume` takes a StageRun UUID and can finish a durable READY record after crash,
+expiry or Runtime profile changes. It cannot promote INTENT without fresh
+history and complete proof. Replaced/new namespaces reject. Do not remove or
+rewrite the journal or root markers to bypass recovery. Completed records are
+still bounded and retained; journal capacity reclamation is not implemented.
+
+Worker admission journal is now schema 4, independently of materialization
+journal schema 2. Explicit `AssignmentAdmissionConfig.UpgradeV3` or `UpgradeV2`
+preserves older evidence without creating retirement proof. Ordinary recovery
+does not migrate, and schema 1 still requires separate reconciliation. See
+[Durable Terminal Retirement](../durable-terminal-retirement-evidence-2026-09-06.md)
+for the output lifetime premise, tests and remaining default assembly work.
 
 ## Remaining Lifecycle Boundary
 

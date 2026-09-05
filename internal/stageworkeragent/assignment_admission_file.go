@@ -55,6 +55,7 @@ type assignmentAdmissionState struct {
 	FloorWire           []byte                        `json:"floor_disposition"`
 	Latest              *assignmentAdmissionEntry     `json:"latest"`
 	Pending             []assignmentAdmissionEntry    `json:"pending"`
+	Retirements         []terminalRetirementEntry     `json:"retirements,omitempty"`
 }
 
 type assignmentAdmissionFiles struct {
@@ -128,7 +129,7 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 				return nil, state, err
 			}
 		}
-		state = assignmentAdmissionState{SchemaVersion: 3, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
+		state = assignmentAdmissionState{SchemaVersion: 4, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
 		for i, info := range files.infos {
 			state.Directories[i] = admissionFileIdentity(info)
 		}
@@ -366,6 +367,7 @@ func admissionPathsOverlap(a, b string) bool {
 
 func cloneAdmissionState(state assignmentAdmissionState) assignmentAdmissionState {
 	state.Pending = slices.Clone(state.Pending)
+	state.Retirements = slices.Clone(state.Retirements)
 	if state.Latest != nil {
 		latest := *state.Latest
 		state.Latest = &latest

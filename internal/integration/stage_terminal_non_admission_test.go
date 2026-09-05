@@ -4,13 +4,21 @@ package integration_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"errors"
+	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -80,6 +88,7 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 		proof.Contract != modelruntime.TerminalNonAdmissionContract || !proto.Equal(proof.Disposition, disposition) {
 		t.Fatalf("unsigned database allocation was not checkpointed: %+v %v", proof, err)
 	}
+	assertDatabaseTerminalScratchRetirement(t, supervisor, validator, binding, original, disposition, subset)
 	supervisor.Close()
 	recovered := open(false, member.GetModelRuntimeEpoch()+1)
 	read, err := recovered.InspectTerminalNonAdmission(t.Context(), disposition, allocationID)
@@ -87,4 +96,92 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 		t.Fatalf("database allocation checkpoint recovery: %+v %v", read, err)
 	}
 	t.Log("unsigned retry: PostgreSQL history -> authenticated Control disposition -> durable Runtime floor and non-admission -> next-epoch proof recovery")
+}
+
+func assertDatabaseTerminalScratchRetirement(t *testing.T, supervisor *modelruntime.Supervisor, validator *stageauthority.Validator, binding stageauthority.RuntimeBinding, original *velav1.StageAuthority, disposition *velav1.StageTerminalDisposition, subset []byte) {
+	t.Helper()
+	socketDirectory, err := os.MkdirTemp("/tmp", "vela-retirement-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDirectory) })
+	socket := filepath.Join(socketDirectory, "runtime.sock")
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(socket, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	velav1.RegisterModelRuntimeServiceServer(server, supervisor)
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(listener) }()
+	t.Cleanup(func() { server.Stop(); <-done })
+	client, err := modelruntimetransport.Dial(t.Context(), modelruntimetransport.Config{SocketPath: socket, ExpectedUID: uint32(os.Geteuid())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	identities, err := client.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
+		WorkerInstanceId: binding.WorkerInstanceID, WorkerInstanceEpoch: binding.WorkerInstanceEpoch,
+		WorkerMemberId: binding.WorkerMemberID, WorkerMemberEpoch: binding.WorkerMemberEpoch,
+	})
+	if err != nil || len(identities.GetIdentities()) != 1 {
+		t.Fatalf("discover Runtime: %v %v", identities, err)
+	}
+	member := original.GetMembers()[0]
+	binding.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
+	trusted := stageworkeragent.ExecutionFloorBinding{Runtime: binding, IdentityDigest: [sha256.Size]byte(member.GetIdentityDigest()), DeviceSubsetDigest: [sha256.Size]byte(subset)}
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members:        []stageworkeragent.RuntimeMember{{ID: binding.WorkerMemberID, Client: client}},
+		ExecutionFloor: &stageworkeragent.ExecutionFloorConfig{Validator: validator, Bindings: []stageworkeragent.ExecutionFloorBinding{trusted}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	for _, name := range []string{"state", "inputs", "outputs"} {
+		if err := os.Mkdir(filepath.Join(base, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gate, err := stageworkeragent.NewFileAssignmentAdmission(stageworkeragent.AssignmentAdmissionConfig{
+		Initialize: true, Directory: filepath.Join(base, "state"), InputRoot: filepath.Join(base, "inputs"), OutputRoot: filepath.Join(base, "outputs"),
+		WorkerInstanceID: uuid.MustParse(binding.WorkerInstanceID), WorkerInstanceEpoch: binding.WorkerInstanceEpoch, WorkerMemberID: uuid.MustParse(binding.WorkerMemberID),
+		Validator: validator, Bindings: []stageworkeragent.AdmissionRuntimeBinding{stageworkeragent.AdmissionRuntimeBinding(trusted)}, MaxRecords: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gate.Close() })
+	paths := []string{filepath.Join(base, "inputs", "stage-runs", disposition.StageRunId, "inputs", "payload")}
+	for _, allocation := range disposition.Allocations {
+		paths = append(paths, filepath.Join(base, "outputs", allocation.StageAttemptId, "output"))
+	}
+	for _, name := range append(paths, filepath.Join(base, "outputs", "unrelated", "keep")) {
+		if err := os.MkdirAll(filepath.Dir(name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte("CPU scratch fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	retirer, err := stageworkeragent.NewTerminalScratchRetirement(gate, runtimeAgent, stageworkeragent.AttemptOwnedFilesystemScratchV1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := retirer.Retire(t.Context(), disposition, map[string]*velav1.StageAuthority{original.StageAllocationId: original}, map[string]*velav1.ModelRuntimeIdentity{binding.WorkerMemberID: identities.Identities[0]})
+	if err != nil || result.Phase != stageworkeragent.TerminalRetirementRetired {
+		t.Fatalf("database-authorized scratch retirement: %+v %v", result, err)
+	}
+	for _, name := range paths {
+		if _, err := os.Stat(name); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("authorized scratch remained: %s %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(base, "outputs", "unrelated", "keep")); err != nil {
+		t.Fatal("retirement changed unrelated scratch")
+	}
+	t.Log("authenticated PostgreSQL terminal history -> Worker intent/floor -> UDS Runtime proof collection -> durable READY -> exact scratch retirement")
 }

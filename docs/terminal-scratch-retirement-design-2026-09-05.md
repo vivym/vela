@@ -88,8 +88,13 @@ and trusted member is preflighted; read/create remain separate, and original
 proof survives refreshed queries and reader epoch/profile changes. Missing or
 malformed member proof keeps collection incomplete. Drain-only inspection still
 requires all execution envelopes. Versions remain unchanged.
-Default command assembly, automatic startup reconciliation, complete-history drain
-orchestration, external driver containment and the retirement journal below remain open. These
+The [durable terminal retirement coordinator](durable-terminal-retirement-evidence-2026-09-06.md)
+now persists INTENT/READY/RETIRED in Worker journal 4 and combines complete
+input/floor/member proof with exact directory retirement. READY can resume after
+process exit, expiry and Runtime profile changes without new RPCs; partial or
+unknown proof retains all scratch. Schema 3/2 upgrade is explicit and creates no
+retirement evidence. Default command assembly, automatic startup reconciliation,
+pending historical writer drain and external driver containment remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
 
@@ -154,6 +159,14 @@ authority digest, and an explicit input-retirement disposition. Only
 Expired signatures may authenticate an exact historical identity for this read,
 but may not authorize execution or a state change. Missing identity, a future
 issue time, a mismatched Worker, or an unrecognized schema yields no disposition.
+
+For attempt-owned output retirement, that signed terminal state is combined
+with the existing materialization state machine: a new COMMIT requires
+MATERIALIZING, success first commits immutable L2, and terminal commands can
+only replay already durable results without reading local payloads. The
+explicit coordinator uses this premise for signed allocation output directories;
+the INPUTS_UNUSED flag alone is not output permission. It leaves materialization
+recovery journals intact. Default assembly must reconcile those records as well.
 
 The cutoff must also be verified by each Runtime, outside the original
 Control-to-Worker connection and journal. The minimum disposition therefore
@@ -265,9 +278,9 @@ gate, runtime restart barrier, and all-stopped checkpoint before deleting files.
 Keep the intent until the existing directory
 binding and no-symlink retirement logic finishes. Replaying the intent after any
 crash must remove only `stage-runs/<StageRunID>` on this Worker and the explicitly
-owned old output directory. This is a new local terminal-retirement journal
-boundary, not functionality already provided by FileProductionState, which
-currently persists session and capacity state rather than active failures.
+owned old output directory. Worker admission journal schema 4 now implements
+this bounded terminal-retirement boundary. FileProductionState remains a
+separate session/capacity store, and automatic recovery assembly remains open.
 
 The server can remain read-only if terminal state and fence are irreversible and
 the disposition is derived deterministically from those durable facts. A new SQL

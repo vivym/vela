@@ -44,7 +44,9 @@ type AssignmentAdmissionConfig struct {
 	Initialize bool
 	// UpgradeV2 validates and preserves schema-2 history without inventing input
 	// drain evidence. It cannot be combined with first bootstrap.
-	UpgradeV2           bool
+	UpgradeV2 bool
+	// UpgradeV3 preserves schema-3 history without creating retirement evidence.
+	UpgradeV3           bool
 	Directory           string
 	InputRoot           string
 	OutputRoot          string
@@ -73,17 +75,19 @@ type AssignmentAdmissionSnapshot struct {
 	Disposition *velav1.StageTerminalDisposition
 	Latest      *AssignmentAdmissionRecord
 	Pending     []AssignmentAdmissionRecord
+	Retirements []TerminalRetirementSnapshot
 }
 
 type FileAssignmentAdmission struct {
-	mu        sync.Mutex
-	files     *assignmentAdmissionFiles
-	state     assignmentAdmissionState
-	validator *stageauthority.Validator
-	bindings  []AdmissionRuntimeBinding
-	maxSkew   time.Duration
-	active    *AssignmentAdmission
-	failed    error
+	mu                       sync.Mutex
+	files                    *assignmentAdmissionFiles
+	state                    assignmentAdmissionState
+	validator                *stageauthority.Validator
+	bindings                 []AdmissionRuntimeBinding
+	maxSkew                  time.Duration
+	active                   *AssignmentAdmission
+	failed                   error
+	retirementAfterDirectory func(int) error
 }
 
 // AssignmentAdmission owns an in-process input writer slot. Release is called
@@ -97,7 +101,7 @@ type AssignmentAdmission struct {
 }
 
 func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignmentAdmission, error) {
-	if config.Initialize && config.UpgradeV2 {
+	if config.Initialize && (config.UpgradeV2 || config.UpgradeV3) || config.UpgradeV2 && config.UpgradeV3 {
 		return nil, errors.New("assignment admission upgrade cannot initialize state")
 	}
 	if config.WorkerInstanceID == uuid.Nil || config.WorkerInstanceEpoch <= 0 || config.WorkerMemberID == uuid.Nil ||
@@ -122,15 +126,19 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		return nil, err
 	}
 	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings, maxSkew: config.MaxClockSkew}
-	upgrade := config.UpgradeV2 && state.SchemaVersion == 2
+	upgrade := config.UpgradeV2 && state.SchemaVersion == 2 || config.UpgradeV3 && state.SchemaVersion == 3
 	if upgrade {
+		if len(state.Retirements) != 0 {
+			_ = files.close()
+			return nil, errors.New("legacy assignment admission cannot contain retirement evidence")
+		}
 		for _, entry := range admissionEntries(state) {
-			if entry.InputDrain != nil {
+			if state.SchemaVersion == 2 && entry.InputDrain != nil {
 				_ = files.close()
 				return nil, errors.New("schema-2 assignment admission cannot contain input drain proof")
 			}
 		}
-		state.SchemaVersion = 3
+		state.SchemaVersion = 4
 	}
 	if err := gate.validateState(state); err != nil {
 		_ = files.close()
@@ -396,6 +404,9 @@ func (gate *FileAssignmentAdmission) Snapshot(ctx context.Context) (AssignmentAd
 		}
 		result.Pending = append(result.Pending, record)
 	}
+	for _, entry := range gate.state.Retirements {
+		result.Retirements = append(result.Retirements, retirementSnapshot(entry))
+	}
 	return result, nil
 }
 
@@ -423,6 +434,11 @@ func (gate *FileAssignmentAdmission) verifyCurrent(authority *velav1.StageAuthor
 	}
 	if verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 {
 		return stageauthority.Verified{}, ErrAdmissionClosed
+	}
+	for _, retirement := range gate.state.Retirements {
+		if retirement.StageRunID.String() == verified.Authority.GetStageRunId() {
+			return stageauthority.Verified{}, ErrAdmissionClosed
+		}
 	}
 	if verified.Authority.GetExecutionSequence() <= gate.state.Floor {
 		return stageauthority.Verified{}, ErrAdmissionClosed
@@ -513,7 +529,7 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 }
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
-	if state.SchemaVersion != 3 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
+	if state.SchemaVersion != 4 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
 		state.MaxRecords < 1 || state.MaxRecords > 64 || state.Watermark < 0 || len(state.Pending) >= state.MaxRecords ||
 		(state.Latest == nil && (state.Watermark != 0 || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")
@@ -565,7 +581,7 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 	if previous != state.Watermark {
 		return ErrAdmissionClosed
 	}
-	return nil
+	return gate.validateRetirements(state)
 }
 
 func admissionEntries(state assignmentAdmissionState) []assignmentAdmissionEntry {

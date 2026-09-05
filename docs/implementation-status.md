@@ -285,6 +285,18 @@ previously persisted terminal non-admission proof after epoch/profile changes.
 The collector now checks existing terminal proof after valid empty envelope
 observations, while rejecting malformed/error observations before any alternate
 proof or write. Full unit, Worker race, lint and non-root Linux checks pass.
+The subsequent [durable terminal retirement coordinator](durable-terminal-retirement-evidence-2026-09-06.md)
+combines input completion, Worker/Runtime floors and complete member execution
+proofs with actual inode-bound scratch cleanup. Worker journal 4 persists
+INTENT/READY/RETIRED; schema 3 or 2 requires explicit validated upgrade. READY
+resumes partial deletion after process exit and query/profile/epoch changes
+without contacting a backend. The retired StageRun stays closed while unrelated
+later work can enter. Mixed two-member UDS, PostgreSQL-to-filesystem integration,
+terminal materialization rejection/replay, corrupted evidence, directory
+replacement, full unit, Worker race, lint and non-root Linux checks pass. Runtime
+journal stays 4, database 90 and launch/Fleet 2. Default wiring, unknown historical
+writer recovery, materialization/receipt reconciliation and bounded record
+reclamation remain open. Default scratch retention remains active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

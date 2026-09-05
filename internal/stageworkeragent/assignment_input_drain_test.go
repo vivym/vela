@@ -126,7 +126,7 @@ func TestAssignmentInputDrainSchemaUpgradeRequiresExplicitValidatedSource(t *tes
 			if err != nil {
 				t.Fatal(err)
 			}
-			legacy := bytes.Replace(original, []byte(`"schema_version":3`), []byte(`"schema_version":2`), 1)
+			legacy := bytes.Replace(original, []byte(`"schema_version":4`), []byte(`"schema_version":2`), 1)
 			if fault == "schema-1" {
 				legacy = bytes.Replace(legacy, []byte(`"schema_version":2`), []byte(`"schema_version":1`), 1)
 			}
