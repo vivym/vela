@@ -15,6 +15,9 @@ import (
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -38,6 +41,7 @@ type RuntimeServerConfig struct {
 	ShutdownTimeout time.Duration
 	MaxClockSkew    time.Duration
 	BackendFactory  RuntimeBackendFactory
+	ExecutionFloor  *ExecutionFloorConfig
 }
 
 type RuntimeServer struct {
@@ -99,10 +103,14 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		}
 	}
 	services := make([]*Service, 0, len(bindings))
+	var supervisor *Supervisor
 	lifecycles := make([]namedBackendLifecycle, 0, len(bindings))
 	runtimeCtx, cancelRuntimes := context.WithCancelCause(ctx)
 	backendDone := make(chan error, len(bindings))
 	shutdownServices := func() error {
+		if supervisor != nil {
+			return supervisor.Shutdown()
+		}
 		var shutdownErr error
 		for _, service := range services {
 			shutdownErr = errors.Join(shutdownErr, service.Shutdown())
@@ -156,13 +164,14 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 			return rollbackStart(fmt.Errorf("resident runtime readiness lost during startup: %w", startupErr))
 		}
 	}
-	supervisor, err := NewSupervisor(services...)
+	supervisor, err = newSupervisor(config.ExecutionFloor, services...)
 	if err != nil {
 		return rollbackStart(err)
 	}
 	grpcServer := grpc.NewServer(
-		grpc.MaxRecvMsgSize(1<<20), grpc.MaxSendMsgSize(1<<20),
+		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),
 		grpc.MaxConcurrentStreams(128),
+		grpc.UnaryInterceptor(limitRuntimeRequest),
 	)
 	velav1.RegisterModelRuntimeServiceServer(grpcServer, supervisor)
 	if startupErr := runtimeStartupFailure(runtimeCtx, lifecycles); startupErr != nil {
@@ -222,6 +231,18 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		close(server.done)
 	}()
 	return server, nil
+}
+
+// Only signed terminal history needs the larger receive bound. Existing
+// execution and readiness RPCs retain their original decoded message limit.
+func limitRuntimeRequest(ctx context.Context, request any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	if info.FullMethod != velav1.ModelRuntimeService_InstallStageExecutionFloor_FullMethodName {
+		message, ok := request.(proto.Message)
+		if !ok || proto.Size(message) > 1<<20 {
+			return nil, status.Error(codes.ResourceExhausted, "ModelRuntime request exceeds its size limit")
+		}
+	}
+	return handler(ctx, request)
 }
 
 func (server *RuntimeServer) Wait() error {

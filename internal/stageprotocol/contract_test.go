@@ -73,6 +73,7 @@ func TestModelRuntimeProtocolHasOnlyLongLivedRuntimeOperations(t *testing.T) {
 	want := []string{
 		"DiscoverRuntimeIdentities",
 		"ProbeReadiness",
+		"InstallStageExecutionFloor",
 		"PrepareStage",
 		"StartStage",
 		"CancelStage",

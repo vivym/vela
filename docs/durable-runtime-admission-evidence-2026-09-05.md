@@ -1,5 +1,9 @@
 # Durable Runtime execution admission evidence
 
+Follow-up: the [signed floor RPC](runtime-floor-rpc-evidence-2026-09-06.md) adds
+private-socket delivery and explicit server assembly. The evidence below remains
+the earlier journal checkpoint.
+
 Status: local CPU-only increment over `ded07f4`, schema 90. An explicit
 `ExecutionFloorConfig.State` persists the member-wide execution watermark and
 signed floor. The default constructor still uses process-local admission; floor

@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-09-05
+Date: 2026-09-06
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -121,8 +121,13 @@ adds explicit journal configuration, signed watermark/floor recovery, exclusive
 state ownership and sticky failure on state loss or replacement. Missing state
 never silently initializes during recovery, and failed admission stops readiness
 advertisement. Its final unit, related-module race, lint and non-root Linux CPU
-checks pass. Waiting for admitted calls is not writer drain. Floor RPC/default
-assembly, automatic startup reconciliation and terminal retirement remain open.
+checks pass. The subsequent [signed floor RPC](runtime-floor-rpc-evidence-2026-09-06.md)
+adds durable installation over the private Runtime Unix socket, strict client
+acknowledgement binding and explicit RuntimeServer assembly. Unit, race, lint,
+protocol compatibility, Linux cross-build and non-root Linux execution pass.
+Waiting for admitted calls is not writer drain. Default command assembly,
+authenticated cross-member floor forwarding, automatic startup reconciliation
+and terminal retirement remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

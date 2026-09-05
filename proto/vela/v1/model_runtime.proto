@@ -4,6 +4,7 @@ package vela.v1;
 
 import "google/protobuf/timestamp.proto";
 import "vela/v1/stage_authority.proto";
+import "vela/v1/stage_terminal_disposition.proto";
 
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
@@ -12,6 +13,8 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse);
   rpc ProbeReadiness(ModelRuntimeServiceProbeReadinessRequest)
       returns (ModelRuntimeServiceProbeReadinessResponse);
+  rpc InstallStageExecutionFloor(ModelRuntimeServiceInstallStageExecutionFloorRequest)
+      returns (ModelRuntimeServiceInstallStageExecutionFloorResponse);
   rpc PrepareStage(ModelRuntimeServicePrepareStageRequest)
       returns (ModelRuntimeServicePrepareStageResponse);
   rpc StartStage(ModelRuntimeServiceStartStageRequest)
@@ -96,6 +99,25 @@ message ModelRuntimeServiceProbeReadinessResponse {
   bool ready = 3;
   bytes evidence = 4;
   string detail = 5;
+}
+
+// A signed member-wide restriction. No backend drain or deletion is requested.
+message ModelRuntimeServiceInstallStageExecutionFloorRequest {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  StageTerminalDisposition disposition = 3;
+}
+
+message ModelRuntimeServiceInstallStageExecutionFloorResponse {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  ModelRuntimeCommandDecision decision = 3;
+  // Digest of this request's verified disposition, even if the floor was higher.
+  bytes disposition_digest = 4;
+  int64 installed_cutoff = 5;
+  // ACCEPTED requires persistent state. This is never a DRAINED receipt.
+  bool durable = 6;
+  string detail = 7;
 }
 
 message StageInputArtifact {

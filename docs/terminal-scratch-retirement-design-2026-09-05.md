@@ -12,7 +12,9 @@ component](runtime-execution-floor-evidence-2026-09-05.md) now provides a shared
 Service boundary and explicit signed cutoff installation. The optional
 [durable journal](durable-runtime-admission-evidence-2026-09-05.md) persists and
 recovers that floor and the allocation watermark, with fail-closed state binding.
-Default command assembly, floor RPC, automatic startup reconciliation,
+The [signed floor RPC](runtime-floor-rpc-evidence-2026-09-06.md) now supplies local
+private-socket delivery with explicit durable server configuration.
+Default command assembly, cross-member floor forwarding, automatic startup reconciliation,
 execution drain and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
@@ -370,8 +372,9 @@ routes for every historical allocation. Missing or replaced runtimes are rejecte
 It registers admitted calls under the common lock without holding that lock over
 backend calls. Optional journal configuration now persists/replays restrictions
 across profile and local Runtime epoch changes without granting historical
-execution or drain. Missing/replaced state fails closed. Remote protocol and
-default command assembly remain open. WaitAcceptedOperations joins
+execution or drain. Missing/replaced state fails closed. The local signed floor
+RPC now reports identity/digest-bound durable installation. Authenticated
+cross-member forwarding and default command assembly remain open. WaitAcceptedOperations joins
 only the calls registered before that installation, not asynchronous backend
 writers or later cancellation calls. Historical stop inspection must remain
 read-only and cannot implicitly renew. Normal Stage drain retains model residency
@@ -380,8 +383,8 @@ and must not call Service.Shutdown as a shortcut.
 An alternative is an independently proven barrier that invalidates every old
 authority before execution drain. Advancing only a local counter, observing
 one lease expire, or finding an empty active-execution map does not establish
-that barrier. The current protocol has no terminal-cutoff installation RPC;
-Runtime floor delivery and combined retirement recovery remain implementation work.
+that barrier. The local protocol now has a signed terminal-cutoff installation
+RPC; complete member delivery and combined retirement recovery remain open.
 
 The runtime epoch store persists an epoch, not terminal receipts or namespace
 intent. The materialization journal covers sealed outputs, not every failed or

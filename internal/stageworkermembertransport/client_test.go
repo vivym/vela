@@ -12,7 +12,9 @@ import (
 
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -58,6 +60,9 @@ func TestClientWrapsExactTargetAndDoesNotExposeDiscovery(t *testing.T) {
 		context.Background(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{},
 	); err == nil {
 		t.Fatal("remote runtime identity discovery was exposed")
+	}
+	if response, err := client.InstallStageExecutionFloor(context.Background(), &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{}); response != nil || status.Code(err) != codes.Unimplemented {
+		t.Fatalf("unsupported remote floor forwarding returned a receipt: %v %v", response, err)
 	}
 	mismatched := &velav1.StageAuthority{Members: []*velav1.StageAuthorityMemberEpoch{{
 		WorkerMemberId: target, IdentityDigest: bytesOf('x'),

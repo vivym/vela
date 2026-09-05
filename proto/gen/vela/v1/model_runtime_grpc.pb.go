@@ -19,13 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName = "/vela.v1.ModelRuntimeService/DiscoverRuntimeIdentities"
-	ModelRuntimeService_ProbeReadiness_FullMethodName            = "/vela.v1.ModelRuntimeService/ProbeReadiness"
-	ModelRuntimeService_PrepareStage_FullMethodName              = "/vela.v1.ModelRuntimeService/PrepareStage"
-	ModelRuntimeService_StartStage_FullMethodName                = "/vela.v1.ModelRuntimeService/StartStage"
-	ModelRuntimeService_CancelStage_FullMethodName               = "/vela.v1.ModelRuntimeService/CancelStage"
-	ModelRuntimeService_Status_FullMethodName                    = "/vela.v1.ModelRuntimeService/Status"
-	ModelRuntimeService_SealOutput_FullMethodName                = "/vela.v1.ModelRuntimeService/SealOutput"
+	ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName  = "/vela.v1.ModelRuntimeService/DiscoverRuntimeIdentities"
+	ModelRuntimeService_ProbeReadiness_FullMethodName             = "/vela.v1.ModelRuntimeService/ProbeReadiness"
+	ModelRuntimeService_InstallStageExecutionFloor_FullMethodName = "/vela.v1.ModelRuntimeService/InstallStageExecutionFloor"
+	ModelRuntimeService_PrepareStage_FullMethodName               = "/vela.v1.ModelRuntimeService/PrepareStage"
+	ModelRuntimeService_StartStage_FullMethodName                 = "/vela.v1.ModelRuntimeService/StartStage"
+	ModelRuntimeService_CancelStage_FullMethodName                = "/vela.v1.ModelRuntimeService/CancelStage"
+	ModelRuntimeService_Status_FullMethodName                     = "/vela.v1.ModelRuntimeService/Status"
+	ModelRuntimeService_SealOutput_FullMethodName                 = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
 // ModelRuntimeServiceClient is the client API for ModelRuntimeService service.
@@ -34,6 +35,7 @@ const (
 type ModelRuntimeServiceClient interface {
 	DiscoverRuntimeIdentities(ctx context.Context, in *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error)
 	ProbeReadiness(ctx context.Context, in *ModelRuntimeServiceProbeReadinessRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceProbeReadinessResponse, error)
+	InstallStageExecutionFloor(ctx context.Context, in *ModelRuntimeServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInstallStageExecutionFloorResponse, error)
 	PrepareStage(ctx context.Context, in *ModelRuntimeServicePrepareStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServicePrepareStageResponse, error)
 	StartStage(ctx context.Context, in *ModelRuntimeServiceStartStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceStartStageResponse, error)
 	CancelStage(ctx context.Context, in *ModelRuntimeServiceCancelStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceCancelStageResponse, error)
@@ -63,6 +65,16 @@ func (c *modelRuntimeServiceClient) ProbeReadiness(ctx context.Context, in *Mode
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelRuntimeServiceProbeReadinessResponse)
 	err := c.cc.Invoke(ctx, ModelRuntimeService_ProbeReadiness_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelRuntimeServiceClient) InstallStageExecutionFloor(ctx context.Context, in *ModelRuntimeServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceInstallStageExecutionFloorResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_InstallStageExecutionFloor_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +137,7 @@ func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRun
 type ModelRuntimeServiceServer interface {
 	DiscoverRuntimeIdentities(context.Context, *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error)
 	ProbeReadiness(context.Context, *ModelRuntimeServiceProbeReadinessRequest) (*ModelRuntimeServiceProbeReadinessResponse, error)
+	InstallStageExecutionFloor(context.Context, *ModelRuntimeServiceInstallStageExecutionFloorRequest) (*ModelRuntimeServiceInstallStageExecutionFloorResponse, error)
 	PrepareStage(context.Context, *ModelRuntimeServicePrepareStageRequest) (*ModelRuntimeServicePrepareStageResponse, error)
 	StartStage(context.Context, *ModelRuntimeServiceStartStageRequest) (*ModelRuntimeServiceStartStageResponse, error)
 	CancelStage(context.Context, *ModelRuntimeServiceCancelStageRequest) (*ModelRuntimeServiceCancelStageResponse, error)
@@ -145,6 +158,9 @@ func (UnimplementedModelRuntimeServiceServer) DiscoverRuntimeIdentities(context.
 }
 func (UnimplementedModelRuntimeServiceServer) ProbeReadiness(context.Context, *ModelRuntimeServiceProbeReadinessRequest) (*ModelRuntimeServiceProbeReadinessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeReadiness not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) InstallStageExecutionFloor(context.Context, *ModelRuntimeServiceInstallStageExecutionFloorRequest) (*ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
 }
 func (UnimplementedModelRuntimeServiceServer) PrepareStage(context.Context, *ModelRuntimeServicePrepareStageRequest) (*ModelRuntimeServicePrepareStageResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PrepareStage not implemented")
@@ -214,6 +230,24 @@ func _ModelRuntimeService_ProbeReadiness_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ModelRuntimeServiceServer).ProbeReadiness(ctx, req.(*ModelRuntimeServiceProbeReadinessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelRuntimeService_InstallStageExecutionFloor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceInstallStageExecutionFloorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).InstallStageExecutionFloor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_InstallStageExecutionFloor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).InstallStageExecutionFloor(ctx, req.(*ModelRuntimeServiceInstallStageExecutionFloorRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -322,6 +356,10 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProbeReadiness",
 			Handler:    _ModelRuntimeService_ProbeReadiness_Handler,
+		},
+		{
+			MethodName: "InstallStageExecutionFloor",
+			Handler:    _ModelRuntimeService_InstallStageExecutionFloor_Handler,
 		},
 		{
 			MethodName: "PrepareStage",

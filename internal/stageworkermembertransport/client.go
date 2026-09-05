@@ -189,6 +189,14 @@ func (*Client) ProbeReadiness(
 	return nil, status.Error(codes.Unimplemented, "remote ModelRuntime readiness is not exposed")
 }
 
+func (*Client) InstallStageExecutionFloor(
+	context.Context,
+	*velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest,
+	...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "remote ModelRuntime floor installation is not exposed")
+}
+
 func (*Client) SealOutput(
 	context.Context,
 	*velav1.ModelRuntimeServiceSealOutputRequest,
