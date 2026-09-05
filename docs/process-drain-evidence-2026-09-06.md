@@ -99,8 +99,10 @@ of execution task admission, task joins, handle closure and descendant containme
 A negotiated acknowledgement is a trusted driver contract, not independent proof
 against a compromised driver. The CPU mock has no descendants to contain.
 
-Authenticated all-member drain collection, Worker input-writer exclusion and
-retirement journal orchestration, unresolved historical writer recovery, durable
+The subsequent [authenticated member drain increment](member-execution-drain-evidence-2026-09-06.md)
+adds drain/read RPCs and complete membership collection for one exact execution.
+Complete terminal allocation history, Worker input-writer exclusion and retirement
+journal orchestration, unresolved historical writer recovery, durable
 sealed receipts, checkpoint reclamation, trusted default assembly and validated
 schema-1 migration remain open. The optional in-process CPU-media adapter is a
 separate backend and is not covered by the thumbnail subprocess capability.

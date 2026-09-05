@@ -27,6 +27,8 @@ const (
 	ModelRuntimeService_CancelStage_FullMethodName                = "/vela.v1.ModelRuntimeService/CancelStage"
 	ModelRuntimeService_Status_FullMethodName                     = "/vela.v1.ModelRuntimeService/Status"
 	ModelRuntimeService_InspectExecution_FullMethodName           = "/vela.v1.ModelRuntimeService/InspectExecution"
+	ModelRuntimeService_DrainStageExecution_FullMethodName        = "/vela.v1.ModelRuntimeService/DrainStageExecution"
+	ModelRuntimeService_InspectStageExecutionDrain_FullMethodName = "/vela.v1.ModelRuntimeService/InspectStageExecutionDrain"
 	ModelRuntimeService_SealOutput_FullMethodName                 = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
@@ -42,6 +44,8 @@ type ModelRuntimeServiceClient interface {
 	CancelStage(ctx context.Context, in *ModelRuntimeServiceCancelStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceCancelStageResponse, error)
 	Status(ctx context.Context, in *ModelRuntimeServiceStatusRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceStatusResponse, error)
 	InspectExecution(ctx context.Context, in *ModelRuntimeServiceInspectExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectExecutionResponse, error)
+	DrainStageExecution(ctx context.Context, in *ModelRuntimeServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
+	InspectStageExecutionDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
 	SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error)
 }
 
@@ -133,6 +137,26 @@ func (c *modelRuntimeServiceClient) InspectExecution(ctx context.Context, in *Mo
 	return out, nil
 }
 
+func (c *modelRuntimeServiceClient) DrainStageExecution(ctx context.Context, in *ModelRuntimeServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDrainStageExecutionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceDrainStageExecutionResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_DrainStageExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *modelRuntimeServiceClient) InspectStageExecutionDrain(ctx context.Context, in *ModelRuntimeServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceInspectStageExecutionDrainResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_InspectStageExecutionDrain_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRuntimeServiceSealOutputRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceSealOutputResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ModelRuntimeServiceSealOutputResponse)
@@ -155,6 +179,8 @@ type ModelRuntimeServiceServer interface {
 	CancelStage(context.Context, *ModelRuntimeServiceCancelStageRequest) (*ModelRuntimeServiceCancelStageResponse, error)
 	Status(context.Context, *ModelRuntimeServiceStatusRequest) (*ModelRuntimeServiceStatusResponse, error)
 	InspectExecution(context.Context, *ModelRuntimeServiceInspectExecutionRequest) (*ModelRuntimeServiceInspectExecutionResponse, error)
+	DrainStageExecution(context.Context, *ModelRuntimeServiceDrainStageExecutionRequest) (*ModelRuntimeServiceDrainStageExecutionResponse, error)
+	InspectStageExecutionDrain(context.Context, *ModelRuntimeServiceInspectStageExecutionDrainRequest) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error)
 	SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error)
 	mustEmbedUnimplementedModelRuntimeServiceServer()
 }
@@ -189,6 +215,12 @@ func (UnimplementedModelRuntimeServiceServer) Status(context.Context, *ModelRunt
 }
 func (UnimplementedModelRuntimeServiceServer) InspectExecution(context.Context, *ModelRuntimeServiceInspectExecutionRequest) (*ModelRuntimeServiceInspectExecutionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectExecution not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) DrainStageExecution(context.Context, *ModelRuntimeServiceDrainStageExecutionRequest) (*ModelRuntimeServiceDrainStageExecutionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DrainStageExecution not implemented")
+}
+func (UnimplementedModelRuntimeServiceServer) InspectStageExecutionDrain(context.Context, *ModelRuntimeServiceInspectStageExecutionDrainRequest) (*ModelRuntimeServiceInspectStageExecutionDrainResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageExecutionDrain not implemented")
 }
 func (UnimplementedModelRuntimeServiceServer) SealOutput(context.Context, *ModelRuntimeServiceSealOutputRequest) (*ModelRuntimeServiceSealOutputResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SealOutput not implemented")
@@ -358,6 +390,42 @@ func _ModelRuntimeService_InspectExecution_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ModelRuntimeService_DrainStageExecution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceDrainStageExecutionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).DrainStageExecution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_DrainStageExecution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).DrainStageExecution(ctx, req.(*ModelRuntimeServiceDrainStageExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ModelRuntimeService_InspectStageExecutionDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceInspectStageExecutionDrainRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).InspectStageExecutionDrain(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_InspectStageExecutionDrain_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).InspectStageExecutionDrain(ctx, req.(*ModelRuntimeServiceInspectStageExecutionDrainRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ModelRuntimeService_SealOutput_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ModelRuntimeServiceSealOutputRequest)
 	if err := dec(in); err != nil {
@@ -414,6 +482,14 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectExecution",
 			Handler:    _ModelRuntimeService_InspectExecution_Handler,
+		},
+		{
+			MethodName: "DrainStageExecution",
+			Handler:    _ModelRuntimeService_DrainStageExecution_Handler,
+		},
+		{
+			MethodName: "InspectStageExecutionDrain",
+			Handler:    _ModelRuntimeService_InspectStageExecutionDrain_Handler,
 		},
 		{
 			MethodName: "SealOutput",

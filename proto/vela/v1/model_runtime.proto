@@ -25,6 +25,10 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceStatusResponse);
   rpc InspectExecution(ModelRuntimeServiceInspectExecutionRequest)
       returns (ModelRuntimeServiceInspectExecutionResponse);
+  rpc DrainStageExecution(ModelRuntimeServiceDrainStageExecutionRequest)
+      returns (ModelRuntimeServiceDrainStageExecutionResponse);
+  rpc InspectStageExecutionDrain(ModelRuntimeServiceInspectStageExecutionDrainRequest)
+      returns (ModelRuntimeServiceInspectStageExecutionDrainResponse);
   rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
       returns (ModelRuntimeServiceSealOutputResponse);
 }
@@ -208,6 +212,51 @@ message ModelRuntimeServiceInspectExecutionResponse {
   google.protobuf.Timestamp observed_at = 8;
   // Even a known STOPPED observation is not a durable writer-drain checkpoint.
   string detail = 9;
+}
+
+// identity names the current journal owner; authority names the exact execution.
+// Only the read-only RPC permits a historical runtime epoch or retired profile.
+message ModelRuntimeExecutionDrainScope {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  StageAuthority authority = 3;
+}
+
+message ModelRuntimeExecutionDrainCheckpoint {
+  uint32 schema_version = 1;
+  StageAuthority authority = 2;
+  bytes authority_digest = 3;
+  string worker_member_id = 4;
+  int64 execution_sequence = 5;
+  string contract = 6;
+  google.protobuf.Timestamp drained_at = 7;
+}
+
+message ModelRuntimeExecutionDrainResult {
+  uint32 schema_version = 1;
+  ModelRuntimeIdentity identity = 2;
+  bytes authority_digest = 3;
+  ModelRuntimeCommandDecision decision = 4;
+  // Present only after the exact backend drain was durably checkpointed.
+  // An absent checkpoint, even with ACCEPTED, never proves drain.
+  ModelRuntimeExecutionDrainCheckpoint checkpoint = 5;
+  string detail = 6;
+}
+
+message ModelRuntimeServiceDrainStageExecutionRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceDrainStageExecutionResponse {
+  ModelRuntimeExecutionDrainResult result = 1;
+}
+
+message ModelRuntimeServiceInspectStageExecutionDrainRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceInspectStageExecutionDrainResponse {
+  ModelRuntimeExecutionDrainResult result = 1;
 }
 
 message ModelRuntimeFailureEvidence {

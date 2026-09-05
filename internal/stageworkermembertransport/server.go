@@ -193,15 +193,28 @@ func (server *Server) authorize(
 	authority *velav1.StageAuthority,
 	historical bool,
 ) (*velav1.ModelRuntimeIdentity, [32]byte, error) {
+	verified, err := server.authorizePeer(ctx, targetMemberID, authority, historical)
+	if err != nil {
+		return nil, [32]byte{}, err
+	}
+	for _, identity := range server.localIdentities {
+		if runtimeIdentityMatchesAuthority(identity, verified.Authority, server.localMember) {
+			return proto.Clone(identity).(*velav1.ModelRuntimeIdentity), verified.Digest, nil
+		}
+	}
+	return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority does not match local resident runtime")
+}
+
+func (server *Server) authorizePeer(ctx context.Context, targetMemberID string, authority *velav1.StageAuthority, historical bool) (stageauthority.Verified, error) {
 	if server == nil || server.authenticator == nil || server.validator == nil || server.runtime == nil {
-		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member server is not configured")
+		return stageauthority.Verified{}, status.Error(codes.FailedPrecondition, "Stage Worker member server is not configured")
 	}
 	if targetMemberID != server.localMember.ID {
-		return nil, [32]byte{}, status.Error(codes.InvalidArgument, "Stage Worker member target does not match local member")
+		return stageauthority.Verified{}, status.Error(codes.InvalidArgument, "Stage Worker member target does not match local member")
 	}
 	peer, err := server.authenticator.Authenticate(ctx)
 	if err != nil {
-		return nil, [32]byte{}, status.Error(codes.Unauthenticated, "authenticate Stage Worker member peer")
+		return stageauthority.Verified{}, status.Error(codes.Unauthenticated, "authenticate Stage Worker member peer")
 	}
 	var verified stageauthority.Verified
 	if historical {
@@ -212,17 +225,17 @@ func (server *Server) authorize(
 		verified, err = server.validator.ValidateEnvelopeWithClockSkew(authority, server.maxClockSkew)
 	}
 	if err != nil {
-		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority is invalid or stale")
+		return stageauthority.Verified{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority is invalid or stale")
 	}
 	if len(verified.Authority.GetMembers()) != len(server.membersByID) {
-		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority membership is incomplete")
+		return stageauthority.Verified{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority membership is incomplete")
 	}
 	leaderID := ""
 	var leaderIdentityDigest []byte
 	for _, member := range verified.Authority.GetMembers() {
 		configured, exists := server.membersByID[member.GetWorkerMemberId()]
 		if !exists || member.GetMemberEpoch() != configured.Epoch || member.GetModelRuntimeEpoch() <= 0 {
-			return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority membership is stale")
+			return stageauthority.Verified{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority membership is stale")
 		}
 		if leaderID == "" || member.GetWorkerMemberId() < leaderID {
 			leaderID = member.GetWorkerMemberId()
@@ -232,14 +245,9 @@ func (server *Server) authorize(
 	peerDigest := sha256.Sum256([]byte(peer.SPIFFEID))
 	if len(leaderIdentityDigest) != sha256.Size ||
 		!bytes.Equal(peerDigest[:], leaderIdentityDigest) {
-		return nil, [32]byte{}, status.Error(codes.PermissionDenied, "only the deterministic WorkerMember leader may invoke remote members")
+		return stageauthority.Verified{}, status.Error(codes.PermissionDenied, "only the deterministic WorkerMember leader may invoke remote members")
 	}
-	for _, identity := range server.localIdentities {
-		if runtimeIdentityMatchesAuthority(identity, verified.Authority, server.localMember) {
-			return proto.Clone(identity).(*velav1.ModelRuntimeIdentity), verified.Digest, nil
-		}
-	}
-	return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority does not match local resident runtime")
+	return verified, nil
 }
 
 type runtimeResponse interface {

@@ -199,8 +199,8 @@ supports the contract; unsupported driver drain retains the slot.
 Recovered pending records block new Prepare/readiness; exact persisted checkpoints
 remain inspectable across Runtime epochs. CPU writer-handle, failure, renewal,
 crash-recovery, backpressure and transport regressions pass, alongside full unit,
-related race, lint and Linux non-root checks. The local drain API has no member
-RPC yet; input exclusion/retirement orchestration, sealed
+related race, lint and Linux non-root checks. Authenticated drain forwarding is
+covered by the subsequent increment below; input exclusion/retirement orchestration, sealed
 receipt recovery and checkpoint reclamation remain open. Default Worker scratch
 retention remains enabled. Schema-1 Runtime journals require validated migration.
 The [resident process drain channel](process-drain-evidence-2026-09-06.md) now
@@ -212,6 +212,19 @@ epoch recovery and resumed admission using real compiled CPU/mock commands.
 Full unit, related race, lint and Linux arm64 non-root regressions pass. External
 asynchronous/GPU drivers still require validated task/handle/descendant drain;
 default scratch retention and the remaining retirement prerequisites stay active.
+The [authenticated member execution drain](member-execution-drain-evidence-2026-09-06.md)
+now adds separate drain and read-only checkpoint RPCs through private UDS and
+leader-authenticated mTLS forwarding. Current journal reader identity is checked
+independently from the original execution, allowing existing checkpoints to be
+read across Runtime epochs and retired profiles. The explicit Worker collector
+requires complete trusted membership and exact persisted proof from every member
+of one execution; partial, missing and late results cannot set AllDrained.
+An exact CANCELING record may checkpoint real backend drain after authority expiry
+without inventing terminal state, reusable health or slot release. Full unit,
+related race, lint, protobuf compatibility, reproducible generation and Linux arm64
+non-root transport/collector checks pass. Complete terminal allocation history,
+Worker retirement journaling and input-writer exclusion still need orchestration;
+default scratch retention, schema versions and Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

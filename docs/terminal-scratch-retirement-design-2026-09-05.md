@@ -48,8 +48,14 @@ fd-4 drain support; H3/thumbnail mocks join synchronous command work and freeze
 exact terminal execution without unloading resident models or cleaning its files.
 Unproven recovered records block new execution/readiness. Runtime journal schema
 2 rejects schema 1 pending validated migration and historical writer recovery.
-Default command assembly, automatic startup reconciliation,
-all-member drain, external driver containment and the retirement journal below remain open. These
+The [authenticated member drain](member-execution-drain-evidence-2026-09-06.md)
+now collects complete per-execution checkpoints through private UDS and authenticated
+member forwarding, including historical reads from current trusted journal owners.
+An expired CANCELING execution can checkpoint explicit backend drain without
+inventing terminal state, reusable health or slot release. Collection for one
+execution does not cover the StageRun's complete signed allocation history.
+Default command assembly, automatic startup reconciliation, complete-history drain
+orchestration, external driver containment and the retirement journal below remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
 

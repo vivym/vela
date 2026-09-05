@@ -107,8 +107,12 @@ UID/GID 65534, private `/tmp` tmpfs and a read-only binary mount. Selection:
 
 ## Remaining Work
 
-Implement authenticated all-member drain collection, validated external-driver
-containment and durable Worker retirement history combined with signed floors
+The subsequent [authenticated member drain increment](member-execution-drain-evidence-2026-09-06.md)
+adds drain/read RPCs and complete membership collection for one exact execution,
+including historical checkpoint recovery. It also permits explicit drain of an
+exact CANCELING record without inferring reusable health. Still implement complete
+terminal allocation orchestration, validated external-driver containment and
+durable Worker retirement history combined with signed floors
 and input-writer exclusion; unresolved historical writer recovery; durable sealed
 receipts; checkpoint reclamation; trusted bootstrap/default assembly and validated
 schema-1 migration. Default Worker `RetainScratchRetirer` remains active, so automatic

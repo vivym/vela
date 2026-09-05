@@ -108,7 +108,7 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
 	return nil
 }
 
-// DrainExecution retries drain for an exact, terminal execution still owned by
+// DrainExecution retries drain for an exact, terminal or canceling execution owned by
 // this resident Service. Historical signatures can stop writers but never renew
 // execution. Old Runtime epochs and missing active records cannot enter a backend.
 func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *velav1.StageAuthority) (*ExecutionDrainCheckpoint, error) {
@@ -138,7 +138,8 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 	}
 	defer release()
 	service.mu.Lock()
-	exact := service.active != nil && service.active.verified.Digest == verified.Digest && terminalState(service.active.state)
+	exact := service.active != nil && service.active.verified.Digest == verified.Digest &&
+		(terminalState(service.active.state) || service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING)
 	state := velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
 	reusable := false
 	if exact {
@@ -158,6 +159,9 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 	if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
 		return nil, err
 	}
+	// A canceled execution may have finished after its authority expired. Its
+	// explicit backend proof can be persisted without inventing terminal state
+	// or WorkerReusable health that ordinary Status has not established.
 	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 		(state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED && reusable) {
 		service.setActiveWorkerReusable(verified.Digest)
