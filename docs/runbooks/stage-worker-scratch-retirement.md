@@ -131,6 +131,11 @@ uses the Runtime floor timeout. Existing READY/RETIRED recover before fresh
 collection and require no online Control or Runtime. Missing writer proof still
 requires writer recovery, not repeated cleanup or a forced journal deletion.
 See [automatic recovery evidence](../automatic-terminal-recovery-evidence-2026-09-06.md).
+The Production loop registers the current Control session before this automatic
+recovery. An open stream is insufficient: failed registration or a changed
+session epoch triggers registration retry. Stream-level READY/RETIRED cleanup
+remains offline-capable; the enclosing Production loop still requires online
+readiness/registration.
 
 ## Remaining Lifecycle Boundary
 

@@ -87,6 +87,38 @@ under UID/GID 65534, no network, read-only root/binary mounts, all capabilities
 dropped, no-new-privileges and a private `/tmp` tmpfs. Image:
 `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73`.
 
+## Production session registration follow-up
+
+Review after `8fa331a` reproduced a recovery stall when a Control stream exists
+but its epoch has not been registered in PostgreSQL. The production loop checked
+only connection availability before recovery. A registration failure after
+opening the stream left it available, so subsequent iterations queried terminal
+history without retrying registration. A reconnect during a query caused the
+same problem. PostgreSQL correctly returns RETAIN for an unmatched session.
+
+For a Stream with automatic terminal history enabled, the production loop now
+requires successful readiness registration in its current Control session before
+recovery. It tracks the epoch already recorded by the existing readiness path;
+connection establishment alone cannot satisfy that condition. Failed
+registration or a changed epoch retries through the existing bounded backoff.
+The ordinary post-recovery discovery path remains responsible for acquisition.
+
+`TestTerminalRecoveryProductionRegistersCurrentSessionBeforeHistory` failed
+before the repair for all three triggers: an already-open unregistered stream,
+registration failure with a surviving stream, and reconnect during history
+lookup. The repaired tests finish retirement and resume acquisition without a
+history query in a known unregistered session. These are ProductionAgent
+CPU/mock loop tests using real local Runtime UDS and constructed materialization
+records. The authenticated PostgreSQL test separately verifies RETAIN for a
+mismatched database session.
+
+After this repair, full unit tests, Worker race, lint,
+`TestStageTerminalDispositionThroughAuthenticatedControl`, and Linux non-root
+`^(TestTerminalRecovery|TestTerminalMaterialization|TestProductionAgent)` pass.
+The offline READY/RETIRED guarantee belongs to `StreamAgent.ResumeMaterializations`;
+the enclosing Production service loop still requires online registration and
+readiness. This change does not provide a separate offline service startup mode.
+
 ## Remaining scope
 
 Default command/bootstrap assembly and explicit migrations, unknown historical

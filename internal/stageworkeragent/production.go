@@ -352,7 +352,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			return fmt.Errorf("consume Stage Worker control commands: %w", err)
 		default:
 		}
-		if !agent.controlSessionAvailable() {
+		if !agent.controlSessionAvailable() || agent.terminalHistoryNeedsRegistration() {
 			if _, _, err := agent.refreshEvidence(ctx, 0); err != nil {
 				if ctx.Err() != nil {
 					return nil
@@ -754,6 +754,16 @@ func (agent *ProductionAgent) currentControlSessionEpoch() int64 {
 func (agent *ProductionAgent) controlSessionAvailable() bool {
 	reader, ok := agent.control.(activeControlSessionReader)
 	return !ok || reader.HasActiveControlSession()
+}
+
+func (agent *ProductionAgent) terminalHistoryNeedsRegistration() bool {
+	if agent.stream == nil || agent.stream.terminalHistory == nil {
+		return false
+	}
+	// Opening a transport does not register its epoch with PostgreSQL. A failed
+	// registration or a reconnect during history lookup must retry registration.
+	return agent.readinessValidatedAt.IsZero() ||
+		agent.readinessControlSessionEpoch != agent.currentControlSessionEpoch()
 }
 
 func (agent *ProductionAgent) reusableCapacityObservationSequence(

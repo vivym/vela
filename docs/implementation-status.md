@@ -314,7 +314,11 @@ execution envelopes, latest renewals and original Acquire IDs. It advances
 INTENT through complete trusted Runtime exclusion and durable retirement;
 RETAIN/missing envelopes preserve incomplete INTENT and READY/RETIRED recover
 offline. Automatic PostgreSQL-to-filesystem recovery covers an allocated but
-undelivered retry. Default command/bootstrap assembly, unknown historical
+undelivered retry. Production recovery also checks successful registration of
+the current Control session; an open but unregistered/reconnected transport
+cannot bypass registration into repeated RETAIN. Regression, full unit, Worker
+race, lint, authenticated Control and non-root Linux checks pass.
+Default command/bootstrap assembly, unknown historical
 writers, sealed receipt recovery and bounded checkpoint reclamation remain
 open; the default retention policy is still active.
 The same admission boundary now revalidates authority after waiting for the
