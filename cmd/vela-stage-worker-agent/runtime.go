@@ -36,6 +36,9 @@ type productionAuthorityConsumers struct {
 	newMemberServer func(
 		stageworkermembertransport.ServerConfig,
 	) (*stageworkermembertransport.Server, error)
+	newInputResolver func(
+		stageworkeragent.AssignmentInputResolverConfig,
+	) (*stageworkeragent.AssignmentInputResolver, error)
 	newMaterializingAgent func(
 		*stageworkeragent.Agent,
 		stageworkeragent.ControlClient,
@@ -91,6 +94,7 @@ func runWithContextUsing(
 func newProductionRuntime(ctx context.Context, configuration config) (stageWorkerRuntime, error) {
 	return newProductionRuntimeUsing(ctx, configuration, productionAuthorityConsumers{
 		newMemberServer:       stageworkermembertransport.NewServer,
+		newInputResolver:      stageworkeragent.NewAssignmentInputResolver,
 		newMaterializingAgent: stageworkeragent.NewInputResolvingMaterializingStreamAgent,
 	})
 }
@@ -103,7 +107,8 @@ func newProductionRuntimeUsing(
 	if ctx == nil {
 		return nil, errors.New("stage worker production context is required")
 	}
-	if consumers.newMemberServer == nil || consumers.newMaterializingAgent == nil {
+	if consumers.newMemberServer == nil || consumers.newInputResolver == nil ||
+		consumers.newMaterializingAgent == nil {
 		return nil, errors.New("stage worker production authority consumers are required")
 	}
 	if err := ensureStageWorkerDirectories(configuration); err != nil {
@@ -196,13 +201,15 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(fmt.Errorf("configure Stage Worker control mTLS: %w", err))
 	}
+	runtimeDialContext, cancelRuntimeDial := context.WithTimeout(ctx, configuration.runtimeStartupTimeout)
 	runtime.modelRuntime, err = modelruntimetransport.Dial(
-		ctx,
+		runtimeDialContext,
 		modelruntimetransport.Config{
 			SocketPath:  configuration.runtimeSocket,
 			ExpectedUID: configuration.runtimeExpectedUID,
 		},
 	)
+	cancelRuntimeDial()
 	if err != nil {
 		return fail(fmt.Errorf("connect to resident ModelRuntime: %w", err))
 	}
@@ -355,7 +362,7 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(err)
 	}
-	artifactInputResolver, err := stageworkeragent.NewAssignmentInputResolver(
+	artifactInputResolver, err := consumers.newInputResolver(
 		stageworkeragent.AssignmentInputResolverConfig{
 			Store:               store,
 			TicketSigner:        transferTicketSigner,
@@ -363,6 +370,7 @@ func newProductionRuntimeUsing(
 			InputRoot:           configuration.inputRoot,
 			ConnectorRevisionID: configuration.connectorRevisionID,
 			Now:                 time.Now,
+			MaxClockSkew:        authoritypolicy.ProductionMaxClockSkew,
 			Journal:             runtime.inputJournal,
 		},
 	)

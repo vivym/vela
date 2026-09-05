@@ -354,10 +354,26 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			return fmt.Errorf("consume Stage Worker control commands: %w", err)
 		default:
 		}
+		if !agent.controlSessionAvailable() {
+			if _, _, err := agent.refreshEvidence(ctx, 0); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				if err := agent.wait(ctx, backoff); err != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
+					return err
+				}
+				backoff = nextBackoff(backoff, agent.retryMaximum)
+				continue
+			}
+		}
 		if _, err := agent.stream.ResumeMaterializations(ctx); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
+			agent.observeRetry("resume-materialization", err)
 			if err := agent.wait(ctx, backoff); err != nil {
 				if ctx.Err() != nil {
 					return nil

@@ -24,6 +24,7 @@ data:
   artifact-s3-signed-get-ttl: 5m
   source-loss-retry: 30s
   source-loss-consumed-resource-units: "1"
+  model-runtime-startup-timeout: 30s
   model-runtime-cancel-timeout: 30s
   model-runtime-shutdown-timeout: 2m
   member-dial-timeout: 15s

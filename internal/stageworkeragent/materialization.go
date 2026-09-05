@@ -259,6 +259,14 @@ func (agent *StreamAgent) advancePendingMaterialization(
 		if err != nil {
 			return result, fmt.Errorf("seal local StageArtifact with control authority: %w", err)
 		}
+		if command := response.GetStageCommandResult(); command != nil {
+			return result, fmt.Errorf(
+				"control rejected StageArtifact seal: operation=%s decision=%s detail=%s",
+				command.GetOperation(),
+				command.GetDecision(),
+				command.GetDetail(),
+			)
+		}
 		authority := response.GetMaterializationAuthority()
 		verified, err := agent.materialization.validator.ValidateWithClockSkew(
 			authority,

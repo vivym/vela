@@ -1425,6 +1425,41 @@ func TestStageSchedulerMigrationEmptyDownUpRestoresExactRoleSurface(t *testing.T
 	})
 }
 
+func TestProjectCapacityStageSchedulerFilterMigrationEmptyDownUp(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 66)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	assertProjectCapacityFilter := func(want bool) {
+		t.Helper()
+		var definition string
+		if err := database.Admin.QueryRow(`
+			SELECT pg_get_functiondef(
+				'public.vela_capture_stage_scheduler_snapshot(jsonb)'::regprocedure
+			)
+		`).Scan(&definition); err != nil {
+			t.Fatalf("read StageScheduler snapshot definition: %v", err)
+		}
+		got := strings.Contains(definition, "PROJECT_CAPACITY_EXHAUSTED")
+		if got != want {
+			t.Fatalf("StageScheduler Project-capacity filter present=%t want=%t", got, want)
+		}
+	}
+
+	assertProjectCapacityFilter(false)
+	if err := goose.UpTo(database.Admin, migrations, 67); err != nil {
+		t.Fatalf("expand Project-capacity filter migration: %v", err)
+	}
+	assertProjectCapacityFilter(true)
+	if err := goose.DownTo(database.Admin, migrations, 66); err != nil {
+		t.Fatalf("contract Project-capacity filter migration: %v", err)
+	}
+	assertProjectCapacityFilter(false)
+	if err := goose.UpTo(database.Admin, migrations, 67); err != nil {
+		t.Fatalf("re-expand Project-capacity filter migration: %v", err)
+	}
+	assertProjectCapacityFilter(true)
+}
+
 func postgresErrorConstraint(postgresError *pgconn.PgError) string {
 	if postgresError == nil {
 		return ""
@@ -1561,7 +1596,7 @@ func newStageSchedulerFixtureWithRequest(
 		t.Fatalf("construct %s StageScheduler repository: %v", suffix, err)
 	}
 	worker := workerAuthority(t, evidence)
-	registerStageSchedulerRuntime(t, database, evidence, worker)
+	registerStageSchedulerRuntime(t, database, evidence, worker, encoderStageProfileID)
 	return stageSchedulerFixture{
 		database:    database,
 		repository:  repository,
@@ -1606,6 +1641,7 @@ func registerStageSchedulerRuntime(
 	database testDatabase,
 	evidence fleet.WorkerInstanceEvidence,
 	worker fleet.WorkerInstanceAuthority,
+	stageProfileID string,
 ) {
 	t.Helper()
 	readinessEvidence := []byte("stage-scheduler-runtime-ready")
@@ -1648,7 +1684,7 @@ func registerStageSchedulerRuntime(
 				ModelResidencyId:       worker.ModelResidencyID.String(),
 				RuntimeIdentity:        evidence.Residencies[0].RuntimeIdentity,
 				ModelRuntimeEpoch:      evidence.Residencies[0].ModelRuntimeEpoch,
-				StageProfileRevisionId: encoderStageProfileID,
+				StageProfileRevisionId: stageProfileID,
 				WorkerMemberId:         member.ID.String(),
 				WorkerMemberEpoch:      member.MemberEpoch,
 			},

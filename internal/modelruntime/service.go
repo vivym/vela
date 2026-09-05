@@ -319,7 +319,7 @@ func (service *Service) CancelStage(
 	response := &velav1.ModelRuntimeServiceCancelStageResponse{
 		RuntimeIdentity: runtimeIdentityProto(service.binding),
 	}
-	verified, err := service.verify(request.GetAuthority())
+	verified, allowRenewal, err := service.verifyCancellation(request.GetAuthority())
 	if err != nil {
 		response.Decision = authorityDecision(err)
 		response.Detail = boundedDetail(err.Error())
@@ -333,7 +333,13 @@ func (service *Service) CancelStage(
 	}
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	state, _, err := service.requireActive(verified, true)
+	if service.sealedReceipt(verified.Digest) != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.Detail = "StageAttempt output is already sealed"
+		return response, nil
+	}
+	state, _, err := service.requireActive(verified, allowRenewal)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -535,6 +541,20 @@ func (service *Service) verify(authority *velav1.StageAuthority) (stageauthority
 		service.binding,
 		service.maxClockSkew,
 	)
+}
+
+func (service *Service) verifyCancellation(
+	authority *velav1.StageAuthority,
+) (stageauthority.Verified, bool, error) {
+	verified, err := service.verify(authority)
+	if err == nil {
+		return verified, true, nil
+	}
+	if !errors.Is(err, stageauthority.ErrStale) {
+		return stageauthority.Verified{}, false, err
+	}
+	verified, err = service.validator.ValidateSignature(authority, service.binding)
+	return verified, false, err
 }
 
 func (service *Service) installOrRenew(

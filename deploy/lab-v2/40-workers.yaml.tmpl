@@ -103,6 +103,7 @@ spec:
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
             - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_MODEL_RUNTIME_STARTUP_TIMEOUT, value: "30s"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
             - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}
@@ -280,6 +281,7 @@ spec:
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
             - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_MODEL_RUNTIME_STARTUP_TIMEOUT, value: "30s"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
             - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}
@@ -452,6 +454,7 @@ spec:
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
             - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_MODEL_RUNTIME_STARTUP_TIMEOUT, value: "30s"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
             - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}

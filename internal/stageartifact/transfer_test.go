@@ -117,6 +117,106 @@ func TestObjectStorePullConnectorRejectsAnotherDestinationBeforeResolve(t *testi
 	}
 }
 
+func TestObjectStorePullConnectorAcceptsBoundedFutureTicketWithoutBackdatingCommands(t *testing.T) {
+	workerNow := time.Date(2026, time.August, 30, 15, 30, 0, 0, time.UTC)
+	issuedAt := workerNow.Add(300 * time.Millisecond)
+	payload := []byte("fresh cross-node stage input")
+	digest := sha256.Sum256(payload)
+	store := artifactstore.NewLocal()
+	version, err := store.PutIfAbsent(
+		context.Background(), "artifacts/stage/future/input.bin", "application/octet-stream",
+		bytes.NewReader(payload), int64(len(payload)), digest,
+	)
+	if err != nil {
+		t.Fatalf("seed future-ticket StageArtifact: %v", err)
+	}
+	destination := testTransferDestination()
+	authority := &recordingTransferAuthority{descriptor: TransferDescriptor{
+		TicketID:      uuid.MustParse("49600000-0000-0000-0000-000000000151"),
+		ArtifactID:    uuid.MustParse("49600000-0000-0000-0000-000000000152"),
+		ObjectKey:     version.ObjectKey,
+		ObjectVersion: version.VersionID,
+		SHA256:        digest,
+		SizeBytes:     int64(len(payload)),
+		ContentType:   version.ContentType,
+	}}
+	signer, err := NewTransferTicketSigner(
+		"stage-transfer-key-v1", []byte("0123456789abcdef0123456789abcdef"),
+	)
+	if err != nil {
+		t.Fatalf("NewTransferTicketSigner: %v", err)
+	}
+	ticket, err := signer.Sign(TransferTicketClaims{
+		TicketID: authority.descriptor.TicketID, Destination: destination,
+		IssuedAt: issuedAt, ExpiresAt: issuedAt.Add(30 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("sign future-issued TransferTicket: %v", err)
+	}
+	if _, err := signer.Verify(ticket, workerNow); err == nil {
+		t.Fatal("strict TransferTicket verification accepted a future-issued ticket")
+	}
+	connector, err := NewObjectStorePullConnectorWithClockSkew(
+		store, authority, signer, func() time.Time { return workerNow }, 30*time.Second,
+	)
+	if err != nil {
+		t.Fatalf("construct skew-aware object-store pull Connector: %v", err)
+	}
+	target := NewMemoryTransferTarget()
+	receipt, err := connector.Pull(context.Background(), ticket, destination, target)
+	if err != nil {
+		t.Fatalf("pull with bounded inter-node clock skew: %v", err)
+	}
+	if !bytes.Equal(target.Bytes(), payload) || !receipt.CompletedAt.Equal(issuedAt) ||
+		!authority.lastResolve.ResolvedAt.Equal(issuedAt) ||
+		!authority.lastConsume.ConsumedAt.Equal(issuedAt) {
+		t.Fatalf(
+			"skew-aware pull receipt=%#v resolve=%#v consume=%#v payload=%q",
+			receipt, authority.lastResolve, authority.lastConsume, target.Bytes(),
+		)
+	}
+}
+
+func TestTransferTicketClockSkewBoundsDoNotExtendExpiration(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 15, 45, 0, 0, time.UTC)
+	signer, err := NewTransferTicketSigner(
+		"stage-transfer-key-v1", []byte("0123456789abcdef0123456789abcdef"),
+	)
+	if err != nil {
+		t.Fatalf("NewTransferTicketSigner: %v", err)
+	}
+	ticket, err := signer.Sign(TransferTicketClaims{
+		TicketID:    uuid.MustParse("49600000-0000-0000-0000-000000000161"),
+		Destination: testTransferDestination(), IssuedAt: now.Add(20 * time.Millisecond),
+		ExpiresAt: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("sign future-issued TransferTicket: %v", err)
+	}
+	if _, err := signer.VerifyWithClockSkew(ticket, now, 20*time.Millisecond); err != nil {
+		t.Fatalf("verify inclusive TransferTicket clock skew boundary: %v", err)
+	}
+	if _, err := signer.VerifyWithClockSkew(ticket, now, 10*time.Millisecond); err == nil {
+		t.Fatal("TransferTicket verification accepted insufficient clock skew")
+	}
+	for _, invalid := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		if _, err := signer.VerifyWithClockSkew(ticket, now, invalid); err == nil {
+			t.Fatalf("TransferTicket verification accepted invalid clock skew %s", invalid)
+		}
+	}
+	expired, err := signer.Sign(TransferTicketClaims{
+		TicketID:    uuid.MustParse("49600000-0000-0000-0000-000000000162"),
+		Destination: testTransferDestination(), IssuedAt: now.Add(-time.Minute),
+		ExpiresAt: now,
+	})
+	if err != nil {
+		t.Fatalf("sign expired TransferTicket: %v", err)
+	}
+	if _, err := signer.VerifyWithClockSkew(expired, now, 30*time.Second); err == nil {
+		t.Fatal("TransferTicket clock skew extended the expiration boundary")
+	}
+}
+
 func TestTransferTicketContainsNoObjectStoreCredential(t *testing.T) {
 	now := time.Date(2026, time.August, 30, 16, 0, 0, 0, time.UTC)
 	signer, err := NewTransferTicketSigner(
@@ -194,6 +294,7 @@ type recordingTransferAuthority struct {
 	resolveCalls    int
 	consumeCalls    int
 	lastTokenDigest [sha256.Size]byte
+	lastResolve     ResolveTransferCommand
 	lastConsume     ConsumeTransferCommand
 }
 
@@ -203,6 +304,7 @@ func (authority *recordingTransferAuthority) Resolve(
 ) (TransferDescriptor, error) {
 	authority.resolveCalls++
 	authority.lastTokenDigest = command.TokenDigest
+	authority.lastResolve = command
 	return authority.descriptor, nil
 }
 

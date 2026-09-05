@@ -164,6 +164,9 @@ func (handler *Handler) Handle(
 		authority,
 		handler.maxClockSkew,
 	)
+	if operation == OperationSealStageOutput && errors.Is(err, stageauthority.ErrStale) {
+		verified, err = handler.validator.ValidateEnvelopeSignature(authority)
+	}
 	if err != nil {
 		return staleResponse(request.GetRequestId(), operation, err.Error()), nil
 	}

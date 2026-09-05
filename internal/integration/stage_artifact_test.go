@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -338,4 +339,48 @@ func TestStageArtifactMigrationEmptyDownUpRestoresExactRoleSurface(t *testing.T)
 	); err != nil {
 		t.Fatalf("verify StageArtifact role after Down Up: %v", err)
 	}
+}
+
+func TestStageTransferServerClockMigrationEmptyDownUp(t *testing.T) {
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 68)
+	assertServerClock := func(want bool) {
+		t.Helper()
+		for _, signature := range []string{
+			"public.vela_resolve_stage_transfer_ticket(jsonb)",
+			"public.vela_consume_stage_transfer_ticket(jsonb)",
+		} {
+			var definition string
+			if err := database.Admin.QueryRow(`
+				SELECT pg_get_functiondef($1::regprocedure)
+			`, signature).Scan(&definition); err != nil {
+				t.Fatalf("read %s definition: %v", signature, err)
+			}
+			for _, fragment := range []string{
+				"v_server_now < v_ticket.issued_at",
+				"v_server_now >= v_ticket.expires_at",
+				"v_server_now := clock_timestamp()",
+				"observation.expires_at > v_server_now",
+			} {
+				if got := strings.Contains(definition, fragment); got != want {
+					t.Fatalf("%s contains %q=%t want=%t", signature, fragment, got, want)
+				}
+			}
+		}
+	}
+
+	assertServerClock(false)
+	if err := goose.UpTo(database.Admin, migrations, 69); err != nil {
+		t.Fatalf("add Stage TransferTicket server clock: %v", err)
+	}
+	assertServerClock(true)
+	if err := goose.DownTo(database.Admin, migrations, 68); err != nil {
+		t.Fatalf("remove Stage TransferTicket server clock: %v", err)
+	}
+	assertServerClock(false)
+	if err := goose.UpTo(database.Admin, migrations, 69); err != nil {
+		t.Fatalf("restore Stage TransferTicket server clock: %v", err)
+	}
+	assertServerClock(true)
 }

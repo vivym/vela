@@ -260,10 +260,14 @@ func validExecutionEventTime(
 		return time.Time{}, errors.New("stage worker execution event time is invalid")
 	}
 	eventAt := value.AsTime().UTC()
-	if eventAt.Before(authority.GetIssuedAt().AsTime().UTC()) ||
+	issuedAt := authority.GetIssuedAt().AsTime().UTC()
+	if eventAt.Add(maxClockSkew).Before(issuedAt) ||
 		!eventAt.Before(authority.GetExpiresAt().AsTime().UTC()) ||
 		eventAt.After(now.UTC().Add(maxClockSkew)) {
 		return time.Time{}, errors.New("stage worker execution event is outside active authority")
+	}
+	if eventAt.Before(issuedAt) {
+		eventAt = issuedAt
 	}
 	return eventAt.Truncate(renewalClockStep), nil
 }

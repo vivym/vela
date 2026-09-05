@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/vivym/vela/internal/securefile"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -17,7 +18,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const maxUnixSocketPathBytes = 100
+const (
+	maxUnixSocketPathBytes = 100
+	socketPollInterval     = 50 * time.Millisecond
+)
+
+var errSocketPermissionsPending = errors.New("ModelRuntime socket permissions are not ready")
 
 type Config struct {
 	SocketPath  string
@@ -33,8 +39,11 @@ func Dial(ctx context.Context, config Config) (*Client, error) {
 	if ctx == nil {
 		return nil, errors.New("ModelRuntime dial context is required")
 	}
-	socketPath, err := validateSocketPath(config.SocketPath, config.ExpectedUID)
+	socketPath, err := resolveSocketPath(config.SocketPath)
 	if err != nil {
+		return nil, err
+	}
+	if err := waitForSocket(ctx, socketPath, config.ExpectedUID); err != nil {
 		return nil, err
 	}
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
@@ -89,7 +98,7 @@ func (client *Client) Close() error {
 	return client.connection.Close()
 }
 
-func validateSocketPath(path string, expectedUID uint32) (string, error) {
+func resolveSocketPath(path string) (string, error) {
 	cleaned := filepath.Clean(path)
 	if !filepath.IsAbs(cleaned) || cleaned != path || strings.ContainsRune(path, '\x00') ||
 		len([]byte(path)) > maxUnixSocketPathBytes {
@@ -99,11 +108,24 @@ func validateSocketPath(path string, expectedUID uint32) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("validate ModelRuntime socket directory: %w", err)
 	}
-	resolved := filepath.Join(parent, filepath.Base(cleaned))
-	if _, err := validateSocket(resolved, expectedUID); err != nil {
-		return "", err
+	return filepath.Join(parent, filepath.Base(cleaned)), nil
+}
+
+func waitForSocket(ctx context.Context, path string, expectedUID uint32) error {
+	ticker := time.NewTicker(socketPollInterval)
+	defer ticker.Stop()
+	for {
+		if _, err := validateSocket(path, expectedUID); err == nil {
+			return nil
+		} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, errSocketPermissionsPending) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("wait for ModelRuntime socket: %w", ctx.Err())
+		case <-ticker.C:
+		}
 	}
-	return resolved, nil
 }
 
 func validateSocket(path string, expectedUID uint32) (os.FileInfo, error) {
@@ -112,9 +134,11 @@ func validateSocket(path string, expectedUID uint32) (os.FileInfo, error) {
 		return nil, fmt.Errorf("inspect ModelRuntime socket: %w", err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 ||
-		stat.Uid != expectedUID {
+	if !ok || info.Mode()&os.ModeSocket == 0 || stat.Uid != expectedUID {
 		return nil, errors.New("ModelRuntime socket owner, type, or permissions are invalid")
+	}
+	if info.Mode().Perm() != 0o600 {
+		return nil, errSocketPermissionsPending
 	}
 	return info, nil
 }

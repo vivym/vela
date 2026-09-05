@@ -224,6 +224,43 @@ func TestStageAuthorityEnvelopeAllowsOnlyConfiguredFutureClockSkew(t *testing.T)
 	}
 }
 
+func TestStageAuthoritySignatureValidationPreservesExpiredEnvelopeEvidence(t *testing.T) {
+	issuedAt := time.Date(2026, 8, 30, 4, 50, 0, 0, time.UTC)
+	key := bytes.Repeat([]byte{0x26}, 32)
+	signer, err := stageauthority.NewSigner(map[string][]byte{"stage-key-7": key})
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	signed, err := signer.Sign(validAuthority(issuedAt))
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"stage-key-7": key},
+		func() time.Time { return issuedAt.Add(time.Minute) },
+	)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	if _, err := validator.ValidateEnvelope(signed); !errors.Is(err, stageauthority.ErrStale) {
+		t.Fatalf("strict ValidateEnvelope error = %v, want stale", err)
+	}
+	verified, err := validator.ValidateEnvelopeSignature(signed)
+	if err != nil || verified.Authority == nil || verified.Digest == ([32]byte{}) ||
+		verified.MonotonicValidFor != 0 {
+		t.Fatalf("ValidateEnvelopeSignature = %#v error=%v", verified, err)
+	}
+
+	tampered := proto.Clone(signed).(*velav1.StageAuthority)
+	tampered.StageFence++
+	if _, err := validator.ValidateEnvelopeSignature(tampered); !errors.Is(
+		err,
+		stageauthority.ErrInvalidSignature,
+	) {
+		t.Fatalf("tampered signature-only validation error = %v", err)
+	}
+}
+
 func TestStageAuthoritySignatureAndDigestAreCanonical(t *testing.T) {
 	now := time.Date(2026, 8, 30, 5, 0, 0, 0, time.UTC)
 	key := bytes.Repeat([]byte{0x18}, 32)

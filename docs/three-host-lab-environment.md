@@ -1,33 +1,38 @@
 # Three-host lab environment
 
-Date: 2026-09-04 Asia/Shanghai
+Date: 2026-09-05 Asia/Shanghai
 
-This document records a sanitized, read-only inventory of the current
-three-host non-production lab. It is an operational checkpoint, not a canonical
-release bundle, Launch Receipt, or Production Gate result. Passwords, SSH
-addresses, registry credentials, Secret payloads, and external workload
-identities are intentionally excluded.
+This document records a sanitized inventory of the historical `vela-lab`
+baseline and the isolated `vela-lab-v2` deployment in the three-host
+non-production lab. It is an operational checkpoint, not a canonical release
+bundle, Launch Receipt, or Production Gate result. Passwords, SSH addresses,
+registry credentials, Secret payloads, and external workload identities are
+intentionally excluded.
 
 ## Evidence boundary
 
-- Repository revision: `9e64ac9ae41d2528804c93f46a2fbd8df4c2e961`
+- Historical baseline repository revision:
+  `9e64ac9ae41d2528804c93f46a2fbd8df4c2e961`
   (`main == origin/main`, one clean worktree at observation time).
-- Live control image:
+- Historical `vela-lab` control image:
   `10.1.200.17:5443/vela-lab/vela-control@sha256:e136ecdd6b9b7584f5540d9e293e41d0c71b99df64df879fda35b2e79ba4ca01`.
 - The image config binds source revision
   `67b336ac485064b4172ecdf486467021cd469f7e`,
   `vela.ai.build-kind=noncanonical-lab`,
   `vela.ai.lab.dirty-source=true`, and
   `vela.ai.evidence-boundary=NON_PRODUCTION_MOCK_REHEARSAL`.
-- Live PostgreSQL is at migration `33`; the repository schema is migration
-  `66`.
-- The latest digest-bound CPU-only Stage lifecycle and cross-Worker member
-  campaigns passed with `failures=0`. Those campaigns requested no GPU and are
-  mock transport/lifecycle evidence only.
+- Historical `vela-lab` PostgreSQL remains at migration `33`.
+- The isolated `vela-lab-v2` deployment binds source revision
+  `a50897d55854bde67ff24292e593b1ccc65ce913` and runs a fresh PostgreSQL schema
+  at migration `69`, matching that deployed source revision.
+- Two digest-bound CPU-only four-Stage smoke Jobs passed with all eight
+  StageRuns succeeded. They requested no GPU and are mock control,
+  transport/lifecycle, Artifact-transfer, and exact-cache evidence only.
 
-The live deployment is therefore behind the repository by both source and
-schema identity. Healthy Pods and passing mock campaigns do not establish a
-production release identity.
+The historical deployment remains behind the current repository by both source
+and schema identity. The isolated deployment closes that source/schema gap for
+the mock path, but healthy Pods and passing mock campaigns do not establish a
+canonical production release identity.
 
 ## Topology
 
@@ -56,7 +61,7 @@ no `StorageClass`, persistent volume, or persistent volume claim. The current
 cluster cannot prove real H3 actuation, persistent control storage, metadata
 failover, Artifact durability, or restore.
 
-## Database authority
+## Historical database authority
 
 The following PostgreSQL state was observed read-only:
 
@@ -128,7 +133,7 @@ Every Gate remains `NOT PASS`.
 
 Result: `production_gates=0/9`.
 
-## Deployment decision
+## Parallel deployment decision
 
 Do not run the repository migration set directly against the current migration
 `33` database. Migration `58` is irreversible. For a non-empty database it
@@ -138,32 +143,26 @@ live-zero recheck. The current lab has none of those release/Gate artifacts.
 Starting the full migration sequence would risk leaving the existing lab at an
 intermediate schema before migration `58` rejects contraction.
 
-The next safe deployment unit is a parallel schema-v2 lab with a fresh empty
+The authorized deployment used a parallel schema-v2 lab with a fresh empty
 database and separate namespace/release identities:
 
-1. Preserve the current `vela-lab` namespace and receipt tree as the historical
+1. Preserved the existing `vela-lab` namespace and receipt tree as the historical
    comparison baseline.
-2. Reuse the clean-`9e64ac9` Stage runtime and member-campaign image digests
-   already present in the private registry. Build the missing control, Fleet,
-   Worker, and bootstrap images from the eventual committed `vela-lab-v2`
-   revision containing `deploy/lab-v2` and explicit empty-rollout Fleet support;
-   do not build those images from `9e64ac9`. Bind every new image to that exact
-   source revision, publish by immutable digest, and label it explicitly as a
-   non-production lab artifact.
-3. Bootstrap migrations `1..65` into a new empty database. The migration `58`
-   empty-install exception applies only after verifying every customer,
-   Catalog, Worker-pool, compute-node, and Job root is empty.
-4. Deploy a separate Stage-only control and CPU mock environment with zero GPU
-   requests. Keep the external GPU workloads excluded.
-5. Run readiness, Stage lifecycle, cross-Worker member, Artifact-transfer,
-   exact-cache, retry/fencing, and bounded observation checks against the new
-   database.
-6. Retain digest-bound lab receipts and compare them with this baseline. Keep
-   all nine Production Gates at `NOT PASS` until real typed evidence exists.
+2. Built the control, Fleet, Worker, runtime, and bootstrap images from exact
+   source revision `a50897d55854bde67ff24292e593b1ccc65ce913`, published them
+   once to the private registry, and deployed only immutable digest references.
+3. Bootstrapped migrations `1..69` into a fresh database after the empty-install
+   checks required by migration `58`.
+4. Deployed a separate Stage-only control and CPU mock environment with zero GPU
+   requests; external GPU workloads remained excluded.
+5. Ran readiness, four-Stage lifecycle, Artifact-transfer, exact-cache, and
+   bounded observation checks against the new database.
+6. Retained digest-bound success and failure evidence while keeping all nine
+   Production Gates at `NOT PASS` until real typed evidence exists.
 
-Creating the new namespace/database and publishing/deploying images are remote
-writes. They require an explicit maintenance target and rollback/cleanup
-authorization before execution.
+The remote writes were performed only after explicit authorization. The
+`vela-lab-v2` deployment remains running for continued CPU-only mock testing;
+the historical namespace and unrelated GPU experiments were not modified.
 
 ## Parallel `vela-lab-v2` configuration
 
@@ -241,24 +240,67 @@ partial `vela-lab-v2` resources before retrying `install-assets.sh` with the
 same verified asset directory. The rollback preserves the namespace and
 hostPath data.
 
-As of this checkpoint, the repository unit tests, manifest render contract,
-ShellCheck, and a PostgreSQL 17 migration/bootstrap replay through schema `66`
-pass locally. Schema `66` also makes stale control-session synchronization
-read-only, enforces exact Stage Worker capacity sequencing, and shares the
-four-route readiness query between the bootstrap and smoke contracts. No
-`vela-lab-v2` image has been published and no remote host has been changed by
-this checkpoint. The live environment facts earlier in this document therefore
-remain the current remote baseline.
+## Deployed `vela-lab-v2` checkpoint
 
-## Image and transfer plan
+The control host runs Docker Server `29.1.3`, Docker Buildx `0.30.1`, and
+BuildKit `v0.26.2`. The five Vela images were built on that host, pushed once to
+the existing private registry, and deployed at these immutable identities:
 
-The clean repository archive is about `2.7MB` compressed. The already-published
-`9e64ac9` Stage runtime and member-campaign images are about `221MB` and
-`17.9MB` in the control host's Docker inventory. To minimize SSH traffic:
+| Component | Immutable image |
+| --- | --- |
+| Control | `10.1.200.17:5443/vela-lab-v2/vela-control@sha256:32295b8896583444c198fbef680fa6e9571f3c765578160dcf62e6a7498d4bb5` |
+| Fleet controller | `10.1.200.17:5443/vela-lab-v2/vela-fleet-controller@sha256:ade5cdab854ea7a7ccc93242b1c5992d02fcdf147a139ad2f65ef37e7168a7ec` |
+| Stage Worker Agent | `10.1.200.17:5443/vela-lab-v2/vela-stage-worker-agent@sha256:6ce28fc769b57eee16b96f1e89efbc4dd850cb0bd05f87fbce97f935a63a4f2f` |
+| H3 Stage runtime | `10.1.200.17:5443/vela-lab-v2/vela-h3-stage-runtime@sha256:fbd334340dabc10d66c4a3d0f4525bb4c83c53058bc325da684fb9781dba1ac6` |
+| Lab bootstrap and CPU thumbnail | `10.1.200.17:5443/vela-lab-v2/vela-lab-bootstrap@sha256:ce1ba60172d16fb6367a08ba51df15bfa0a5a6c79e6f420d2fda86d6054e5656` |
 
-- transfer only the small, commit-bound source archive and its digest;
-- build missing images on the control host with an explicit Go module proxy;
-- push once to the existing private registry by immutable digest; and
+The protected asset manifest SHA-256 is
+`d9e7f6bf069160ee9060c2f4999730084b815c5a5f64e2a8bfb767c092b92d99`.
+The repository unit tests, manifest render contract, ShellCheck, PostgreSQL 17
+migration/bootstrap replay through schema `69`, focused integration tests, and
+`make verify` pass for the deployed revision. Migration `68` accepts the
+certified input Connector states needed by the Stage path. Migration `69` makes
+TransferTicket resolve/consume validity depend on a post-lock PostgreSQL server
+clock sample plus live capacity authority.
+
+The two post-deployment smoke Jobs were:
+
+- `311c1246-e478-412e-8740-ce6841e76755`;
+- `b881917b-5611-44c5-8684-cc26d9b19d43`.
+
+Both Jobs reached `SUCCEEDED`. All eight StageRuns reached `SUCCEEDED`, with two
+each for `encoder`, `dit`, `vae`, and `thumbnail`; the durable result inventory
+contained `VIDEO=2` and `THUMBNAIL=2`. Across 138 two-second monitor samples,
+`max_restarts=0` and `max_gpu_requests=0`. Node GPU allocatable remained
+`0/8/8`: the control node ran only control/storage services and the CPU
+thumbnail Worker, while both eight-GPU nodes remained pure Worker nodes. The
+database reported schema `69`, zero Production Gate receipts, and
+`production_gates=0/9`.
+
+The successful evidence tree is retained at
+`/home/marslab/vela-lab-v2-a50897d-success-20260905T000417Z`. Its
+`SHA256SUMS` file has SHA-256
+`de167b29b5904f2c6044ec8c157a1c57fcfde9cdea61deb77d6bb1acb28b2411`.
+
+The first deployment of revision `96a1dd3` failed because a Worker clock was
+about 300 ms behind the control authority, causing a START event timestamp to
+precede `Authority.IssuedAt`. The deployment was fully rolled back before the
+fixed revision was installed, and its preserved failure evidence is at
+`/home/marslab/vela-lab-v2-failure-96a1dd3-start-event-clock-skew-20260904T234509Z`.
+That tree's `SHA256SUMS` file has SHA-256
+`b0be2c03a9b4280ae62612ab21f1a99ea741017abc3b5768fe42a9ea256b5262`.
+Revision `a50897d` clamps execution-event timestamps only within the shared
+bounded-skew policy and still rejects expired, excessively future, or
+out-of-window events.
+
+## Image and transfer execution
+
+The clean repository archive was about `2.7MB` compressed. To minimize SSH
+traffic, the deployment:
+
+- transferred only the small, commit-bound source archive and its digest;
+- built the images on the control host with an explicit Go module proxy;
+- pushed once to the existing private registry by immutable digest; and
 - let Worker nodes pull registry layers over the lab network.
 
 Do not copy Docker image archives through SSH to each Worker. Retain existing
@@ -266,8 +308,9 @@ layers and avoid image pruning while the new environment is being verified.
 
 ## Capacity and disk
 
-At observation time, the control host had about `511G` free. The deployment
-tree used about `764M`, and RKE2 used about `12G`. No remote cache or image
-cleanup is currently justified. A previous local Go build-cache cleanup freed
-about `3G`; the Go module cache was retained. Local free space increased from
-about `11GiB` to `14GiB` at that checkpoint.
+At the historical observation time, the control host had about `511G` free. The
+deployment tree used about `764M`, and RKE2 used about `12G`. No remote image
+pruning was performed because the running deployment and shared registry layers
+must remain available. The local Go build cache was cleaned after verification
+and is about `8KiB`; the `2.1G` module cache was retained. Local free space is
+about `17GiB` at this checkpoint.

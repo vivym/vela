@@ -31,22 +31,23 @@ const (
 type FilterReason string
 
 const (
-	FilterStageNotReady        FilterReason = "STAGE_NOT_READY"
-	FilterDependencyBlocked    FilterReason = "DEPENDENCY_BLOCKED"
-	FilterAttemptFenceStale    FilterReason = "ATTEMPT_FENCE_STALE"
-	FilterStageFenceStale      FilterReason = "STAGE_FENCE_STALE"
-	FilterProfileIncompatible  FilterReason = "PROFILE_INCOMPATIBLE"
-	FilterSecurityMismatch     FilterReason = "SECURITY_MISMATCH"
-	FilterRegionMismatch       FilterReason = "REGION_MISMATCH"
-	FilterConnectorUnavailable FilterReason = "CONNECTOR_UNAVAILABLE"
-	FilterPinUnavailable       FilterReason = "PIN_UNAVAILABLE"
-	FilterBufferUnavailable    FilterReason = "BUFFER_UNAVAILABLE"
-	FilterWorkerUnavailable    FilterReason = "WORKER_UNAVAILABLE"
-	FilterCapacityStale        FilterReason = "CAPACITY_STALE"
-	FilterCapacityExhausted    FilterReason = "CAPACITY_EXHAUSTED"
-	FilterModelResidencyStale  FilterReason = "MODEL_RESIDENCY_STALE"
-	FilterDeviceEvidenceStale  FilterReason = "DEVICE_EVIDENCE_STALE"
-	FilterMemberEvidenceStale  FilterReason = "MEMBER_EVIDENCE_STALE"
+	FilterStageNotReady            FilterReason = "STAGE_NOT_READY"
+	FilterDependencyBlocked        FilterReason = "DEPENDENCY_BLOCKED"
+	FilterAttemptFenceStale        FilterReason = "ATTEMPT_FENCE_STALE"
+	FilterStageFenceStale          FilterReason = "STAGE_FENCE_STALE"
+	FilterProfileIncompatible      FilterReason = "PROFILE_INCOMPATIBLE"
+	FilterSecurityMismatch         FilterReason = "SECURITY_MISMATCH"
+	FilterRegionMismatch           FilterReason = "REGION_MISMATCH"
+	FilterConnectorUnavailable     FilterReason = "CONNECTOR_UNAVAILABLE"
+	FilterPinUnavailable           FilterReason = "PIN_UNAVAILABLE"
+	FilterBufferUnavailable        FilterReason = "BUFFER_UNAVAILABLE"
+	FilterWorkerUnavailable        FilterReason = "WORKER_UNAVAILABLE"
+	FilterCapacityStale            FilterReason = "CAPACITY_STALE"
+	FilterCapacityExhausted        FilterReason = "CAPACITY_EXHAUSTED"
+	FilterProjectCapacityExhausted FilterReason = "PROJECT_CAPACITY_EXHAUSTED"
+	FilterModelResidencyStale      FilterReason = "MODEL_RESIDENCY_STALE"
+	FilterDeviceEvidenceStale      FilterReason = "DEVICE_EVIDENCE_STALE"
+	FilterMemberEvidenceStale      FilterReason = "MEMBER_EVIDENCE_STALE"
 )
 
 type ScoreTerms struct {
@@ -322,7 +323,7 @@ func validFilterReason(reason FilterReason) bool {
 		FilterStageFenceStale, FilterProfileIncompatible, FilterSecurityMismatch,
 		FilterRegionMismatch, FilterConnectorUnavailable, FilterPinUnavailable,
 		FilterBufferUnavailable, FilterWorkerUnavailable, FilterCapacityStale,
-		FilterCapacityExhausted, FilterModelResidencyStale,
+		FilterCapacityExhausted, FilterProjectCapacityExhausted, FilterModelResidencyStale,
 		FilterDeviceEvidenceStale, FilterMemberEvidenceStale:
 		return true
 	default:

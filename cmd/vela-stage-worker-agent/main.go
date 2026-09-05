@@ -40,6 +40,7 @@ type config struct {
 	controlCAFile                   string
 	runtimeSocket                   string
 	runtimeExpectedUID              uint32
+	runtimeStartupTimeout           time.Duration
 	scratchRoot                     string
 	productionStateRoot             string
 	inputRoot                       string
@@ -159,6 +160,12 @@ func loadConfig() (config, error) {
 	if err != nil || runtimeExpectedUIDValue > int64(^uint32(0)) {
 		return config{}, errors.New("VELA_MODEL_RUNTIME_EXPECTED_UID must be a positive uint32")
 	}
+	runtimeStartupTimeout, err := requiredDuration(
+		"VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", time.Second, time.Minute,
+	)
+	if err != nil {
+		return config{}, err
+	}
 	scratchRoot, err := requiredAbsolutePath("VELA_WORKER_SCRATCH_ROOT")
 	if err != nil {
 		return config{}, err
@@ -248,7 +255,8 @@ func loadConfig() (config, error) {
 		workerMemberID: workerMemberID, workerMemberEpoch: workerMemberEpoch, members: members,
 		devices: devices, capacityVector: capacityVector,
 		controlAddress: controlAddress, controlServerName: controlServerName,
-		runtimeExpectedUID: uint32(runtimeExpectedUIDValue), scratchRoot: scratchRoot,
+		runtimeExpectedUID: uint32(runtimeExpectedUIDValue), runtimeStartupTimeout: runtimeStartupTimeout,
+		scratchRoot:         scratchRoot,
 		productionStateRoot: productionStateRoot, inputRoot: inputRoot,
 		inputTransferJournalRoot: inputTransferJournalRoot,
 		outputRoot:               outputRoot, materializationJournalRoot: journalRoot,

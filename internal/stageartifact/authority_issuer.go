@@ -152,10 +152,15 @@ func (issuer *MaterializationAuthorityIssuer) Seal(
 	if lease.ID != leaseID || lease.ArtifactID != artifactID || lease.ObjectKey != objectKey ||
 		lease.ContentType != manifest.ContentType || lease.SHA256 != manifest.PayloadSHA256 ||
 		lease.TokenDigest != tokenDigest || lease.SizeBytes != manifest.SizeBytes ||
-		!lease.IssuedAt.Equal(issuedAt) || !lease.ExpiresAt.Equal(issuedAt.Add(issuer.ttl)) {
+		!matchesPostgresTimestamp(lease.IssuedAt, issuedAt) ||
+		!matchesPostgresTimestamp(lease.ExpiresAt, issuedAt.Add(issuer.ttl)) {
 		return IssuedMaterialization{}, errors.New("persisted MaterializationAuthority identity is mismatched")
 	}
 	return IssuedMaterialization{Authority: authority, Lease: lease}, nil
+}
+
+func matchesPostgresTimestamp(persisted, expected time.Time) bool {
+	return persisted.Equal(expected.Round(time.Microsecond))
 }
 
 func manifestMatchesStage(manifest LocalOutputManifestV1, stage *velav1.StageAuthority) bool {

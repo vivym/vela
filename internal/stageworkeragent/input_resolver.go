@@ -27,6 +27,7 @@ type AssignmentInputResolverConfig struct {
 	InputRoot           string
 	ConnectorRevisionID uuid.UUID
 	Now                 func() time.Time
+	MaxClockSkew        time.Duration
 	Journal             InputTransferJournal
 }
 
@@ -37,6 +38,7 @@ type AssignmentInputResolver struct {
 	inputRoot           string
 	connectorRevisionID uuid.UUID
 	now                 func() time.Time
+	maxClockSkew        time.Duration
 	journal             InputTransferJournal
 }
 
@@ -49,13 +51,16 @@ func NewAssignmentInputResolver(
 		!filepath.IsAbs(cleanedRoot) || cleanedRoot != config.InputRoot {
 		return nil, errors.New("StageAssignment input resolver configuration is incomplete")
 	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("StageAssignment input resolver clock skew is invalid")
+	}
 	if err := securefile.ValidateDirectory(cleanedRoot); err != nil {
 		return nil, fmt.Errorf("validate StageAssignment input root: %w", err)
 	}
 	return &AssignmentInputResolver{
 		store: config.Store, ticketSigner: config.TicketSigner, control: config.Control,
 		inputRoot: cleanedRoot, connectorRevisionID: config.ConnectorRevisionID,
-		now: config.Now, journal: config.Journal,
+		now: config.Now, maxClockSkew: config.MaxClockSkew, journal: config.Journal,
 	}, nil
 }
 
@@ -89,8 +94,9 @@ func (resolver *AssignmentInputResolver) Resolve(
 	journaledAuthority := &journaledInputTransferAuthority{
 		base: controlAuthority, journal: resolver.journal,
 	}
-	connector, err := stageartifact.NewObjectStorePullConnector(
+	connector, err := stageartifact.NewObjectStorePullConnectorWithClockSkew(
 		resolver.store, journaledAuthority, resolver.ticketSigner, resolver.now,
+		resolver.maxClockSkew,
 	)
 	if err != nil {
 		return fmt.Errorf("construct Stage input Connector: %w", err)

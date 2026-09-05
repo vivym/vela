@@ -18,7 +18,10 @@ import (
 	"github.com/vivym/vela/internal/artifactstore"
 )
 
-const maxTransferTicketTTL = 15 * time.Minute
+const (
+	maxTransferTicketTTL            = 15 * time.Minute
+	maxTransferTicketValidationSkew = time.Minute
+)
 
 var ErrTransferTicketDestinationMismatch = errors.New("TransferTicket destination mismatch")
 
@@ -203,8 +206,19 @@ func (signer *TransferTicketSigner) Verify(
 	ticket SignedTransferTicket,
 	now time.Time,
 ) (TransferTicketClaims, error) {
+	return signer.VerifyWithClockSkew(ticket, now, 0)
+}
+
+func (signer *TransferTicketSigner) VerifyWithClockSkew(
+	ticket SignedTransferTicket,
+	now time.Time,
+	maxFutureSkew time.Duration,
+) (TransferTicketClaims, error) {
 	if signer == nil || len(signer.keys) == 0 || len(ticket.Token) == 0 {
 		return TransferTicketClaims{}, errors.New("TransferTicket verifier is not configured")
+	}
+	if maxFutureSkew < 0 || maxFutureSkew > maxTransferTicketValidationSkew {
+		return TransferTicketClaims{}, errors.New("TransferTicket clock skew is invalid")
 	}
 	parts := strings.Split(string(ticket.Token), ".")
 	if len(parts) != 2 {
@@ -235,7 +249,8 @@ func (signer *TransferTicketSigner) Verify(
 		return TransferTicketClaims{}, err
 	}
 	now = now.UTC()
-	if now.Before(envelope.Claims.IssuedAt) || !now.Before(envelope.Claims.ExpiresAt) {
+	if now.Add(maxFutureSkew).Before(envelope.Claims.IssuedAt) ||
+		!now.Before(envelope.Claims.ExpiresAt) {
 		return TransferTicketClaims{}, errors.New("TransferTicket is not currently valid")
 	}
 	return envelope.Claims, nil
@@ -293,10 +308,11 @@ type TransferTarget interface {
 }
 
 type ObjectStorePullConnector struct {
-	store     artifactstore.VersionedStore
-	authority TransferAuthority
-	signer    *TransferTicketSigner
-	now       func() time.Time
+	store        artifactstore.VersionedStore
+	authority    TransferAuthority
+	signer       *TransferTicketSigner
+	now          func() time.Time
+	maxClockSkew time.Duration
 }
 
 func NewObjectStorePullConnector(
@@ -305,11 +321,25 @@ func NewObjectStorePullConnector(
 	signer *TransferTicketSigner,
 	now func() time.Time,
 ) (*ObjectStorePullConnector, error) {
+	return NewObjectStorePullConnectorWithClockSkew(store, authority, signer, now, 0)
+}
+
+func NewObjectStorePullConnectorWithClockSkew(
+	store artifactstore.VersionedStore,
+	authority TransferAuthority,
+	signer *TransferTicketSigner,
+	now func() time.Time,
+	maxClockSkew time.Duration,
+) (*ObjectStorePullConnector, error) {
 	if store == nil || authority == nil || signer == nil || now == nil {
 		return nil, errors.New("object-store pull Connector configuration is incomplete")
 	}
+	if maxClockSkew < 0 || maxClockSkew > maxTransferTicketValidationSkew {
+		return nil, errors.New("object-store pull Connector clock skew is invalid")
+	}
 	return &ObjectStorePullConnector{
 		store: store, authority: authority, signer: signer, now: now,
+		maxClockSkew: maxClockSkew,
 	}, nil
 }
 
@@ -324,17 +354,21 @@ func (connector *ObjectStorePullConnector) Pull(
 		return PullReceipt{}, errors.New("object-store pull Connector is not configured")
 	}
 	now := connector.now().UTC()
-	claims, err := connector.signer.Verify(ticket, now)
+	claims, err := connector.signer.VerifyWithClockSkew(ticket, now, connector.maxClockSkew)
 	if err != nil {
 		return PullReceipt{}, err
 	}
 	if claims.Destination != destination {
 		return PullReceipt{}, ErrTransferTicketDestinationMismatch
 	}
+	commandAt := now
+	if commandAt.Before(claims.IssuedAt) {
+		commandAt = claims.IssuedAt
+	}
 	tokenDigest := sha256.Sum256(ticket.Token)
 	descriptor, err := connector.authority.Resolve(ctx, ResolveTransferCommand{
 		TicketID: claims.TicketID, TokenDigest: tokenDigest,
-		Destination: destination, ResolvedAt: now,
+		Destination: destination, ResolvedAt: commandAt,
 	})
 	if err != nil {
 		return PullReceipt{}, fmt.Errorf("resolve TransferTicket: %w", err)
@@ -375,7 +409,7 @@ func (connector *ObjectStorePullConnector) Pull(
 	}
 	receipt := PullReceipt{
 		TicketID: claims.TicketID, ArtifactID: descriptor.ArtifactID,
-		SHA256: descriptor.SHA256, SizeBytes: written, CompletedAt: now,
+		SHA256: descriptor.SHA256, SizeBytes: written, CompletedAt: commandAt,
 	}
 	if err := target.Commit(ctx, receipt); err != nil {
 		return PullReceipt{}, fmt.Errorf("commit StageArtifact transfer target: %w", err)
@@ -384,7 +418,7 @@ func (connector *ObjectStorePullConnector) Pull(
 	if err := connector.authority.Consume(ctx, ConsumeTransferCommand{
 		CommandID: deterministicCommandID("transfer-consume", claims.TicketID),
 		TicketID:  claims.TicketID, TokenDigest: tokenDigest,
-		Destination: destination, OutcomeDigest: descriptor.SHA256, ConsumedAt: now,
+		Destination: destination, OutcomeDigest: descriptor.SHA256, ConsumedAt: commandAt,
 	}); err != nil {
 		return PullReceipt{}, fmt.Errorf("record TransferTicket outcome: %w", err)
 	}

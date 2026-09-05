@@ -172,9 +172,18 @@ func TestLegacyH3SchemaContractionFreshInstallNeedsNoProductionAuthorization(t *
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	available, err := goose.CollectMigrations(migrations, 0, goose.MaxVersion)
+	if err != nil || len(available) == 0 {
+		t.Fatalf("collect current schema migrations: count=%d error=%v", len(available), err)
+	}
+	latestVersion := available[len(available)-1].Version
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 66 {
-		t.Fatalf("fresh Stage-only schema version = %d error=%v, want 66", version, err)
+	if err != nil || version != latestVersion {
+		t.Fatalf(
+			"fresh Stage-only schema version = %d error=%v, want latest %d",
+			version, err, latestVersion,
+		)
 	}
 
 	for _, table := range []string{
@@ -256,7 +265,6 @@ func TestLegacyH3SchemaContractionFreshInstallNeedsNoProductionAuthorization(t *
 		t.Fatalf("fresh install retained %d functions with Legacy H3 authority dependencies", legacyFunctionCount)
 	}
 
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	err = goose.DownTo(database.Admin, migrations, 57)
 	assertPostgresConstraint(t, err, "legacy_h3_schema_contraction_is_irreversible")
 	version, versionErr := goose.GetDBVersion(database.Admin)

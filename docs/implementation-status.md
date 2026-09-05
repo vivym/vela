@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-09-04
+Date: 2026-09-05
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -50,15 +50,21 @@ with `RESTRICT`, and refuses Down. The same repository boundary deletes legacy
 Worker/Runner runtime, protocol, scheduler, query, deployment, image, and release
 surfaces; the permanent reachability test passes. Migrations `00059` through
 `00062` add runtime epoch registration, the multi-member barrier, gang authority,
-and member identity. Migrations `00063` through `00066` freeze exact H3
+and member identity. Migrations `00063` through `00069` freeze exact H3
 execution/root-input snapshots, bind each resident ModelRuntime to its exact
 CapacityPool/StageProfile route, and add immutable exact-cache admission
 receipts plus bounded fair hit reconciliation. Migration `00066` separates
 Stage Worker control-session synchronization from evidence mutation, requires
 strictly monotonic client-selected capacity observations with replay-safe renewal, and keeps
 unavailable capacity renewable without high-frequency readiness registration.
-The current schema is version `00066`. The
-production Stage Worker and ModelRuntime base images, target-only default Fleet
+Migration `00067` prevents first-Stage assignment while the Project running
+limit is already exhausted, while retaining the StartStage CAS for concurrent
+capacity changes. Migration `00068` permits exact certified input Connector
+revisions in `CERTIFIED` and `CANARY` as well as the existing active states.
+Migration `00069` revalidates TransferTicket expiry and live capacity against a
+post-lock PostgreSQL server-clock sample, preventing lock waits and host-clock
+skew from extending transfer authority. The current schema is version `00069`.
+The production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
 bundle are implemented with a production-shaped fake-runtime composition smoke.
@@ -73,8 +79,12 @@ fail-closed start, and recovery with two Worker names. Its committed projection
 does not bind the raw cluster bundle or independently prove physical placement.
 It does not exercise Fleet actuation, database StageLease authority, Artifact
 transfer, GPU/DRA, or model execution. This is not complete acceptance closure.
-Real H3, N/N-1, GPU/DRA, performance, soak, and Production Gate evidence are
-still pending.
+The isolated three-host `vela-lab-v2` deployment at source revision `a50897d`
+now runs schema `69` and passed two digest-bound CPU-only four-Stage smoke Jobs:
+two Jobs, eight StageRuns, two VIDEO Artifacts, and two THUMBNAIL Artifacts all
+reached their expected successful state. A 138-sample observation recorded zero
+Pod restarts and zero GPU requests. Real H3, N/N-1, GPU/DRA, performance, soak,
+and Production Gate evidence are still pending.
 The read-only H3 preflight and launch collector additionally bind every
 release-declared external Secret/ConfigMap to `immutable=true`, its exact
 revision annotation, recomputed content digest, live UID, and resource version.
@@ -122,10 +132,10 @@ has up to `5s` idle assignment-discovery latency.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Repository implementation complete through S49.12; production acceptance partial | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Schema-v2 through migration `00066`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, Stage Worker control-session/capacity authority, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Schema and protocol migration | Schema-v2 through migration `00069`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, Stage Worker control-session/capacity authority, Project running-limit scheduling, certified Connector state acceptance, server-clock transfer validity, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
-| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage bootstrap/smoke tooling adds a separate CPU thumbnail Worker and two-Artifact verification, but is not remotely deployed; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/three-host-lab-environment.md` |
+| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage deployment passed two remote smoke Jobs with eight successful StageRuns, two VIDEO Artifacts, two THUMBNAIL Artifacts, zero restarts, and zero GPU requests; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete real H3 and Production Gate evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/three-host-lab-environment.md` |
 
 Historical migrations still describe the predecessor machine-level contract,
 but migration `00058` removes it from the current schema and the corresponding

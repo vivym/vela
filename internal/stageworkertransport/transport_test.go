@@ -321,6 +321,50 @@ func TestClientReconcilesDurableControlSessionEpochAndReconnects(t *testing.T) {
 	}
 }
 
+func TestClientReconcilesLowerDurableControlSessionEpochAndReconnects(t *testing.T) {
+	server := &synchronizingStageServer{durableEpoch: 3}
+	address := serveStageControl(t, server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	epochs := &reconcilingEpochSource{current: 5}
+	client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		Address: address, TransportCredentials: insecure.NewCredentials(),
+		ControlSessionEpochSource: epochs,
+	})
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "synchronized") {
+		t.Fatalf("synchronization Exchange error = %v", err)
+	}
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("post-synchronization network error = %v, want Unavailable", err)
+	}
+	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if err != nil || !response.GetWorkerReadinessDecision().GetReady() {
+		t.Fatalf("post-network-reconnect Exchange = %#v error=%v", response, err)
+	}
+	if got := server.Epochs(); got != "6,3,4" || epochs.observed != 3 {
+		t.Fatalf("synchronized epochs = %s observed=%d, want 6,3,4 observed=3", got, epochs.observed)
+	}
+}
+
 type sequenceEpochSource struct {
 	values []int64
 	index  int
