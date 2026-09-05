@@ -84,7 +84,7 @@ func (issuer *MaterializationAuthorityIssuer) Seal(
 		return IssuedMaterialization{}, err
 	}
 	if manifest.SizeBytes != receipt.GetTotalSizeBytes() ||
-		!manifestMatchesStage(manifest, stage) {
+		!manifest.MatchesStageAuthority(stage) {
 		return IssuedMaterialization{}, errors.New("local output manifest does not match StageAuthority or receipt")
 	}
 	lineageDigest, err := manifest.LineageDigest()
@@ -163,7 +163,9 @@ func matchesPostgresTimestamp(persisted, expected time.Time) bool {
 	return persisted.Equal(expected.Round(time.Microsecond))
 }
 
-func manifestMatchesStage(manifest LocalOutputManifestV1, stage *velav1.StageAuthority) bool {
+// MatchesStageAuthority compares lineage only. Callers must separately validate
+// the manifest and authenticate the StageAuthority.
+func (manifest LocalOutputManifestV1) MatchesStageAuthority(stage *velav1.StageAuthority) bool {
 	lineage := manifest.Lineage
 	return lineage.AttemptID.String() == stage.GetAttemptId() &&
 		lineage.StageRunID.String() == stage.GetStageRunId() &&

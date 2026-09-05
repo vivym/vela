@@ -105,6 +105,22 @@ does not migrate, and schema 1 still requires separate reconciliation. See
 [Durable Terminal Retirement](../durable-terminal-retirement-evidence-2026-09-06.md)
 for the output lifetime premise, tests and remaining default assembly work.
 
+## Explicit Stream Reconciliation
+
+`DurableStreamConfig.TerminalRetirement` must reference the coordinator built
+from that same Stream's admission gate and Runtime Agent, with the supported
+output contract. Its `RetireTerminalScratch` serializes cleanup with sealing and
+publication and validates matching materialization records before deletion.
+
+In this configured path, `ResumeMaterializations` first recovers READY/RETIRED
+and removes obsolete matching materialization records only after durable RETIRED.
+INTENT still needs fresh history and complete drain, and blocks ordinary replay
+and the Production discovery loop. A journal-delete failure leaves the permanent
+retirement proof available for retry. `TerminalRecordsRetired` is local cleanup,
+not a COMMIT/SOURCE_LOST confirmation; do not use it to generate billing or
+publication receipts. See [reconciliation evidence](../terminal-materialization-reconciliation-evidence-2026-09-06.md).
+Default command assembly does not yet enable this path.
+
 ## Remaining Lifecycle Boundary
 
 The schema-87 public-gRPC probe reproduced Prepare/Start with the same still-valid

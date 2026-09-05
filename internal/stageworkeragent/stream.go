@@ -34,20 +34,21 @@ type ControlClient interface {
 }
 
 type StreamAgent struct {
-	runtime           *Agent
-	control           ControlClient
-	inputResolver     InputResolver
-	admission         *FileAssignmentAdmission
-	materialization   *streamMaterialization
-	materializationMu sync.Mutex
-	assignmentMu      sync.Mutex
-	inputMu           sync.Mutex
-	pendingInputs     *pendingAssignmentInputs
-	runtimeMu         sync.Mutex
-	startingAuthority *velav1.StageAuthority
-	stopGeneration    uint64
-	mu                sync.Mutex
-	active            *velav1.StageAuthority
+	runtime            *Agent
+	control            ControlClient
+	inputResolver      InputResolver
+	admission          *FileAssignmentAdmission
+	terminalRetirement *TerminalScratchRetirement
+	materialization    *streamMaterialization
+	materializationMu  sync.Mutex
+	assignmentMu       sync.Mutex
+	inputMu            sync.Mutex
+	pendingInputs      *pendingAssignmentInputs
+	runtimeMu          sync.Mutex
+	startingAuthority  *velav1.StageAuthority
+	stopGeneration     uint64
+	mu                 sync.Mutex
+	active             *velav1.StageAuthority
 }
 
 type pendingAssignmentInputs struct {
@@ -56,16 +57,22 @@ type pendingAssignmentInputs struct {
 }
 
 type DurableStreamConfig struct {
-	Runtime         *Agent
-	Control         ControlClient
-	Admission       *FileAssignmentAdmission
-	InputResolver   InputResolver
-	Materialization *MaterializationConfig
+	Runtime            *Agent
+	Control            ControlClient
+	Admission          *FileAssignmentAdmission
+	InputResolver      InputResolver
+	Materialization    *MaterializationConfig
+	TerminalRetirement *TerminalScratchRetirement
 }
 
 func NewDurableStreamAgent(config DurableStreamConfig) (*StreamAgent, error) {
 	if config.Admission == nil {
 		return nil, errors.New("durable Stage Worker stream requires assignment admission")
+	}
+	if retirement := config.TerminalRetirement; retirement != nil &&
+		(retirement.gate != config.Admission || retirement.runtime != config.Runtime || config.Materialization == nil ||
+			config.Materialization.OutputOwnershipContract != AttemptOwnedFilesystemScratchV1) {
+		return nil, errors.New("terminal retirement must share the durable Stream admission, Runtime and output contract")
 	}
 	var agent *StreamAgent
 	var err error
@@ -78,6 +85,7 @@ func NewDurableStreamAgent(config DurableStreamConfig) (*StreamAgent, error) {
 		return nil, err
 	}
 	agent.admission, agent.inputResolver = config.Admission, config.InputResolver
+	agent.terminalRetirement = config.TerminalRetirement
 	return agent, nil
 }
 

@@ -188,6 +188,8 @@ type MaterializationResult struct {
 	L2Published        bool
 	Committed          bool
 	SourceLostReported bool
+	// TerminalRecordsRetired reports local reconciliation, not COMMIT or SOURCE_LOST.
+	TerminalRecordsRetired int
 }
 
 func (agent *StreamAgent) SealAndMaterialize(
@@ -249,6 +251,11 @@ func (agent *StreamAgent) ResumeMaterializations(
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()
+	retired, err := agent.resumeTerminalMaterializations(ctx)
+	result.TerminalRecordsRetired = retired
+	if err != nil {
+		return result, err
+	}
 	records, err := agent.materialization.journal.List(ctx)
 	if err != nil {
 		return result, err
@@ -264,6 +271,7 @@ func (agent *StreamAgent) ResumeMaterializations(
 			return result, closeErr
 		}
 		result, err = agent.advancePendingMaterialization(ctx, record)
+		result.TerminalRecordsRetired = retired
 		result.LocalSealed = true
 		result.GPUReleased = true
 		if err != nil {

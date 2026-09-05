@@ -97,6 +97,13 @@ retirement evidence. Default command assembly, automatic startup reconciliation,
 pending historical writer drain and external driver containment remain open. These
 prerequisites do not establish writer exclusion or bounded scratch usage across
 terminal Stage executions, including delayed duplicates after success.
+The subsequent [Stream reconciliation](terminal-materialization-reconciliation-evidence-2026-09-06.md)
+now serializes retirement with materialization and resumes READY/RETIRED in an
+explicitly configured Stream's ordinary recovery loop. It removes validated
+obsolete materialization records after durable cleanup without asserting their
+unconfirmed command outcomes. Default command assembly and automatic fresh
+history/INTENT collection remain open, as do historical writer/receipt recovery
+and bounded checkpoint reclamation.
 
 ## Current ownership and evidence
 

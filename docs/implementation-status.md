@@ -299,6 +299,18 @@ replacement, full unit, Worker race, lint and non-root Linux checks pass. Runtim
 journal stays 4, database 90 and launch/Fleet 2. Default wiring, unknown historical
 writer recovery, materialization/receipt reconciliation and bounded record
 reclamation remain open. Default scratch retention remains active.
+The following [terminal materialization reconciliation](terminal-materialization-reconciliation-evidence-2026-09-06.md)
+now integrates the coordinator with an explicitly configured Durable Stream.
+It serializes cleanup with output reads/publication, verifies affected records
+before deletion, resumes READY/RETIRED before ordinary materialization replay,
+and clears matching obsolete journals only after durable RETIRED. Local cleanup
+is reported separately from COMMIT/SOURCE_LOST acknowledgement; no command IDs,
+Control receipts or publication results are invented. Unknown INTENT blocks
+Production discovery, and deletion failure preserves the retirement proof.
+Full unit, Worker race, lint, non-root Linux and focused PostgreSQL premise tests
+pass. Default command/bootstrap assembly, fresh history/INTENT collection,
+unknown historical writers, sealed receipt recovery and bounded checkpoint
+reclamation remain open; the default retention policy is still active.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
