@@ -40,17 +40,29 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build Linux CPU fixture: %s %v", output, err)
 	}
+	testNames := []string{
+		"TestRuntimeContainerdProcessEvidence", "TestRuntimeCallerAuthenticatedMessage", "TestRuntimeCallerRejectsInvalidMessages",
+		"TestRuntimeCallerDeadline", "TestRuntimeCallerProcessParser", "TestRuntimeCallerContainerCRI",
+		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
+		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
+		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",
+	}
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
 		"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
-		"-test.run=^Test(RuntimeContainerdProcessEvidence|RuntimeCallerAuthenticatedMessage|RuntimeCallerRejectsInvalidMessages|RuntimeCallerDeadline|RuntimeCallerProcessParser|RuntimeCallerContainerCRI|RuntimeContainerCallerCorrelation|RuntimeContainerCallerRejectsNonInit)$", "-test.v", "-test.timeout=120s")))
+		"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=120s")))
 	if !runtimeContainerIDPattern.MatchString(container) {
 		t.Fatalf("Docker returned an invalid fixture container ID: %q", container)
 	}
 	t.Cleanup(func() { containerdDocker(t, "rm", "--force", "--volumes", container) })
 	output := containerdDocker(t, "start", "--attach", container)
 	t.Log(string(output))
-	if strings.Contains(string(output), "--- SKIP:") || !strings.Contains(string(output), "--- PASS: TestRuntimeContainerdProcessEvidence ") ||
+	for _, name := range testNames {
+		if !strings.Contains(string(output), "--- PASS: "+name+" ") {
+			t.Fatalf("selected CPU test did not pass: %s", name)
+		}
+	}
+	if strings.Contains(string(output), "--- SKIP:") ||
 		strings.TrimSpace(string(containerdDocker(t, "inspect", "--format", "{{.State.ExitCode}}", container))) != "0" {
 		t.Fatal("real containerd experiment did not complete without skips")
 	}

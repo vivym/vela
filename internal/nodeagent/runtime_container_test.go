@@ -21,14 +21,15 @@ import (
 
 type containerCRIServer struct {
 	runtimev1.UnimplementedRuntimeServiceServer
-	mu        sync.Mutex
-	version   *runtimev1.VersionResponse
-	listed    *runtimev1.ListContainersResponse
-	container *runtimev1.ContainerStatusResponse
-	sandbox   *runtimev1.PodSandboxStatusResponse
-	calls     map[string]int
-	hook      func(string, int) error
-	target    RuntimeContainerTarget
+	mu            sync.Mutex
+	version       *runtimev1.VersionResponse
+	listed        *runtimev1.ListContainersResponse
+	container     *runtimev1.ContainerStatusResponse
+	sandbox       *runtimev1.PodSandboxStatusResponse
+	calls         map[string]int
+	hook          func(string, int) error
+	target        RuntimeContainerTarget
+	resolveTarget bool
 }
 
 func (server *containerCRIServer) call(method string) error {
@@ -57,7 +58,8 @@ func (server *containerCRIServer) ListContainers(_ context.Context, request *run
 	if err := server.call("ListContainers"); err != nil {
 		return nil, err
 	}
-	if !proto.Equal(request.Filter, &runtimev1.ContainerFilter{Id: server.target.ContainerID, PodSandboxId: server.target.SandboxID}) {
+	if !proto.Equal(request.Filter, &runtimev1.ContainerFilter{Id: server.target.ContainerID, PodSandboxId: server.target.SandboxID}) &&
+		(!server.resolveTarget || !proto.Equal(request.Filter, &runtimev1.ContainerFilter{Id: server.target.ContainerID})) {
 		return nil, status.Error(codes.InvalidArgument, "container query was not exact")
 	}
 	return proto.CloneOf(server.listed), nil

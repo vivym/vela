@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -24,6 +25,9 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontroller"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
@@ -52,9 +56,21 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = observer.Close() })
-	for _, mode := range []string{"owner", "wrapper", "shared-pid"} {
+	for _, mode := range []string{"owner", "wrapper", "shared-pid", "planned-owner"} {
 		t.Run(mode, func(t *testing.T) {
-			target, listener := fixture.createCRICaller(t, client, mode)
+			var plan *RuntimeLaunchPlan
+			credentials := RuntimeCallerCredentials{UID: 65532, GID: 65532}
+			expectedPayload := []byte("containerd-cpu-caller")
+			if mode == "planned-owner" {
+				approved := runtimeLaunchFixture(t)
+				var err error
+				plan, err = VerifyRuntimeLaunchPlan("cpu-node", approved.verifier, approved.binding, approved.wire)
+				if err != nil {
+					t.Fatal(err)
+				}
+				credentials, expectedPayload = RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}, plan.manifest
+			}
+			target, listener := fixture.createCRICaller(t, client, mode, plan)
 			created, err := observer.Inspect(t.Context(), target)
 			if err != nil || created.ContainerState != "CONTAINER_CREATED" {
 				t.Fatalf("observe actual created CRI container: %+v %v", created, err)
@@ -70,13 +86,13 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = connection.Close() })
-			caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
+			caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = caller.Close() })
 			observation, err := observer.ObserveCaller(t.Context(), target, caller)
-			if mode != "owner" {
+			if mode != "owner" && mode != "planned-owner" {
 				if !errors.Is(err, ErrRuntimeContainerCaller) || observation != (RuntimeContainerCallerObservation{}) {
 					t.Fatalf("unsupported lifetime owner was accepted: %+v %v", observation, err)
 				}
@@ -85,12 +101,26 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			}
 			if err != nil || observation.SchemaVersion != 1 || observation.Container.Target != target ||
 				observation.Process.NamespacePID != 1 || observation.Process.NamespaceDepth != 2 ||
-				observation.Process.BootID != observation.Container.BootID || string(caller.Payload()) != "containerd-cpu-caller" {
+				observation.Process.BootID != observation.Container.BootID || !bytes.Equal(caller.Payload(), expectedPayload) {
 				t.Fatalf("correlate actual CRI/native task/caller: %+v %v", observation, err)
 			}
 			t.Logf("actual CRI container=%s sandbox=%s Pod=%s host_pid=%d namespace_pid=%d image_ref=%s",
 				target.ContainerID, target.SandboxID, target.PodUID, observation.Process.HostPID,
 				observation.Process.NamespacePID, observation.Container.ImageRef)
+			var pods *runtimeLaunchPodFixture
+			if plan != nil {
+				// Pod API and Registry are fixtures; CRI, native task and caller are real.
+				pod := plan.ExpectedPod()
+				pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
+				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: target.ContainerName, RestartCount: int32(target.ContainerAttempt),
+					ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+				pods = &runtimeLaunchPodFixture{pod: *pod, key: fleetcontroller.ResourceKey{Namespace: pod.Namespace, Name: pod.Name}}
+				planned, err := observer.ObservePlannedCaller(t.Context(), plan, pods, caller)
+				if err != nil || planned.Caller.Container.Target != target || planned.Caller.Process.UID != 10001 {
+					t.Fatalf("correlate planned caller through actual CRI: %+v %v", planned, err)
+				}
+				t.Log("Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested")
+			}
 			wrongPod := target
 			wrongPod.PodUID = uuid.New()
 			if result, err := observer.ObserveCaller(t.Context(), wrongPod, caller); err == nil || result != (RuntimeContainerCallerObservation{}) {
@@ -121,6 +151,11 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			}
 			if result, err := observer.ObserveCaller(t.Context(), target, caller); err == nil || result != (RuntimeContainerCallerObservation{}) {
 				t.Fatal("exited original caller remained correlated with a live container")
+			}
+			if plan != nil {
+				if result, err := observer.ObservePlannedCaller(t.Context(), plan, pods, caller); err == nil || result != (RuntimePlannedCallerObservation{}) {
+					t.Fatal("stale Pod running status revived an exited original caller")
+				}
 			}
 			if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err == nil {
 				t.Fatal("CRI restarted an exited container under its existing ID")
@@ -235,7 +270,7 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
 	}
 }
 
-func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client runtimev1.RuntimeServiceClient, mode string) (RuntimeContainerTarget, *net.UnixListener) {
+func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan) (RuntimeContainerTarget, *net.UnixListener) {
 	t.Helper()
 	uid := uuid.New()
 	root := filepath.Join(fixture.root, uid.String())
@@ -261,6 +296,9 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 		Linux: &runtimev1.LinuxPodSandboxConfig{CgroupParent: "/vela-cri-" + uid.String(), SecurityContext: &runtimev1.LinuxSandboxSecurityContext{
 			NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: 65532}, RunAsGroup: &runtimev1.Int64Value{Value: 65532}}},
 	}
+	if plan != nil {
+		config.Metadata.Name, config.Metadata.Namespace = plan.pod.Name, plan.pod.Namespace
+	}
 	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: config, RuntimeHandler: "runc"})
 	if err != nil {
 		t.Fatal(err)
@@ -272,16 +310,22 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 		_, _ = client.RemovePodSandbox(ctx, &runtimev1.RemovePodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
 	})
 	callerMode := mode
-	if mode == "shared-pid" {
+	if mode == "shared-pid" || mode == "planned-owner" {
 		callerMode = "owner"
+	}
+	environment := []*runtimev1.KeyValue{{Key: containerdCallerMode, Value: callerMode}}
+	runtimeUID, runtimeGID := int64(65532), int64(65532)
+	if plan != nil {
+		runtimeUID, runtimeGID = int64(plan.uid), int64(plan.gid)
+		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(plan.manifest)})
 	}
 	container, err := client.CreateContainer(t.Context(), &runtimev1.CreateContainerRequest{PodSandboxId: sandbox.PodSandboxId, SandboxConfig: config,
 		Config: &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "model-runtime", Attempt: 3},
 			Image: &runtimev1.ImageSpec{Image: callerCRIRuntimeImage}, LogPath: "runtime.log",
-			Envs:   []*runtimev1.KeyValue{{Key: containerdCallerMode, Value: callerMode}},
+			Envs:   environment,
 			Mounts: []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}},
 			Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{
-				NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: 65532}, RunAsGroup: &runtimev1.Int64Value{Value: 65532},
+				NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: runtimeUID}, RunAsGroup: &runtimev1.Int64Value{Value: runtimeGID},
 				ReadonlyRootfs: true, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}},
 		}})
 	if err != nil {

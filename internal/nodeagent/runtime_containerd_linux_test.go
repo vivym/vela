@@ -389,7 +389,7 @@ func TestContainerdRuntimeCallerHelper(t *testing.T) {
 	if count, err := connection.Read(challenge); err != nil || count != len(challenge) || !bytes.HasPrefix(challenge, []byte(runtimeCallerProtocol)) {
 		t.Fatalf("read Node caller challenge: %d %v", count, err)
 	}
-	if _, err := connection.Write(append(challenge, []byte("containerd-cpu-caller")...)); err != nil {
+	if _, err := connection.Write(append(challenge, runtimeCallerPayload(t, "containerd-cpu-caller")...)); err != nil {
 		t.Fatal(err)
 	}
 	var command [4]byte

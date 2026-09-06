@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	"github.com/vivym/vela/internal/workerjournal"
@@ -175,6 +177,22 @@ func TestWorkerBootstrapBindingCommandUsesCommittedRegistryIdentity(t *testing.T
 		binding.GetPair().GetRuntimeJournalId() != history.Receipt.RuntimeJournalID.String() ||
 		!binding.GetPair().GetRecordedAt().AsTime().Equal(history.RecordedAt) {
 		t.Fatalf("command did not preserve signed Registry identity: %v", err)
+	}
+	plan, err := nodeagent.VerifyRuntimeLaunchPlan(history.Claim.NodeIdentity, verifier, binding, request.BundleManifest)
+	if err != nil {
+		t.Fatalf("verify launch plan from actual Registry/mTLS/command receipt: %v", err)
+	}
+	bundle, err := fleetcontroller.ParseWorkerBundleActuationManifest(request.BundleManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launch, err := fleetcontroller.WorkerMemberLaunchManifest(bundle, request.WorkerInstanceID, request.WorkerMemberID)
+	if err != nil || plan.MatchManifest(launch) != nil || !proto.Equal(plan.RegistryBinding(), binding) {
+		t.Fatalf("Registry-derived launch or journal pair changed: %v", err)
+	}
+	launch.Runtimes[0].Command = []string{"/unapproved-backend"}
+	if plan.MatchManifest(launch) == nil {
+		t.Fatal("historical journal identity authorized an unapproved backend command")
 	}
 	if replay, err := invoke(0, arguments...); err != nil || !bytes.Equal(replay, first) {
 		t.Fatalf("replayed binding changed identity: %v", err)

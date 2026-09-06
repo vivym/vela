@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -174,6 +175,12 @@ func runtimeCallerDescriptorCount(t *testing.T) int {
 
 func runtimeCallerConnection(t *testing.T, mode, network string, privatePID ...bool) (*net.UnixConn, *os.Process, func()) {
 	t.Helper()
+	return runtimeCallerConfiguredConnection(t, mode, network, []byte("test-startup-request"),
+		RuntimeCallerCredentials{UID: 65532, GID: 65532}, len(privatePID) != 0 && privatePID[0])
+}
+
+func runtimeCallerConfiguredConnection(t *testing.T, mode, network string, payload []byte, credentials RuntimeCallerCredentials, privatePID bool) (*net.UnixConn, *os.Process, func()) {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("the Runtime caller fixture must launch a different non-root UID")
 	}
@@ -199,9 +206,10 @@ func runtimeCallerConnection(t *testing.T, mode, network string, privatePID ...b
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeCallerProcessHelper$", "-test.timeout=15s")
-	command.Env = []string{runtimeCallerTestMode + "=" + mode, "VELA_RUNTIME_CALLER_TEST_SOCKET=" + socket, "VELA_RUNTIME_CALLER_TEST_NETWORK=" + network}
-	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65532, Gid: 65532}}
-	if len(privatePID) != 0 && privatePID[0] {
+	command.Env = []string{runtimeCallerTestMode + "=" + mode, "VELA_RUNTIME_CALLER_TEST_SOCKET=" + socket, "VELA_RUNTIME_CALLER_TEST_NETWORK=" + network,
+		"VELA_RUNTIME_CALLER_TEST_PAYLOAD=" + base64.StdEncoding.EncodeToString(payload)}
+	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: credentials.UID, Gid: credentials.GID}}
+	if privatePID {
 		command.SysProcAttr.Cloneflags = unix.CLONE_NEWPID
 	}
 	var output bytes.Buffer
@@ -289,7 +297,7 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	if count, err := connection.Read(challenge); err != nil || count != len(challenge) {
 		return
 	}
-	packet := append(challenge, []byte("test-startup-request")...)
+	packet := append(challenge, runtimeCallerPayload(t, "test-startup-request")...)
 	var ancillary []byte
 	switch mode {
 	case "idle":
@@ -322,4 +330,16 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	}
 	var response [4]byte
 	_, _ = io.ReadFull(connection, response[:])
+}
+
+func runtimeCallerPayload(t *testing.T, fallback string) []byte {
+	t.Helper()
+	if encoded := os.Getenv("VELA_RUNTIME_CALLER_TEST_PAYLOAD"); encoded != "" {
+		payload, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return payload
+	}
+	return []byte(fallback)
 }

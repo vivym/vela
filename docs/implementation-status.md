@@ -749,6 +749,19 @@ in the rejection fixture; the actual CRI portion takes `7.22s`.
 This remains a library observation. Effective launch configuration, Runtime
 client authentication, durable Registry/startup-nonce binding and independent
 retirement remain open. Schema/journal versions and Production Gates stay fixed.
+The [Registry-bound Runtime launch plan](node-runtime-launch-plan-evidence-2026-09-06.md)
+verifies the signed canonical bundle digest, derives the exact member manifest
+and Pod through Fleet, and rejects configuration changes or cross-member/Node
+reuse. Node now correlates that plan and the authenticated manifest declaration
+with exact Pod content, CRI/native task identity and approved non-root credentials.
+Repeated Pod reads and final process liveness checks reject drift and exit.
+Configuration/topology tests, 26 Linux fault cases and the expanded actual-CRI
+CPU/race campaign pass. A separate PostgreSQL/mTLS/Node-command integration
+verifies the actual signed receipt against the canonical bundle and rejects a
+changed backend command. Registry and Kubernetes remain fixtures in the actual
+CRI case; effective configuration, current startup authorization, journal/nonce
+binding, endpoint assembly and independent retirement are not implemented.
+The factory and recovery restrictions, schema/journal versions and Gates remain.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

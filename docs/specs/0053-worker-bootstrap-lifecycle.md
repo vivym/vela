@@ -213,6 +213,26 @@ configuration authentication, trusted client/endpoint assembly, durable journal
 and startup-nonce binding before factory dispatch, and independent exact-owner
 retirement remain required. No observation clears unresolved backend ownership.
 
+`VerifyRuntimeLaunchPlan` now checks the canonical bundle preimage against the
+Registry-signed digest and derives the exact member manifest and Pod through
+the existing Fleet schema-v2 mapping. Its opaque plan checks complete manifest
+content and retains independent copies. `ObservePlannedCaller` requires that
+plan, a matching authenticated manifest declaration, exact API-observed Pod
+content, and matching CRI/native task/process identity and UID/GID. Container
+and sandbox selection comes from the derived Pod's status and CRI, rather than
+Runtime-supplied IDs. Repeated Pod reads and a final pinned-process check reject
+visible replacement, drift or exit. See the
+[launch-plan evidence](../node-runtime-launch-plan-evidence-2026-09-06.md).
+
+The Registry signature authenticates historical configuration, not current
+activation. The caller declares a manifest; the adapter does not prove that
+those bytes were loaded or that its actual OCI configuration matches. The real
+CRI positive control uses Registry/Pod fixtures and a synthetic helper image,
+so it is not live Kubernetes/release-image conformance. Effective launch
+attestation, endpoint/client assembly, actual journal-lock/startup-nonce binding
+and independent retirement remain unimplemented. No factory consumes this
+observation as a grant.
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual
