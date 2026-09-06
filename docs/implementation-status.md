@@ -649,6 +649,20 @@ generated checks and Linux non-root CPU verification. Authenticated remote
 candidate recovery, cross-epoch writer cleanup, durable health/receipt state,
 history reclamation and Fleet durable activation remain open. PostgreSQL schema
 94, Worker journal 5, Registry binding 1 and Production Gates `0/9` are unchanged.
+The [authenticated retained-authority read](runtime-allocation-authorities-evidence-2026-09-06.md)
+exposes schema-5 candidate history through owner-checked Runtime UDS and
+leader-authenticated member mTLS `InspectStageAllocationAuthorities`. It binds
+the current journal reader and query digest separately from signed historical
+candidates, validates the renewal interval at both forwarding boundaries, and
+rejects malformed or canceled reads. CPU tests cover both renewal failure
+outcomes, confirmation, epoch/profile replacement, legacy original-only history,
+unknown allocations and retained admission restrictions. Full unit tests,
+related race suites, four PostgreSQL integrations, lint and non-root Linux
+UDS/mTLS checks pass. This adds no cross-epoch backend cleanup, live observation,
+drain checkpoint or capacity-release authority. Durable health/receipt state,
+physical writer recovery, history reclamation, renewal write-amplification
+measurements and Fleet durable activation remain open. PostgreSQL schema 94,
+Worker/Runtime journals 5, Registry binding 1 and Production Gates `0/9` remain.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

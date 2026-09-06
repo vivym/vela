@@ -80,6 +80,7 @@ func TestModelRuntimeProtocolHasOnlyLongLivedRuntimeOperations(t *testing.T) {
 		"Status",
 		"InspectExecution",
 		"InspectAllocationExecution",
+		"InspectStageAllocationAuthorities",
 		"DrainStageExecution",
 		"InspectStageExecutionDrain",
 		"InspectStageAllocationDrain",

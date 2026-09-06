@@ -28,6 +28,8 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceInspectExecutionResponse);
   rpc InspectAllocationExecution(ModelRuntimeServiceInspectAllocationExecutionRequest)
       returns (ModelRuntimeServiceInspectAllocationExecutionResponse);
+  rpc InspectStageAllocationAuthorities(ModelRuntimeServiceInspectStageAllocationAuthoritiesRequest)
+      returns (ModelRuntimeServiceInspectStageAllocationAuthoritiesResponse);
   rpc DrainStageExecution(ModelRuntimeServiceDrainStageExecutionRequest)
       returns (ModelRuntimeServiceDrainStageExecutionResponse);
   rpc InspectStageExecutionDrain(ModelRuntimeServiceInspectStageExecutionDrainRequest)
@@ -236,7 +238,7 @@ message ModelRuntimeServiceInspectExecutionResponse {
 }
 
 // identity names the current journal owner; authority names the exact execution.
-// Only the read-only RPC permits a historical runtime epoch or retired profile.
+// Only read-only RPCs permit a historical runtime epoch or retired profile.
 message ModelRuntimeExecutionDrainScope {
   uint32 schema_version = 1;
   ModelRuntimeIdentity identity = 2;
@@ -260,6 +262,30 @@ message ModelRuntimeServiceInspectAllocationExecutionResponse {
   StageAuthority observed_authority = 5;
   ModelRuntimeServiceInspectExecutionResponse inspection = 6;
   string detail = 7;
+}
+
+// Bounded journal history, never a live observation, drain checkpoint, or
+// permission to enter a replacement backend. Legacy history has only original.
+message ModelRuntimeRetainedAllocationAuthorities {
+  StageAuthority original = 1;
+  StageAuthority accepted = 2;
+  StageAuthority confirmed = 3;
+}
+
+message ModelRuntimeServiceInspectStageAllocationAuthoritiesRequest {
+  ModelRuntimeExecutionDrainScope scope = 1;
+}
+
+message ModelRuntimeServiceInspectStageAllocationAuthoritiesResponse {
+  uint32 schema_version = 1;
+  // Current journal reader, separate from the historical execution identities.
+  ModelRuntimeIdentity identity = 2;
+  // Correlates the query; it need not match any retained candidate's digest.
+  bytes authority_digest = 3;
+  ModelRuntimeCommandDecision decision = 4;
+  // Absent means unknown, including an ACCEPTED read. No backend is consulted.
+  ModelRuntimeRetainedAllocationAuthorities authorities = 5;
+  string detail = 6;
 }
 
 message ModelRuntimeExecutionDrainCheckpoint {

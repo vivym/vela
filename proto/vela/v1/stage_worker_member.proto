@@ -20,6 +20,8 @@ service StageWorkerMemberService {
       returns (StageWorkerMemberServiceInspectExecutionResponse);
   rpc InspectAllocationExecution(StageWorkerMemberServiceInspectAllocationExecutionRequest)
       returns (StageWorkerMemberServiceInspectAllocationExecutionResponse);
+  rpc InspectStageAllocationAuthorities(StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest)
+      returns (StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse);
   rpc DrainStageExecution(StageWorkerMemberServiceDrainStageExecutionRequest)
       returns (StageWorkerMemberServiceDrainStageExecutionResponse);
   rpc InspectStageExecutionDrain(StageWorkerMemberServiceInspectStageExecutionDrainRequest)
@@ -94,6 +96,15 @@ message StageWorkerMemberServiceInspectAllocationExecutionRequest {
 
 message StageWorkerMemberServiceInspectAllocationExecutionResponse {
   ModelRuntimeServiceInspectAllocationExecutionResponse result = 1;
+}
+
+message StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceInspectStageAllocationAuthoritiesRequest command = 2;
+}
+
+message StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse {
+  ModelRuntimeServiceInspectStageAllocationAuthoritiesResponse result = 1;
 }
 
 message StageWorkerMemberServiceInstallStageExecutionFloorRequest {

@@ -95,10 +95,21 @@ forwarding boundaries. It does not publish pending candidates as confirmed
 identities, renew execution, take the execution lock or produce drain proof.
 Missing live history stays unknown; a replacement Runtime cannot inspect an old
 epoch. Restart can read the persisted candidate pair using the local
-`InspectRetainedAllocationAuthorities` API. That read reports journal history,
-does not inspect a backend or restore an active execution, and cannot release
-pending writer restrictions. Authenticated remote recovery of this history and
-physical recovery across Runtime epochs remain separate requirements.
+`InspectRetainedAllocationAuthorities` API or the owner-checked Runtime UDS and
+leader-authenticated member mTLS `InspectStageAllocationAuthorities` RPC. The
+historical scope names a trusted current journal reader separately from the
+original execution. The response echoes the query digest and returns independently
+signed original/accepted/confirmed envelopes, which need not equal that query.
+Both forwarding boundaries validate wrapper fields, current reader identity,
+candidate signatures, immutable execution relationships and the monotonic
+original-to-confirmed-to-accepted interval. An accepted renewal requires a prior
+confirmed envelope; an initial unconfirmed intent must equal the original.
+Absent history stays unknown, including an ACCEPTED response; legacy history
+contains only its original. Cancellation before forwarding, during result
+validation or after a downstream reply prevents a successful read. These reads
+report journal history, do not inspect a backend or restore an active execution,
+and cannot release pending writer restrictions. Physical recovery across Runtime
+epochs remains a separate requirement.
 
 Runtime journal schema 5 retains the original allocation plus at most one
 accepted and one confirmed signed envelope. Canonical encoding, signatures,

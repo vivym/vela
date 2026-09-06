@@ -25,6 +25,7 @@ const (
 	StageWorkerMemberService_Status_FullMethodName                              = "/vela.v1.StageWorkerMemberService/Status"
 	StageWorkerMemberService_InspectExecution_FullMethodName                    = "/vela.v1.StageWorkerMemberService/InspectExecution"
 	StageWorkerMemberService_InspectAllocationExecution_FullMethodName          = "/vela.v1.StageWorkerMemberService/InspectAllocationExecution"
+	StageWorkerMemberService_InspectStageAllocationAuthorities_FullMethodName   = "/vela.v1.StageWorkerMemberService/InspectStageAllocationAuthorities"
 	StageWorkerMemberService_DrainStageExecution_FullMethodName                 = "/vela.v1.StageWorkerMemberService/DrainStageExecution"
 	StageWorkerMemberService_InspectStageExecutionDrain_FullMethodName          = "/vela.v1.StageWorkerMemberService/InspectStageExecutionDrain"
 	StageWorkerMemberService_InspectStageAllocationDrain_FullMethodName         = "/vela.v1.StageWorkerMemberService/InspectStageAllocationDrain"
@@ -46,6 +47,7 @@ type StageWorkerMemberServiceClient interface {
 	Status(ctx context.Context, in *StageWorkerMemberServiceStatusRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceStatusResponse, error)
 	InspectExecution(ctx context.Context, in *StageWorkerMemberServiceInspectExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	InspectAllocationExecution(ctx context.Context, in *StageWorkerMemberServiceInspectAllocationExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectAllocationExecutionResponse, error)
+	InspectStageAllocationAuthorities(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse, error)
 	DrainStageExecution(ctx context.Context, in *StageWorkerMemberServiceDrainStageExecutionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageExecutionDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageExecutionDrainResponse, error)
 	InspectStageAllocationDrain(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationDrainRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
@@ -121,6 +123,16 @@ func (c *stageWorkerMemberServiceClient) InspectAllocationExecution(ctx context.
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StageWorkerMemberServiceInspectAllocationExecutionResponse)
 	err := c.cc.Invoke(ctx, StageWorkerMemberService_InspectAllocationExecution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *stageWorkerMemberServiceClient) InspectStageAllocationAuthorities(ctx context.Context, in *StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_InspectStageAllocationAuthorities_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +239,7 @@ type StageWorkerMemberServiceServer interface {
 	Status(context.Context, *StageWorkerMemberServiceStatusRequest) (*StageWorkerMemberServiceStatusResponse, error)
 	InspectExecution(context.Context, *StageWorkerMemberServiceInspectExecutionRequest) (*StageWorkerMemberServiceInspectExecutionResponse, error)
 	InspectAllocationExecution(context.Context, *StageWorkerMemberServiceInspectAllocationExecutionRequest) (*StageWorkerMemberServiceInspectAllocationExecutionResponse, error)
+	InspectStageAllocationAuthorities(context.Context, *StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest) (*StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse, error)
 	DrainStageExecution(context.Context, *StageWorkerMemberServiceDrainStageExecutionRequest) (*StageWorkerMemberServiceDrainStageExecutionResponse, error)
 	InspectStageExecutionDrain(context.Context, *StageWorkerMemberServiceInspectStageExecutionDrainRequest) (*StageWorkerMemberServiceInspectStageExecutionDrainResponse, error)
 	InspectStageAllocationDrain(context.Context, *StageWorkerMemberServiceInspectStageAllocationDrainRequest) (*StageWorkerMemberServiceInspectStageAllocationDrainResponse, error)
@@ -265,6 +278,9 @@ func (UnimplementedStageWorkerMemberServiceServer) InspectExecution(context.Cont
 }
 func (UnimplementedStageWorkerMemberServiceServer) InspectAllocationExecution(context.Context, *StageWorkerMemberServiceInspectAllocationExecutionRequest) (*StageWorkerMemberServiceInspectAllocationExecutionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InspectAllocationExecution not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) InspectStageAllocationAuthorities(context.Context, *StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest) (*StageWorkerMemberServiceInspectStageAllocationAuthoritiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectStageAllocationAuthorities not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) DrainStageExecution(context.Context, *StageWorkerMemberServiceDrainStageExecutionRequest) (*StageWorkerMemberServiceDrainStageExecutionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DrainStageExecution not implemented")
@@ -419,6 +435,24 @@ func _StageWorkerMemberService_InspectAllocationExecution_Handler(srv interface{
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StageWorkerMemberServiceServer).InspectAllocationExecution(ctx, req.(*StageWorkerMemberServiceInspectAllocationExecutionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StageWorkerMemberService_InspectStageAllocationAuthorities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).InspectStageAllocationAuthorities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_InspectStageAllocationAuthorities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).InspectStageAllocationAuthorities(ctx, req.(*StageWorkerMemberServiceInspectStageAllocationAuthoritiesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -615,6 +649,10 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InspectAllocationExecution",
 			Handler:    _StageWorkerMemberService_InspectAllocationExecution_Handler,
+		},
+		{
+			MethodName: "InspectStageAllocationAuthorities",
+			Handler:    _StageWorkerMemberService_InspectStageAllocationAuthorities_Handler,
 		},
 		{
 			MethodName: "DrainStageExecution",
