@@ -60,8 +60,10 @@ func (service *Service) checkReadinessAdmission() error {
 	if err := admission.checkStateLocked(); err != nil {
 		return err
 	}
-	if admission.store != nil && admission.store.recoveryDrain {
-		return ErrExecutionDrainUnproven
+	if admission.store != nil {
+		if err := admission.store.recoveryError(); err != nil {
+			return err
+		}
 	}
 	if admission.store != nil && len(admission.store.state.Executions) >= maxRetainedExecutions {
 		return ErrExecutionHistoryFull
@@ -114,8 +116,10 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		if sequence <= admission.highest {
 			return false, nil, errors.New("StageAllocation execution sequence is retired")
 		}
-		if admission.store != nil && admission.store.recoveryDrain {
-			return false, nil, ErrExecutionDrainUnproven
+		if admission.store != nil {
+			if err := admission.store.recoveryError(); err != nil {
+				return false, nil, err
+			}
 		}
 		// A backend failure cannot reopen an allocation, including on another profile.
 		if admission.store != nil {

@@ -25,6 +25,7 @@ func TestJournalCommandRequiresExplicitActionAndNeverInfersBootstrap(t *testing.
 		append([]string{"journal", "--action", "upgrade-v2"}, arguments...),
 		append([]string{"journal", "--action", "upgrade-v3"}, arguments...),
 		append([]string{"journal", "--action", "upgrade-v4"}, arguments...),
+		append([]string{"journal", "--action", "upgrade-v5"}, arguments...),
 		append([]string{"journal", "--action", "initialize", "--unknown"}, arguments...),
 		append(append([]string{"journal", "--action", "initialize"}, arguments...), "unexpected"),
 	} {
@@ -66,7 +67,7 @@ func TestJournalCommandInitializesOfflineAndPreservesIdentityOnRecovery(t *testi
 		return result.Journal, nil
 	}
 	first, err := prepare("initialize")
-	if err != nil || first.SchemaVersion != 5 || first.JournalID == uuid.Nil || first.Highest != 0 || first.Floor != 0 {
+	if err != nil || first.SchemaVersion != 6 || first.JournalID == uuid.Nil || first.Highest != 0 || first.Floor != 0 {
 		t.Fatalf("offline bootstrap: %+v %v", first, err)
 	}
 	if _, err := prepare("initialize"); err == nil {

@@ -49,13 +49,23 @@ func TestRuntimeLifecycleProcessHelper(t *testing.T) {
 		}
 	case "owner":
 		runLifecycleOwner(t)
-	case "replacement":
+	case "replacement", "fresh-replacement":
+		writeLifecycleJSON(t, "replacement-owner.json", readLifecycleIdentity(t, os.Getpid()))
+		if mode == "fresh-replacement" {
+			for _, name := range []string{"journal", "inputs", "outputs"} {
+				if err := os.Mkdir(filepath.Join(lifecycleProcessRoot, name), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 		_, config := lifecycleRuntimeConfig(t, "replacement-driver")
+		config.ExecutionFloor.State.Initialize = mode == "fresh-replacement"
 		journal, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
 		if err != nil {
 			t.Fatal(err)
 		}
 		writeLifecycleJSON(t, "replacement-journal.json", journal)
+		config.ExecutionFloor.State.Initialize = false
 		config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, journal, nil)
 		server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 		if err != nil {

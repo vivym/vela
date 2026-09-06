@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -193,7 +194,27 @@ func TestWorkerBootstrapBindingCommandUsesCommittedRegistryIdentity(t *testing.T
 		t.Fatal("binding lookup mutated Registry or local state, or repeated bootstrap mutations")
 	}
 	startRegistryBoundCPURuntime(t, preparation, scratch, binding, verifier)
-	if registrySnapshot() != registryBefore || !reflect.DeepEqual(localBefore, localSnapshot()) {
+	localAfter := localSnapshot()
+	statePath := filepath.Join(scratch, "runtime-admission", "execution-admission.json")
+	var beforeState, afterState map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(localBefore[statePath]), &beforeState); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(localAfter[statePath]), &afterState); err != nil {
+		t.Fatal(err)
+	}
+	var initialLifecycle modelruntime.BackendLifecycleStatus
+	if err := json.Unmarshal(beforeState["backend_lifecycle"], &initialLifecycle); err != nil || initialLifecycle != (modelruntime.BackendLifecycleStatus{State: modelruntime.BackendLifecycleUnstarted}) {
+		t.Fatalf("bootstrap did not grant exactly one initial backend startup: %+v %v", initialLifecycle, err)
+	}
+	// Startup must add its independently checked intent, leaving every other
+	// journal field and all Registry/bootstrap history unchanged.
+	afterState["backend_lifecycle"] = beforeState["backend_lifecycle"]
+	if !reflect.DeepEqual(beforeState, afterState) {
+		t.Fatal("idle bound CPU startup changed execution journal history")
+	}
+	localAfter[statePath] = localBefore[statePath]
+	if registrySnapshot() != registryBefore || !reflect.DeepEqual(localBefore, localAfter) {
 		t.Fatal("idle bound CPU startup changed Registry or journal history")
 	}
 }
@@ -334,5 +355,14 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state)
 	if err != nil || recovered.JournalID.String() != binding.GetPair().GetRuntimeJournalId() || !bytes.Equal(recovered.Scope[:], binding.GetPair().GetRuntimeScope()) {
 		t.Fatalf("CPU startup replaced bound journal: %+v %v", recovered, err)
+	}
+	launch, err := modelruntime.EncodeLaunchManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycle := recovered.BackendLifecycle
+	if recovered.SchemaVersion != 6 || lifecycle.State != modelruntime.BackendLifecycleUnresolved || lifecycle.IncarnationID == uuid.Nil ||
+		lifecycle.IncarnationID.Version() != 4 || lifecycle.LaunchDigest != sha256.Sum256(launch) || lifecycle.RecordedAt.IsZero() {
+		t.Fatalf("CPU startup lost its durable backend intent: %+v", recovered)
 	}
 }

@@ -3,6 +3,7 @@ package modelruntime_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +85,15 @@ func TestRuntimeServerRecoveryWithholdsAllBackendsUntilHistoryIsDrained(t *testi
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = server.Close() })
+			if state == "empty" || state == "drained" {
+				journal.BackendLifecycle = assertRecordedBackendLifecycle(t, config)
+				var prior durableExecutionStateDocument
+				if err := json.Unmarshal(before, &prior); err != nil {
+					t.Fatal(err)
+				}
+				prior.BackendLifecycle = &journal.BackendLifecycle
+				before = encodeDurableExecutionState(t, prior)
+			}
 			client, err := modelruntimetransport.Dial(t.Context(), modelruntimetransport.Config{SocketPath: config.SocketPath, ExpectedUID: uint32(os.Geteuid())})
 			if err != nil {
 				t.Fatal(err)
@@ -155,6 +165,11 @@ func TestRuntimeServerRecoveryWithholdsAllBackendsUntilHistoryIsDrained(t *testi
 
 func assertRecoveryServerDeniesExecution(t *testing.T, f *executionFloorFixture, client velav1.ModelRuntimeServiceClient, identity *velav1.ModelRuntimeIdentity) {
 	t.Helper()
+	assertRecoveryServerDeniesExecutionWithReason(t, f, client, identity, modelruntime.ErrExecutionDrainUnproven)
+}
+
+func assertRecoveryServerDeniesExecutionWithReason(t *testing.T, f *executionFloorFixture, client velav1.ModelRuntimeServiceClient, identity *velav1.ModelRuntimeIdentity, reason error) {
+	t.Helper()
 	query := f.authority(t, 0, 12)
 	query.Members[0].ModelRuntimeEpoch = identity.ModelRuntimeEpoch
 	query.ModelResidencyId, query.ModelRuntimeIdentity, query.StageProfileRevisionId = identity.ModelResidencyId, identity.RuntimeIdentity, identity.StageProfileRevisionId
@@ -163,7 +178,7 @@ func assertRecoveryServerDeniesExecution(t *testing.T, f *executionFloorFixture,
 		t.Fatal(err)
 	}
 	prepared, err := client.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: query, ExecutionSpec: runtimeExecutionSpec()})
-	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED || !strings.Contains(prepared.GetDetail(), modelruntime.ErrExecutionDrainUnproven.Error()) {
+	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED || !strings.Contains(prepared.GetDetail(), reason.Error()) {
 		t.Fatalf("recovery reader admitted a fresh current-epoch Prepare: %v %v", prepared, err)
 	}
 	started, err := client.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: query})

@@ -795,18 +795,19 @@ func tryDurableExecutionFixture(t *testing.T, directory string, initialize bool)
 }
 
 type durableExecutionStateDocument struct {
-	SchemaVersion         int             `json:"schema_version"`
-	ID                    string          `json:"journal_id"`
-	Scope                 json.RawMessage `json:"scope"`
-	Root                  json.RawMessage `json:"root"`
-	Lock                  json.RawMessage `json:"lock"`
-	Highest               int64           `json:"highest"`
-	Authority             []byte          `json:"highest_authority"`
-	Floor                 int64           `json:"floor"`
-	Disposition           []byte          `json:"floor_disposition"`
-	Executions            json.RawMessage `json:"executions"`
-	NonAdmissions         json.RawMessage `json:"non_admissions,omitempty"`
-	TerminalNonAdmissions json.RawMessage `json:"terminal_non_admissions,omitempty"`
+	SchemaVersion         int                                  `json:"schema_version"`
+	ID                    string                               `json:"journal_id"`
+	Scope                 json.RawMessage                      `json:"scope"`
+	Root                  json.RawMessage                      `json:"root"`
+	Lock                  json.RawMessage                      `json:"lock"`
+	Highest               int64                                `json:"highest"`
+	Authority             []byte                               `json:"highest_authority"`
+	Floor                 int64                                `json:"floor"`
+	Disposition           []byte                               `json:"floor_disposition"`
+	Executions            json.RawMessage                      `json:"executions"`
+	NonAdmissions         json.RawMessage                      `json:"non_admissions,omitempty"`
+	TerminalNonAdmissions json.RawMessage                      `json:"terminal_non_admissions,omitempty"`
+	BackendLifecycle      *modelruntime.BackendLifecycleStatus `json:"backend_lifecycle,omitempty"`
 }
 
 func readDurableExecutionState(t *testing.T, directory string) durableExecutionStateDocument {
@@ -824,6 +825,10 @@ func readDurableExecutionState(t *testing.T, directory string) durableExecutionS
 
 func encodeDurableExecutionState(t *testing.T, state durableExecutionStateDocument) []byte {
 	t.Helper()
+	// Earlier fixture schemas have no backend lifecycle field.
+	if state.SchemaVersion < 6 {
+		state.BackendLifecycle = nil
+	}
 	wire, err := json.Marshal(state)
 	if err != nil {
 		t.Fatal(err)

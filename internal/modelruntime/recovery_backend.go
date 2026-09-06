@@ -10,28 +10,35 @@ import (
 // recoveryOnlyBackend has no process, device or writer. It keeps authenticated
 // journal routes available without claiming that an old execution has stopped.
 // It never activates in place; subsequent startup must revalidate the journal.
-type recoveryOnlyBackend struct{}
+type recoveryOnlyBackend struct{ reason error }
 
-func (recoveryOnlyBackend) Probe(context.Context, velav1.ModelRuntimeReadinessCheck) (ProbeResult, error) {
-	return ProbeResult{}, ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) rejection() error {
+	if backend.reason != nil {
+		return backend.reason
+	}
+	return ErrBackendIncarnationUnproven
 }
 
-func (recoveryOnlyBackend) Prepare(context.Context, stageauthority.Verified, *velav1.StageExecutionSpec) error {
-	return ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) Probe(context.Context, velav1.ModelRuntimeReadinessCheck) (ProbeResult, error) {
+	return ProbeResult{}, backend.rejection()
 }
 
-func (recoveryOnlyBackend) Start(context.Context, stageauthority.Verified) error {
-	return ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) Prepare(context.Context, stageauthority.Verified, *velav1.StageExecutionSpec) error {
+	return backend.rejection()
 }
 
-func (recoveryOnlyBackend) Cancel(context.Context, stageauthority.Verified, velav1.ModelRuntimeCancelReason) error {
-	return ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) Start(context.Context, stageauthority.Verified) error {
+	return backend.rejection()
 }
 
-func (recoveryOnlyBackend) Status(context.Context, stageauthority.Verified) (BackendStatus, error) {
-	return BackendStatus{}, ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) Cancel(context.Context, stageauthority.Verified, velav1.ModelRuntimeCancelReason) error {
+	return backend.rejection()
 }
 
-func (recoveryOnlyBackend) Seal(context.Context, stageauthority.Verified) (SealedOutput, error) {
-	return SealedOutput{}, ErrExecutionDrainUnproven
+func (backend recoveryOnlyBackend) Status(context.Context, stageauthority.Verified) (BackendStatus, error) {
+	return BackendStatus{}, backend.rejection()
+}
+
+func (backend recoveryOnlyBackend) Seal(context.Context, stageauthority.Verified) (SealedOutput, error) {
+	return SealedOutput{}, backend.rejection()
 }

@@ -48,6 +48,7 @@ type executionDiskState struct {
 	Executions            []retainedExecution         `json:"executions"`
 	NonAdmissions         []executionDiskNonAdmission `json:"non_admissions,omitempty"`
 	TerminalNonAdmissions []terminalDiskNonAdmission  `json:"terminal_non_admissions,omitempty"`
+	BackendLifecycle      *BackendLifecycleStatus     `json:"backend_lifecycle,omitempty"`
 }
 
 type retainedExecution struct {
@@ -69,23 +70,24 @@ type executionDiskDrain struct {
 
 // The enclosing admission mutex owns this store and its lifetime lock.
 type executionStateFile struct {
-	scope         executionJournalScope
-	path          string
-	root          *os.Root
-	rootInfo      os.FileInfo
-	lock          *os.File
-	lockInfo      os.FileInfo
-	lockID        uuid.UUID
-	stateInfo     os.FileInfo
-	stateDigest   [sha256.Size]byte
-	state         executionDiskState
-	recoveryDrain bool
-	syncDirectory func(*os.Root) error
+	scope           executionJournalScope
+	path            string
+	root            *os.Root
+	rootInfo        os.FileInfo
+	lock            *os.File
+	lockInfo        os.FileInfo
+	lockID          uuid.UUID
+	stateInfo       os.FileInfo
+	stateDigest     [sha256.Size]byte
+	state           executionDiskState
+	recoveryDrain   bool
+	recoveryBackend bool
+	syncDirectory   func(*os.Root) error
 }
 
 func openExecutionState(config ExecutionFloorStateConfig, journalScope executionJournalScope) (*executionStateFile, error) {
 	selected := 0
-	for _, enabled := range []bool{config.Initialize, config.UpgradeV2, config.UpgradeV3, config.UpgradeV4} {
+	for _, enabled := range []bool{config.Initialize, config.UpgradeV2, config.UpgradeV3, config.UpgradeV4, config.UpgradeV5} {
 		if enabled {
 			selected++
 		}
@@ -138,7 +140,8 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		if err := executionStateDirectoryEmpty(root); err != nil {
 			return nil, err
 		}
-		state := executionDiskState{SchemaVersion: 5, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
+		state := executionDiskState{SchemaVersion: 6, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo),
+			BackendLifecycle: &BackendLifecycleStatus{State: BackendLifecycleUnstarted}}
 		store.lockID = state.ID
 		if _, err := store.lock.WriteString(state.ID.String()); err != nil {
 			return nil, err
@@ -175,9 +178,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
-	upgrade := !config.Initialize && (config.UpgradeV4 && store.state.SchemaVersion == 4 || len(store.state.TerminalNonAdmissions) == 0 &&
+	upgrade := !config.Initialize && (config.UpgradeV5 && store.state.SchemaVersion == 5 || config.UpgradeV4 && store.state.SchemaVersion == 4 || len(store.state.TerminalNonAdmissions) == 0 &&
 		(config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0 || config.UpgradeV3 && store.state.SchemaVersion == 3))
-	if (store.state.SchemaVersion != 5 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
+	if (store.state.SchemaVersion != 6 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
@@ -200,16 +203,21 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 	}
 	if upgrade {
 		next := store.state
-		next.SchemaVersion = 5
+		next.SchemaVersion = 6
+		next.BackendLifecycle = &BackendLifecycleStatus{State: BackendLifecycleLegacyUnknown}
 		if err := store.persist(next); err != nil {
 			return nil, fmt.Errorf("upgrade ModelRuntime execution state: %w", err)
 		}
 	}
+	store.recoveryBackend = store.state.BackendLifecycle.State != BackendLifecycleUnstarted
 	success = true
 	return store, nil
 }
 
 func (store *executionStateFile) validateProofs() error {
+	if err := store.validateBackendLifecycle(); err != nil {
+		return err
+	}
 	state := store.state
 	if state.Highest < 0 || state.Floor < 0 || (state.Highest == 0) != (len(state.Authority) == 0) ||
 		(state.Floor == 0) != (len(state.Disposition) == 0) || len(state.Authority) > maxExecutionWireBytes {

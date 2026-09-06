@@ -69,6 +69,10 @@ type namedBackendLifecycle struct {
 }
 
 func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*RuntimeServer, error) {
+	return startRuntimeServer(ctx, config, nil)
+}
+
+func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened func(*executionStateFile)) (*RuntimeServer, error) {
 	if ctx == nil || config.EpochStore == nil || config.Validator == nil {
 		return nil, errors.New("ModelRuntime server configuration is incomplete")
 	}
@@ -83,7 +87,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	}
 	if config.RegistryBinding != nil {
 		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
-			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 {
+			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 {
 			return nil, errors.New("ModelRuntime Registry binding requires an existing execution journal without initialization or upgrade")
 		}
 		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)
@@ -145,6 +149,9 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 				return nil, fmt.Errorf("match locked ModelRuntime journal to Registry: %w", err)
 			}
 		}
+		if opened != nil {
+			opened(startupState)
+		}
 	}
 	backendFactory := config.BackendFactory
 	if backendFactory == nil {
@@ -184,6 +191,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 			backendDone <- backendErr
 		}()
 	}
+	backendStartupRecorded := false
 	for index, binding := range bindings {
 		if startupErr := runtimeStartupFailure(runtimeCtx, lifecycles); startupErr != nil {
 			return rollbackStart(fmt.Errorf("resident runtime startup canceled: %w", startupErr))
@@ -205,8 +213,19 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
 				// A valid pending journal permits recovery RPCs, not replacement
 				// model startup while historical writers may still own the device.
-				if startupState != nil && startupState.recoveryDrain {
-					return recoveryOnlyBackend{}, nil
+				if startupState != nil {
+					if err := startupState.recoveryError(); err != nil {
+						return recoveryOnlyBackend{reason: err}, nil
+					}
+					if !backendStartupRecorded {
+						if err := startupState.recordBackendStartup(config.Manifest); err != nil {
+							return nil, err
+						}
+						backendStartupRecorded = true
+					}
+				}
+				if err := context.Cause(runtimeCtx); err != nil {
+					return nil, err
 				}
 				backend, backendErr := backendFactory(runtimeCtx, runtime, allocated, backendConfig)
 				startedBackend = backend

@@ -49,7 +49,7 @@ func runtimeRegistryBinding(t *testing.T, config modelruntime.RuntimeServerConfi
 }
 
 func TestRuntimeServerRejectsUnboundJournalBeforeEpochAndBackend(t *testing.T) {
-	for _, fault := range []string{"signature", "journal-id", "scope", "worker", "worker-epoch", "member", "member-epoch", "verifier", "binding", "no-state", "initialize", "upgrade", "upgrade-v4", "replacement"} {
+	for _, fault := range []string{"signature", "journal-id", "scope", "worker", "worker-epoch", "member", "member-epoch", "verifier", "binding", "no-state", "initialize", "upgrade", "upgrade-v4", "upgrade-v5", "replacement"} {
 		t.Run(fault, func(t *testing.T) {
 			config := journalRuntimeServerConfig(t)
 			journal, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
@@ -89,6 +89,8 @@ func TestRuntimeServerRejectsUnboundJournalBeforeEpochAndBackend(t *testing.T) {
 				config.ExecutionFloor.State.UpgradeV3 = true
 			case "upgrade-v4":
 				config.ExecutionFloor.State.UpgradeV4 = true
+			case "upgrade-v5":
+				config.ExecutionFloor.State.UpgradeV5 = true
 			case "replacement":
 				state.Directory = privateExecutionStateDirectory(t)
 				if _, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, modelruntime.ExecutionFloorStateConfig{Directory: state.Directory, Initialize: true}); err != nil {
@@ -167,6 +169,7 @@ func TestRuntimeServerRetainsRegistryBoundJournalThroughStartupAndServing(t *tes
 	if epochs != len(config.Manifest.Runtimes) || backends != epochs {
 		t.Fatalf("bound runtimes did not start: %d %d", epochs, backends)
 	}
+	journal.BackendLifecycle = assertRecordedBackendLifecycle(t, config)
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
 	}

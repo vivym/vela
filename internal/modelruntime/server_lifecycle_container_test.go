@@ -54,6 +54,17 @@ func TestRuntimePIDNamespaceContainsBackendWriters(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build CPU process helper: %s %v", output, err)
 	}
+	t.Run("fresh-journal-positive-control", func(t *testing.T) {
+		volume := strings.TrimSpace(string(lifecycleDocker(t, "volume", "create")))
+		t.Cleanup(func() { lifecycleDocker(t, "volume", "rm", volume) })
+		initializer := createLifecycleContainer(t, image, binary, volume, "init-volume", "idle")
+		lifecycleDocker(t, "start", "--attach", initializer)
+		waitLifecycleContainerExit(t, initializer, 0)
+		container := createLifecycleContainer(t, image, binary, volume, "fresh-replacement", "idle")
+		lifecycleDocker(t, "start", "--attach", container)
+		waitLifecycleContainerExit(t, container, 0)
+		assertLifecycleReplacement(t, readLifecycleSnapshot(t, container), nil, "fresh")
+	})
 	for _, phase := range []string{"initializing", "idle", "admitted", "closed-idle"} {
 		for _, mode := range []string{"owner", "wrapper"} {
 			t.Run(phase+"/"+mode, func(t *testing.T) {
@@ -102,18 +113,16 @@ func TestRuntimePIDNamespaceContainsBackendWriters(t *testing.T) {
 					if !bytes.Equal(replaced["journal/"+durableStateFileName], before["journal/"+durableStateFileName]) {
 						t.Fatal("separate-namespace replacement changed execution history")
 					}
-					for _, component := range []string{"ENCODER", "VAE_DECODER"} {
-						identity := decodeLifecycleIdentity(t, replaced["replacement-"+component+".json"])
-						if identity.Namespace == owner.Namespace || identity.ParentPID != 1 {
-							t.Fatalf("replacement was not in a separate PID 1-owned namespace: %+v", identity)
-						}
+					identity := decodeLifecycleIdentity(t, replaced["replacement-owner.json"])
+					if identity.Namespace == owner.Namespace || identity.PID != 1 {
+						t.Fatalf("replacement was not in a separate PID 1-owned namespace: %+v", identity)
 					}
 					lifecycleDocker(t, "exec", "--env", lifecycleProcessMode+"=inspect-writer",
 						container, "/runtime.test", "-test.run=^TestRuntimeLifecycleProcessHelper$")
 					before = waitLifecycleSnapshot(t, container, func(files map[string][]byte) bool {
 						return len(files["writer-data"]) > len(replaced["writer-data"])
 					})
-					t.Log("Close returned successfully while the old owner and writer remained alive; another PID namespace started both replacement drivers")
+					t.Log("Close returned while the old owner and writer remained alive; durable incarnation blocked drivers in the new PID namespace")
 				}
 				// PID 1 may kill the gate-writing exec process before Docker collects
 				// its status. The exact owner/container exit below is authoritative.
@@ -299,7 +308,7 @@ func assertLifecycleJournal(t *testing.T, files map[string][]byte, phase string)
 	if phase == "admitted" {
 		want = 1
 	}
-	if state.SchemaVersion != 5 || len(state.Executions) != want || want == 1 && string(state.Executions[0].Drain) != "null" {
+	if state.SchemaVersion != 6 || len(state.Executions) != want || want == 1 && string(state.Executions[0].Drain) != "null" {
 		t.Fatalf("incorrect execution history for %s: %+v", phase, state)
 	}
 	if phase == "initializing" && files["server-ready"] != nil || phase != "initializing" && files["server-ready"] == nil {
@@ -326,11 +335,16 @@ func assertLifecycleReplacement(t *testing.T, files, before map[string][]byte, p
 	if err := json.Unmarshal(files["replacement-journal.json"], &journal); err != nil {
 		t.Fatal(err)
 	}
-	wantPending, wantDrivers := 0, 2
+	wantPending, wantDrivers := 0, 0
 	if phase == "admitted" {
-		wantPending, wantDrivers = 1, 0
+		wantPending = 1
 	}
-	if journal.PendingExecutions != wantPending || journal.RetainedExecutions != wantPending || files["replacement-closed"] == nil {
+	wantLifecycle := modelruntime.BackendLifecycleUnresolved
+	if phase == "fresh" {
+		wantDrivers, wantLifecycle = 2, modelruntime.BackendLifecycleUnstarted
+	}
+	if journal.PendingExecutions != wantPending || journal.RetainedExecutions != wantPending || files["replacement-closed"] == nil ||
+		journal.BackendLifecycle.State != wantLifecycle {
 		t.Fatalf("replacement did not recover the original journal: %+v", journal)
 	}
 	drivers := 0
@@ -341,7 +355,7 @@ func assertLifecycleReplacement(t *testing.T, files, before map[string][]byte, p
 		}
 	}
 	if drivers != wantDrivers {
-		t.Fatalf("replacement startup did not match current execution-history gate: phase=%s drivers=%d want=%d", phase, drivers, wantDrivers)
+		t.Fatalf("replacement startup did not match durable backend ownership: phase=%s drivers=%d want=%d", phase, drivers, wantDrivers)
 	}
 	epochs := 0
 	for name, data := range files {

@@ -1,5 +1,10 @@
 # Runtime CPU process containment and lifecycle gaps
 
+Historical checkpoint: `44e48fd`. The schema-6
+[backend startup restriction](runtime-backend-incarnation-evidence-2026-09-06.md)
+subsequently blocks the replacement drivers described below; the observed
+writer lifetimes and containment limits remain relevant.
+
 This increment follows `e0b1bee`. It adds reproducible container experiments and
 assertions for the existing Fleet PID namespace contract. It does not implement
 durable backend incarnation recovery or change production Runtime behavior.

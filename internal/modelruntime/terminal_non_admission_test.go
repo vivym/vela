@@ -42,7 +42,7 @@ func TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend(t *t
 		t.Fatalf("unsigned allocation checkpoint: %+v %v", proof, err)
 	}
 	state := readDurableExecutionState(t, directory)
-	if state.SchemaVersion != 5 || state.Highest != 10 || len(state.TerminalNonAdmissions) == 0 || len(state.NonAdmissions) != 0 {
+	if state.SchemaVersion != 6 || state.Highest != 10 || len(state.TerminalNonAdmissions) == 0 || len(state.NonAdmissions) != 0 {
 		t.Fatal("checkpoint omitted durable proof or invented execution authority")
 	}
 	if next, err := f.supervisor.CheckpointTerminalNonAdmission(t.Context(), disposition, id); err != nil || !sameTerminalNonAdmission(proof, next) {
@@ -493,7 +493,8 @@ func TestTerminalNonAdmissionSchema3UpgradePreservesEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			after := readDurableExecutionState(t, directory)
-			legacy.SchemaVersion = 5
+			legacy.SchemaVersion = 6
+			legacy.BackendLifecycle = &modelruntime.BackendLifecycleStatus{State: modelruntime.BackendLifecycleLegacyUnknown}
 			if !bytes.Equal(encodeDurableExecutionState(t, after), encodeDurableExecutionState(t, legacy)) {
 				t.Fatal("migration modified prior proof or invented new proof")
 			}

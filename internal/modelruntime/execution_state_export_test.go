@@ -1,6 +1,18 @@
 package modelruntime
 
-import "os"
+import (
+	"context"
+	"os"
+)
+
+func StartRuntimeServerWithStateSyncHookForTest(ctx context.Context, config RuntimeServerConfig, hook func(func() error) error) (*RuntimeServer, error) {
+	return startRuntimeServer(ctx, config, func(store *executionStateFile) {
+		original := store.syncDirectory
+		store.syncDirectory = func(root *os.Root) error {
+			return hook(func() error { return original(root) })
+		}
+	})
+}
 
 // SetExecutionStateSyncHookForTest injects the boundary after Rename and before
 // directory fsync, without exporting filesystem fault controls in the runtime.

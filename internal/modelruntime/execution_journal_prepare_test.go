@@ -2,12 +2,14 @@ package modelruntime_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/stageauthority"
 )
 
 func TestExecutionJournalInspectionRevalidatesAndClosesAfterCallback(t *testing.T) {
@@ -69,6 +71,7 @@ func TestExecutionJournalPreparationRequiresExclusiveOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.Close() })
+	first.BackendLifecycle = assertRecordedBackendLifecycle(t, config)
 	state.Initialize = false
 	if _, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err == nil {
 		t.Fatal("offline preparation acquired a running server's journal")
@@ -83,7 +86,7 @@ func TestExecutionJournalPreparationRequiresExclusiveOwnership(t *testing.T) {
 }
 
 func TestExecutionJournalPreparationUpgradesOnlyExplicitValidatedSchema(t *testing.T) {
-	for _, version := range []int{2, 3, 4} {
+	for _, version := range []int{2, 3, 4, 5} {
 		config := journalRuntimeServerConfig(t)
 		state := *config.ExecutionFloor.State
 		initialized, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state)
@@ -111,14 +114,31 @@ func TestExecutionJournalPreparationUpgradesOnlyExplicitValidatedSchema(t *testi
 		}
 		state.UpgradeV2, state.UpgradeV3 = version == 2, version == 3
 		state.UpgradeV4 = version == 4
+		state.UpgradeV5 = version == 5
 		upgraded, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state)
+		initialized.BackendLifecycle = modelruntime.BackendLifecycleStatus{State: modelruntime.BackendLifecycleLegacyUnknown}
 		if err != nil || upgraded != initialized {
 			t.Fatalf("explicit upgrade lost journal identity/restrictions: %+v %v", upgraded, err)
 		}
 		state.UpgradeV2, state.UpgradeV3 = false, false
 		state.UpgradeV4 = false
+		state.UpgradeV5 = false
 		if recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err != nil || recovered != upgraded {
 			t.Fatalf("ordinary recovery after upgrade: %+v %v", recovered, err)
+		}
+		config.ExecutionFloor.State = &state
+		config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, upgraded, nil)
+		calls := 0
+		config.BackendFactory = func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+			calls++
+			return modelruntime.NewFakeEncoderRuntime(), nil
+		}
+		server, err := modelruntime.StartRuntimeServer(t.Context(), config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := server.Close(); err != nil || calls != 0 {
+			t.Fatalf("legacy empty journal inferred unused backend ownership: calls=%d err=%v", calls, err)
 		}
 	}
 }

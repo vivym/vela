@@ -51,12 +51,12 @@ unproven cancellation cannot infer readiness or writer drain from this endpoint.
 This restriction applies without a terminal floor, across profile/residency
 replacement, to legacy original-only history and when only some retained
 executions have drain proof. It does not activate a backend in place. A later
-startup must independently validate complete journal evidence. Empty history or
-history whose every retained execution has validated drain proof follows the
-normal backend startup path. Neither process disappearance nor an empty backend
-can manufacture a missing checkpoint. Process/container containment before
-Prepare, during model initialization and while idle remains a separate lifecycle
-requirement; execution history alone does not establish it.
+startup must independently validate complete journal evidence. Empty or fully
+drained execution history is insufficient for model startup: the separate
+schema-6 backend lifecycle must also permit it. Neither process disappearance
+nor an empty backend can manufacture a missing checkpoint. Process/container
+containment before Prepare, during model initialization and while idle remains
+a separate lifecycle requirement; execution history alone does not establish it.
 
 ## Backend containment and replacement
 
@@ -71,11 +71,36 @@ The local Linux CPU experiment confirms that exiting Runtime PID 1 terminates
 the tested descendants even after they create separate process groups. A
 Runtime below a surviving wrapper leaves the same identified writer active
 during initialization, idle residency and admitted execution. The empty
-execution journal permits replacement drivers in the first two cases. A
+execution journal previously permitted replacement drivers in the first two cases. A
 successful idle `Close()` also releases the journal while its Runtime owner and
-escaped writer can still live; a distinct replacement namespace can then start
-drivers. These are current implementation limits, not a completed physical
-replacement protocol. See the [CPU containment evidence](../runtime-process-containment-evidence-2026-09-06.md).
+escaped writer can still live; a distinct replacement namespace previously
+started drivers. Schema 6 now blocks those replacement factories. The original
+[CPU containment evidence](../runtime-process-containment-evidence-2026-09-06.md)
+records the earlier behavior; the [backend startup evidence](../runtime-backend-incarnation-evidence-2026-09-06.md)
+records the restriction and its remaining recovery limits.
+
+Runtime journal schema 6 adds a member-wide backend startup record. Authorized
+fresh initialization creates `UNSTARTED`. While holding the original journal
+lock, `StartRuntimeServer` persists `UNRESOLVED`, a UUID v4, the SHA-256 digest of
+the canonical launch manifest and a UTC timestamp before its first configured
+backend factory. Both AUX factories share that one intent. Persistence failure
+or cancellation after persistence cannot dispatch a factory. Initialization
+failure, ordinary `Close()` and successful execution drain never clear it.
+
+An `UNRESOLVED` or `LEGACY_UNKNOWN` journal reopens only a process-free recovery
+endpoint. Readiness and fresh execution reject; historical pending execution
+retains its drain-specific rejection. Offline journal status exposes this
+lifecycle separately from execution counts. Ordinary serving rejects older
+journal schemas; explicit `upgrade-v2`, `upgrade-v3`, `upgrade-v4` or `upgrade-v5`
+preserves validated evidence and adds `LEGACY_UNKNOWN`, including for empty
+history. No upgrade infers a first-use grant.
+
+The UUID and launch digest identify startup intent within the journal; they do
+not prove a container identity, device quiescence or physical containment. No
+retirement or reset operation exists yet. Consequently, a durable Runtime that
+has attempted model startup remains recovery-only on subsequent process starts,
+even after externally observed PID 1 exit. Normal durable restart availability
+is not complete.
 
 The remaining durable lifecycle implementation must satisfy these obligations:
 
@@ -104,9 +129,10 @@ The remaining durable lifecycle implementation must satisfy these obligations:
   quiescence. The CPU namespace experiment establishes none of the GPU or
   external-writer guarantees required to release a DeviceSet.
 
-These obligations remain unimplemented across epochs. The experiment and Pod
-contract assertions prevent broader claims while the durable protocol is built;
-they do not generate a drain checkpoint or a Launch Receipt.
+The durable startup restriction implements intent retention, but binding that
+intent to a trusted containment owner and independently proving its retirement
+remain unimplemented across epochs. The experiment and Pod contract assertions
+do not generate a drain checkpoint or a Launch Receipt.
 
 ## Forwarded command lifetime
 
@@ -148,7 +174,7 @@ or drain evidence for that successor; recovery keeps the actual backend
 envelope and may query allocation-level checkpoints to recover its proof.
 
 An unacknowledged renewal retains the accepted grant and confirmed backend
-envelope in Runtime memory and schema-5 execution history. Further distinct
+envelope in Runtime memory and schema-6 execution history. Further distinct
 renewal rejects until confirmation. Every execution call persists its candidate
 pair before backend entry; backend acknowledgement is persisted before success
 is returned. Expiry/cancellation during persistence cannot authorize dispatch,
@@ -182,7 +208,7 @@ report journal history, do not inspect a backend or restore an active execution,
 and cannot release pending writer restrictions. Physical recovery across Runtime
 epochs remains a separate requirement.
 
-Runtime journal schema 5 retains the original allocation plus at most one
+Runtime journal schema 6 retains the original allocation plus at most one
 accepted and one confirmed signed envelope. Canonical encoding, signatures,
 immutable execution scope, monotonic renewal relationships and drain membership
 are validated on recovery. The 32-execution and 12 MiB journal bounds remain.

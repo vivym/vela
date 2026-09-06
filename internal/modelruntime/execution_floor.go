@@ -40,6 +40,9 @@ type ExecutionFloorStateConfig struct {
 	UpgradeV3 bool
 	// UpgradeV4 preserves schema-4 evidence without inventing renewal candidates.
 	UpgradeV4 bool
+	// UpgradeV5 preserves schema-5 evidence and marks unrecorded backend history
+	// unknown. No upgrade infers that an empty execution journal never ran models.
+	UpgradeV5 bool
 }
 
 type executionFloorVerifier struct {

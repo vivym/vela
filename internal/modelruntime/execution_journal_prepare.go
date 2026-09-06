@@ -12,13 +12,14 @@ import (
 // ExecutionJournalStatus describes one completed offline preparation. It grants
 // no execution or retirement authority and does not retain the lifetime lock.
 type ExecutionJournalStatus struct {
-	JournalID          uuid.UUID         `json:"journal_id"`
-	SchemaVersion      int               `json:"schema_version"`
-	Scope              [sha256.Size]byte `json:"scope"`
-	Highest            int64             `json:"highest"`
-	Floor              int64             `json:"floor"`
-	RetainedExecutions int               `json:"retained_executions"`
-	PendingExecutions  int               `json:"pending_executions"`
+	JournalID          uuid.UUID              `json:"journal_id"`
+	SchemaVersion      int                    `json:"schema_version"`
+	Scope              [sha256.Size]byte      `json:"scope"`
+	Highest            int64                  `json:"highest"`
+	Floor              int64                  `json:"floor"`
+	RetainedExecutions int                    `json:"retained_executions"`
+	PendingExecutions  int                    `json:"pending_executions"`
+	BackendLifecycle   BackendLifecycleStatus `json:"backend_lifecycle"`
 }
 
 // PrepareExecutionJournal validates trusted launch ownership and opens the
@@ -68,6 +69,7 @@ func WithPreparedExecutionJournal(ctx context.Context, manifest LaunchManifest, 
 	result := ExecutionJournalStatus{
 		JournalID: store.state.ID, SchemaVersion: store.state.SchemaVersion, Scope: store.state.Scope,
 		Highest: store.state.Highest, Floor: store.state.Floor, RetainedExecutions: len(store.state.Executions),
+		BackendLifecycle: *store.state.BackendLifecycle,
 	}
 	for _, record := range store.state.Executions {
 		if record.Drain == nil {

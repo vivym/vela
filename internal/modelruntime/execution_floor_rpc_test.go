@@ -424,7 +424,9 @@ func TestExecutionFloorServerAssemblyRecoversAndPreservesMessageBounds(t *testin
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
 	}
-	config.ExecutionFloor.State.Initialize = false
+	// A fresh test journal reaches backend startup; an unresolved prior owner
+	// would correctly withhold the factory that injects this publication fault.
+	config.ExecutionFloor.State = &modelruntime.ExecutionFloorStateConfig{Directory: privateExecutionStateDirectory(t), Initialize: true}
 	factory := config.BackendFactory
 	config.BackendFactory = func(ctx context.Context, runtime modelruntime.LaunchRuntime, binding stageauthority.RuntimeBinding, backendConfig modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
 		// The conflict appears after target validation but before socket publication.
@@ -443,6 +445,7 @@ func TestExecutionFloorServerAssemblyRecoversAndPreservesMessageBounds(t *testin
 		t.Fatal(err)
 	}
 	config.BackendFactory = factory
+	config.ExecutionFloor.State.Initialize = false
 	server, err = modelruntime.StartRuntimeServer(context.Background(), config)
 	if err != nil {
 		t.Fatalf("failed server publication retained journal lock: %v", err)

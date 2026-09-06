@@ -257,7 +257,7 @@ func (service *Service) PrepareStage(
 	replayed, release, err := service.executionAdmission().prepare(service, &verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
-		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) {
+		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) || errors.Is(err, ErrBackendIncarnationUnproven) {
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		}
 		response.Detail = boundedDetail(err.Error())

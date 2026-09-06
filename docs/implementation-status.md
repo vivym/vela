@@ -687,6 +687,23 @@ existing launch contract, but these tests do not implement backend incarnation
 retirement. Durable pre-start ownership and independent old-container quiescence
 remain required by the updated lifecycle contract. Versions and Production Gates
 are unchanged.
+The [durable backend startup restriction](runtime-backend-incarnation-evidence-2026-09-06.md)
+advances the Runtime journal to schema 6. A member-wide startup intent is durable
+before the first backend factory and survives failed initialization, cancellation,
+idle Close and complete Stage drain. Unresolved or explicitly migrated unknown
+history permits only process-free recovery, including when pending execution
+count is zero. Three persistence-interruption boundaries, malformed evidence,
+completed Stage drain, explicit legacy upgrades, full unit, related race, 27
+PostgreSQL integration checks and nine actual Linux CPU container scenarios
+pass. Standard lint and related integration-tag lint report zero issues; the
+broader integration-tag sweep retains 82 findings outside this increment, with
+zero new findings against the previous commit. UUID/digest startup intent is not
+an independently observed container identity. No retirement/reset operation
+exists, so durable Runtime restarts remain recovery-only after first backend
+startup. Trusted Node/container binding and retirement, durable health/receipt
+state, bounded reclamation, renewal write cost and Fleet durable activation
+remain open. PostgreSQL schema 94, Worker journal 5, Registry binding 1 and
+Production Gates `0/9` are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
