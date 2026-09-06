@@ -378,6 +378,7 @@ StartStage(stage_authority)                    -> started | rejected
 CancelStage(stage_authority, reason)           -> accepted | stale
 Status(stage_authority)                        -> bounded status
 SealOutput(stage_authority)                    -> local materialization receipt
+InspectAllocationExecution(stage_authority)    -> observed signed envelope | unknown
 ```
 
 There is intentionally no `LoadModel`, `UnloadModel`, or `ReplaceModel` method.
@@ -429,8 +430,23 @@ remains eligible for cleanup, including after partial Prepare failure or failed
 watchdog reconciliation. Exact inspection/drain can use the retained backend
 envelope; allocation-level checkpoint lookup returns the signed identity actually
 drained without rewriting it to the accepted grant. Confirmation of a new backend
-envelope removes the superseded candidate. Recovery callers must already possess
-the applicable signed envelope; durable candidate discovery, restart recovery
+envelope removes the superseded candidate. Recovery callers can use the read-only
+`InspectAllocationExecution` RPC with any authentic envelope of the same immutable
+execution at the current Runtime epoch. It snapshots at most two active
+candidates and returns exactly one backend-observed signed envelope together
+with its exact inspection. The outer digest correlates the query; the nested
+inspection binds the returned envelope. Signature, immutable execution identity,
+member/Runtime identity and both digests must be validated independently.
+
+This discovery never takes the execution/admission lock, installs authority,
+updates backend-confirmed identity, extends the watchdog or creates a checkpoint.
+Missing live history or no known candidate returns unknown. Ambiguous, malformed,
+unavailable, changed-generation or late observations reject; unsupported backends
+cannot fall back to Status. The observation may become stale immediately, so
+subsequent cancellation/drain repeats its existing exact validation. Worker
+journal failure and terminal floors do not disable authenticated leader reads.
+Old Runtime epochs cannot inspect a replacement backend. Durable discovery,
+automatic recovery orchestration, restart recovery
 beyond existing historical drain/replacement proof, and physical containment
 remain separate work.
 

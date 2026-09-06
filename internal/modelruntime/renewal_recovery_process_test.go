@@ -73,6 +73,11 @@ func TestModelRuntimeRenewalRecoveryWithCompiledH3Process(t *testing.T) {
 			if backend.applyRenewal {
 				actual = renewed
 			}
+			discovered, err := f.supervisor.InspectAllocationExecution(t.Context(), allocationInspectionRequest(renewed))
+			if err != nil || !proto.Equal(discovered.GetObservedAuthority(), actual) {
+				t.Fatalf("CPU process backend identity discovery: %v %v", discovered, err)
+			}
+			actual = discovered.GetObservedAuthority()
 			read, err := f.supervisor.InspectExecution(t.Context(), inspectionRequest(actual))
 			if err != nil || !read.GetKnown() || read.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED {
 				t.Fatalf("CPU process exact identity was lost: %v %v", read, err)

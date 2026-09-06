@@ -601,6 +601,20 @@ is still in memory and callers must already possess its signed envelope;
 durable discovery, restart recovery, physical replacement, terminal retirement,
 bounded reclamation, pending input writers, sealed receipt persistence and Fleet
 durable activation remain open. Versions and Production Gates remain unchanged.
+The [live allocation execution discovery increment](runtime-allocation-discovery-evidence-2026-09-06.md)
+adds authenticated read-only `InspectAllocationExecution` through member mTLS
+and Runtime UDS. A caller holding only its latest allocation envelope can obtain
+the exact signed identity uniquely observed at the live backend, then use the
+existing exact cancellation/drain APIs. Query correlation and observed identity
+are validated separately; ambiguous, malformed, cross-execution or changed/late
+observations cannot become recovery evidence. Slow readers do not hold the
+execution lock or prevent cancellation/watchdog dispatch. Actual compiled H3 CPU
+and TLS/UDS tests recover exact drain from the returned identity. Full unit,
+related race/lint, four PostgreSQL integrations, Linux non-root checks and
+protobuf compatibility pass. Discovery is live observation only: durable
+candidate restoration, automatic recovery orchestration, terminal retirement,
+capacity reclamation and other lifecycle work remain open. Versions and
+Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

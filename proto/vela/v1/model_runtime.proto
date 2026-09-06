@@ -26,6 +26,8 @@ service ModelRuntimeService {
       returns (ModelRuntimeServiceStatusResponse);
   rpc InspectExecution(ModelRuntimeServiceInspectExecutionRequest)
       returns (ModelRuntimeServiceInspectExecutionResponse);
+  rpc InspectAllocationExecution(ModelRuntimeServiceInspectAllocationExecutionRequest)
+      returns (ModelRuntimeServiceInspectAllocationExecutionResponse);
   rpc DrainStageExecution(ModelRuntimeServiceDrainStageExecutionRequest)
       returns (ModelRuntimeServiceDrainStageExecutionResponse);
   rpc InspectStageExecutionDrain(ModelRuntimeServiceInspectStageExecutionDrainRequest)
@@ -239,6 +241,25 @@ message ModelRuntimeExecutionDrainScope {
   uint32 schema_version = 1;
   ModelRuntimeIdentity identity = 2;
   StageAuthority authority = 3;
+}
+
+// Read-only discovery of the actual live backend envelope for this allocation.
+// Missing/restarted history is unknown. This grants no lifetime or drain proof.
+message ModelRuntimeServiceInspectAllocationExecutionRequest {
+  uint32 schema_version = 1;
+  StageAuthority authority = 2;
+}
+
+message ModelRuntimeServiceInspectAllocationExecutionResponse {
+  uint32 schema_version = 1;
+  // Correlates the query, which may differ from the observed backend envelope.
+  bytes authority_digest = 2;
+  ModelRuntimeIdentity runtime_identity = 3;
+  ModelRuntimeCommandDecision decision = 4;
+  // Both are absent when unknown; otherwise inspection is exact and Known.
+  StageAuthority observed_authority = 5;
+  ModelRuntimeServiceInspectExecutionResponse inspection = 6;
+  string detail = 7;
 }
 
 message ModelRuntimeExecutionDrainCheckpoint {

@@ -40,6 +40,10 @@ func TestMemberRenewalRecoveryTLSUnixRetainsExactBackendDrain(t *testing.T) {
 			}
 			request := &velav1.ModelRuntimeServiceCancelStageRequest{Authority: renewed, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP}
 			nonleader := chain.dial(t, chain.followerCredentials)
+			query := &velav1.ModelRuntimeServiceInspectAllocationExecutionRequest{SchemaVersion: 1, Authority: renewed}
+			if _, err := nonleader.InspectAllocationExecution(t.Context(), query); status.Code(err) != codes.PermissionDenied {
+				t.Fatalf("nonleader discovered backend authority: %v", err)
+			}
 			if _, err := nonleader.CancelStage(t.Context(), request); status.Code(err) != codes.PermissionDenied {
 				t.Fatalf("nonleader bypassed renewal recovery authorization: %v", err)
 			}
@@ -50,6 +54,11 @@ func TestMemberRenewalRecoveryTLSUnixRetainsExactBackendDrain(t *testing.T) {
 			if index == 1 {
 				actual = renewed
 			}
+			discovered, err := chain.client.InspectAllocationExecution(t.Context(), query)
+			if err != nil || !proto.Equal(discovered.GetObservedAuthority(), actual) {
+				t.Fatalf("latest-only caller could not discover exact backend identity: %v %v", discovered, err)
+			}
+			actual = discovered.GetObservedAuthority()
 			read, err := chain.client.InspectExecution(t.Context(), &velav1.ModelRuntimeServiceInspectExecutionRequest{SchemaVersion: 1, Authority: actual})
 			if err != nil || !read.GetKnown() || read.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
 				t.Fatalf("recovery hid the actual backend identity: %v %v", read, err)

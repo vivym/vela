@@ -83,8 +83,15 @@ unambiguous observation before backend Cancel, then rechecks request eligibility
 FAILED with unproven reuse remains cancellable. The authenticated leader can use
 these recovery operations after Worker journal closure and terminal-floor
 installation, but must possess the relevant signed envelopes. Exact drain
-returns proof only for the envelope actually drained; no RPC enumerates pending
-candidates, and the pair is not restored from the Runtime journal on restart.
+returns proof only for the envelope actually drained. A caller with only the
+latest allocation envelope can use authenticated `InspectAllocationExecution`
+to discover the live backend envelope. The read validates the returned signature,
+same-execution relationship and exact nested observation independently at both
+forwarding boundaries. It does not publish pending candidates as confirmed
+identities, renew execution, take the execution lock or produce drain proof.
+Missing live history stays unknown; a replacement Runtime cannot inspect an old
+epoch. The candidate pair is not restored from the Runtime journal on restart,
+and automatic recovery orchestration remains separate work.
 
 Retention covers the forwarding call only: a timed-out UDS RPC can return while
 backend descendants remain active. It proves neither physical containment nor
