@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,7 +68,24 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 	t.Setenv("VELA_MODEL_RUNTIME_SOCKET", socketPath)
 	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "5s")
 	t.Setenv("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "5s")
+	stateDirectory := filepath.Join(root, "execution-journal")
+	if err := os.Mkdir(stateDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", stateDirectory)
+	if err := run(t.Context()); err == nil {
+		t.Fatal("ordinary startup initialized an empty execution journal")
+	}
+	var prepared bytes.Buffer
+	if err := runCommand(t.Context(), []string{"journal", "--action", "initialize", "--launch-manifest-file", manifestPath,
+		"--verifier-keyring-file", keyringPath, "--directory", stateDirectory}, &prepared, io.Discard); err != nil {
+		t.Fatalf("offline initialization: %v", err)
+	}
+	if _, err := os.Lstat(eventPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal preparation started backend: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- run(ctx) }()
 
@@ -104,6 +123,11 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 	waitForCommandEvent(t, eventPath, "shutdown")
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("runtime socket remains after shutdown: %v", err)
+	}
+	var recovered bytes.Buffer
+	if err := runCommand(t.Context(), []string{"journal", "--action", "recover", "--launch-manifest-file", manifestPath,
+		"--verifier-keyring-file", keyringPath, "--directory", stateDirectory}, &recovered, io.Discard); err != nil {
+		t.Fatalf("offline recovery after process shutdown: %v", err)
 	}
 }
 
@@ -143,6 +167,8 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 	t.Setenv("VELA_MODEL_RUNTIME_SOCKET", filepath.Join(root, "runtime.sock"))
 	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "5s")
 	t.Setenv("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "5s")
+	stateDirectory := filepath.Join(root, "execution-journal")
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", stateDirectory)
 	ctx, cancel := context.WithCancel(context.Background())
 	var observed time.Duration
 	err = runUsing(ctx, func(
@@ -150,6 +176,10 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 		config modelruntime.RuntimeServerConfig,
 	) (modelRuntimeServer, error) {
 		observed = config.MaxClockSkew
+		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Directory != stateDirectory ||
+			config.ExecutionFloor.State.Initialize || config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 {
+			t.Fatalf("ordinary command did not select recovery-only journal configuration: %+v", config.ExecutionFloor)
+		}
 		cancel()
 		return canceledModelRuntimeServer{ctx: ctx}, nil
 	})
@@ -200,6 +230,11 @@ func TestLoadCommandConfigRequiresCanonicalPathsAndBoundedDurations(t *testing.T
 		t.Fatalf("relative socket error = %v", err)
 	}
 	t.Setenv("VELA_MODEL_RUNTIME_SOCKET", filepath.Join(root, "runtime.sock"))
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", "relative-state")
+	if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "EXECUTION_STATE_DIRECTORY") {
+		t.Fatalf("relative execution journal error = %v", err)
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", "")
 	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "0s")
 	if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "CANCEL_TIMEOUT") {
 		t.Fatalf("zero cancellation timeout error = %v", err)

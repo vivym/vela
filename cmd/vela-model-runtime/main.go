@@ -17,12 +17,13 @@ import (
 )
 
 type commandConfig struct {
-	launchManifestFile    string
-	authorityVerifierFile string
-	epochDirectory        string
-	socketPath            string
-	cancelTimeout         time.Duration
-	shutdownTimeout       time.Duration
+	launchManifestFile      string
+	authorityVerifierFile   string
+	epochDirectory          string
+	executionStateDirectory string
+	socketPath              string
+	cancelTimeout           time.Duration
+	shutdownTimeout         time.Duration
 }
 
 type modelRuntimeServer interface {
@@ -38,7 +39,7 @@ type modelRuntimeServerStarter func(
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx); err != nil {
+	if err := runCommand(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "vela-model-runtime stopped: %v\n", err)
 		os.Exit(1)
 	}
@@ -89,6 +90,7 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 		SocketPath: configuration.socketPath, CancelTimeout: configuration.cancelTimeout,
 		ShutdownTimeout: configuration.shutdownTimeout,
 		MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
+		ExecutionFloor:  runtimeExecutionFloor(configuration),
 	})
 	if err != nil {
 		return err
@@ -107,6 +109,15 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 	}
 }
 
+func runtimeExecutionFloor(configuration commandConfig) *modelruntime.ExecutionFloorConfig {
+	if configuration.executionStateDirectory == "" {
+		return nil
+	}
+	return &modelruntime.ExecutionFloorConfig{State: &modelruntime.ExecutionFloorStateConfig{
+		Directory: configuration.executionStateDirectory,
+	}}
+}
+
 func loadCommandConfig() (commandConfig, error) {
 	var configuration commandConfig
 	for name, target := range map[string]*string{
@@ -122,6 +133,12 @@ func loadCommandConfig() (commandConfig, error) {
 		*target = value
 	}
 	var err error
+	if os.Getenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY") != "" {
+		configuration.executionStateDirectory, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY")
+		if err != nil {
+			return commandConfig{}, err
+		}
+	}
 	configuration.cancelTimeout, err = requiredCommandDuration(
 		"VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", time.Millisecond, time.Minute,
 	)

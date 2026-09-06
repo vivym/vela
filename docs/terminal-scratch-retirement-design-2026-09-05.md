@@ -116,6 +116,11 @@ Supervisor attachment, which rechecks ownership and filesystem binding before
 socket publication. This enables recovery validation without running models;
 independent first bootstrap/default assembly and failed-backend containment
 remain separate work.
+The subsequent [offline preparation command](runtime-journal-preparation-evidence-2026-09-06.md)
+now supplies explicit first initialization and validated recovery/upgrades
+without model startup. Runtime serving optionally selects existing journal
+recovery through its command configuration. This implements the local operation;
+Fleet first-use authorization and default Worker/deployment assembly remain open.
 
 ## Current ownership and evidence
 

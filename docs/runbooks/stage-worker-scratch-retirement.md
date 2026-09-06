@@ -143,6 +143,15 @@ it does not bypass them for removed or non-READY Fleet identities.
 
 ## Remaining Lifecycle Boundary
 
+The [offline Runtime journal command](../runtime-journal-preparation-evidence-2026-09-06.md)
+provides separate `initialize`, `recover`, `upgrade-v2` and `upgrade-v3` actions.
+It needs trusted launch/verifier files and a provisioned private directory, but
+no backend, Runtime epoch store or server socket. Only independently authorized
+first use may select initialization. Normal Runtime serving can select the same
+journal through `VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY` and always uses
+recovery; missing state never triggers initialization. Default deployment
+activation and durable Worker assembly remain incomplete.
+
 For an explicitly durable Runtime server, journal validation and locking now
 precede epoch allocation and model startup. Missing, corrupt, locked or
 wrong-scope state therefore rejects without starting a backend. Keep the same

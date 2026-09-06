@@ -308,6 +308,10 @@ func TestRuntimeServerRecoversExistingSupervisorJournalBeforeNewEpochs(t *testin
 		manifest.Runtimes[i].RuntimeIdentity, manifest.Runtimes[i].ModelResidencyID = binding.ModelRuntimeIdentity, binding.ModelResidencyID
 		manifest.Runtimes[i].StageProfileRevisionID, manifest.Runtimes[i].ModelRuntimeEpochFloor = binding.StageProfileRevisionID, binding.ModelRuntimeEpoch
 	}
+	history, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
+	if err != nil || history.Highest != 10 || history.Floor != 11 || history.RetainedExecutions != 1 || history.PendingExecutions != 1 {
+		t.Fatalf("offline preparation lost retained history: %+v %v", history, err)
+	}
 	server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)

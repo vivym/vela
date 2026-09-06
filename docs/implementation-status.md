@@ -333,6 +333,14 @@ Startup competition, filesystem replacement, clean rollback and existing-history
 recovery tests pass with full unit, related race, lint, PostgreSQL/Control and
 non-root Linux checks. Default bootstrap/wiring and containment after failed
 backend shutdown remain open; journal and database versions are unchanged.
+The subsequent [offline journal command](runtime-journal-preparation-evidence-2026-09-06.md)
+now provides explicit initialization, recovery and validated schema-2/3 upgrade
+without allocating epochs or starting models. `vela-model-runtime` optionally
+selects ordinary durable recovery through
+`VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY`; initialization/upgrade remain
+separate commands. Full unit, command/Runtime race, lint, actual CPU subprocess
+startup and non-root Linux checks pass. Fleet first-use provisioning, default
+deployment activation and Worker durable assembly remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
