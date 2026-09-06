@@ -165,6 +165,22 @@ bind that observation to the Registry journal pair and durable startup intent
 before factory dispatch. Independent old-owner termination and replay-safe
 retirement remain separate steps. See the [Node CRI evidence](../node-runtime-container-evidence-2026-09-06.md).
 
+The subsequent [real containerd CPU experiment](../node-containerd-process-evidence-2026-09-06.md)
+adds constraints on that binding. Under containerd `v2.3.1`, mutable container
+`spec` metadata can differ from the running task's original configuration, even
+across identical repeated reads. Its native API can recreate a task under the
+same container ID and `CreatedAt`. A socket peer equal to the task init PID may
+still be a non-init member of a shared PID namespace. A wrapper's Runtime child
+is also distinct from the task/namespace owner.
+
+Consequently, container identity, task PID, namespace inode and metadata spec
+must not independently authorize backend startup or retirement. The binding
+must retain the actual process lifetime, prove the supported namespace-init
+boundary and authenticate configuration from the trusted launch path. Native
+task recreation is not evidence of CRI/kubelet restart behavior; the pinned CRI
+start guard accepts only `CONTAINER_CREATED`. This experiment exercises synthetic
+callers and native containerd, not production Node binding or Runtime retirement.
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

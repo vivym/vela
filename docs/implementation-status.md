@@ -715,6 +715,17 @@ individual-container PID 1/OCI namespace attestation are not established.
 Observations cannot retire or reset Runtime journals. Authenticated startup
 binding, independent retirement and the lifecycle work above remain open.
 PostgreSQL/journal versions and Production Gates remain unchanged.
+The [real containerd process experiment](node-containerd-process-evidence-2026-09-06.md)
+uses pinned containerd `v2.3.1` and runc `1.4.2` in a disposable local CPU sandbox.
+It confirms that live OCI metadata can change without changing the process,
+that the native API can recreate a task under the same container record, and
+that task init and PID namespace init are distinct in a shared namespace.
+Kernel socket credentials and pidfds correlate the controlled live callers and
+distinguish the original exited process from its replacement. These are native
+API/synthetic-caller results, not CRI restart behavior or a production binding.
+The lifecycle contract now incorporates those limits. Authenticated startup
+binding, independent retirement and all schema/Production Gate boundaries remain
+unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
