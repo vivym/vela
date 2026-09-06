@@ -109,6 +109,14 @@ RETAIN or missing query evidence cannot complete INTENT. Default command
 assembly, historical writer/receipt recovery and bounded checkpoint reclamation
 remain open.
 
+The [Runtime startup repair](runtime-journal-startup-evidence-2026-09-06.md)
+opens and validates an explicitly configured journal from launch topology before
+epoch allocation or backend startup. Its lifetime lock remains held through
+Supervisor attachment, which rechecks ownership and filesystem binding before
+socket publication. This enables recovery validation without running models;
+independent first bootstrap/default assembly and failed-backend containment
+remain separate work.
+
 ## Current ownership and evidence
 
 `input_transfer_target.go` and `root_input_resolver.go` place inputs below

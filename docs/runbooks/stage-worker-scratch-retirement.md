@@ -143,6 +143,15 @@ it does not bypass them for removed or non-READY Fleet identities.
 
 ## Remaining Lifecycle Boundary
 
+For an explicitly durable Runtime server, journal validation and locking now
+precede epoch allocation and model startup. Missing, corrupt, locked or
+wrong-scope state therefore rejects without starting a backend. Keep the same
+journal for ordinary recovery; do not set `Initialize` on every Pod restart or
+delete files to force startup. A clean startup rollback releases the journal;
+failed backend shutdown still requires independent containment and must not be
+treated as proof that the device or old writers can be reused. See
+[Runtime startup evidence](../runtime-journal-startup-evidence-2026-09-06.md).
+
 The schema-87 public-gRPC probe reproduced Prepare/Start with the same still-valid
 authority after both Seal and STOPPED. Both paths returned RUNNING. Schema 88
 now rejects this Runtime RPC reentry through signed allocation order and

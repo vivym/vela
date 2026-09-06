@@ -69,6 +69,9 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	if ctx == nil || config.EpochStore == nil || config.Validator == nil {
 		return nil, errors.New("ModelRuntime server configuration is incomplete")
 	}
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
 	if err := validateLaunchManifest(config.Manifest); err != nil {
 		return nil, err
 	}
@@ -98,6 +101,24 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	bindings, err := config.Manifest.RuntimeBindings()
 	if err != nil {
 		return nil, err
+	}
+	var startupState *executionStateFile
+	if config.ExecutionFloor != nil && config.ExecutionFloor.State != nil {
+		verifier, err := newExecutionFloorVerifier(*config.ExecutionFloor, bindings[0])
+		if err != nil {
+			return nil, err
+		}
+		startupState, err = openExecutionState(*config.ExecutionFloor.State, executionJournalScope{binding: cloneBinding(bindings[0]), floor: verifier})
+		if err != nil {
+			return nil, err
+		}
+		// Keep the same lock across epoch allocation, model startup and Supervisor
+		// attachment. Failed startup closes it after rolling back created services.
+		defer func() {
+			if startupState != nil {
+				_ = startupState.close()
+			}
+		}()
 	}
 	backendFactory := config.BackendFactory
 	if backendFactory == nil {
@@ -141,6 +162,11 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		if startupErr := runtimeStartupFailure(runtimeCtx, lifecycles); startupErr != nil {
 			return rollbackStart(fmt.Errorf("resident runtime startup canceled: %w", startupErr))
 		}
+		if startupState != nil {
+			if err := startupState.check(); err != nil {
+				return rollbackStart(err)
+			}
+		}
 		runtime := config.Manifest.Runtimes[index]
 		backendConfig, configErr := runtime.ProcessBackendConfig(config.Manifest.LocalDevices)
 		if configErr != nil {
@@ -172,10 +198,11 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 			return rollbackStart(fmt.Errorf("resident runtime readiness lost during startup: %w", startupErr))
 		}
 	}
-	supervisor, err = newSupervisor(config.ExecutionFloor, services...)
+	supervisor, err = newSupervisorWithState(config.ExecutionFloor, startupState, services...)
 	if err != nil {
 		return rollbackStart(err)
 	}
+	startupState = nil
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),
 		grpc.MaxConcurrentStreams(128),

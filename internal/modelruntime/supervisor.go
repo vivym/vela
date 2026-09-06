@@ -37,6 +37,10 @@ func NewSupervisor(services ...*Service) (*Supervisor, error) {
 }
 
 func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervisor, error) {
+	return newSupervisorWithState(floor, nil, services...)
+}
+
+func newSupervisorWithState(floor *ExecutionFloorConfig, opened *executionStateFile, services ...*Service) (*Supervisor, error) {
 	if len(services) == 0 || len(services) > maxLaunchRuntimes {
 		return nil, errors.New("ModelRuntime supervisor service set is invalid")
 	}
@@ -67,7 +71,7 @@ func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervis
 	}
 	if floor != nil {
 		var err error
-		supervisor.floor, err = newExecutionFloorVerifier(*floor, supervisor)
+		supervisor.floor, err = newExecutionFloorVerifier(*floor, baseline)
 		if err != nil {
 			return nil, err
 		}
@@ -87,12 +91,26 @@ func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervis
 	}
 	supervisor.admission = newExecutionAdmission(ordered)
 	if floor != nil && floor.State != nil {
-		store, err := openExecutionState(*floor.State, supervisor)
-		if err != nil {
-			return nil, err
+		store := opened
+		if store == nil {
+			var err error
+			store, err = openExecutionState(*floor.State, supervisor.journalScope())
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			scope, err := supervisor.journalScope().digest()
+			if err != nil || scope != store.state.Scope || store.path != floor.State.Directory {
+				return nil, errors.New("ModelRuntime execution journal does not match started services")
+			}
+			if err := store.check(); err != nil {
+				return nil, err
+			}
 		}
 		supervisor.admission.store = store
 		supervisor.admission.highest, supervisor.admission.floor = store.state.Highest, store.state.Floor
+	} else if opened != nil {
+		return nil, errors.New("ModelRuntime execution journal requires configured durable floor")
 	}
 	for _, service := range ordered {
 		service.admission = supervisor.admission

@@ -63,7 +63,7 @@ type executionDiskDrain struct {
 
 // The enclosing admission mutex owns this store and its lifetime lock.
 type executionStateFile struct {
-	scope         *Supervisor
+	scope         executionJournalScope
 	path          string
 	root          *os.Root
 	rootInfo      os.FileInfo
@@ -77,7 +77,7 @@ type executionStateFile struct {
 	syncDirectory func(*os.Root) error
 }
 
-func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor) (*executionStateFile, error) {
+func openExecutionState(config ExecutionFloorStateConfig, journalScope executionJournalScope) (*executionStateFile, error) {
 	if config.Initialize && (config.UpgradeV2 || config.UpgradeV3) || config.UpgradeV2 && config.UpgradeV3 {
 		return nil, errors.New("ModelRuntime execution state bootstrap and upgrades are mutually exclusive")
 	}
@@ -92,7 +92,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 	if err != nil {
 		return nil, err
 	}
-	store := &executionStateFile{scope: supervisor, path: config.Directory, root: root, rootInfo: info, syncDirectory: syncExecutionStateDirectory}
+	store := &executionStateFile{scope: journalScope, path: config.Directory, root: root, rootInfo: info, syncDirectory: syncExecutionStateDirectory}
 	success := false
 	defer func() {
 		if !success {
@@ -118,7 +118,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 	if err := syscall.Flock(int(store.lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return nil, fmt.Errorf("lock ModelRuntime execution state: %w", err)
 	}
-	scope, err := executionStateScope(supervisor)
+	scope, err := journalScope.digest()
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
-	if err := store.validateProofs(supervisor); err != nil {
+	if err := store.validateProofs(); err != nil {
 		return nil, err
 	}
 	if !config.Initialize {
@@ -197,25 +197,7 @@ func openExecutionState(config ExecutionFloorStateConfig, supervisor *Supervisor
 	return store, nil
 }
 
-func executionStateScope(supervisor *Supervisor) ([sha256.Size]byte, error) {
-	binding := cloneBinding(supervisor.services[0].binding)
-	// Allocation order is member-wide and survives resident profile/epoch changes.
-	binding.ModelResidencyID, binding.ModelRuntimeIdentity, binding.StageProfileRevisionID = "", "", ""
-	binding.ModelRuntimeEpoch = 0
-	slices.SortFunc(binding.Devices, func(a, b stageauthority.DeviceEpoch) int { return strings.Compare(a.ID, b.ID) })
-	slices.SortFunc(binding.Members, func(a, b stageauthority.MemberEpoch) int { return strings.Compare(a.ID, b.ID) })
-	scope := struct {
-		Binding stageauthority.RuntimeBinding
-		Members []ExecutionFloorMember
-	}{Binding: binding}
-	for _, member := range binding.Members {
-		scope.Members = append(scope.Members, supervisor.floor.members[member.ID])
-	}
-	wire, err := json.Marshal(scope)
-	return sha256.Sum256(wire), err
-}
-
-func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
+func (store *executionStateFile) validateProofs() error {
 	state := store.state
 	if state.Highest < 0 || state.Floor < 0 || (state.Highest == 0) != (len(state.Authority) == 0) ||
 		(state.Floor == 0) != (len(state.Disposition) == 0) || len(state.Authority) > maxExecutionWireBytes {
@@ -226,7 +208,7 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 		if err := proto.Unmarshal(state.Authority, authority); err != nil {
 			return err
 		}
-		verified, err := supervisor.floor.validator.ValidateEnvelopeSignature(authority)
+		verified, err := store.scope.floor.validator.ValidateEnvelopeSignature(authority)
 		if err != nil {
 			return err
 		}
@@ -235,7 +217,7 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 			verified.Authority.GetExecutionSequence() != state.Highest {
 			return errors.New("ModelRuntime execution watermark witness does not match")
 		}
-		if err := supervisor.matchRetainedExecutionScope(verified.Authority); err != nil {
+		if err := store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
 			return err
 		}
 	}
@@ -244,7 +226,7 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 		if err := proto.Unmarshal(state.Disposition, disposition); err != nil {
 			return err
 		}
-		verified, err := supervisor.floor.validator.ValidateTerminalDispositionSignature(disposition)
+		verified, err := store.scope.floor.validator.ValidateTerminalDispositionSignature(disposition)
 		if err != nil {
 			return err
 		}
@@ -253,7 +235,7 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 			return errors.New("ModelRuntime execution floor witness does not match")
 		}
 		// Restoring an old restriction grants no authority to its historical runtimes.
-		if err := supervisor.matchExecutionFloorScope(verified.Disposition, false); err != nil {
+		if err := store.scope.matchExecutionFloorScope(verified.Disposition); err != nil {
 			return err
 		}
 	}
@@ -264,31 +246,6 @@ func (store *executionStateFile) validateProofs(supervisor *Supervisor) error {
 		return err
 	}
 	return store.validateTerminalNonAdmissions()
-}
-
-func (supervisor *Supervisor) matchRetainedExecutionScope(authority *velav1.StageAuthority) error {
-	baseline := supervisor.services[0].binding
-	if authority.GetWorkerInstanceId() != baseline.WorkerInstanceID || authority.GetWorkerInstanceEpoch() != baseline.WorkerInstanceEpoch ||
-		!bytes.Equal(authority.GetDeviceSetDigest(), baseline.DeviceSetDigest) || !bytes.Equal(authority.GetMembershipDigest(), baseline.MembershipDigest) ||
-		len(authority.GetDevices()) != len(baseline.Devices) || len(authority.GetMembers()) != len(supervisor.floor.members) {
-		return stageauthority.ErrRuntimeMismatch
-	}
-	for _, device := range baseline.Devices {
-		found := false
-		for _, signed := range authority.GetDevices() {
-			found = found || signed.GetDeviceId() == device.ID && signed.GetDeviceEpoch() == device.Epoch
-		}
-		if !found {
-			return stageauthority.ErrRuntimeMismatch
-		}
-	}
-	for _, member := range authority.GetMembers() {
-		trusted, found := supervisor.floor.members[member.GetWorkerMemberId()]
-		if !found || member.GetMemberEpoch() != trusted.MemberEpoch || !bytes.Equal(member.GetIdentityDigest(), trusted.IdentityDigest) {
-			return stageauthority.ErrRuntimeMismatch
-		}
-	}
-	return nil
 }
 
 func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority) error {

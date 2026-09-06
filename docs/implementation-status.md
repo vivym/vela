@@ -325,6 +325,14 @@ checks pass.
 Default command/bootstrap assembly, unknown historical
 writers, sealed receipt recovery and bounded checkpoint reclamation remain
 open; the default retention policy is still active.
+The [Runtime journal startup repair](runtime-journal-startup-evidence-2026-09-06.md)
+now validates and locks explicitly configured durable state before allocating
+Runtime epochs or starting backends. The same open journal transfers to the
+Supervisor, with ownership/content rechecked before socket publication.
+Startup competition, filesystem replacement, clean rollback and existing-history
+recovery tests pass with full unit, related race, lint, PostgreSQL/Control and
+non-root Linux checks. Default bootstrap/wiring and containment after failed
+backend shutdown remain open; journal and database versions are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

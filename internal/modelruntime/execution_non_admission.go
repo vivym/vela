@@ -176,7 +176,7 @@ func (store *executionStateFile) nonAdmissionCheckpoint(query stageauthority.Ver
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 		return &ExecutionNonAdmissionCheckpoint{
-			WorkerMemberID: store.scope.services[0].binding.WorkerMemberID, Authority: proto.Clone(original.Authority).(*velav1.StageAuthority),
+			WorkerMemberID: store.scope.binding.WorkerMemberID, Authority: proto.Clone(original.Authority).(*velav1.StageAuthority),
 			AuthorityDigest: record.AuthorityDigest, ExecutionSequence: record.ExecutionSequence,
 			InstalledCutoff: record.InstalledCutoff, Contract: record.Contract, ObservedAt: record.ObservedAt,
 		}, nil

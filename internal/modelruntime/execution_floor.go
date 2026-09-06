@@ -77,8 +77,7 @@ func NewSupervisorWithExecutionFloor(config ExecutionFloorConfig, services ...*S
 	return newSupervisor(&config, services...)
 }
 
-func newExecutionFloorVerifier(config ExecutionFloorConfig, supervisor *Supervisor) (*executionFloorVerifier, error) {
-	baseline := supervisor.services[0].binding
+func newExecutionFloorVerifier(config ExecutionFloorConfig, baseline stageauthority.RuntimeBinding) (*executionFloorVerifier, error) {
 	if config.Validator == nil || len(config.Members) != len(baseline.Members) {
 		return nil, errors.New("ModelRuntime execution floor requires a verifier and complete trusted membership")
 	}
@@ -143,46 +142,14 @@ func (supervisor *Supervisor) InstallExecutionFloor(ctx context.Context, value *
 }
 
 func (supervisor *Supervisor) matchExecutionFloorScope(value *velav1.StageTerminalDisposition, currentRuntimes bool) error {
-	baseline := supervisor.services[0].binding
-	if value.GetWorkerInstanceId() != baseline.WorkerInstanceID || value.GetWorkerInstanceEpoch() != baseline.WorkerInstanceEpoch ||
-		!bytes.Equal(value.GetDeviceSetDigest(), baseline.DeviceSetDigest) || !bytes.Equal(value.GetMembershipDigest(), baseline.MembershipDigest) ||
-		len(value.GetDevices()) != len(baseline.Devices) {
-		return stageauthority.ErrRuntimeMismatch
+	if err := supervisor.journalScope().matchExecutionFloorScope(value); err != nil {
+		return err
 	}
-	for _, device := range baseline.Devices {
-		found := false
-		for _, signed := range value.GetDevices() {
-			found = found || signed.GetDeviceId() == device.ID && signed.GetDeviceEpoch() == device.Epoch
-		}
-		if !found {
-			return stageauthority.ErrRuntimeMismatch
-		}
-	}
-	for _, allocation := range value.GetAllocations() {
-		if len(allocation.GetMembers()) != len(supervisor.floor.members) {
-			return stageauthority.ErrRuntimeMismatch
-		}
-		localFound := false
-		for _, member := range allocation.GetMembers() {
-			trusted, found := supervisor.floor.members[member.GetWorkerMemberId()]
-			if !found || member.GetMemberEpoch() != trusted.MemberEpoch ||
-				!bytes.Equal(member.GetIdentityDigest(), trusted.IdentityDigest) || !bytes.Equal(member.GetDeviceSubsetDigest(), trusted.DeviceSubsetDigest) {
+	if currentRuntimes {
+		for _, allocation := range value.GetAllocations() {
+			if supervisor.terminalAllocationService(allocation) == nil {
 				return stageauthority.ErrRuntimeMismatch
 			}
-			if member.GetWorkerMemberId() == baseline.WorkerMemberID {
-				localFound = true
-				// Barrier generation is not a member-local ModelRuntime epoch.
-				route := runtimeRoute{
-					modelResidencyID: allocation.GetModelResidencyId(), runtimeIdentity: allocation.GetModelRuntimeIdentity(),
-					modelRuntimeEpoch: member.GetModelRuntimeEpoch(), stageProfileRevisionID: allocation.GetStageProfileRevisionId(),
-				}
-				if currentRuntimes && supervisor.routes[route] == nil {
-					return stageauthority.ErrRuntimeMismatch
-				}
-			}
-		}
-		if !localFound {
-			return stageauthority.ErrRuntimeMismatch
 		}
 	}
 	return nil

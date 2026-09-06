@@ -168,7 +168,7 @@ func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *vel
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 		return &TerminalNonAdmissionCheckpoint{
-			WorkerMemberID: store.scope.services[0].binding.WorkerMemberID, Disposition: original.Disposition,
+			WorkerMemberID: store.scope.binding.WorkerMemberID, Disposition: original.Disposition,
 			DispositionDigest: record.DispositionDigest, StageAllocationID: record.StageAllocationID,
 			ExecutionSequence: record.ExecutionSequence, InstalledCutoff: record.InstalledCutoff,
 			Contract: record.Contract, ObservedAt: record.ObservedAt,
@@ -193,7 +193,7 @@ func (store *executionStateFile) retainedTerminalDisposition(wire []byte) (stage
 	if err != nil || !bytes.Equal(canonical, wire) {
 		return stageauthority.VerifiedTerminalDisposition{}, ErrExecutionNonAdmissionUnproven
 	}
-	return verified, store.scope.matchExecutionFloorScope(verified.Disposition, false)
+	return verified, store.scope.matchExecutionFloorScope(verified.Disposition)
 }
 
 func (store *executionStateFile) requireUnadmittedSequence(sequence int64) error {
