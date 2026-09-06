@@ -247,6 +247,7 @@ func TestMemberCancellationAfterFloorAllowsOnlyInstalledExpiredAuthority(t *test
 
 type memberFloorChain struct {
 	client                   *Client
+	supervisor               *modelruntime.Supervisor
 	backend                  *memberFloorBackend
 	address                  string
 	f                        *serverFixture
@@ -289,7 +290,7 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 	var memberBindings []MemberBinding
 	for _, member := range disposition.Allocations[0].Members {
 		binding.Members = append(binding.Members, stageauthority.MemberEpoch{ID: member.WorkerMemberId, Epoch: member.MemberEpoch})
-		memberBindings = append(memberBindings, MemberBinding{ID: member.WorkerMemberId, Epoch: member.MemberEpoch})
+		memberBindings = append(memberBindings, MemberBinding{ID: member.WorkerMemberId, Epoch: member.MemberEpoch, IdentityDigest: member.IdentityDigest})
 		floor.Members = append(floor.Members, modelruntime.ExecutionFloorMember{
 			WorkerMemberID: member.WorkerMemberId, MemberEpoch: member.MemberEpoch,
 			IdentityDigest: member.IdentityDigest, DeviceSubsetDigest: member.DeviceSubsetDigest,
@@ -366,7 +367,7 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 	memberDone := make(chan error, 1)
 	go func() { memberDone <- memberServer.Serve(memberListener) }()
 	t.Cleanup(memberServer.Stop)
-	chain := &memberFloorChain{backend: backend, address: memberListener.Addr().String(), f: f, followerCredentials: followerTLS, dropDrainResponse: &dropDrainResponse, dropNonAdmissionResponse: &dropNonAdmissionResponse}
+	chain := &memberFloorChain{backend: backend, supervisor: supervisor, address: memberListener.Addr().String(), f: f, followerCredentials: followerTLS, dropDrainResponse: &dropDrainResponse, dropNonAdmissionResponse: &dropNonAdmissionResponse}
 	chain.client = chain.dial(t, leaderTLS)
 	var once sync.Once
 	chain.close = func() {

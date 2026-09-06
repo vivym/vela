@@ -19,6 +19,9 @@ import (
 type MemberBinding struct {
 	ID    string
 	Epoch int64
+	// Complete trusted SPIFFE digests enable pre-assignment identity discovery.
+	// Omitting all digests leaves discovery disabled; signed operations still work.
+	IdentityDigest []byte
 }
 
 type ServerConfig struct {
@@ -32,13 +35,14 @@ type ServerConfig struct {
 
 type Server struct {
 	velav1.UnimplementedStageWorkerMemberServiceServer
-	authenticator   stageworkertransport.Authenticator
-	validator       *stageauthority.Validator
-	runtime         velav1.ModelRuntimeServiceClient
-	localMember     MemberBinding
-	localIdentities []*velav1.ModelRuntimeIdentity
-	membersByID     map[string]MemberBinding
-	maxClockSkew    time.Duration
+	authenticator         stageworkertransport.Authenticator
+	validator             *stageauthority.Validator
+	runtime               velav1.ModelRuntimeServiceClient
+	localMember           MemberBinding
+	localIdentities       []*velav1.ModelRuntimeIdentity
+	membersByID           map[string]MemberBinding
+	discoveryLeaderDigest [sha256.Size]byte
+	maxClockSkew          time.Duration
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -51,6 +55,8 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, errors.New("stage worker member server clock skew is invalid")
 	}
 	membersByID := make(map[string]MemberBinding, len(config.Members))
+	var discoveryLeader MemberBinding
+	trustedMembers := 0
 	for _, member := range config.Members {
 		if uuid.Validate(member.ID) != nil || member.Epoch <= 0 {
 			return nil, errors.New("stage worker member binding is invalid")
@@ -58,7 +64,24 @@ func NewServer(config ServerConfig) (*Server, error) {
 		if _, duplicate := membersByID[member.ID]; duplicate {
 			return nil, errors.New("stage worker member identity is duplicated")
 		}
+		if len(member.IdentityDigest) != 0 {
+			if !validDiscoveryDigest(member.IdentityDigest) || !validDiscoveryUUID(member.ID) {
+				return nil, errors.New("stage worker member discovery identity digest is invalid")
+			}
+			trustedMembers++
+		}
+		member.IdentityDigest = bytes.Clone(member.IdentityDigest)
 		membersByID[member.ID] = member
+		memberUUID, leaderUUID := uuid.MustParse(member.ID), uuid.Nil
+		if discoveryLeader.ID != "" {
+			leaderUUID = uuid.MustParse(discoveryLeader.ID)
+		}
+		if discoveryLeader.ID == "" || bytes.Compare(memberUUID[:], leaderUUID[:]) < 0 {
+			discoveryLeader = member
+		}
+	}
+	if trustedMembers != 0 && trustedMembers != len(config.Members) {
+		return nil, errors.New("stage worker member discovery requires complete trusted identities")
 	}
 	identities := make([]*velav1.ModelRuntimeIdentity, 0, len(config.LocalIdentities))
 	var local MemberBinding
@@ -77,10 +100,17 @@ func NewServer(config ServerConfig) (*Server, error) {
 		}
 		identities = append(identities, proto.Clone(identity).(*velav1.ModelRuntimeIdentity))
 	}
+	var discoveryLeaderDigest [sha256.Size]byte
+	if trustedMembers != 0 {
+		if !validDiscoveryResult(discoveryRequestFor(identities[0]), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse{Identities: identities}) {
+			return nil, errors.New("stage worker member discovery local identities are invalid")
+		}
+		copy(discoveryLeaderDigest[:], discoveryLeader.IdentityDigest)
+	}
 	return &Server{
 		authenticator: config.Authenticator, validator: config.Validator, runtime: config.Runtime,
 		localMember: local, localIdentities: identities,
-		membersByID: membersByID, maxClockSkew: config.MaxClockSkew,
+		membersByID: membersByID, maxClockSkew: config.MaxClockSkew, discoveryLeaderDigest: discoveryLeaderDigest,
 	}, nil
 }
 

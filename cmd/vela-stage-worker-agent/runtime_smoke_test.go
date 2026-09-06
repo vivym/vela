@@ -223,6 +223,11 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 			config stageworkermembertransport.ServerConfig,
 		) (*stageworkermembertransport.Server, error) {
 			memberClockSkew = config.MaxClockSkew
+			for index, member := range config.Members {
+				if !bytes.Equal(member.IdentityDigest, configuration.members[index].identityDigest[:]) {
+					t.Fatal("member discovery did not receive configured trusted SPIFFE identities")
+				}
+			}
 			return stageworkermembertransport.NewServer(config)
 		},
 		newInputResolver: func(

@@ -545,7 +545,7 @@ func configuredRuntimeMembers(
 			IdentityDigest: append([]byte(nil), member.identityDigest[:]...),
 		})
 		bindings = append(bindings, stageworkermembertransport.MemberBinding{
-			ID: id, Epoch: member.memberEpoch,
+			ID: id, Epoch: member.memberEpoch, IdentityDigest: bytes.Clone(member.identityDigest[:]),
 		})
 		if member.workerMemberID == configuration.workerMemberID {
 			if local.workerMemberID != uuid.Nil || member.memberEpoch != configuration.workerMemberEpoch {

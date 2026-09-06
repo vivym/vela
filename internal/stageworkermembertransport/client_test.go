@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestClientWrapsExactTargetAndDoesNotExposeDiscovery(t *testing.T) {
+func TestClientWrapsExactTargetAndRejectsUnscopedDiscovery(t *testing.T) {
 	listener := bufconn.Listen(1 << 20)
 	server := grpc.NewServer()
 	recorder := &memberServiceRecorder{}
@@ -59,7 +59,7 @@ func TestClientWrapsExactTargetAndDoesNotExposeDiscovery(t *testing.T) {
 	if _, err := client.DiscoverRuntimeIdentities(
 		context.Background(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{},
 	); err == nil {
-		t.Fatal("remote runtime identity discovery was exposed")
+		t.Fatal("remote runtime identity discovery accepted an empty scope")
 	}
 	if response, err := client.InstallStageExecutionFloor(context.Background(), &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{}); response != nil || status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("remote floor forwarding without a verifier returned a receipt: %v %v", response, err)

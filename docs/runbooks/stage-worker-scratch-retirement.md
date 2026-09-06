@@ -161,6 +161,16 @@ retirement and retain scratch until upgraded.
 
 ## Remaining Lifecycle Boundary
 
+The [authenticated member discovery RPC](../member-discovery-evidence-2026-09-06.md)
+can observe current remote Runtime identities before assignment or readiness.
+It requires complete configured `MemberBinding.IdentityDigest` values and the
+authenticated deterministic Leader. Match the results to approved launch routes
+and topology before using them as admission bindings or `CurrentReaders`.
+Discovery is not proof of readiness, a durable journal or drained writers.
+If the local UDS identity set changes after member-server startup, discovery
+rejects until Worker topology is reconstructed. An old peer's Unimplemented
+response cannot be interpreted as successful discovery of no runtimes.
+
 The [offline Runtime journal command](../runtime-journal-preparation-evidence-2026-09-06.md)
 provides separate `initialize`, `recover`, `upgrade-v2` and `upgrade-v3` actions.
 It needs trusted launch/verifier files and a provisioned private directory, but

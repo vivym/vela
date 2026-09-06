@@ -32,6 +32,7 @@ const (
 	StageWorkerMemberService_CheckpointStageTerminalNonAdmission_FullMethodName = "/vela.v1.StageWorkerMemberService/CheckpointStageTerminalNonAdmission"
 	StageWorkerMemberService_InspectStageTerminalNonAdmission_FullMethodName    = "/vela.v1.StageWorkerMemberService/InspectStageTerminalNonAdmission"
 	StageWorkerMemberService_InstallStageExecutionFloor_FullMethodName          = "/vela.v1.StageWorkerMemberService/InstallStageExecutionFloor"
+	StageWorkerMemberService_DiscoverRuntimeIdentities_FullMethodName           = "/vela.v1.StageWorkerMemberService/DiscoverRuntimeIdentities"
 )
 
 // StageWorkerMemberServiceClient is the client API for StageWorkerMemberService service.
@@ -51,6 +52,9 @@ type StageWorkerMemberServiceClient interface {
 	CheckpointStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error)
 	InspectStageTerminalNonAdmission(ctx context.Context, in *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error)
 	InstallStageExecutionFloor(ctx context.Context, in *StageWorkerMemberServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
+	// Authenticated observation of current resident identities, independent of
+	// assignment delivery or readiness. It grants no execution or writer proof.
+	DiscoverRuntimeIdentities(ctx context.Context, in *StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse, error)
 }
 
 type stageWorkerMemberServiceClient struct {
@@ -191,6 +195,16 @@ func (c *stageWorkerMemberServiceClient) InstallStageExecutionFloor(ctx context.
 	return out, nil
 }
 
+func (c *stageWorkerMemberServiceClient) DiscoverRuntimeIdentities(ctx context.Context, in *StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest, opts ...grpc.CallOption) (*StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse)
+	err := c.cc.Invoke(ctx, StageWorkerMemberService_DiscoverRuntimeIdentities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StageWorkerMemberServiceServer is the server API for StageWorkerMemberService service.
 // All implementations must embed UnimplementedStageWorkerMemberServiceServer
 // for forward compatibility.
@@ -208,6 +222,9 @@ type StageWorkerMemberServiceServer interface {
 	CheckpointStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse, error)
 	InspectStageTerminalNonAdmission(context.Context, *StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest) (*StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse, error)
 	InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error)
+	// Authenticated observation of current resident identities, independent of
+	// assignment delivery or readiness. It grants no execution or writer proof.
+	DiscoverRuntimeIdentities(context.Context, *StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest) (*StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse, error)
 	mustEmbedUnimplementedStageWorkerMemberServiceServer()
 }
 
@@ -256,6 +273,9 @@ func (UnimplementedStageWorkerMemberServiceServer) InspectStageTerminalNonAdmiss
 }
 func (UnimplementedStageWorkerMemberServiceServer) InstallStageExecutionFloor(context.Context, *StageWorkerMemberServiceInstallStageExecutionFloorRequest) (*StageWorkerMemberServiceInstallStageExecutionFloorResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InstallStageExecutionFloor not implemented")
+}
+func (UnimplementedStageWorkerMemberServiceServer) DiscoverRuntimeIdentities(context.Context, *StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest) (*StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiscoverRuntimeIdentities not implemented")
 }
 func (UnimplementedStageWorkerMemberServiceServer) mustEmbedUnimplementedStageWorkerMemberServiceServer() {
 }
@@ -513,6 +533,24 @@ func _StageWorkerMemberService_InstallStageExecutionFloor_Handler(srv interface{
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StageWorkerMemberService_DiscoverRuntimeIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StageWorkerMemberServiceServer).DiscoverRuntimeIdentities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StageWorkerMemberService_DiscoverRuntimeIdentities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StageWorkerMemberServiceServer).DiscoverRuntimeIdentities(ctx, req.(*StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StageWorkerMemberService_ServiceDesc is the grpc.ServiceDesc for StageWorkerMemberService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -571,6 +609,10 @@ var StageWorkerMemberService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InstallStageExecutionFloor",
 			Handler:    _StageWorkerMemberService_InstallStageExecutionFloor_Handler,
+		},
+		{
+			MethodName: "DiscoverRuntimeIdentities",
+			Handler:    _StageWorkerMemberService_DiscoverRuntimeIdentities_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

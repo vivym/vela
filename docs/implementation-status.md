@@ -360,6 +360,16 @@ explicitly assembled fixture with complete prior non-admission and approved mock
 readiness evidence; default Worker assembly and pending-writer recovery remain
 open. Expanded integration-tag lint reports 82 pre-existing findings in untouched
 files; this increment's changed-file lint reports 0 issues.
+The [pre-assignment member discovery increment](member-discovery-evidence-2026-09-06.md)
+now exposes current remote Runtime identities through the existing mTLS-to-UDS
+transport. It requires independently configured complete member SPIFFE digests,
+authenticates the deterministic leader and rejects stale or incomplete local
+identity sets. Default Worker command assembly supplies those trusted digests.
+Discovery remains available while durable Runtime readiness awaits writer
+recovery, without changing journal bytes or backend lifecycle. Full unit,
+related race, ordinary lint, protobuf compatibility and non-root Linux checks
+pass. Peer collection, approved launch-topology binding, Worker journal bootstrap
+and default durable admission/Stream wiring remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

@@ -33,6 +33,10 @@ service StageWorkerMemberService {
       returns (StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse);
   rpc InstallStageExecutionFloor(StageWorkerMemberServiceInstallStageExecutionFloorRequest)
       returns (StageWorkerMemberServiceInstallStageExecutionFloorResponse);
+  // Authenticated observation of current resident identities, independent of
+  // assignment delivery or readiness. It grants no execution or writer proof.
+  rpc DiscoverRuntimeIdentities(StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest)
+      returns (StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse);
 }
 
 message StageWorkerMemberServicePrepareStageRequest {
@@ -150,4 +154,13 @@ message StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse {
 
 message StageWorkerMemberServiceInstallStageExecutionFloorResponse {
   ModelRuntimeServiceInstallStageExecutionFloorResponse result = 1;
+}
+
+message StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest command = 2;
+}
+
+message StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse {
+  ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse result = 1;
 }

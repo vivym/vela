@@ -177,14 +177,6 @@ func (client *Client) Status(
 	return response.GetResult(), nil
 }
 
-func (*Client) DiscoverRuntimeIdentities(
-	context.Context,
-	*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest,
-	...grpc.CallOption,
-) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "remote ModelRuntime identity discovery is not exposed")
-}
-
 func (*Client) ProbeReadiness(
 	context.Context,
 	*velav1.ModelRuntimeServiceProbeReadinessRequest,
