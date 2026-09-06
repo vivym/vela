@@ -139,9 +139,9 @@ func (server *Server) PrepareStage(
 	if err != nil || !bytes.Equal(specDigest[:], authority.GetExecutionSpecDigest()) {
 		return nil, status.Error(codes.FailedPrecondition, "Stage Worker member execution spec is stale")
 	}
-	result, err := server.runtime.PrepareStage(
-		ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServicePrepareStageRequest),
-	)
+	result, err := forwardWithWorkerJournal(ctx, server, identity, func() (*velav1.ModelRuntimeServicePrepareStageResponse, error) {
+		return server.runtime.PrepareStage(ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServicePrepareStageRequest))
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -164,9 +164,9 @@ func (server *Server) StartStage(
 	if err != nil {
 		return nil, err
 	}
-	result, err := server.runtime.StartStage(
-		ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServiceStartStageRequest),
-	)
+	result, err := forwardWithWorkerJournal(ctx, server, identity, func() (*velav1.ModelRuntimeServiceStartStageResponse, error) {
+		return server.runtime.StartStage(ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServiceStartStageRequest))
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -214,9 +214,9 @@ func (server *Server) Status(
 	if err != nil {
 		return nil, err
 	}
-	result, err := server.runtime.Status(
-		ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServiceStatusRequest),
-	)
+	result, err := forwardWithWorkerJournal(ctx, server, identity, func() (*velav1.ModelRuntimeServiceStatusResponse, error) {
+		return server.runtime.Status(ctx, proto.Clone(request.GetCommand()).(*velav1.ModelRuntimeServiceStatusRequest))
+	})
 	if err != nil {
 		return nil, err
 	}

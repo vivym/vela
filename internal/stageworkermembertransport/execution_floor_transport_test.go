@@ -275,6 +275,11 @@ func (backend *memberFloorBackend) Close() error {
 
 func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.StageTerminalDisposition, directory string, initialize, loseResponse bool) *memberFloorChain {
 	t.Helper()
+	return startMemberFloorChainWithWorkerJournal(t, f, disposition, directory, initialize, loseResponse, nil)
+}
+
+func startMemberFloorChainWithWorkerJournal(t *testing.T, f *serverFixture, disposition *velav1.StageTerminalDisposition, directory string, initialize, loseResponse bool, workerJournal WorkerJournalBindingObserver) *memberFloorChain {
+	t.Helper()
 	identity := f.runtime.identity
 	binding := stageauthority.RuntimeBinding{
 		WorkerInstanceID: identity.WorkerInstanceId, WorkerInstanceEpoch: identity.WorkerInstanceEpoch,
@@ -338,6 +343,7 @@ func startMemberFloorChain(t *testing.T, f *serverFixture, disposition *velav1.S
 	member, err := NewServer(ServerConfig{
 		Authenticator: stageworkertransport.PeerAuthenticator{}, Validator: f.server.validator, Runtime: localClient,
 		LocalIdentities: []*velav1.ModelRuntimeIdentity{identity}, Members: memberBindings,
+		WorkerJournal: workerJournal,
 	})
 	if err != nil {
 		t.Fatal(err)

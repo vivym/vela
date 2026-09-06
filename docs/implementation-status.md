@@ -531,6 +531,18 @@ discoverable. Full unit/race/lint, PostgreSQL/TLS with the compiled Node command
 protocol compatibility and Linux non-root checks pass. Post-discovery ownership
 loss, physical containment and remaining lifecycle work are still open. Versions
 and Production Gates remain unchanged.
+The [forwarded-command journal repair](worker-command-journal-lifetime-evidence-2026-09-06.md)
+now retains the actual Registry-bound Worker journal across member Prepare,
+Start and renewal-capable Status calls. Nine unavailable-journal counterexamples
+reject before Runtime forwarding; independent references prevent normal close
+during calls and final ownership validation rejects successful replies after
+file replacement. Actual mTLS/UDS CPU recovery still permits exact inspection,
+cancellation, floor installation, drain and non-admission evidence. Full unit,
+related race/lint, PostgreSQL/TLS with the compiled Node command and Linux
+non-root checks pass. RPC lifetime protection does not prove backend containment
+after timeouts, physical replacement or device reuse. Durable Fleet activation
+and the remaining lifecycle work stay open; versions and Production Gates are
+unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

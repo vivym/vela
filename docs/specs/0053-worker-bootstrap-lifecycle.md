@@ -35,8 +35,36 @@ The durable Leader verifies both signatures, the member scope and equality of
 their immutable Registry claim/pair. A nondurable Worker, failed/closed journal,
 or ownership loss during forwarding cannot satisfy durable discovery.
 These observations do not create a continuing ownership lease or attest
-physical drain. Post-discovery loss and command admission remain separate
-lifecycle requirements.
+physical drain.
+
+## Forwarded command lifetime
+
+A member configured with a durable Worker journal must retain its actual
+Registry-bound admission handle for each forwarded `PrepareStage`, `StartStage`
+and `Status` call. `Status` renews execution authority and is not a read-only
+recovery operation. Authentication, current authority, local Runtime identity
+and execution-spec checks precede retention. Unresolved Runtime routes, missing
+binding, closed/failed ownership or an observer without retention capability
+reject before Runtime forwarding.
+
+Each call owns an independent reference. `Close` returns busy while any input
+admission handle or command reference remains. Cancellation alone does not
+release a reference; the forwarding call must return first. Release is
+concurrency-safe and idempotent, always rechecks actual journal ownership even
+when the request was canceled, and changes no durable history. Lost ownership
+rejects an otherwise successful response. Observed file replacement remains
+failed after restoring the path. No admission mutex is held across the RPC.
+
+`InspectExecution`, exact cancellation, floor installation, drain and
+non-admission recovery retain their own peer and Runtime authority checks and
+remain available after Worker journal failure. This guard introduces no Worker
+journal lock around those operations. Runtime operation serialization can still
+delay cancellation behind a blocked backend call.
+
+Retention covers the forwarding call only: a timed-out UDS RPC can return while
+backend descendants remain active. It proves neither physical containment nor
+device reuse safety. Runtime durable admission, terminal restrictions and writer
+drain evidence remain required for uncertain execution and later reclamation.
 
 ## Terminal outcomes
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -254,6 +255,9 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	if err != nil || !proto.Equal(observed, binding) {
 		t.Fatalf("live Worker journal observation lost committed Registry binding: %v %v", observed, err)
 	}
+	if retained, release, err := worker.RetainJournalBinding(t.Context()); err == nil || retained != nil || release != nil {
+		t.Fatalf("unresolved Runtime routes allowed command retention: %v %v", retained, err)
+	}
 	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
 		Manifest: manifest, EpochStore: epochStore, Validator: validator, SocketPath: filepath.Join(socketRoot, "runtime.sock"), CancelTimeout: time.Second,
 		ExecutionFloor: &modelruntime.ExecutionFloorConfig{State: &state}, RegistryBinding: binding, RegistryVerifier: verifier,
@@ -294,6 +298,17 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	if err := worker.BindRuntimeRoutes(t.Context(), []stageworkeragent.AdmissionRuntimeBinding{current}); err != nil {
 		t.Fatalf("bind actual Runtime discovery to recorded Worker journal: %v", err)
 	}
+	retained, release, err := worker.RetainJournalBinding(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+	if !proto.Equal(retained, binding) {
+		t.Fatal("command retention lost committed Registry binding")
+	}
+	if err := worker.Close(); !errors.Is(err, stageworkeragent.ErrStageWorkerBusy) {
+		t.Fatalf("command retention released Worker journal: %v", err)
+	}
 	if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), workerConfig); err == nil {
 		t.Fatal("Runtime discovery reopened the bound Worker journal")
 	}
@@ -302,6 +317,9 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	})
 	if err != nil || !ready.GetReady() {
 		t.Fatalf("fresh bound CPU runtime was not warm: %v %v", ready, err)
+	}
+	if err := release(); err != nil {
+		t.Fatalf("release Registry-bound command reference: %v", err)
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)

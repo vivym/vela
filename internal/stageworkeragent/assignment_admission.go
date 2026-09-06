@@ -102,6 +102,7 @@ type FileAssignmentAdmission struct {
 	failed                     error
 	registryBinding            *velav1.WorkerBootstrapBinding
 	registryVerifier           *journalbinding.Verifier
+	journalUsers               int
 	retirementAfterDirectory   func(int) error
 	retirementSyncAbsentParent func(*os.Root) error
 }
@@ -467,7 +468,7 @@ func (gate *FileAssignmentAdmission) Close() error {
 	}
 	gate.mu.Lock()
 	defer gate.mu.Unlock()
-	if gate.active != nil {
+	if gate.active != nil || gate.journalUsers != 0 {
 		return ErrStageWorkerBusy
 	}
 	if gate.files == nil {
