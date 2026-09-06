@@ -73,9 +73,8 @@ PostgreSQL/Control integration passes the selected tests
 `TestStageTerminalHistoryCoversAllocatedUndeliveredRetry`,
 `TestStageTerminalDispositionThroughAuthenticatedControl` and
 `TestStageTerminalHistoryPreservesHistoricalRuntimeScopesWhileDraining`.
-This selection exercises automatic terminal recovery but does not replace its
-Runtime owner; replacement is covered separately by the Runtime, Stream and
-member-transport tests above.
+The initial selection exercises automatic terminal recovery without replacing
+its Runtime owner. The subsequent integration below also covers replacement.
 
 Linux arm64 passes Runtime `^(TestExecutionFloor|TestDurableExecution)`, Worker
 `^(TestExecutionFloor|TestTerminalScratchRetirement|TestTerminalRecovery)` and
@@ -89,3 +88,45 @@ Fleet first-use provisioning, unknown input writer recovery, pending Runtime
 drain/lost renewal recovery, durable sealed receipts, failed-backend containment
 and bounded checkpoint reclamation remain open. These checks do not establish
 deployed automatic retirement, sustained Worker throughput or Production Gates.
+
+## PostgreSQL replacement and capacity recovery
+
+A subsequent test increment over `0ee9cc2` adds
+`TestStageTerminalRecoveryThroughReplacementRuntimeRestoresCapacity`. The original
+owner checkpoints non-admission for both real database allocations, including
+the retry with no issued execution envelope. It shuts down and a new Supervisor
+opens the same journal at the next Runtime epoch. The Worker recovers its original
+Acquire/input-completion journal with the new trusted current binding.
+
+The actual Production loop confirms zero capacity/current Control session,
+fetches fresh signed history over mTLS, collects proof through the replacement
+Runtime UDS and persists RETIRED after deleting exact scratch namespaces. Every
+subsequent readiness probe verifies that retirement is already durable and the
+database still advertises zero capacity. Four actual CPU mock probes then allow
+Control to register the new local Runtime epoch and publish the original usable
+capacity vector. The real PostgreSQL assignment backend returns a durable
+`NO_WORK` result in that session; no terminal StageRun allocation is recreated.
+RETIRED replays after Control closes, unrelated scratch survives, and original
+non-admission proof remains readable after another Runtime epoch change.
+
+The fixture independently seeds the known CPU mock readiness digest as approved
+Fleet evidence before replacement. Control still checks actual probe bytes
+against that digest; arbitrary mock evidence was correctly rejected during test
+construction. This setup does not exercise production Fleet provisioning or
+certify GPU readiness. It has no admitted backend execution and an empty
+materialization journal, so pending writer and sealed output recovery remain
+outside its evidence boundary. The original unavailable-readiness integration
+is retained and still requires zero capacity after local retirement.
+
+The four related PostgreSQL tests, including the replacement case, pass with
+`go test -race -tags=integration ./internal/integration` and the corresponding
+anchored test-name selection. Integration `go vet` and `git diff --check` pass.
+Generated artifacts reproduced cleanly with `make verify-generated` at `0ee9cc2`;
+this follow-up changes tests and documentation only.
+
+The broader integration-tag lint reports 82 existing findings in untouched
+files: 50 errcheck, 4 staticcheck and 28 unused. Therefore the whole integration
+package is not lint-clean. The same lint with
+`--build-tags=integration --new-from-rev=0ee9cc2 --whole-files` reports 0 issues
+for this increment. The earlier ordinary `make lint` result excludes this extra
+build-tag scope; these results must not be conflated.

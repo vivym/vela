@@ -153,6 +153,18 @@ existing database session/capacity authority: the Worker and member still need
 the persisted Fleet lifecycle/identity required by that authority. Recovery of
 removed or non-READY Fleet identities is not established by these tests.
 
+The [replacement-owner integration](runtime-replacement-floor-evidence-2026-09-06.md#postgresql-replacement-and-capacity-recovery)
+also restarts the durable Runtime at a new epoch, selects an explicit trusted
+`ExecutionFloorConfig.CurrentReaders` map and reopens the original Worker
+admission history. It proves durable retirement before readiness, zero database
+capacity throughout the four actual CPU mock probes, accepted new-epoch
+registration, restored capacity and a durable `NO_WORK` Acquire result. No
+terminal allocation is recreated. Complete non-admission checkpoints and the
+approved mock readiness digest are test prerequisites, not generated production
+writer or Fleet provisioning evidence. The related integration race selection
+passes; broader integration-tag lint still has pre-existing findings as detailed
+in that evidence document.
+
 ## Remaining scope
 
 Default command/bootstrap assembly and explicit migrations, unknown historical

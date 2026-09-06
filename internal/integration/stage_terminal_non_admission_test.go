@@ -28,7 +28,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSchedulerFixture, validator *stageauthority.Validator, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, allocationID string) {
+func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSchedulerFixture, validator *stageauthority.Validator, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, allocationID string, replaceRuntime bool) {
 	t.Helper()
 	original := assignment.GetAuthority()
 	var issued int
@@ -95,9 +95,49 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 		proof.Contract != modelruntime.TerminalNonAdmissionContract || !proto.Equal(proof.Disposition, disposition) {
 		t.Fatalf("unsigned database allocation was not checkpointed: %+v %v", proof, err)
 	}
-	assertDatabaseTerminalScratchRetirement(t, fixture, supervisor, validator, binding, assignment, command, disposition, subset)
+	epoch := member.GetModelRuntimeEpoch()
+	if replaceRuntime {
+		// Independent Fleet test setup approves the known CPU mock probe payloads.
+		// Runtime registration still validates its actual UDS responses against this digest.
+		var checks []stageworkeragent.ReadinessEvidenceCheck
+		for _, check := range []velav1.ModelRuntimeReadinessCheck{
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_BACKEND,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_CANARY,
+		} {
+			evidence, err := json.Marshal(map[string]any{"component": "dit", "check": check.String(), "ready": true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			checks = append(checks, stageworkeragent.ReadinessEvidenceCheck{
+				Check: check.String(), Evidence: evidence, Detail: "resident runtime ready",
+			})
+		}
+		evidence, err := stageworkeragent.EncodeReadinessEvidence(checks)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(evidence)
+		if _, err := fixture.database.Admin.Exec(`UPDATE model_residencies SET canary_evidence_digest = $2 WHERE id = $1`, binding.ModelResidencyID, digest[:]); err != nil {
+			t.Fatal(err)
+		}
+		// Only the original owner may establish missing old-epoch non-admission.
+		// The replacement must recover these actual checkpoints from the same journal.
+		for _, allocation := range disposition.GetAllocations() {
+			if _, err := supervisor.CheckpointTerminalNonAdmission(t.Context(), disposition, allocation.GetStageAllocationId()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := supervisor.Shutdown(); err != nil {
+			t.Fatal(err)
+		}
+		epoch++
+		supervisor = open(false, epoch)
+	}
+	assertDatabaseTerminalScratchRetirement(t, fixture, supervisor, validator, binding, assignment, command, disposition, subset, replaceRuntime)
 	supervisor.Close()
-	recovered := open(false, member.GetModelRuntimeEpoch()+1)
+	recovered := open(false, epoch+1)
 	read, err := recovered.InspectTerminalNonAdmission(t.Context(), disposition, allocationID)
 	if err != nil || read == nil || read.DispositionDigest != proof.DispositionDigest || read.StageAllocationID != allocationID || !read.ObservedAt.Equal(proof.ObservedAt) {
 		t.Fatalf("database allocation checkpoint recovery: %+v %v", read, err)
@@ -105,7 +145,7 @@ func assertUnsignedTerminalAllocationNonAdmission(t *testing.T, fixture stageSch
 	t.Log("unsigned retry: PostgreSQL history -> authenticated Control disposition -> durable Runtime floor and non-admission -> next-epoch proof recovery")
 }
 
-func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedulerFixture, supervisor *modelruntime.Supervisor, validator *stageauthority.Validator, binding stageauthority.RuntimeBinding, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, subset []byte) {
+func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedulerFixture, supervisor *modelruntime.Supervisor, validator *stageauthority.Validator, binding stageauthority.RuntimeBinding, assignment *velav1.StageAssignment, command stageworkercontrol.CommandContext, disposition *velav1.StageTerminalDisposition, subset []byte, replaceRuntime bool) {
 	t.Helper()
 	original := assignment.GetAuthority()
 	socketDirectory, err := os.MkdirTemp("/tmp", "vela-retirement-")
@@ -139,11 +179,17 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 		t.Fatalf("discover Runtime: %v %v", identities, err)
 	}
 	member := original.GetMembers()[0]
-	binding.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
+	binding.ModelRuntimeEpoch = identities.Identities[0].GetModelRuntimeEpoch()
+	if replaceRuntime && binding.ModelRuntimeEpoch != member.GetModelRuntimeEpoch()+1 {
+		t.Fatal("recovery did not discover the replacement Runtime epoch")
+	}
 	trusted := stageworkeragent.ExecutionFloorBinding{Runtime: binding, IdentityDigest: [sha256.Size]byte(member.GetIdentityDigest()), DeviceSubsetDigest: [sha256.Size]byte(subset)}
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
-		Members:        []stageworkeragent.RuntimeMember{{ID: binding.WorkerMemberID, Client: client}},
-		ExecutionFloor: &stageworkeragent.ExecutionFloorConfig{Validator: validator, Bindings: []stageworkeragent.ExecutionFloorBinding{trusted}},
+		Members: []stageworkeragent.RuntimeMember{{ID: binding.WorkerMemberID, Client: client}},
+		ExecutionFloor: &stageworkeragent.ExecutionFloorConfig{
+			Validator: validator, Bindings: []stageworkeragent.ExecutionFloorBinding{trusted},
+			CurrentReaders: map[string]*velav1.ModelRuntimeIdentity{binding.WorkerMemberID: identities.Identities[0]},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -161,10 +207,12 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	if err != nil {
 		t.Fatal(err)
 	}
+	originalTrusted := stageworkeragent.AdmissionRuntimeBinding(trusted)
+	originalTrusted.Runtime.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
 	admissionConfig := stageworkeragent.AssignmentAdmissionConfig{
 		Initialize: true, Directory: filepath.Join(base, "state"), InputRoot: filepath.Join(base, "inputs"), OutputRoot: filepath.Join(base, "outputs"),
 		WorkerInstanceID: uuid.MustParse(binding.WorkerInstanceID), WorkerInstanceEpoch: binding.WorkerInstanceEpoch, WorkerMemberID: uuid.MustParse(binding.WorkerMemberID),
-		Validator: bootstrapValidator, Bindings: []stageworkeragent.AdmissionRuntimeBinding{stageworkeragent.AdmissionRuntimeBinding(trusted)}, MaxRecords: 4,
+		Validator: bootstrapValidator, Bindings: []stageworkeragent.AdmissionRuntimeBinding{originalTrusted}, MaxRecords: 4,
 	}
 	gate, err := stageworkeragent.NewFileAssignmentAdmission(admissionConfig)
 	if err != nil {
@@ -184,6 +232,7 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 		t.Fatal(err)
 	}
 	admissionConfig.Initialize, admissionConfig.Validator = false, validator
+	admissionConfig.Bindings = []stageworkeragent.AdmissionRuntimeBinding{stageworkeragent.AdmissionRuntimeBinding(trusted)}
 	gate, err = stageworkeragent.NewFileAssignmentAdmission(admissionConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +253,11 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, _, _ := terminalDispositionControl(t, fixture)
+	var assignments stageworkercontrol.AssignmentOperations = unusedMaterializationReplayDependencies{}
+	if replaceRuntime {
+		assignments = newPostgresAssignmentTestBackend(t, fixture)
+	}
+	handler, _, _ := terminalDispositionControlWithAssignments(t, fixture, assignments)
 	productionState, err := stageworkeragent.NewFileProductionState(stageworkeragent.FileProductionStateConfig{
 		Directory: filepath.Join(base, "production-state"), WorkerInstanceID: admissionConfig.WorkerInstanceID,
 		WorkerInstanceEpoch: admissionConfig.WorkerInstanceEpoch, WorkerMemberID: admissionConfig.WorkerMemberID,
@@ -245,13 +298,32 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	readiness := &terminalUnavailableReadiness{}
+	readiness := &terminalRecoveryReadiness{}
+	if replaceRuntime {
+		readiness.runtime = client
+	}
+	readiness.beforeProbe = func() {
+		state, err := gate.Snapshot(t.Context())
+		if err != nil || len(state.Retirements) != 1 || state.Retirements[0].Phase != stageworkeragent.TerminalRetirementRetired {
+			t.Fatalf("readiness preceded durable retirement: %+v %v", state, err)
+		}
+		capacity, session := terminalRecoveryCapacity(t, fixture, admissionConfig.WorkerInstanceID)
+		if session != control.CurrentControlSessionEpoch() {
+			t.Fatal("readiness preceded current Control session confirmation")
+		}
+		for _, quantity := range capacity {
+			if quantity != 0 {
+				t.Fatal("capacity reopened before replacement Runtime readiness")
+			}
+		}
+	}
 	waits := 0
 	production, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
 		Control: control, Runtime: readiness, Stream: stream, RuntimeIdentity: identities.Identities[0],
 		Devices: original.Devices, Members: original.Members, CapacityVector: original.CapacityVector,
 		CapacityTTL: time.Minute, HeartbeatInterval: time.Second, RetryMinimum: time.Millisecond, RetryMaximum: time.Second,
 		ObservationSequenceSource: productionState, Now: time.Now,
+		RetryObserver: func(operation string, err error) { t.Logf("recovery retry %s: %v", operation, err) },
 		Wait: func(context.Context, time.Duration) error {
 			waits++
 			state, err := gate.Snapshot(t.Context())
@@ -275,20 +347,39 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 		state.Floor != disposition.GetCutoff() || state.Latest.Phase != stageworkeragent.AssignmentClosed || state.Latest.AcquireCommandID != command.CommandID {
 		t.Fatalf("automatic recovery lost durable proof or original Acquire: %+v %v", state, err)
 	}
-	var vector []byte
-	var session int64
-	if err := fixture.database.Admin.QueryRow(`SELECT capacity_vector, stage_worker_control_session_epoch
-		FROM capacity_observations WHERE worker_instance_id = $1 AND stage_worker_control_session_epoch IS NOT NULL
-		ORDER BY observation_sequence DESC LIMIT 1`, admissionConfig.WorkerInstanceID).Scan(&vector, &session); err != nil {
-		t.Fatal(err)
+	capacity, session := terminalRecoveryCapacity(t, fixture, admissionConfig.WorkerInstanceID)
+	wantProbes := 1
+	if replaceRuntime {
+		wantProbes = 4
 	}
-	var capacity map[string]int64
-	if err := json.Unmarshal(vector, &capacity); err != nil || len(capacity) == 0 || session != control.CurrentControlSessionEpoch() || readiness.calls != 1 {
-		t.Fatalf("recovery capacity/session/readiness: %s epoch=%d probes=%d error=%v", vector, session, readiness.calls, err)
+	if len(capacity) != len(original.CapacityVector) || session != control.CurrentControlSessionEpoch() || readiness.calls != wantProbes {
+		t.Fatalf("recovery capacity/session/readiness: %v epoch=%d probes=%d", capacity, session, readiness.calls)
 	}
-	for _, quantity := range capacity {
-		if quantity != 0 {
-			t.Fatal("recovery advertised available capacity while Runtime was not ready")
+	for resource, quantity := range capacity {
+		want := int64(0)
+		if replaceRuntime {
+			want = original.CapacityVector[resource]
+		}
+		if quantity != want {
+			t.Fatalf("recovery capacity %s: got %d, want %d", resource, quantity, want)
+		}
+	}
+	if replaceRuntime {
+		var registered int64
+		if err := fixture.database.Admin.QueryRow(`SELECT max(local_model_runtime_epoch) FROM model_runtime_epoch_registrations
+			WHERE model_residency_id = $1 AND worker_member_id = $2`, binding.ModelResidencyID, binding.WorkerMemberID).Scan(&registered); err != nil || registered != binding.ModelRuntimeEpoch {
+			t.Fatalf("replacement readiness registration: epoch=%d error=%v", registered, err)
+		}
+		var allocations int
+		if err := fixture.database.Admin.QueryRow(`SELECT count(*) FROM stage_allocations WHERE stage_run_id = $1`, original.GetStageRunId()).Scan(&allocations); err != nil || allocations != len(disposition.GetAllocations()) {
+			t.Fatalf("recovery reassigned a terminal StageRun: allocations=%d error=%v", allocations, err)
+		}
+		var noWork int
+		if err := fixture.database.Admin.QueryRow(`SELECT count(*) FROM stage_worker_acquire_intents AS intent
+			JOIN stage_worker_acquire_results AS result USING (command_id)
+			WHERE intent.worker_instance_id = $1 AND intent.control_session_epoch = $2 AND result.result_kind = 'NO_WORK'`,
+			binding.WorkerInstanceID, session).Scan(&noWork); err != nil || noWork != 1 {
+			t.Fatalf("recovery did not complete normal acquisition: no_work=%d error=%v", noWork, err)
 		}
 	}
 	if err := control.Close(); err != nil {
@@ -305,12 +396,38 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	if _, err := os.Stat(filepath.Join(base, "outputs", "unrelated", "keep")); err != nil {
 		t.Fatal("retirement changed unrelated scratch")
 	}
-	t.Log("unready Runtime -> zero capacity/current PostgreSQL session -> automatic authenticated history query -> UDS Runtime proof -> durable RETIRED -> offline replay")
+	t.Logf("replacement=%t: zero capacity/current PostgreSQL session -> automatic authenticated history -> UDS proof -> durable RETIRED -> readiness/capacity -> offline replay", replaceRuntime)
 }
 
-type terminalUnavailableReadiness struct{ calls int }
+func terminalRecoveryCapacity(t *testing.T, fixture stageSchedulerFixture, workerID uuid.UUID) (map[string]int64, int64) {
+	t.Helper()
+	var vector []byte
+	var session int64
+	if err := fixture.database.Admin.QueryRow(`SELECT capacity_vector, stage_worker_control_session_epoch
+		FROM capacity_observations WHERE worker_instance_id = $1 AND stage_worker_control_session_epoch IS NOT NULL
+		ORDER BY observation_sequence DESC LIMIT 1`, workerID).Scan(&vector, &session); err != nil {
+		t.Fatal(err)
+	}
+	var capacity map[string]int64
+	if err := json.Unmarshal(vector, &capacity); err != nil || len(capacity) == 0 {
+		t.Fatalf("recovery capacity: %s error=%v", vector, err)
+	}
+	return capacity, session
+}
 
-func (runtime *terminalUnavailableReadiness) ProbeReadiness(context.Context, *velav1.ModelRuntimeServiceProbeReadinessRequest, ...grpc.CallOption) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
+type terminalRecoveryReadiness struct {
+	calls       int
+	runtime     stageworkeragent.RuntimeReadinessClient
+	beforeProbe func()
+}
+
+func (runtime *terminalRecoveryReadiness) ProbeReadiness(ctx context.Context, request *velav1.ModelRuntimeServiceProbeReadinessRequest, options ...grpc.CallOption) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
 	runtime.calls++
+	if runtime.beforeProbe != nil {
+		runtime.beforeProbe()
+	}
+	if runtime.runtime != nil {
+		return runtime.runtime.ProbeReadiness(ctx, request, options...)
+	}
 	return nil, errors.New("Runtime readiness remains unavailable during this recovery fixture")
 }

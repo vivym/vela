@@ -89,6 +89,15 @@ func TestStageTerminalHistoryRequiresTerminalScope(t *testing.T) {
 }
 
 func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
+	assertStageTerminalHistoryUndeliveredRetry(t, false)
+}
+
+func TestStageTerminalRecoveryThroughReplacementRuntimeRestoresCapacity(t *testing.T) {
+	assertStageTerminalHistoryUndeliveredRetry(t, true)
+}
+
+func assertStageTerminalHistoryUndeliveredRetry(t *testing.T, replaceRuntime bool) {
+	t.Helper()
 	fixture := newStageSchedulerFixture(t, "terminal-history-unseen-retry")
 	command := stageWorkerAcquireCommand(fixture)
 	acquired, err := newPostgresAssignmentTestBackend(t, fixture).AcquireStage(
@@ -160,7 +169,7 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 		disposition.GetAllocations()[1].GetStageAllocationId() != next.StageAllocationID.String() {
 		t.Fatal("signed disposition omitted allocated but undelivered retry")
 	}
-	assertUnsignedTerminalAllocationNonAdmission(t, fixture, validator, acquired.Assignment, command, disposition, next.StageAllocationID.String())
+	assertUnsignedTerminalAllocationNonAdmission(t, fixture, validator, acquired.Assignment, command, disposition, next.StageAllocationID.String(), replaceRuntime)
 	if stale := readTerminalHistory(t, fixture, request); stale.Eligible || stale.Reason != "WORKER_SESSION_CHANGED" {
 		t.Fatalf("recovery reconnect did not fence the original session: eligible=%t reason=%s", stale.Eligible, stale.Reason)
 	}
@@ -175,6 +184,9 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 	}
 	if after := readTerminalHistory(t, fixture, request); !after.Eligible || after.Cutoff != snapshot.Cutoff {
 		t.Fatalf("unrelated issuance changed cutoff from %d to %d", snapshot.Cutoff, after.Cutoff)
+	}
+	if replaceRuntime {
+		return
 	}
 	for _, test := range []struct {
 		name, mutation, reason string

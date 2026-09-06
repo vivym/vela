@@ -352,6 +352,14 @@ Full unit, related race, lint, PostgreSQL/Control and non-root Linux checks pass
 Older Workers reject retained v2 acknowledgements; forward recovery requires the
 new reader despite unchanged journal versions. Default durable Worker assembly,
 unknown writer recovery and bounded reclamation remain open.
+Its subsequent PostgreSQL integration now replaces the Runtime journal owner
+before automatic recovery and proves durable cleanup before actual CPU mock
+readiness probes, new-epoch registration, restored usable capacity and a durable
+`NO_WORK` Acquire result. The related integration race checks pass. This is an
+explicitly assembled fixture with complete prior non-admission and approved mock
+readiness evidence; default Worker assembly and pending-writer recovery remain
+open. Expanded integration-tag lint reports 82 pre-existing findings in untouched
+files; this increment's changed-file lint reports 0 issues.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

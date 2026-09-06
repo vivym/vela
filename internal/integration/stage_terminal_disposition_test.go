@@ -182,6 +182,11 @@ func readSignedTerminalDisposition(t *testing.T, handler *stageworkercontrol.Han
 
 func terminalDispositionControl(t *testing.T, fixture stageSchedulerFixture) (*stageworkercontrol.Handler, *stageauthority.Validator, *stageauthority.Signer) {
 	t.Helper()
+	return terminalDispositionControlWithAssignments(t, fixture, unusedMaterializationReplayDependencies{})
+}
+
+func terminalDispositionControlWithAssignments(t *testing.T, fixture stageSchedulerFixture, assignments stageworkercontrol.AssignmentOperations) (*stageworkercontrol.Handler, *stageauthority.Validator, *stageauthority.Signer) {
+	t.Helper()
 	keys := map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)}
 	signer, err := stageauthority.NewSigner(keys)
 	if err != nil {
@@ -215,7 +220,7 @@ func terminalDispositionControl(t *testing.T, fixture stageSchedulerFixture) (*s
 		t.Fatal(err)
 	}
 	backend, err := stageworkercontrol.NewPostgresOperationBackend(stageworkercontrol.PostgresOperationConfig{
-		TerminalDispositions: terminal, WorkerEvidence: evidence, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
+		TerminalDispositions: terminal, WorkerEvidence: evidence, Assignments: assignments, Execution: unused, MaterializationIssuer: unused,
 		StageArtifacts: artifacts, StageAttempts: fixture.coordinator, Reattachments: unused, Transfers: unused,
 	})
 	if err != nil {
