@@ -390,6 +390,21 @@ INTENT/READY/RETIRED history without advancing retirement or deleting scratch.
 Full unit, Worker/command race, lint, a separate-process main entrypoint and
 non-root Linux checks pass. Schemas are unchanged. Default serving assembly,
 approved peer/launch binding and Fleet first-use provisioning remain open.
+The [explicit durable Worker startup](worker-durable-startup-evidence-2026-09-06.md)
+now selects admission recovery and Durable Stream assembly through a complete
+optional configuration set. It preflights existing history before directory or
+Artifact Store setup, matches local/remote observations to approved launch routes,
+and holds the reopened journal throughout serving. The Leader supplies complete
+current floor readers and authenticated terminal history; followers omit Leader
+recovery and reject its retained history. Actual command restart confirms zero
+capacity before querying a retained assignment with its original Acquire UUID;
+failed history recovery prevents readiness/acquisition and preserves state.
+Full unit, related race, focused PostgreSQL replacement/capacity, ordinary lint
+and non-root Linux checks pass. Command-level successful terminal retirement is
+not yet covered; that success remains an explicitly assembled integration fixture.
+Fleet first-use provisioning, deployment activation, unknown writer/receipt
+recovery and bounded reclamation remain open. Versions and Production Gates are
+unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

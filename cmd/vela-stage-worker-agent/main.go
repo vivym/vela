@@ -74,6 +74,9 @@ type config struct {
 	memberClientCAFile              string
 	memberDialTimeout               time.Duration
 	memberShutdownTimeout           time.Duration
+	launchManifestFile              string
+	assignmentAdmissionRoot         string
+	assignmentAdmissionLimit        int
 }
 
 type deviceInput struct {
@@ -353,6 +356,21 @@ func loadConfig() (config, error) {
 		"materialization journal": journalRoot,
 	}); err != nil {
 		return config{}, err
+	}
+	if os.Getenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS") != "" {
+		configuration.launchManifestFile, err = requiredAbsolutePath("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE")
+		if err != nil {
+			return config{}, err
+		}
+		configuration.assignmentAdmissionRoot, err = requiredAbsolutePath("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY")
+		if err != nil {
+			return config{}, err
+		}
+		limit, err := requiredPositiveInt64("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS")
+		if err != nil || limit > 64 {
+			return config{}, errors.New("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS must be between 1 and 64")
+		}
+		configuration.assignmentAdmissionLimit = int(limit)
 	}
 	return configuration, nil
 }

@@ -156,6 +156,9 @@ func TestLoadConfigRejectsInputTransferStateOutsideScratch(t *testing.T) {
 }
 
 func setValidStageWorkerEnv(t *testing.T) {
+	for _, name := range []string{"VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS"} {
+		t.Setenv(name, "")
+	}
 	t.Helper()
 	root := t.TempDir()
 	values := map[string]string{
@@ -201,5 +204,37 @@ func setValidStageWorkerEnv(t *testing.T) {
 	}
 	for name, value := range values {
 		t.Setenv(name, value)
+	}
+}
+
+func TestLoadConfigDurableAssignmentRequiresCompleteRecoverySettings(t *testing.T) {
+	for _, missing := range []string{"none", "manifest", "directory", "limit", "too-large"} {
+		t.Run(missing, func(t *testing.T) {
+			setValidStageWorkerEnv(t)
+			root := t.TempDir()
+			t.Setenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", filepath.Join(root, "launch.json"))
+			t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", filepath.Join(root, "admission"))
+			t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "4")
+			switch missing {
+			case "manifest":
+				t.Setenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", "")
+			case "directory":
+				t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", "")
+			case "limit":
+				t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "")
+			case "too-large":
+				t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "65")
+			}
+			configuration, err := loadConfig()
+			if missing != "none" {
+				if err == nil {
+					t.Fatal("partial durable settings were ignored")
+				}
+				return
+			}
+			if err != nil || configuration.launchManifestFile == "" || configuration.assignmentAdmissionRoot == "" || configuration.assignmentAdmissionLimit != 4 {
+				t.Fatalf("complete recovery settings: %+v %v", configuration, err)
+			}
+		})
 	}
 }

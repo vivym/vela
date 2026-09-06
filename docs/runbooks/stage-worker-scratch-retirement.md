@@ -1,9 +1,9 @@
 # Stage Worker Scratch Retirement
 
 Default command assembly uses `RetainScratchRetirer`: it preserves scratch and
-confirmed materialization records until automatic retirement/recovery wiring is
-complete. The filesystem and journal semantics below do not enable deletion by
-themselves. An explicit combined coordinator is described below.
+confirmed materialization records. Explicit durable serving now adds the combined
+terminal coordinator described below. Its complete exclusion and filesystem
+proof are required before deletion; Fleet deployment does not yet enable it.
 
 ## Ownership Contract
 
@@ -152,10 +152,38 @@ cannot share the journal lock.
 The JSON output reports local journal metadata, unproven inputs and retirement
 phase counts. Success is not readiness, Runtime epoch observation or writer
 drain. Preparation leaves INTENT/READY/RETIRED unchanged and never deletes
-scratch. Later serving startup must reacquire and validate the journal with
-complete trusted current Runtime bindings. Default Worker serving assembly and
-Fleet provisioning do not yet select this path. See
+scratch. Explicit durable serving reacquires and validates the journal with
+complete trusted current Runtime bindings. Fleet provisioning does not yet
+select this path. See
 [preparation evidence](../worker-journal-preparation-evidence-2026-09-06.md).
+
+## Explicit Durable Serving
+
+Configure all three settings together after independent first-use preparation:
+
+```sh
+VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE=/run/vela/launch.json
+VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY=/var/lib/vela/stage-worker/admission
+VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS=64
+```
+
+The manifest must be approved, private and visible in the Worker filesystem;
+the bound must equal the journal's original setting. Admission state must not
+overlap other Worker state or content roots. Startup preflights existing history
+before ordinary directory creation and Artifact Store configuration. Missing or
+incompatible history rejects; serving never initializes or upgrades it.
+
+The Leader binds complete observed member Runtime identities to approved launch
+routes and holds the admission lock through shutdown. It assembles terminal
+retirement with authenticated Control history and current floor readers. A
+follower opens its own journal without Leader recovery; retained assignment,
+floor or retirement history on a follower rejects. All three settings absent
+keeps the existing serving path, while partial settings reject.
+
+This configuration is not yet supplied by Fleet. Preserve the independent
+Runtime journal setup below; Worker configuration does not initialize Runtime
+history or prove stopped writers. See
+[Worker startup evidence](../worker-durable-startup-evidence-2026-09-06.md).
 
 ## Explicit Stream Reconciliation
 
@@ -171,7 +199,7 @@ and the Production discovery loop. A journal-delete failure leaves the permanent
 retirement proof available for retry. `TerminalRecordsRetired` is local cleanup,
 not a COMMIT/SOURCE_LOST confirmation; do not use it to generate billing or
 publication receipts. See [reconciliation evidence](../terminal-materialization-reconciliation-evidence-2026-09-06.md).
-Default command assembly does not yet enable this path.
+The explicit durable serving configuration enables this path on the Leader.
 
 Set `DurableStreamConfig.TerminalHistory` to the authenticated Control client to
 enable fresh collection in this recovery loop. It queries retained execution
@@ -229,8 +257,8 @@ It needs trusted launch/verifier files and a provisioned private directory, but
 no backend, Runtime epoch store or server socket. Only independently authorized
 first use may select initialization. Normal Runtime serving can select the same
 journal through `VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY` and always uses
-recovery; missing state never triggers initialization. Default deployment
-activation and durable Worker assembly remain incomplete.
+recovery; missing state never triggers initialization. Fleet first-use provisioning
+and default deployment activation remain incomplete.
 
 For an explicitly durable Runtime server, journal validation and locking now
 precede epoch allocation and model startup. Missing, corrupt, locked or

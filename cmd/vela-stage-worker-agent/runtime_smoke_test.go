@@ -533,14 +533,15 @@ type smokeControlFiles struct {
 }
 
 type smokeControlHandler struct {
-	identity     *velav1.ModelRuntimeIdentity
-	acquired     chan struct{}
-	once         sync.Once
-	mu           sync.Mutex
-	operations   []string
-	registration *velav1.RegisterWorkerEvidenceRequest
-	capacity     *velav1.ReportStageCapacityObservationRequest
-	acquire      *velav1.AcquireStageRequest
+	identity      *velav1.ModelRuntimeIdentity
+	acquired      chan struct{}
+	once          sync.Once
+	mu            sync.Mutex
+	operations    []string
+	registration  *velav1.RegisterWorkerEvidenceRequest
+	capacity      *velav1.ReportStageCapacityObservationRequest
+	acquire       *velav1.AcquireStageRequest
+	terminalQuery func(*velav1.ReadStageTerminalDispositionRequest) error
 }
 
 func (handler *smokeControlHandler) Handle(
@@ -555,6 +556,15 @@ func (handler *smokeControlHandler) Handle(
 	response := &velav1.StageWorkerControlServiceConnectResponse{RequestId: request.GetRequestId()}
 	handler.mu.Lock()
 	switch operation := request.GetOperation().(type) {
+	case *velav1.StageWorkerControlServiceConnectRequest_ReadStageTerminalDisposition:
+		handler.operations = append(handler.operations, "terminal")
+		if handler.terminalQuery == nil {
+			handler.mu.Unlock()
+			return nil, fmt.Errorf("unexpected terminal query in smoke Control")
+		}
+		err := handler.terminalQuery(operation.ReadStageTerminalDisposition)
+		handler.mu.Unlock()
+		return nil, err
 	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
 		handler.operations = append(handler.operations, "register")
 		handler.registration = proto.Clone(operation.RegisterWorkerEvidence).(*velav1.RegisterWorkerEvidenceRequest)

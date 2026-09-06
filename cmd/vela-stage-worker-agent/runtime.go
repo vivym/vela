@@ -45,6 +45,7 @@ type productionAuthorityConsumers struct {
 		stageworkeragent.MaterializationConfig,
 		stageworkeragent.InputResolver,
 	) (*stageworkeragent.StreamAgent, error)
+	newDurableAgent func(stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error)
 }
 
 type stageWorkerRuntime interface {
@@ -65,6 +66,7 @@ type productionRuntime struct {
 	memberServeErrors     chan error
 	memberShutdownTimeout time.Duration
 	state                 *stageworkeragent.FileProductionState
+	admission             *stageworkeragent.FileAssignmentAdmission
 }
 
 func runWithContext(ctx context.Context, configuration config) error {
@@ -111,7 +113,8 @@ func newProductionRuntimeUsing(
 		consumers.newMaterializingAgent == nil {
 		return nil, errors.New("stage worker production authority consumers are required")
 	}
-	if err := ensureStageWorkerDirectories(configuration); err != nil {
+	launch, err := loadDurableWorkerLaunch(configuration)
+	if err != nil {
 		return nil, err
 	}
 	keyring, err := stageauthority.ReadKeyringFile(configuration.authorityKeyringFile)
@@ -129,6 +132,17 @@ func newProductionRuntimeUsing(
 	stageAuthorityValidator, err := stageauthority.NewValidator(keyring, time.Now)
 	if err != nil {
 		return nil, fmt.Errorf("configure StageAuthority validator: %w", err)
+	}
+	if launch != nil {
+		if err := launch.preflight(ctx, stageAuthorityValidator); err != nil {
+			return nil, err
+		}
+		if consumers.newDurableAgent == nil {
+			consumers.newDurableAgent = stageworkeragent.NewDurableStreamAgent
+		}
+	}
+	if err := ensureStageWorkerDirectories(configuration); err != nil {
+		return nil, err
 	}
 	transferTicketSigner, err := stageartifact.NewTransferTicketKeyringSigner(
 		configuration.authorityActiveKeyID,
@@ -225,6 +239,11 @@ func newProductionRuntimeUsing(
 	)
 	if err != nil {
 		return fail(err)
+	}
+	if launch != nil {
+		if _, err := launch.bindMember(configuration.workerMemberID.String(), runtimeIdentities); err != nil {
+			return fail(err)
+		}
 	}
 	authorityMembers, memberBindings, localMember, err := configuredRuntimeMembers(configuration)
 	if err != nil {
@@ -336,9 +355,32 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(err)
 	}
-	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
-		Members: runtimeMembers,
-	})
+	runtimeConfig := stageworkeragent.Config{Members: runtimeMembers}
+	if launch != nil {
+		discoveryContext, cancel := context.WithTimeout(ctx, configuration.runtimeStartupTimeout)
+		bindings, floor, bindErr := launch.bindExecution(discoveryContext, runtimeMembers, runtimeIdentities)
+		cancel()
+		if bindErr != nil {
+			return fail(bindErr)
+		}
+		runtimeConfig.ExecutionFloor = floor
+		admission := launch.admission
+		admission.Bindings = bindings
+		runtime.admission, err = stageworkeragent.NewFileAssignmentAdmission(admission)
+		if err != nil {
+			return fail(fmt.Errorf("open durable Worker assignment admission: %w", err))
+		}
+		if !launch.leader {
+			history, err := runtime.admission.Snapshot(ctx)
+			if err != nil {
+				return fail(err)
+			}
+			if history.Latest != nil || len(history.Pending) != 0 || history.Floor != 0 || len(history.Retirements) != 0 {
+				return fail(errors.New("nonleader Worker cannot recover Leader assignment or retirement history"))
+			}
+		}
+	}
+	runtimeAgent, err := stageworkeragent.New(runtimeConfig)
 	if err != nil {
 		return fail(err)
 	}
@@ -391,21 +433,33 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(err)
 	}
-	stream, err := consumers.newMaterializingAgent(
-		runtimeAgent,
-		runtime.control,
-		stageworkeragent.MaterializationConfig{
-			Validator:               materializationValidator,
-			Source:                  outputSource,
-			Publisher:               publisher,
-			Journal:                 materializationJournal,
-			ScratchRetirer:          stageworkeragent.RetainScratchRetirer{},
-			OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
-			SourceLossEvidence:      sourceLossEvidenceProvider(configuration, time.Now),
-			MaxClockSkew:            authoritypolicy.ProductionMaxClockSkew,
-		},
-		inputResolver,
-	)
+	materialization := stageworkeragent.MaterializationConfig{
+		Validator:               materializationValidator,
+		Source:                  outputSource,
+		Publisher:               publisher,
+		Journal:                 materializationJournal,
+		ScratchRetirer:          stageworkeragent.RetainScratchRetirer{},
+		OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
+		SourceLossEvidence:      sourceLossEvidenceProvider(configuration, time.Now),
+		MaxClockSkew:            authoritypolicy.ProductionMaxClockSkew,
+	}
+	var stream *stageworkeragent.StreamAgent
+	if launch == nil {
+		stream, err = consumers.newMaterializingAgent(runtimeAgent, runtime.control, materialization, inputResolver)
+	} else {
+		durable := stageworkeragent.DurableStreamConfig{
+			Runtime: runtimeAgent, Control: runtime.control, Admission: runtime.admission,
+			InputResolver: inputResolver, Materialization: &materialization,
+		}
+		if launch.leader {
+			durable.TerminalRetirement, err = stageworkeragent.NewTerminalScratchRetirement(runtime.admission, runtimeAgent, materialization.OutputOwnershipContract)
+			if err != nil {
+				return fail(err)
+			}
+			durable.TerminalHistory = runtime.control
+		}
+		stream, err = consumers.newDurableAgent(durable)
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -501,6 +555,13 @@ func (runtime *productionRuntime) Close() error {
 	if runtime.inputJournal != nil {
 		closeErr = errors.Join(closeErr, runtime.inputJournal.Close())
 		runtime.inputJournal = nil
+	}
+	if runtime.admission != nil {
+		if err := runtime.admission.Close(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		} else {
+			runtime.admission = nil
+		}
 	}
 	if runtime.control != nil {
 		closeErr = errors.Join(closeErr, runtime.control.Close())
