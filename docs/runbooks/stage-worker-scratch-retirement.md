@@ -261,7 +261,7 @@ reconciliation, including when an RPC response or initializer outcome was lost.
 
 ## Authenticated Node Bootstrap
 
-Schema 92 and a Control deployment supplying `BootstrapService` are prerequisites.
+Schema 94 and a Control deployment supplying `BootstrapService` are prerequisites.
 The one-shot Node Agent command uses explicit configuration, independent of the
 root daemon and its device/remediation setup. The client certificate must contain
 exactly one canonical, registered Node Agent URI SAN with `ClientAuth` usage.
@@ -316,10 +316,10 @@ vela-node-agent bootstrap --action history \
 
 History takes no preparation settings and cannot issue permission or reconstruct
 missing local files. Its schema-1 JSON contains the original claim and optional
-journal pair, with digests/scopes as lowercase hex. Missing or differently owned
+journal pair or abandonment, with digests/scopes as lowercase hex. Missing or differently owned
 history exits unsuccessfully without a result. A successful query does not
 validate current local journal contents. Keep its evidence separate from the
-offline journal inspection and future lifetime-locked serving checks.
+offline journal inspection and lifetime-locked serving checks.
 
 ### Reconcile a Recorded Pair
 
@@ -343,20 +343,51 @@ command exits and cannot replace lifetime checks in the serving processes.
 | Complete local pair and original valid journals, receipt response missing | Repeat `prepare` to replay receipt recording |
 | Original operation/journals and complete Registry receipt, local pair missing | `reconcile-pair` restores only pair metadata |
 | Complete local and Registry pairs | `prepare` recovers and replays; `reconcile-pair` independently verifies without a Registry mutation |
-| Registry has no complete receipt and local pair is absent | Preserve state; first-initialization reconciliation/replacement authority remains required |
+| Registry has no complete receipt and local pair is absent | Preserve state; explicit `abandon` can terminate an unobserved first use without reinitializing it |
 | Missing operation/journal, corrupt or conflicting retained state | Preserve state; neither action resets or overwrites it |
+| Registry records abandonment | Inspect or replay `abandon`; completion and reinitialization under this claim are permanently forbidden |
 
 See [recorded-pair recovery evidence](../worker-bootstrap-reconciliation-evidence-2026-09-06.md).
+
+### Abandon an Incomplete First Use
+
+Use the `history` connection arguments above with `--action abandon` and the
+original `--request-id` when explicitly terminating an unfinished initialization.
+Only the original registered Node Agent principal can do this. Preparation
+paths, manifests and verifier options are rejected; the command preserves local
+operation files, partial journals and unresolved input/output state.
+
+The database atomically fences the unobserved Worker at original epoch + 1 and
+records a permanent abandonment. A recorded receipt or any history of Worker
+observation rejects this path. For an already-fenced but never-observed Worker,
+the same original fence epoch can terminate its remaining pending claims without
+incrementing the epoch again. Other pending member claims remain independently
+pending. Abandonment races with receipt recording under one lock order; only one
+outcome can commit. Quorum failure rolls back both fencing and abandonment.
+
+After response loss, use `history` or repeat `abandon` with the original request
+and principal. Successful replay preserves the original timestamp. A delayed
+`prepare` cannot complete an abandoned claim. An abandoned claim no longer blocks
+database-only quiescence, including while the recovery Admission gate is closed.
+
+This is not a cleanup or replacement command. Retain all local state and obtain
+independent initializer/writer/backend containment before any device reuse or
+filesystem reclamation. Replacement requires approved new Worker/member
+identities and isolated persistent namespaces. Loss of the original principal,
+already-observed Workers and missing containment evidence require separate
+recovery; do not reset files or grant new first use to bypass them. See the
+[bootstrap lifecycle contract](../specs/0053-worker-bootstrap-lifecycle.md) and
+[abandonment evidence](../worker-bootstrap-abandonment-evidence-2026-09-06.md).
 
 The default node daemon, systemd unit and recurring Fleet Pod init paths still
 do not invoke preparation. See
 [command verification](../node-bootstrap-command-evidence-2026-09-06.md).
 The [authenticated Fleet transport](../worker-bootstrap-transport-evidence-2026-09-06.md)
-now supplies node-bound claim/receipt methods and a read-only history lookup.
-History lookup never grants initialization. Apply schema 92 first and use the
+supplies node-bound claim/receipt/abandonment methods and a read-only history lookup.
+History lookup never grants initialization. Apply schema 94 first and use the
 original registered Node Agent actor to inspect or report its operation.
-The actual node bootstrap command and Fleet activation remain unfinished. Its
-receipt reports inspected journal identity, not writer drain or readiness.
+Fleet durable activation remains unfinished. The preparation receipt reports
+inspected journal identity, not writer drain or readiness.
 
 The [authenticated member discovery RPC](../member-discovery-evidence-2026-09-06.md)
 can observe current remote Runtime identities before assignment or readiness.

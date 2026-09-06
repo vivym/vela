@@ -501,6 +501,17 @@ with PostgreSQL/TLS lock probes, post-commit timeout/SIGTERM recovery, full unit
 related race/lint and Linux non-root checks pass. Schema remains 93; preparation
 still grants no serving or drain authority, and unrecorded first initialization
 and the remaining lifecycle work stay open.
+The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
+adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).
+The original authenticated Node Agent can permanently reject an unrecorded claim
+for a never-observed Worker while atomically fencing it. Receipt recording and
+abandonment have one lock order and mutually exclusive outcomes; neither repeats
+initialization. Exact replay survives response loss and preserves uncertain
+local state. Database quiescence can finish after terminal rejection. PostgreSQL,
+compiled Node/TLS, race-enabled Registry/recovery, independent database restore,
+full unit and lint checks pass. Physical containment/replacement, durable Fleet
+activation and remaining scratch lifecycle work are still open; Production
+Gates remain `0/9`.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

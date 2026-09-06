@@ -21,6 +21,8 @@ service FleetMaintenanceService {
       returns (LookupWorkerBootstrapResponse);
   rpc LookupWorkerBootstrapBinding(LookupWorkerBootstrapBindingRequest)
       returns (LookupWorkerBootstrapBindingResponse);
+  rpc AbandonWorkerBootstrap(AbandonWorkerBootstrapRequest)
+      returns (AbandonWorkerBootstrapResponse);
 }
 
 message ClaimWorkerBootstrapRequest {
@@ -79,6 +81,22 @@ message LookupWorkerBootstrapRequest {
 message LookupWorkerBootstrapResponse {
   WorkerBootstrapClaim claim = 1;
   WorkerBootstrapJournalPair pair = 2;
+  WorkerBootstrapAbandonment abandonment = 3;
+}
+
+// Permanent rejection of completion, not local process drain or replacement permission.
+message WorkerBootstrapAbandonment {
+  int64 fenced_instance_epoch = 1;
+  google.protobuf.Timestamp abandoned_at = 2;
+}
+
+message AbandonWorkerBootstrapRequest {
+  string request_id = 1;
+}
+
+message AbandonWorkerBootstrapResponse {
+  WorkerBootstrapClaim claim = 1;
+  WorkerBootstrapAbandonment abandonment = 2;
 }
 
 // Immutable journal identity evidence, not current readiness or execution authority.

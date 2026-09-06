@@ -45,7 +45,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	}
 	flags := flag.NewFlagSet("vela-node-agent bootstrap", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	action := flags.String("action", "", "prepare, reconcile-pair, history, or binding")
+	action := flags.String("action", "", "prepare, reconcile-pair, history, binding, or abandon")
 	address := flags.String("fleet-address", "", "Fleet host and port")
 	serverName := flags.String("fleet-server-name", "", "Fleet TLS server name")
 	caPath := flags.String("fleet-ca-file", "", "Fleet server CA file")
@@ -58,7 +58,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	bindingVerifierPath := flags.String("binding-verifier-keyring-file", "", "public Registry journal binding verifier keyring file")
 	directory := flags.String("scratch-directory", "", "preprovisioned private scratch mount")
 	maxRecords := flags.Int("max-records", 0, "bound on retained Worker history (1-64)")
-	request := flags.String("request-id", "", "original bootstrap request UUID for history")
+	request := flags.String("request-id", "", "original bootstrap request UUID")
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -77,7 +77,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	switch *action {
 	case "prepare", "reconcile-pair":
 		if *request != "" || *bindingVerifierPath != "" || *bundlePath == "" || *launchPath == "" || *verifierPath == "" || *directory == "" || *maxRecords < 1 || *maxRecords > 64 {
-			return errors.New("prepare/reconcile-pair requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file, scratch-directory and max-records; request-id is reserved for history")
+			return errors.New("prepare/reconcile-pair requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file, scratch-directory and max-records; request-id is reserved for history/binding/abandon")
 		}
 		wire, err := securefile.Read(*bundlePath, fleet.MaximumWorkerBootstrapManifestBytes, true)
 		if err != nil {
@@ -101,13 +101,13 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			return err
 		}
 		config.ScratchDirectory, config.MaxRecords = *directory, *maxRecords
-	case "history", "binding":
+	case "history", "binding", "abandon":
 		var err error
 		requestID, err = uuid.Parse(*request)
 		if err != nil || requestID == uuid.Nil || requestID.String() != *request ||
 			*bundlePath != "" || *launchPath != "" || *verifierPath != "" || *directory != "" || *maxRecords != 0 ||
 			(*action == "binding") != (*bindingVerifierPath != "") {
-			return errors.New("history/binding requires a canonical nonzero request-id and no local preparation settings; binding also requires binding-verifier-keyring-file")
+			return errors.New("history/binding/abandon requires a canonical nonzero request-id and no local preparation settings; binding also requires binding-verifier-keyring-file")
 		}
 		if *action == "binding" {
 			bindingVerifier, err = journalbinding.ReadVerifierFile(*bindingVerifierPath)
@@ -116,7 +116,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			}
 		}
 	default:
-		return errors.New("bootstrap action must be prepare, reconcile-pair, history, or binding")
+		return errors.New("bootstrap action must be prepare, reconcile-pair, history, binding, or abandon")
 	}
 	transport, identity, err := fleettransport.NewWorkerBootstrapTLSCredentials(*certificatePath, *keyPath, *caPath, *serverName)
 	if err != nil {
@@ -133,12 +133,22 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	if err != nil {
 		return err
 	}
-	if *action == "history" {
-		history, err := authority.LookupWorkerBootstrap(ctx, requestID)
+	if *action == "history" || *action == "abandon" {
+		var history fleet.WorkerBootstrapHistory
+		if *action == "abandon" {
+			history, err = authority.AbandonWorkerBootstrap(ctx, requestID)
+		} else {
+			history, err = authority.LookupWorkerBootstrap(ctx, requestID)
+		}
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(stdout).Encode(bootstrapHistoryOutput(history))
+		if err := context.Cause(ctx); err != nil {
+			return err
+		}
+		result := bootstrapHistoryOutput(history)
+		result.Action = *action
+		return json.NewEncoder(stdout).Encode(result)
 	}
 	if *action == "binding" {
 		binding, err := authority.LookupWorkerBootstrapBinding(ctx, requestID, bindingVerifier)
@@ -190,6 +200,12 @@ type bootstrapHistory struct {
 	BundleDigest        string                `json:"bundle_digest"`
 	ClaimedAt           time.Time             `json:"claimed_at"`
 	Pair                *bootstrapHistoryPair `json:"pair,omitempty"`
+	Abandonment         *bootstrapAbandonment `json:"abandonment,omitempty"`
+}
+
+type bootstrapAbandonment struct {
+	FencedInstanceEpoch int64     `json:"fenced_instance_epoch"`
+	AbandonedAt         time.Time `json:"abandoned_at"`
 }
 
 type bootstrapHistoryPair struct {
@@ -210,6 +226,9 @@ func bootstrapHistoryOutput(history fleet.WorkerBootstrapHistory) bootstrapHisto
 	if pair := history.Receipt; pair != nil {
 		result.Pair = &bootstrapHistoryPair{WorkerJournalID: pair.WorkerJournalID, WorkerScope: hex.EncodeToString(pair.WorkerScope),
 			RuntimeJournalID: pair.RuntimeJournalID, RuntimeScope: hex.EncodeToString(pair.RuntimeScope), RecordedAt: history.RecordedAt}
+	}
+	if abandonment := history.Abandonment; abandonment != nil {
+		result.Abandonment = &bootstrapAbandonment{FencedInstanceEpoch: abandonment.FencedInstanceEpoch, AbandonedAt: abandonment.AbandonedAt}
 	}
 	return result
 }

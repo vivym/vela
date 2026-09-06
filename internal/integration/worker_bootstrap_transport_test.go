@@ -89,7 +89,7 @@ func TestWorkerBootstrapHistoryIsReadOnlyAndPrincipalScoped(t *testing.T) {
 	if err := goose.DownTo(database.Admin, migrations, 91); err != nil {
 		t.Fatal(err)
 	}
-	if err := goose.UpTo(database.Admin, migrations, 92); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 94); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := service.LookupWorkerBootstrap(t.Context(), lookup)

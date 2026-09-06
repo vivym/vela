@@ -26,6 +26,7 @@ type WorkerBootstrapService interface {
 	ClaimWorkerBootstrap(context.Context, fleet.WorkerBootstrapRequest) (fleet.WorkerBootstrapClaim, error)
 	RecordWorkerBootstrapReceipt(context.Context, fleet.WorkerBootstrapReceipt) (time.Time, error)
 	LookupWorkerBootstrap(context.Context, fleet.WorkerBootstrapLookup) (fleet.WorkerBootstrapHistory, error)
+	AbandonWorkerBootstrap(context.Context, fleet.WorkerBootstrapLookup) (fleet.WorkerBootstrapHistory, error)
 }
 
 func (server *Server) authenticateBootstrap(ctx context.Context) (nodeAgentPrincipal, error) {
@@ -122,7 +123,34 @@ func (server *Server) LookupWorkerBootstrap(ctx context.Context, request *velav1
 	if history.Receipt != nil {
 		result.Pair = encodeBootstrapPair(*history.Receipt, history.RecordedAt)
 	}
+	if history.Abandonment != nil {
+		result.Abandonment = encodeBootstrapAbandonment(*history.Abandonment)
+	}
 	return result, nil
+}
+
+func (server *Server) AbandonWorkerBootstrap(ctx context.Context, request *velav1.AbandonWorkerBootstrapRequest) (*velav1.AbandonWorkerBootstrapResponse, error) {
+	principal, err := server.authenticateBootstrap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !knownBootstrapMessage(request) {
+		return nil, invalidRequest("Worker bootstrap abandonment")
+	}
+	requestID, err := bootstrapUUID(request.GetRequestId())
+	if err != nil {
+		return nil, invalidRequest("Worker bootstrap abandonment")
+	}
+	history, err := server.bootstrap.AbandonWorkerBootstrap(ctx, fleet.WorkerBootstrapLookup{
+		RequestID: requestID, NodeIdentity: principal.NodeIdentity, ActorIdentity: principal.actorIdentity()})
+	if err != nil {
+		return nil, mapServiceError("abandon Worker bootstrap", err)
+	}
+	if !validBootstrapHistory(history, requestID, principal) || history.Abandonment == nil {
+		return nil, invalidAuthoritativeResult("Worker bootstrap abandonment")
+	}
+	return &velav1.AbandonWorkerBootstrapResponse{Claim: encodeBootstrapClaim(history.Claim, history.ActorIdentity),
+		Abandonment: encodeBootstrapAbandonment(*history.Abandonment)}, nil
 }
 
 func (server *Server) LookupWorkerBootstrapBinding(ctx context.Context, request *velav1.LookupWorkerBootstrapBindingRequest) (*velav1.LookupWorkerBootstrapBindingResponse, error) {
@@ -163,14 +191,30 @@ func (server *Server) lookupBootstrap(ctx context.Context, requestID uuid.UUID, 
 	if err != nil {
 		return fleet.WorkerBootstrapHistory{}, mapServiceError("lookup Worker bootstrap", err)
 	}
+	if !validBootstrapHistory(history, requestID, principal) {
+		return fleet.WorkerBootstrapHistory{}, invalidAuthoritativeResult("Worker bootstrap history")
+	}
+	return history, nil
+}
+
+func validBootstrapHistory(history fleet.WorkerBootstrapHistory, requestID uuid.UUID, principal nodeAgentPrincipal) bool {
 	if history.Claim.Fresh || history.Claim.RequestID != requestID || history.Claim.NodeIdentity != principal.NodeIdentity ||
 		history.ActorIdentity != principal.actorIdentity() || !validBootstrapClaim(history.Claim) ||
 		history.Receipt == nil && !history.RecordedAt.IsZero() || history.Receipt != nil &&
 		(!validBootstrapReceipt(*history.Receipt) || history.Receipt.RequestID != requestID || history.Receipt.ActorIdentity != history.ActorIdentity ||
 			!validBootstrapTime(timestamppb.New(history.RecordedAt))) {
-		return fleet.WorkerBootstrapHistory{}, invalidAuthoritativeResult("Worker bootstrap history")
+		return false
 	}
-	return history, nil
+	return history.Abandonment == nil || history.Receipt == nil && validBootstrapAbandonment(*history.Abandonment, history.Claim)
+}
+
+func validBootstrapAbandonment(value fleet.WorkerBootstrapAbandonment, claim fleet.WorkerBootstrapClaim) bool {
+	return value.FencedInstanceEpoch > claim.WorkerInstanceEpoch && value.FencedInstanceEpoch-claim.WorkerInstanceEpoch == 1 &&
+		validBootstrapTime(timestamppb.New(value.AbandonedAt))
+}
+
+func encodeBootstrapAbandonment(value fleet.WorkerBootstrapAbandonment) *velav1.WorkerBootstrapAbandonment {
+	return &velav1.WorkerBootstrapAbandonment{FencedInstanceEpoch: value.FencedInstanceEpoch, AbandonedAt: timestamppb.New(value.AbandonedAt)}
 }
 
 func bootstrapTarget(request fleet.WorkerBootstrapRequest) (fleet.WorkerBootstrapClaim, error) {

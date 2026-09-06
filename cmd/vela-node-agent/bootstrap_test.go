@@ -29,6 +29,10 @@ func TestBootstrapCommandRejectsAmbiguousActionsBeforeTransport(t *testing.T) {
 		{"--action", "binding", "--request-id", uuid.NewString()},
 		{"--action", "binding", "--request-id", uuid.NewString(), "--binding-verifier-keyring-file", "/unused", "--scratch-directory", "/unused"},
 		{"--action", "history", "--request-id", uuid.NewString(), "--binding-verifier-keyring-file", "/unused"},
+		{"--action", "abandon"},
+		{"--action", "abandon", "--request-id", uuid.Nil.String()},
+		{"--action", "abandon", "--request-id", uuid.NewString(), "--scratch-directory", "/unused"},
+		{"--action", "abandon", "--request-id", uuid.NewString(), "--binding-verifier-keyring-file", "/unused"},
 	} {
 		var output bytes.Buffer
 		args := append([]string{"bootstrap"}, connection...)

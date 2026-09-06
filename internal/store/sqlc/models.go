@@ -7214,6 +7214,12 @@ type WebhookSubscriptionSecret struct {
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type WorkerBootstrapAbandonment struct {
+	RequestID           uuid.UUID          `db:"request_id" json:"request_id"`
+	FencedInstanceEpoch int64              `db:"fenced_instance_epoch" json:"fenced_instance_epoch"`
+	AbandonedAt         pgtype.Timestamptz `db:"abandoned_at" json:"abandoned_at"`
+}
+
 type WorkerBootstrapClaim struct {
 	RequestID           uuid.UUID          `db:"request_id" json:"request_id"`
 	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`

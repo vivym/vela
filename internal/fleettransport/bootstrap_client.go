@@ -101,6 +101,46 @@ func (client *BootstrapClient) LookupWorkerBootstrap(ctx context.Context, reques
 		}
 		result.Receipt, result.RecordedAt = &receipt, recordedAt
 	}
+	if response.GetAbandonment() != nil {
+		abandonment, err := decodeBootstrapAbandonment(response.GetAbandonment(), claim)
+		if err != nil || result.Receipt != nil {
+			return fleet.WorkerBootstrapHistory{}, errors.New("worker bootstrap history contains an invalid terminal outcome")
+		}
+		result.Abandonment = &abandonment
+	}
+	return result, nil
+}
+
+func (client *BootstrapClient) AbandonWorkerBootstrap(ctx context.Context, requestID uuid.UUID) (fleet.WorkerBootstrapHistory, error) {
+	if !client.configured(ctx) || requestID == uuid.Nil {
+		return fleet.WorkerBootstrapHistory{}, errors.New("worker bootstrap abandonment request is invalid")
+	}
+	response, err := client.service.AbandonWorkerBootstrap(ctx, &velav1.AbandonWorkerBootstrapRequest{RequestId: requestID.String()})
+	if err != nil {
+		return fleet.WorkerBootstrapHistory{}, err
+	}
+	if !knownBootstrapMessage(response) {
+		return fleet.WorkerBootstrapHistory{}, errors.New("worker bootstrap abandonment response is invalid")
+	}
+	claim, err := client.decodeClaim(response.GetClaim())
+	if err != nil || claim.RequestID != requestID {
+		return fleet.WorkerBootstrapHistory{}, errors.New("worker bootstrap abandonment changed the requested identity")
+	}
+	abandonment, err := decodeBootstrapAbandonment(response.GetAbandonment(), claim)
+	if err != nil {
+		return fleet.WorkerBootstrapHistory{}, err
+	}
+	return fleet.WorkerBootstrapHistory{Claim: claim, ActorIdentity: client.ActorIdentity(), Abandonment: &abandonment}, nil
+}
+
+func decodeBootstrapAbandonment(value *velav1.WorkerBootstrapAbandonment, claim fleet.WorkerBootstrapClaim) (fleet.WorkerBootstrapAbandonment, error) {
+	if !knownBootstrapMessage(value) || !validBootstrapTime(value.GetAbandonedAt()) {
+		return fleet.WorkerBootstrapAbandonment{}, errors.New("worker bootstrap abandonment metadata is invalid")
+	}
+	result := fleet.WorkerBootstrapAbandonment{FencedInstanceEpoch: value.GetFencedInstanceEpoch(), AbandonedAt: value.GetAbandonedAt().AsTime()}
+	if !validBootstrapAbandonment(result, claim) {
+		return fleet.WorkerBootstrapAbandonment{}, errors.New("worker bootstrap abandonment has an invalid fence epoch")
+	}
 	return result, nil
 }
 

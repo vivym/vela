@@ -108,7 +108,7 @@ func reconcileRecordedPair(ctx context.Context, config Config, reader HistoryRea
 }
 
 func (p preparation) recordedPair(history fleet.WorkerBootstrapHistory) (journalPair, error) {
-	if history.Claim.Fresh || !p.matchesClaim(history.Claim) || history.ActorIdentity != p.config.ActorIdentity {
+	if history.Claim.Fresh || !p.matchesClaim(history.Claim) || history.ActorIdentity != p.config.ActorIdentity || history.Abandonment != nil {
 		return journalPair{}, errors.New("worker bootstrap history differs from retained operation")
 	}
 	receipt := history.Receipt

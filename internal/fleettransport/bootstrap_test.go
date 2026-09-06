@@ -176,6 +176,7 @@ type bootstrapServiceStub struct {
 	recordedAt   time.Time
 	claimCalls   int
 	receiptCalls int
+	abandonment  *fleet.WorkerBootstrapAbandonment
 }
 
 func (service *bootstrapServiceStub) ClaimWorkerBootstrap(_ context.Context, request fleet.WorkerBootstrapRequest) (fleet.WorkerBootstrapClaim, error) {
@@ -203,6 +204,9 @@ func (service *bootstrapServiceStub) RecordWorkerBootstrapReceipt(_ context.Cont
 	if request.RequestID != service.claim.RequestID || request.ActorIdentity != service.actor {
 		return time.Time{}, &fleet.Failure{Code: fleet.FailureNotFound}
 	}
+	if service.abandonment != nil {
+		return time.Time{}, &fleet.Failure{Code: fleet.FailureConflict}
+	}
 	if service.receipt == nil {
 		service.receipt, service.recordedAt = &request, time.Now().UTC()
 	} else if !reflect.DeepEqual(*service.receipt, request) {
@@ -219,7 +223,24 @@ func (service *bootstrapServiceStub) LookupWorkerBootstrap(_ context.Context, re
 	}
 	claim := service.claim
 	claim.Fresh = false
-	return fleet.WorkerBootstrapHistory{Claim: claim, ActorIdentity: service.actor, Receipt: service.receipt, RecordedAt: service.recordedAt}, nil
+	return fleet.WorkerBootstrapHistory{Claim: claim, ActorIdentity: service.actor, Receipt: service.receipt, RecordedAt: service.recordedAt, Abandonment: service.abandonment}, nil
+}
+
+func (service *bootstrapServiceStub) AbandonWorkerBootstrap(ctx context.Context, request fleet.WorkerBootstrapLookup) (fleet.WorkerBootstrapHistory, error) {
+	history, err := service.LookupWorkerBootstrap(ctx, request)
+	if err != nil {
+		return fleet.WorkerBootstrapHistory{}, err
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.receipt != nil {
+		return fleet.WorkerBootstrapHistory{}, &fleet.Failure{Code: fleet.FailureConflict}
+	}
+	if service.abandonment == nil {
+		service.abandonment = &fleet.WorkerBootstrapAbandonment{FencedInstanceEpoch: service.claim.WorkerInstanceEpoch + 1, AbandonedAt: time.Now().UTC()}
+	}
+	history.Abandonment = service.abandonment
+	return history, nil
 }
 
 type bootstrapRPCStub struct {

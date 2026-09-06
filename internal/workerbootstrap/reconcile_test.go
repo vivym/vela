@@ -116,7 +116,7 @@ func TestReconcileCannotCreateAuthorityOrCompleteUnrecordedInitialization(t *tes
 }
 
 func TestReconcileRejectsMismatchedOrUnrecordedRegistryHistory(t *testing.T) {
-	for _, fault := range []string{"permission", "request", "worker", "member", "epoch", "node", "actor", "digest", "unrecorded", "receipt-actor", "receipt-request", "worker-journal", "runtime-scope", "empty-scope", "timestamp"} {
+	for _, fault := range []string{"permission", "request", "worker", "member", "epoch", "node", "actor", "digest", "unrecorded", "abandoned", "receipt-actor", "receipt-request", "worker-journal", "runtime-scope", "empty-scope", "timestamp"} {
 		t.Run(fault, func(t *testing.T) {
 			config, registry := bootstrapFixture(t)
 			_, err := Prepare(t.Context(), config, registry)
@@ -142,6 +142,8 @@ func TestReconcileRejectsMismatchedOrUnrecordedRegistryHistory(t *testing.T) {
 				history.Claim.BundleDigest[0] ^= 0xff
 			case "unrecorded":
 				history.Receipt = nil
+			case "abandoned":
+				history.Abandonment = &fleet.WorkerBootstrapAbandonment{FencedInstanceEpoch: 2, AbandonedAt: time.Now()}
 			case "receipt-actor":
 				history.Receipt.ActorIdentity = "other-agent"
 			case "receipt-request":

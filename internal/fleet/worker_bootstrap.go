@@ -51,6 +51,14 @@ type WorkerBootstrapHistory struct {
 	ActorIdentity string
 	Receipt       *WorkerBootstrapReceipt
 	RecordedAt    time.Time
+	Abandonment   *WorkerBootstrapAbandonment
+}
+
+// WorkerBootstrapAbandonment permanently rejects receipt completion. It does
+// not prove local process termination or authorize scratch/device reclamation.
+type WorkerBootstrapAbandonment struct {
+	FencedInstanceEpoch int64
+	AbandonedAt         time.Time
 }
 
 // LookupWorkerBootstrap observes immutable history without acquiring permission.
@@ -66,16 +74,19 @@ func (service *Service) LookupWorkerBootstrap(ctx context.Context, request Worke
 	var workerID, runtimeID *uuid.UUID
 	var workerScope, runtimeScope []byte
 	var recordedAt *time.Time
+	var abandonedAt *time.Time
+	var fencedEpoch *int64
 	err := service.registryPool.QueryRow(ctx, `
 		SELECT request_id, worker_instance_id, worker_instance_epoch, worker_member_id, worker_member_epoch,
 		       node_identity, bundle_digest, claimed_at, actor_identity,
-		       worker_journal_id, worker_scope, runtime_journal_id, runtime_scope, recorded_at
-		FROM vela_lookup_worker_bootstrap($1, $2, $3)
+		       worker_journal_id, worker_scope, runtime_journal_id, runtime_scope, recorded_at,
+		       fenced_instance_epoch, abandoned_at
+		FROM vela_lookup_worker_bootstrap_v2($1, $2, $3)
 	`, request.RequestID, request.NodeIdentity, request.ActorIdentity).Scan(
 		&result.Claim.RequestID, &result.Claim.WorkerInstanceID, &result.Claim.WorkerInstanceEpoch,
 		&result.Claim.WorkerMemberID, &result.Claim.WorkerMemberEpoch, &result.Claim.NodeIdentity,
 		&result.Claim.BundleDigest, &result.Claim.ClaimedAt, &result.ActorIdentity,
-		&workerID, &workerScope, &runtimeID, &runtimeScope, &recordedAt)
+		&workerID, &workerScope, &runtimeID, &runtimeScope, &recordedAt, &fencedEpoch, &abandonedAt)
 	if err != nil {
 		return WorkerBootstrapHistory{}, mapDatabaseError("lookup Worker bootstrap", err)
 	}
@@ -86,7 +97,37 @@ func (service *Service) LookupWorkerBootstrap(ctx context.Context, request Worke
 	} else if workerID != nil || runtimeID != nil || recordedAt != nil || workerScope != nil || runtimeScope != nil {
 		return WorkerBootstrapHistory{}, errors.New("worker bootstrap history contains an incomplete receipt")
 	}
+	if fencedEpoch != nil && abandonedAt != nil && result.Receipt == nil &&
+		*fencedEpoch > result.Claim.WorkerInstanceEpoch && *fencedEpoch-result.Claim.WorkerInstanceEpoch == 1 && !abandonedAt.IsZero() {
+		result.Abandonment = &WorkerBootstrapAbandonment{FencedInstanceEpoch: *fencedEpoch, AbandonedAt: *abandonedAt}
+	} else if fencedEpoch != nil || abandonedAt != nil {
+		return WorkerBootstrapHistory{}, errors.New("worker bootstrap history contains invalid abandonment")
+	}
 	return result, nil
+}
+
+// AbandonWorkerBootstrap fences only unobserved first-use authority and records
+// an immutable terminal outcome. It never grants another initialization.
+func (service *Service) AbandonWorkerBootstrap(ctx context.Context, request WorkerBootstrapLookup) (WorkerBootstrapHistory, error) {
+	if service == nil || service.registryPool == nil {
+		return WorkerBootstrapHistory{}, errors.New("fleet service is not configured")
+	}
+	if request.RequestID == uuid.Nil || !validText(request.NodeIdentity, 253) || !validText(request.ActorIdentity, 500) {
+		return WorkerBootstrapHistory{}, &Failure{Code: FailureInvalid, Message: "Worker bootstrap abandonment is invalid"}
+	}
+	var abandonedAt time.Time
+	if err := service.registryPool.QueryRow(ctx, `SELECT vela_abandon_worker_bootstrap($1, $2, $3)`,
+		request.RequestID, request.NodeIdentity, request.ActorIdentity).Scan(&abandonedAt); err != nil {
+		return WorkerBootstrapHistory{}, mapDatabaseError("abandon Worker bootstrap", err)
+	}
+	history, err := service.LookupWorkerBootstrap(ctx, request)
+	if err != nil {
+		return WorkerBootstrapHistory{}, err
+	}
+	if history.Abandonment == nil || !history.Abandonment.AbandonedAt.Equal(abandonedAt) {
+		return WorkerBootstrapHistory{}, errors.New("worker bootstrap abandonment has no matching committed history")
+	}
+	return history, nil
 }
 
 // ClaimWorkerBootstrap consumes first-use authority before any local journal
