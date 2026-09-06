@@ -62,7 +62,8 @@ type preparation struct {
 // Prepare allows initialization only after creating a durable local operation
 // and receiving a fresh committed claim in this invocation. A retained operation
 // never repeats initialization, even when its claim response or files were lost.
-// Complete pairs are independently recovered before every receipt replay.
+// Complete pairs are independently recovered and remain exclusively held through
+// receipt recording/replay and final file-binding checks.
 func Prepare(ctx context.Context, config Config, authority Authority) (Result, error) {
 	return prepare(ctx, config, authority, nil)
 }
@@ -156,42 +157,40 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 		return Result{}, err
 	}
 	p.worker.Initialize = false
-	worker, err := stageworkeragent.PrepareAssignmentJournal(ctx, p.worker)
-	if err != nil {
-		return Result{}, fmt.Errorf("recover recorded Worker journal: %w", err)
-	}
-	runtime, err := modelruntime.PrepareExecutionJournal(ctx, p.launch, config.Validator,
-		modelruntime.ExecutionFloorStateConfig{Directory: local.paths[runtimeRoot]})
-	if err != nil {
-		return Result{}, fmt.Errorf("recover recorded Runtime journal: %w", err)
-	}
-	if worker.JournalID != pair.WorkerID || worker.Scope != pair.WorkerScope ||
-		runtime.JournalID != pair.RuntimeID || runtime.Scope != pair.RuntimeScope {
-		return Result{}, errors.New("worker bootstrap journal pair was replaced")
-	}
-	if err := checkpoint("pair-recovered"); err != nil {
-		return Result{}, err
-	}
-	if err := local.validate(); err != nil {
-		return Result{}, err
-	}
-	recordedAt, err := authority.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{
-		RequestID: pair.RequestID, WorkerJournalID: pair.WorkerID, WorkerScope: bytes.Clone(pair.WorkerScope[:]),
-		RuntimeJournalID: pair.RuntimeID, RuntimeScope: bytes.Clone(pair.RuntimeScope[:]), ActorIdentity: config.ActorIdentity,
+	err = stageworkeragent.WithPreparedAssignmentJournal(ctx, p.worker, func(worker stageworkeragent.AssignmentJournalStatus) error {
+		return modelruntime.WithPreparedExecutionJournal(ctx, p.launch, config.Validator,
+			modelruntime.ExecutionFloorStateConfig{Directory: local.paths[runtimeRoot]}, func(runtime modelruntime.ExecutionJournalStatus) error {
+				if worker.JournalID != pair.WorkerID || worker.Scope != pair.WorkerScope ||
+					runtime.JournalID != pair.RuntimeID || runtime.Scope != pair.RuntimeScope {
+					return errors.New("worker bootstrap journal pair was replaced")
+				}
+				if err := checkpoint("pair-recovered"); err != nil {
+					return err
+				}
+				if err := local.validate(); err != nil {
+					return err
+				}
+				recordedAt, err := authority.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{
+					RequestID: pair.RequestID, WorkerJournalID: pair.WorkerID, WorkerScope: bytes.Clone(pair.WorkerScope[:]),
+					RuntimeJournalID: pair.RuntimeID, RuntimeScope: bytes.Clone(pair.RuntimeScope[:]), ActorIdentity: config.ActorIdentity,
+				})
+				if err != nil {
+					return fmt.Errorf("record Worker bootstrap pair: %w", err)
+				}
+				if recordedAt.IsZero() {
+					return errors.New("worker bootstrap receipt has no committed timestamp")
+				}
+				if err := checkpoint("receipt-committed"); err != nil {
+					return err
+				}
+				if err := local.validate(); err != nil {
+					return err
+				}
+				result = Result{RequestID: pair.RequestID, Worker: worker, Runtime: runtime, RecordedAt: recordedAt}
+				return nil
+			})
 	})
-	if err != nil {
-		return Result{}, fmt.Errorf("record Worker bootstrap pair: %w", err)
-	}
-	if recordedAt.IsZero() {
-		return Result{}, errors.New("worker bootstrap receipt has no committed timestamp")
-	}
-	if err := checkpoint("receipt-committed"); err != nil {
-		return Result{}, err
-	}
-	if err := local.validate(); err != nil {
-		return Result{}, err
-	}
-	return Result{RequestID: pair.RequestID, Worker: worker, Runtime: runtime, RecordedAt: recordedAt}, nil
+	return result, err
 }
 
 func bind(config Config) (preparation, error) {

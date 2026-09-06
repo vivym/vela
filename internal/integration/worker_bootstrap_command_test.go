@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +41,8 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 		{name: "lost-receipt", method: velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName},
 		{name: "claim-timeout", method: velav1.FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName, interruption: "timeout"},
 		{name: "claim-sigterm", method: velav1.FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName, interruption: "signal"},
+		{name: "receipt-timeout", method: velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName, interruption: "timeout"},
+		{name: "receipt-sigterm", method: velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName, interruption: "signal"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			lostMethod := scenario.method
@@ -47,14 +51,23 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 			var claimCalls atomic.Int32
 			var receiptCalls atomic.Int32
 			committed := make(chan struct{})
+			preparation, scratch := workerBootstrapCommandFiles(t, request)
 			clients := bootstrapMutualTLSClients(t, service, func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 				if info.FullMethod == velav1.FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName {
 					claimCalls.Add(1)
 				}
 				if info.FullMethod == velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName {
 					receiptCalls.Add(1)
+					if err := bootstrapCommandJournalLocksHeld(scratch); err != nil {
+						return nil, status.Error(codes.Internal, err.Error())
+					}
 				}
 				response, err := handler(ctx, req)
+				if err == nil && info.FullMethod == velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName {
+					if err := bootstrapCommandJournalLocksHeld(scratch); err != nil {
+						return nil, status.Error(codes.Internal, err.Error())
+					}
+				}
 				if err == nil && info.FullMethod == lostMethod && dropped.CompareAndSwap(false, true) {
 					if scenario.interruption != "" {
 						close(committed)
@@ -65,7 +78,6 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				}
 				return response, err
 			})
-			preparation, scratch := workerBootstrapCommandFiles(t, request)
 			reconciliation := append([]string(nil), preparation...)
 			reconciliation[1] = "reconcile-pair"
 			invoke := func(principal int, args ...string) ([]byte, error) {
@@ -235,6 +247,21 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func bootstrapCommandJournalLocksHeld(scratch string) error {
+	for _, name := range []string{"worker-admission/assignment-admission.lock", "runtime-admission/execution-admission.lock"} {
+		lock, err := os.OpenFile(filepath.Join(scratch, name), os.O_RDWR, 0)
+		if err != nil {
+			return err
+		}
+		lockErr := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		closeErr := lock.Close()
+		if !errors.Is(lockErr, syscall.EWOULDBLOCK) || closeErr != nil {
+			return fmt.Errorf("Node Agent did not retain journal lock %s: lock=%v close=%v", name, lockErr, closeErr)
+		}
+	}
+	return nil
 }
 
 func workerBootstrapCommandFiles(t *testing.T, request fleet.WorkerBootstrapRequest) ([]string, string) {

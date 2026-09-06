@@ -493,6 +493,14 @@ rejection leaves the original claim completable, valid replay preserves its
 timestamp, and migration rejects invalid history without rewriting it. The
 bootstrap PostgreSQL/TLS suite, full unit suite, transport race and lint checks
 pass. Remaining lifecycle work and Production Gates `0/9` are unchanged.
+The [bootstrap receipt ownership repair](worker-bootstrap-receipt-locks-evidence-2026-09-06.md)
+retains both actual journal locks through receipt recording/replay and validates
+each binding before release. CPU counterexamples reproduced unlocked recording and successful
+results after state-file replacement. Fixed regressions, actual Node processes
+with PostgreSQL/TLS lock probes, post-commit timeout/SIGTERM recovery, full unit,
+related race/lint and Linux non-root checks pass. Schema remains 93; preparation
+still grants no serving or drain authority, and unrecorded first initialization
+and the remaining lifecycle work stay open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
