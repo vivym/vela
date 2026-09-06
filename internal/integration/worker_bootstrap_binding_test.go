@@ -18,6 +18,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/journalbinding"
+	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/modelruntimetransport"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -184,5 +187,91 @@ func TestWorkerBootstrapBindingCommandUsesCommittedRegistryIdentity(t *testing.T
 	}
 	if registrySnapshot() != registryBefore || !reflect.DeepEqual(localBefore, localSnapshot()) || claimCalls.Load() != 1 || receiptCalls.Load() != 2 {
 		t.Fatal("binding lookup mutated Registry or local state, or repeated bootstrap mutations")
+	}
+	startRegistryBoundCPURuntime(t, preparation, scratch, binding, verifier)
+	if registrySnapshot() != registryBefore || !reflect.DeepEqual(localBefore, localSnapshot()) {
+		t.Fatal("idle bound CPU startup changed Registry or journal history")
+	}
+}
+
+func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch string, binding *velav1.WorkerBootstrapBinding, verifier *journalbinding.Verifier) {
+	t.Helper()
+	var launchPath string
+	for index, argument := range preparation {
+		if argument == "--launch-manifest-file" {
+			launchPath = preparation[index+1]
+		}
+	}
+	manifest, err := modelruntime.LoadLaunchManifest(launchPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Match the local mount mapping used by explicit Node bootstrap.
+	for index := range manifest.Runtimes {
+		manifest.Runtimes[index].ScratchRoot = scratch
+		manifest.Runtimes[index].InputRoot = filepath.Join(scratch, "inputs")
+		manifest.Runtimes[index].OutputRoot = filepath.Join(scratch, "outputs")
+	}
+	keys, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{"bootstrap-key": bytes.Repeat([]byte{3}, 32)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stageauthority.ClearKeyring(keys)
+	validator, err := stageauthority.NewVerifier(keys, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epochStore, err := modelruntime.NewFileEpochStore(filepath.Join(t.TempDir(), "epochs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	socketRoot, err := os.MkdirTemp(root, "vela-bind-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketRoot) })
+	state := modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(scratch, "runtime-admission")}
+	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
+		Manifest: manifest, EpochStore: epochStore, Validator: validator, SocketPath: filepath.Join(socketRoot, "runtime.sock"), CancelTimeout: time.Second,
+		ExecutionFloor: &modelruntime.ExecutionFloorConfig{State: &state}, RegistryBinding: binding, RegistryVerifier: verifier,
+		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+			if _, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state); err == nil {
+				t.Fatal("bound journal lock was released before CPU backend startup")
+			}
+			return modelruntime.NewFakeDiTRuntime(), nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	client, err := modelruntimetransport.Dial(t.Context(), modelruntimetransport.Config{SocketPath: filepath.Join(socketRoot, "runtime.sock"), ExpectedUID: uint32(os.Geteuid())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	identities, err := client.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
+		WorkerInstanceId: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch,
+		WorkerMemberId: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch,
+	})
+	if err != nil || len(identities.GetIdentities()) != 1 || identities.GetIdentities()[0].GetModelRuntimeEpoch() != 2 {
+		t.Fatalf("Registry-bound CPU runtime identity: %v %v", identities, err)
+	}
+	ready, err := client.ProbeReadiness(t.Context(), &velav1.ModelRuntimeServiceProbeReadinessRequest{
+		Identity: identities.GetIdentities()[0], Check: velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+	})
+	if err != nil || !ready.GetReady() {
+		t.Fatalf("fresh bound CPU runtime was not warm: %v %v", ready, err)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state)
+	if err != nil || recovered.JournalID.String() != binding.GetPair().GetRuntimeJournalId() || !bytes.Equal(recovered.Scope[:], binding.GetPair().GetRuntimeScope()) {
+		t.Fatalf("CPU startup replaced bound journal: %+v %v", recovered, err)
 	}
 }

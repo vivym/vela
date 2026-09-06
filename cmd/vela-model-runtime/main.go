@@ -12,18 +12,22 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/authoritypolicy"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
 type commandConfig struct {
-	launchManifestFile      string
-	authorityVerifierFile   string
-	epochDirectory          string
-	executionStateDirectory string
-	socketPath              string
-	cancelTimeout           time.Duration
-	shutdownTimeout         time.Duration
+	launchManifestFile         string
+	authorityVerifierFile      string
+	epochDirectory             string
+	executionStateDirectory    string
+	journalBindingFile         string
+	journalBindingVerifierFile string
+	socketPath                 string
+	cancelTimeout              time.Duration
+	shutdownTimeout            time.Duration
 }
 
 type modelRuntimeServer interface {
@@ -81,6 +85,18 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 	if err != nil {
 		return fmt.Errorf("configure ModelRuntime StageAuthority validator: %w", err)
 	}
+	var binding *velav1.WorkerBootstrapBinding
+	var bindingVerifier *journalbinding.Verifier
+	if configuration.executionStateDirectory != "" {
+		bindingVerifier, err = journalbinding.ReadVerifierFile(configuration.journalBindingVerifierFile)
+		if err != nil {
+			return err
+		}
+		binding, err = journalbinding.LoadFile(configuration.journalBindingFile, bindingVerifier)
+		if err != nil {
+			return err
+		}
+	}
 	epochStore, err := modelruntime.NewFileEpochStore(configuration.epochDirectory)
 	if err != nil {
 		return err
@@ -91,6 +107,7 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 		ShutdownTimeout: configuration.shutdownTimeout,
 		MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
 		ExecutionFloor:  runtimeExecutionFloor(configuration),
+		RegistryBinding: binding, RegistryVerifier: bindingVerifier,
 	})
 	if err != nil {
 		return err
@@ -138,6 +155,16 @@ func loadCommandConfig() (commandConfig, error) {
 		if err != nil {
 			return commandConfig{}, err
 		}
+		configuration.journalBindingFile, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE")
+		if err != nil {
+			return commandConfig{}, err
+		}
+		configuration.journalBindingVerifierFile, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE")
+		if err != nil {
+			return commandConfig{}, err
+		}
+	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" {
+		return commandConfig{}, errors.New("ModelRuntime journal binding requires VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY")
 	}
 	configuration.cancelTimeout, err = requiredCommandDuration(
 		"VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", time.Millisecond, time.Minute,

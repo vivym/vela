@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
@@ -73,6 +74,7 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", stateDirectory)
+	configureCommandJournalBinding(t, manifest, modelruntime.ExecutionJournalStatus{JournalID: uuid.New(), Scope: [32]byte{1}})
 	if err := run(t.Context()); err == nil {
 		t.Fatal("ordinary startup initialized an empty execution journal")
 	}
@@ -84,6 +86,21 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 	if _, err := os.Lstat(eventPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("journal preparation started backend: %v", err)
 	}
+	var initialized struct {
+		Journal modelruntime.ExecutionJournalStatus `json:"journal"`
+	}
+	if err := json.Unmarshal(prepared.Bytes(), &initialized); err != nil {
+		t.Fatal(err)
+	}
+	// The first signature targets a different journal and must still fail after
+	// local initialization. Registry binding is required independently of it.
+	if err := run(t.Context()); err == nil {
+		t.Fatal("runtime served with another journal's signed identity")
+	}
+	if entries, err := os.ReadDir(filepath.Join(root, "epochs")); err != nil || len(entries) != 0 {
+		t.Fatalf("mismatched binding allocated an epoch: %v %v", entries, err)
+	}
+	configureCommandJournalBinding(t, manifest, initialized.Journal)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -169,6 +186,8 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 	t.Setenv("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "5s")
 	stateDirectory := filepath.Join(root, "execution-journal")
 	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", stateDirectory)
+	configureCommandJournalBinding(t, commandLaunchManifest(root, outputRoot, executable, filepath.Join(root, "events.log")),
+		modelruntime.ExecutionJournalStatus{JournalID: uuid.New(), Scope: [32]byte{1}})
 	ctx, cancel := context.WithCancel(context.Background())
 	var observed time.Duration
 	err = runUsing(ctx, func(
@@ -176,6 +195,9 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 		config modelruntime.RuntimeServerConfig,
 	) (modelRuntimeServer, error) {
 		observed = config.MaxClockSkew
+		if config.RegistryBinding == nil || config.RegistryVerifier == nil {
+			t.Fatal("durable command omitted Registry binding")
+		}
 		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Directory != stateDirectory ||
 			config.ExecutionFloor.State.Initialize || config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 {
 			t.Fatalf("ordinary command did not select recovery-only journal configuration: %+v", config.ExecutionFloor)
@@ -234,6 +256,21 @@ func TestLoadCommandConfigRequiresCanonicalPathsAndBoundedDurations(t *testing.T
 	if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "EXECUTION_STATE_DIRECTORY") {
 		t.Fatalf("relative execution journal error = %v", err)
 	}
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", "")
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", filepath.Join(root, "binding.json"))
+	if _, err := loadCommandConfig(); err == nil {
+		t.Fatal("binding configured without durable journal")
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", "")
+	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", filepath.Join(root, "state"))
+	if _, err := loadCommandConfig(); err == nil {
+		t.Fatal("durable journal configured without Registry binding")
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", filepath.Join(root, "binding.json"))
+	if _, err := loadCommandConfig(); err == nil {
+		t.Fatal("durable journal configured without Registry public key")
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", "")
 	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", "")
 	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "0s")
 	if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "CANCEL_TIMEOUT") {

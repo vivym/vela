@@ -312,6 +312,7 @@ func TestRuntimeServerRecoversExistingSupervisorJournalBeforeNewEpochs(t *testin
 	if err != nil || history.Highest != 10 || history.Floor != 11 || history.RetainedExecutions != 1 || history.PendingExecutions != 1 {
 		t.Fatalf("offline preparation lost retained history: %+v %v", history, err)
 	}
+	config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, history, nil)
 	server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)

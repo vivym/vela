@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -34,15 +35,17 @@ type RuntimeBackendFactory func(
 ) (Backend, error)
 
 type RuntimeServerConfig struct {
-	Manifest        LaunchManifest
-	EpochStore      EpochStore
-	Validator       *stageauthority.Validator
-	SocketPath      string
-	CancelTimeout   time.Duration
-	ShutdownTimeout time.Duration
-	MaxClockSkew    time.Duration
-	BackendFactory  RuntimeBackendFactory
-	ExecutionFloor  *ExecutionFloorConfig
+	Manifest         LaunchManifest
+	EpochStore       EpochStore
+	Validator        *stageauthority.Validator
+	SocketPath       string
+	CancelTimeout    time.Duration
+	ShutdownTimeout  time.Duration
+	MaxClockSkew     time.Duration
+	BackendFactory   RuntimeBackendFactory
+	ExecutionFloor   *ExecutionFloorConfig
+	RegistryBinding  *velav1.WorkerBootstrapBinding
+	RegistryVerifier *journalbinding.Verifier
 }
 
 type RuntimeServer struct {
@@ -74,6 +77,20 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	}
 	if err := validateLaunchManifest(config.Manifest); err != nil {
 		return nil, err
+	}
+	if (config.RegistryBinding == nil) != (config.RegistryVerifier == nil) {
+		return nil, errors.New("ModelRuntime Registry binding and verifier must be configured together")
+	}
+	if config.RegistryBinding != nil {
+		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
+			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 {
+			return nil, errors.New("ModelRuntime Registry binding requires an existing execution journal without initialization or upgrade")
+		}
+		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)
+		if err != nil {
+			return nil, fmt.Errorf("verify ModelRuntime Registry journal binding: %w", err)
+		}
+		config.RegistryBinding = verified
 	}
 	if config.ExecutionFloor != nil {
 		floor, err := config.Manifest.bindExecutionFloorConfig(*config.ExecutionFloor, config.Validator)
@@ -119,6 +136,15 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 				_ = startupState.close()
 			}
 		}()
+		if config.RegistryBinding != nil {
+			if err := config.RegistryVerifier.VerifyJournal(config.RegistryBinding, journalbinding.RuntimeJournal, journalbinding.Journal{
+				WorkerInstanceID: config.Manifest.WorkerInstanceID, WorkerInstanceEpoch: config.Manifest.WorkerInstanceEpoch,
+				WorkerMemberID: config.Manifest.WorkerMemberID, WorkerMemberEpoch: config.Manifest.WorkerMemberEpoch,
+				JournalID: startupState.state.ID, Scope: startupState.state.Scope,
+			}); err != nil {
+				return nil, fmt.Errorf("match locked ModelRuntime journal to Registry: %w", err)
+			}
+		}
 	}
 	backendFactory := config.BackendFactory
 	if backendFactory == nil {
