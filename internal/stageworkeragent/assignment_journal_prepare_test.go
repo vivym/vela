@@ -34,6 +34,51 @@ func TestAssignmentJournalPreparationRequiresExclusiveOwnership(t *testing.T) {
 	}
 }
 
+func TestAssignmentJournalInspectionRevalidatesAndClosesAfterCallback(t *testing.T) {
+	for _, failure := range []string{"callback", "replacement"} {
+		t.Run(failure, func(t *testing.T) {
+			fixture := newAdmissionFixture(t)
+			first, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), fixture.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fixture.config.Initialize = false
+			injected := errors.New("inspection interrupted")
+			err = stageworkeragent.WithPreparedAssignmentJournal(t.Context(), fixture.config, func(status stageworkeragent.AssignmentJournalStatus) error {
+				if status != first {
+					t.Fatal("inspection changed status")
+				}
+				if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), fixture.config); err == nil {
+					t.Fatal("callback released journal ownership")
+				}
+				if failure == "replacement" {
+					path := filepath.Join(fixture.config.Directory, admissionTestState)
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(path, path+".old"); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(path, data, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					return nil
+				}
+				return injected
+			})
+			if err == nil || failure == "callback" && !errors.Is(err, injected) {
+				t.Fatalf("inspection lost callback/binding failure: %v", err)
+			}
+			if failure == "callback" {
+				if recovered, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), fixture.config); err != nil || recovered != first {
+					t.Fatalf("callback failure leaked lock or changed journal: %+v %v", recovered, err)
+				}
+			}
+		})
+	}
+}
+
 func TestAssignmentJournalPreparationPreservesPendingHistoryWithoutRuntimeRoutes(t *testing.T) {
 	for _, complete := range []bool{false, true} {
 		t.Run(fmt.Sprintf("complete=%t", complete), func(t *testing.T) {

@@ -321,6 +321,33 @@ history exits unsuccessfully without a result. A successful query does not
 validate current local journal contents. Keep its evidence separate from the
 offline journal inspection and future lifetime-locked serving checks.
 
+### Reconcile a Recorded Pair
+
+When the original operation and both journals remain valid, but local
+`bootstrap/pair.json` is missing, use the same preparation arguments with
+`--action reconcile-pair`. This action queries the independently recorded Registry
+pair while holding both journal lifetime locks. It requires exact original
+request, actor, node, Worker/member/epochs, bundle digest, journal IDs and scopes.
+Only after both original journals recover successfully can it exclusively create
+the missing pair metadata. Its result retains the original Registry timestamp.
+
+This action does not call Claim or RecordReceipt, create an operation, initialize
+a missing journal, or overwrite malformed/conflicting local state. Journal
+recovery can perform its normal fsync and unpublished-temporary-file handling;
+it preserves restrictions and pending execution evidence. Complete pair replay
+performs the same verification. These temporary inspection locks end when the
+command exits and cannot replace lifetime checks in the serving processes.
+
+| Retained state | Supported action |
+| --- | --- |
+| Complete local pair and original valid journals, receipt response missing | Repeat `prepare` to replay receipt recording |
+| Original operation/journals and complete Registry receipt, local pair missing | `reconcile-pair` restores only pair metadata |
+| Complete local and Registry pairs | `prepare` recovers and replays; `reconcile-pair` independently verifies without a Registry mutation |
+| Registry has no complete receipt and local pair is absent | Preserve state; first-initialization reconciliation/replacement authority remains required |
+| Missing operation/journal, corrupt or conflicting retained state | Preserve state; neither action resets or overwrites it |
+
+See [recorded-pair recovery evidence](../worker-bootstrap-reconciliation-evidence-2026-09-06.md).
+
 The default node daemon, systemd unit and recurring Fleet Pod init paths still
 do not invoke preparation. See
 [command verification](../node-bootstrap-command-evidence-2026-09-06.md).

@@ -88,7 +88,7 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 	if err := checkpoint("preflight"); err != nil {
 		return Result{}, err
 	}
-	local, err := openOperation(p)
+	local, err := openOperation(p, true)
 	if err != nil {
 		return Result{}, err
 	}

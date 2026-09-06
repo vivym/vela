@@ -2,12 +2,59 @@ package modelruntime_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/vivym/vela/internal/modelruntime"
 )
+
+func TestExecutionJournalInspectionRevalidatesAndClosesAfterCallback(t *testing.T) {
+	for _, failure := range []string{"callback", "replacement"} {
+		t.Run(failure, func(t *testing.T) {
+			config := journalRuntimeServerConfig(t)
+			state := *config.ExecutionFloor.State
+			first, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.Initialize = false
+			injected := errors.New("inspection interrupted")
+			err = modelruntime.WithPreparedExecutionJournal(t.Context(), config.Manifest, config.Validator, state, func(status modelruntime.ExecutionJournalStatus) error {
+				if status != first {
+					t.Fatal("inspection changed status")
+				}
+				if _, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err == nil {
+					t.Fatal("callback released journal ownership")
+				}
+				if failure == "replacement" {
+					path := filepath.Join(state.Directory, durableStateFileName)
+					data, err := os.ReadFile(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Rename(path, path+".old"); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(path, data, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					return nil
+				}
+				return injected
+			})
+			if err == nil || failure == "callback" && !errors.Is(err, injected) {
+				t.Fatalf("inspection lost callback/binding failure: %v", err)
+			}
+			if failure == "callback" {
+				if recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err != nil || recovered != first {
+					t.Fatalf("callback failure leaked lock or changed journal: %+v %v", recovered, err)
+				}
+			}
+		})
+	}
+}
 
 func TestExecutionJournalPreparationRequiresExclusiveOwnership(t *testing.T) {
 	config := journalRuntimeServerConfig(t)

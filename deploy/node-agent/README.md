@@ -148,7 +148,9 @@ mutation authorization and cross-node aggregate observations.
 It loads no daemon configuration, probes no devices, starts no backend and
 performs no remediation. `--action history --request-id <original-uuid>` reads
 the authenticated Registry history without opening or changing scratch.
-Both actions require explicit Fleet TLS settings and a registered Node Agent
+`--action reconcile-pair` uses the preparation configuration to restore only
+missing local pair metadata when Registry already records both original journals.
+All actions require explicit Fleet TLS settings and a registered Node Agent
 client certificate; node and actor are derived from that same loaded certificate.
 
 Run preparation in the provisioning context as the intended journal-owner UID,

@@ -27,28 +27,44 @@ type ExecutionJournalStatus struct {
 // Recovery may sync state and remove unpublished temporary files. Upgrade flags
 // retain their explicit validated-migration semantics.
 func PrepareExecutionJournal(ctx context.Context, manifest LaunchManifest, validator *stageauthority.Validator, config ExecutionFloorStateConfig) (ExecutionJournalStatus, error) {
-	if ctx == nil || validator == nil {
-		return ExecutionJournalStatus{}, errors.New("ModelRuntime journal preparation requires context and verifier")
+	var result ExecutionJournalStatus
+	err := WithPreparedExecutionJournal(ctx, manifest, validator, config, func(status ExecutionJournalStatus) error {
+		result = status
+		return nil
+	})
+	if err != nil {
+		return ExecutionJournalStatus{}, err
+	}
+	return result, nil
+}
+
+// WithPreparedExecutionJournal retains the journal lifetime lock throughout
+// inspect and revalidates before release. It allocates no Runtime epoch, starts
+// no backend and exposes no execution or drain authority.
+func WithPreparedExecutionJournal(ctx context.Context, manifest LaunchManifest, validator *stageauthority.Validator, config ExecutionFloorStateConfig, inspect func(ExecutionJournalStatus) error) (err error) {
+	if ctx == nil || validator == nil || inspect == nil {
+		return errors.New("ModelRuntime journal preparation requires context, verifier and inspection")
 	}
 	if err := context.Cause(ctx); err != nil {
-		return ExecutionJournalStatus{}, err
+		return err
 	}
 	bindings, err := manifest.RuntimeBindings()
 	if err != nil {
-		return ExecutionJournalStatus{}, err
+		return err
 	}
 	floor, err := manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, validator)
 	if err != nil {
-		return ExecutionJournalStatus{}, err
+		return err
 	}
 	verifier, err := newExecutionFloorVerifier(*floor, bindings[0])
 	if err != nil {
-		return ExecutionJournalStatus{}, err
+		return err
 	}
 	store, err := openExecutionState(config, executionJournalScope{binding: cloneBinding(bindings[0]), floor: verifier})
 	if err != nil {
-		return ExecutionJournalStatus{}, err
+		return err
 	}
+	defer func() { err = errors.Join(err, store.check(), store.close(), context.Cause(ctx)) }()
 	result := ExecutionJournalStatus{
 		JournalID: store.state.ID, SchemaVersion: store.state.SchemaVersion, Scope: store.state.Scope,
 		Highest: store.state.Highest, Floor: store.state.Floor, RetainedExecutions: len(store.state.Executions),
@@ -58,8 +74,5 @@ func PrepareExecutionJournal(ctx context.Context, manifest LaunchManifest, valid
 			result.PendingExecutions++
 		}
 	}
-	if err := errors.Join(store.close(), context.Cause(ctx)); err != nil {
-		return ExecutionJournalStatus{}, err
-	}
-	return result, nil
+	return inspect(result)
 }

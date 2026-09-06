@@ -27,16 +27,32 @@ type AssignmentJournalStatus struct {
 // checks as live admission but exposes no admission handle. Initialization and
 // legacy upgrades retain their explicit configuration/evidence requirements.
 func PrepareAssignmentJournal(ctx context.Context, config AssignmentAdmissionConfig) (AssignmentJournalStatus, error) {
-	if ctx == nil {
-		return AssignmentJournalStatus{}, errors.New("assignment journal preparation requires context")
-	}
-	if err := context.Cause(ctx); err != nil {
-		return AssignmentJournalStatus{}, err
-	}
-	gate, err := NewFileAssignmentAdmission(config)
+	var result AssignmentJournalStatus
+	err := WithPreparedAssignmentJournal(ctx, config, func(status AssignmentJournalStatus) error {
+		result = status
+		return nil
+	})
 	if err != nil {
 		return AssignmentJournalStatus{}, err
 	}
+	return result, nil
+}
+
+// WithPreparedAssignmentJournal holds exclusive journal ownership throughout
+// inspect, without exposing input admission. It revalidates before releasing
+// the lock, including on callback failure. The callback grants no writer drain.
+func WithPreparedAssignmentJournal(ctx context.Context, config AssignmentAdmissionConfig, inspect func(AssignmentJournalStatus) error) (err error) {
+	if ctx == nil || inspect == nil {
+		return errors.New("assignment journal preparation requires context and inspection")
+	}
+	if err := context.Cause(ctx); err != nil {
+		return err
+	}
+	gate, err := NewFileAssignmentAdmission(config)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, gate.files.validateBinding(), gate.Close(), context.Cause(ctx)) }()
 	result := AssignmentJournalStatus{
 		JournalID: gate.state.ID, SchemaVersion: gate.state.SchemaVersion, Scope: gate.scopeDigest,
 		Watermark: gate.state.Watermark, Floor: gate.state.Floor,
@@ -57,8 +73,5 @@ func PrepareAssignmentJournal(ctx context.Context, config AssignmentAdmissionCon
 			result.RetirementsRetired++
 		}
 	}
-	if err := errors.Join(gate.Close(), context.Cause(ctx)); err != nil {
-		return AssignmentJournalStatus{}, err
-	}
-	return result, nil
+	return inspect(result)
 }

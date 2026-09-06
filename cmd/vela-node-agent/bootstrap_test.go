@@ -18,7 +18,7 @@ func TestBootstrapCommandRejectsAmbiguousActionsBeforeTransport(t *testing.T) {
 	connection := []string{"--fleet-address", "localhost:1", "--fleet-server-name", "fleet.internal", "--fleet-ca-file", "/missing-ca",
 		"--client-cert-file", "/missing-cert", "--client-key-file", "/missing-key"}
 	for _, arguments := range [][]string{
-		{}, {"--action", "initialize"}, {"--action", "prepare"}, {"--action", "history"},
+		{}, {"--action", "initialize"}, {"--action", "prepare"}, {"--action", "reconcile-pair"}, {"--action", "history"},
 		{"--action", "history", "--request-id", uuid.Nil.String()},
 		{"--action", "history", "--request-id", "CA000000-0000-0000-0000-000000000001"},
 		{"--action", "history", "--request-id", uuid.NewString(), "--scratch-directory", "/unused"},

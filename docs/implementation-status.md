@@ -459,6 +459,16 @@ committed-response loss. Incomplete local pairs still reject without repeating
 Claim. Default daemon/Fleet activation, independent partial reconciliation and
 lifetime-locked serving pair validation remain open. Schema remains 92 and
 Production Gates remain `0/9`.
+The [recorded-pair recovery](worker-bootstrap-reconciliation-evidence-2026-09-06.md)
+now permits explicit `reconcile-pair` to restore missing local pair metadata from
+an existing authenticated Registry receipt and the original validated journals.
+The operation and both journal lifetime locks cover lookup and publication;
+the recovery interface exposes no Registry mutation or initialization. Missing
+first-use receipts, missing/corrupt journals and conflicting local metadata still
+reject. CPU fault, subprocess exit, PostgreSQL/TLS command, full unit/race/lint
+and Linux non-root checks pass. First initialization without a recorded pair,
+serving lifetime checks and Fleet activation remain open; versions and Production
+Gates are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

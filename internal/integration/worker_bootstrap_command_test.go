@@ -45,10 +45,14 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 			database, service, request := newWorkerBootstrapFixture(t)
 			var dropped atomic.Bool
 			var claimCalls atomic.Int32
+			var receiptCalls atomic.Int32
 			committed := make(chan struct{})
 			clients := bootstrapMutualTLSClients(t, service, func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 				if info.FullMethod == velav1.FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName {
 					claimCalls.Add(1)
+				}
+				if info.FullMethod == velav1.FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName {
+					receiptCalls.Add(1)
 				}
 				response, err := handler(ctx, req)
 				if err == nil && info.FullMethod == lostMethod && dropped.CompareAndSwap(false, true) {
@@ -62,6 +66,8 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				return response, err
 			})
 			preparation, scratch := workerBootstrapCommandFiles(t, request)
+			reconciliation := append([]string(nil), preparation...)
+			reconciliation[1] = "reconcile-pair"
 			invoke := func(principal int, args ...string) ([]byte, error) {
 				t.Helper()
 				ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
@@ -75,7 +81,8 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				command.Env = append(os.Environ(), "VELA_NODE_AGENT_ID=", "VELA_NODE_AGENT_NVIDIA_SMI_PATH=/nonexistent")
 				var stdout, stderr bytes.Buffer
 				command.Stdout, command.Stderr = &stdout, &stderr
-				shouldInterrupt := scenario.interruption == "signal" && principal == 0 && !dropped.Load()
+				shouldInterrupt := scenario.interruption == "signal" && principal == 0 && !dropped.Load() &&
+					len(args) >= 2 && args[0] == "--action" && args[1] == "prepare"
 				if err := command.Start(); err != nil {
 					t.Fatal(err)
 				}
@@ -115,6 +122,12 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 			}
 			if entries, err := os.ReadDir(filepath.Join(scratch, "bootstrap")); err != nil || len(entries) != 0 || claimCalls.Load() != 0 {
 				t.Fatalf("different node reached first use: %v %v", entries, err)
+			}
+			if _, err := invoke(0, reconciliation...); err == nil {
+				t.Fatal("reconciliation created a missing bootstrap operation")
+			}
+			if entries, err := os.ReadDir(filepath.Join(scratch, "bootstrap")); err != nil || len(entries) != 0 || claimCalls.Load() != 0 {
+				t.Fatalf("reconciliation initialized local state: %v %v", entries, err)
 			}
 			first, err := invoke(0, preparation...)
 			if (err != nil) != (lostMethod != "") || lostMethod != "" && !dropped.Load() {
@@ -161,6 +174,9 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				if err == nil || before.Receipt != nil {
 					t.Fatal("lost Claim response regained initialization permission")
 				}
+				if _, err := invoke(0, reconciliation...); err == nil {
+					t.Fatal("reconciliation completed unrecorded initialization")
+				}
 				for _, name := range []string{"worker-admission", "runtime-admission", "inputs", "outputs"} {
 					if entries, err := os.ReadDir(filepath.Join(scratch, name)); err != nil || len(entries) != 0 {
 						t.Fatalf("lost Claim initialized %s: %v %v", name, entries, err)
@@ -187,6 +203,27 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				}
 				if _, err := invoke(0, preparation...); err == nil {
 					t.Fatal("incomplete local pair was reinitialized")
+				}
+				receiptsBefore := receiptCalls.Load()
+				reconciled, err := invoke(0, reconciliation...)
+				var recovered struct {
+					Action     string                                   `json:"action"`
+					RequestID  uuid.UUID                                `json:"request_id"`
+					Worker     stageworkeragent.AssignmentJournalStatus `json:"worker"`
+					Runtime    modelruntime.ExecutionJournalStatus      `json:"runtime"`
+					RecordedAt time.Time                                `json:"recorded_at"`
+				}
+				if err != nil || json.Unmarshal(reconciled, &recovered) != nil || recovered.Action != "reconcile-pair" ||
+					recovered.RequestID != result.RequestID || recovered.Worker != result.Worker || recovered.Runtime != result.Runtime ||
+					!recovered.RecordedAt.Equal(result.RecordedAt) || receiptCalls.Load() != receiptsBefore {
+					t.Fatalf("authenticated reconciliation changed journals or mutated Registry: %s %v", reconciled, err)
+				}
+				if replay, err := invoke(0, reconciliation...); err != nil || !bytes.Equal(reconciled, replay) {
+					t.Fatalf("reconciliation replay changed its result: %s %v", replay, err)
+				}
+				unchanged, err := clients[0].bootstrap.LookupWorkerBootstrap(t.Context(), operation.RequestID)
+				if err != nil || !reflect.DeepEqual(unchanged, before) || receiptCalls.Load() != receiptsBefore {
+					t.Fatalf("reconciliation wrote Registry history: %+v %v", unchanged, err)
 				}
 			}
 			if current, err := os.ReadFile(operationPath); err != nil || !bytes.Equal(current, operationBefore) || claimCalls.Load() != 1 {

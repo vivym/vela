@@ -44,7 +44,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	}
 	flags := flag.NewFlagSet("vela-node-agent bootstrap", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	action := flags.String("action", "", "prepare or history")
+	action := flags.String("action", "", "prepare, reconcile-pair, or history")
 	address := flags.String("fleet-address", "", "Fleet host and port")
 	serverName := flags.String("fleet-server-name", "", "Fleet TLS server name")
 	caPath := flags.String("fleet-ca-file", "", "Fleet server CA file")
@@ -72,9 +72,9 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	var config workerbootstrap.Config
 	var requestID uuid.UUID
 	switch *action {
-	case "prepare":
+	case "prepare", "reconcile-pair":
 		if *request != "" || *bundlePath == "" || *launchPath == "" || *verifierPath == "" || *directory == "" || *maxRecords < 1 || *maxRecords > 64 {
-			return errors.New("prepare requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file, scratch-directory and max-records; request-id is reserved for history")
+			return errors.New("prepare/reconcile-pair requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file, scratch-directory and max-records; request-id is reserved for history")
 		}
 		wire, err := securefile.Read(*bundlePath, fleet.MaximumWorkerBootstrapManifestBytes, true)
 		if err != nil {
@@ -106,7 +106,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			return errors.New("history requires a canonical nonzero request-id and accepts no local preparation settings")
 		}
 	default:
-		return errors.New("bootstrap action must be prepare or history")
+		return errors.New("bootstrap action must be prepare, reconcile-pair, or history")
 	}
 	transport, identity, err := fleettransport.NewWorkerBootstrapTLSCredentials(*certificatePath, *keyPath, *caPath, *serverName)
 	if err != nil {
@@ -131,7 +131,12 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 		return json.NewEncoder(stdout).Encode(bootstrapHistoryOutput(history))
 	}
 	config.NodeIdentity, config.ActorIdentity = authority.NodeIdentity(), authority.ActorIdentity()
-	result, err := workerbootstrap.Prepare(ctx, config, authority)
+	var result workerbootstrap.Result
+	if *action == "reconcile-pair" {
+		result, err = workerbootstrap.ReconcileRecordedPair(ctx, config, authority)
+	} else {
+		result, err = workerbootstrap.Prepare(ctx, config, authority)
+	}
 	if err != nil {
 		return err
 	}
@@ -144,7 +149,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 		Worker        stageworkeragent.AssignmentJournalStatus `json:"worker"`
 		Runtime       modelruntime.ExecutionJournalStatus      `json:"runtime"`
 		RecordedAt    time.Time                                `json:"recorded_at"`
-	}{1, "prepare", result.RequestID, config.NodeIdentity, config.ActorIdentity, result.Worker, result.Runtime, result.RecordedAt})
+	}{1, *action, result.RequestID, config.NodeIdentity, config.ActorIdentity, result.Worker, result.Runtime, result.RecordedAt})
 }
 
 type bootstrapHistory struct {

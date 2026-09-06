@@ -78,7 +78,7 @@ type operationState struct {
 	fresh          bool
 }
 
-func openOperation(p preparation) (*operationState, error) {
+func openOperation(p preparation, allowCreate bool) (*operationState, error) {
 	state := &operationState{}
 	success := false
 	defer func() {
@@ -109,6 +109,9 @@ func openOperation(p preparation) (*operationState, error) {
 		}
 	}
 	if _, err := state.roots[operationRoot].Lstat(operationName); errors.Is(err, os.ErrNotExist) {
+		if !allowCreate {
+			return nil, fmt.Errorf("%w: retained operation is missing", ErrIncomplete)
+		}
 		if err := state.requireUnusedRoots(false); err != nil {
 			return nil, err
 		}
@@ -116,9 +119,13 @@ func openOperation(p preparation) (*operationState, error) {
 		return nil, err
 	}
 	flags := os.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
-	lock, err := state.roots[operationRoot].OpenFile(operationName, flags|os.O_CREATE|os.O_EXCL, 0o600)
-	state.fresh = err == nil
-	if errors.Is(err, os.ErrExist) {
+	var lock *os.File
+	var err error
+	if allowCreate {
+		lock, err = state.roots[operationRoot].OpenFile(operationName, flags|os.O_CREATE|os.O_EXCL, 0o600)
+		state.fresh = err == nil
+	}
+	if !allowCreate || errors.Is(err, os.ErrExist) {
 		lock, err = state.roots[operationRoot].OpenFile(operationName, flags, 0)
 	}
 	if err != nil {
