@@ -780,11 +780,49 @@ func encodeModelRuntimeLaunchManifest(
 	worker WorkerInstanceActuation,
 	localMember WorkerMemberActuation,
 ) (string, error) {
+	manifest, err := buildModelRuntimeLaunchManifest(bundle, worker, localMember)
+	if err != nil {
+		return "", err
+	}
+	encoded, err := modelruntime.EncodeLaunchManifest(manifest)
+	if err != nil {
+		return "", fmt.Errorf("validate and encode ModelRuntime launch manifest: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// WorkerMemberLaunchManifest derives the same launch contract emitted in the
+// Pod from a validated bundle, without accepting a separately supplied member.
+func WorkerMemberLaunchManifest(bundle WorkerBundleActuation, workerID, memberID uuid.UUID) (modelruntime.LaunchManifest, error) {
+	if err := ValidateWorkerBundleActuation(bundle); err != nil {
+		return modelruntime.LaunchManifest{}, err
+	}
+	for _, worker := range bundle.WorkerInstances {
+		if worker.ID != workerID {
+			continue
+		}
+		for _, member := range worker.Members {
+			if member.ID == memberID {
+				manifest, err := buildModelRuntimeLaunchManifest(bundle, worker, member)
+				if err != nil {
+					return modelruntime.LaunchManifest{}, err
+				}
+				if _, err := modelruntime.EncodeLaunchManifest(manifest); err != nil {
+					return modelruntime.LaunchManifest{}, err
+				}
+				return manifest, nil
+			}
+		}
+	}
+	return modelruntime.LaunchManifest{}, errors.New("WorkerMember is absent from approved bundle")
+}
+
+func buildModelRuntimeLaunchManifest(bundle WorkerBundleActuation, worker WorkerInstanceActuation, localMember WorkerMemberActuation) (modelruntime.LaunchManifest, error) {
 	runtimeImageDigest, ok := strings.CutPrefix(
 		bundle.RuntimeImage[strings.LastIndex(bundle.RuntimeImage, "@")+1:], "sha256:",
 	)
 	if !ok || !validSHA256(runtimeImageDigest) {
-		return "", errors.New("ModelRuntime image digest is invalid")
+		return modelruntime.LaunchManifest{}, errors.New("ModelRuntime image digest is invalid")
 	}
 	manifest := modelruntime.LaunchManifest{
 		SchemaVersion: 2, WorkerProfileRevisionID: worker.WorkerProfileRevisionID.String(),
@@ -829,11 +867,7 @@ func encodeModelRuntimeLaunchManifest(
 			ShutdownTimeout:        runtime.ShutdownTimeout,
 		})
 	}
-	encoded, err := modelruntime.EncodeLaunchManifest(manifest)
-	if err != nil {
-		return "", fmt.Errorf("validate and encode ModelRuntime launch manifest: %w", err)
-	}
-	return string(encoded), nil
+	return manifest, nil
 }
 
 func modelRuntimeTerminationGraceSeconds(worker WorkerInstanceActuation) int64 {

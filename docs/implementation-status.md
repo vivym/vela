@@ -428,6 +428,16 @@ and 25 related PostgreSQL race regressions pass, including independent restore.
 Worker/Runtime journal and launch versions are unchanged. Authenticated node
 execution, actual paired journal provisioning, ambiguous-outcome reconciliation
 and durable deployment activation remain open; Production Gates stay `0/9`.
+The subsequent [local bootstrap coordinator](worker-bootstrap-local-evidence-2026-09-06.md)
+binds the exact Pod launch contract and private directory identities before
+consuming Registry first use, initializes the actual Worker/Runtime journals and
+persists their pair for validated receipt replay. Retained operations never
+repeat Claim or initialize missing state. CPU fault boundaries, direct subprocess
+exits, concurrency, Linux non-root execution and PostgreSQL response-loss tests
+pass, alongside full unit and lint checks. Incomplete pairs preserve uncertainty
+and require independent reconciliation. This is an offline library; node
+authentication, lifetime-locked serving pair checks, partial reconciliation and
+Fleet activation remain open. Schema and journal versions are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

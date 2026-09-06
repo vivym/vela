@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -19,7 +21,122 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/recovery"
+	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/workerbootstrap"
 )
+
+func TestLocalWorkerBootstrapPersistsActualJournalsWithRegistryAuthority(t *testing.T) {
+	for _, lost := range []string{"receipt", "claim"} {
+		t.Run(lost, func(t *testing.T) {
+			database, service, request := newWorkerBootstrapFixture(t)
+			config := localBootstrapConfig(t, request)
+			transport := &bootstrapResponseLoss{service: service, lost: lost}
+			if result, err := workerbootstrap.Prepare(t.Context(), config, transport); err == nil || result != (workerbootstrap.Result{}) {
+				t.Fatalf("lost %s response exposed success: %+v %v", lost, result, err)
+			}
+			transport.lost = ""
+			result, err := workerbootstrap.Prepare(t.Context(), config, transport)
+			if lost == "claim" {
+				if !errors.Is(err, workerbootstrap.ErrIncomplete) || result != (workerbootstrap.Result{}) || transport.claimCalls != 1 {
+					t.Fatalf("lost committed claim reinitialized: %+v %v", result, err)
+				}
+				var count int
+				if err := database.Admin.QueryRow("SELECT count(*) FROM worker_bootstrap_receipts").Scan(&count); err != nil || count != 0 {
+					t.Fatalf("unprepared journals reported receipt: %d %v", count, err)
+				}
+				for _, name := range []string{"worker-admission", "runtime-admission", "inputs", "outputs"} {
+					entries, err := os.ReadDir(filepath.Join(config.ScratchDirectory, name))
+					if err != nil || len(entries) != 0 {
+						t.Fatalf("lost claim retry initialized %s: %v", name, err)
+					}
+				}
+				return
+			}
+			if err != nil || result.Worker.JournalID == uuid.Nil || result.Runtime.JournalID == uuid.Nil || transport.claimCalls != 1 {
+				t.Fatalf("recover prepared pair: %+v %v", result, err)
+			}
+			var workerID, runtimeID uuid.UUID
+			var workerScope, runtimeScope []byte
+			var recordedAt time.Time
+			if err := database.Admin.QueryRow(`SELECT worker_journal_id, worker_scope, runtime_journal_id, runtime_scope, recorded_at
+				FROM worker_bootstrap_receipts WHERE request_id = $1`, result.RequestID).
+				Scan(&workerID, &workerScope, &runtimeID, &runtimeScope, &recordedAt); err != nil {
+				t.Fatal(err)
+			}
+			if workerID != result.Worker.JournalID || runtimeID != result.Runtime.JournalID ||
+				!bytes.Equal(workerScope, result.Worker.Scope[:]) || !bytes.Equal(runtimeScope, result.Runtime.Scope[:]) || !recordedAt.Equal(result.RecordedAt) {
+				t.Fatal("Registry receipt differs from actual recovered local pair")
+			}
+			again, err := workerbootstrap.Prepare(t.Context(), config, service)
+			if err != nil || again != result {
+				t.Fatalf("replacement provisioner changed durable result: %+v %v", again, err)
+			}
+		})
+	}
+}
+
+type bootstrapResponseLoss struct {
+	service    *fleet.Service
+	lost       string
+	claimCalls int
+}
+
+func (transport *bootstrapResponseLoss) ClaimWorkerBootstrap(ctx context.Context, request fleet.WorkerBootstrapRequest) (fleet.WorkerBootstrapClaim, error) {
+	transport.claimCalls++
+	claim, err := transport.service.ClaimWorkerBootstrap(ctx, request)
+	if err == nil && transport.lost == "claim" {
+		return fleet.WorkerBootstrapClaim{}, errors.New("committed claim response lost")
+	}
+	return claim, err
+}
+
+func (transport *bootstrapResponseLoss) RecordWorkerBootstrapReceipt(ctx context.Context, receipt fleet.WorkerBootstrapReceipt) (time.Time, error) {
+	when, err := transport.service.RecordWorkerBootstrapReceipt(ctx, receipt)
+	if err == nil && transport.lost == "receipt" {
+		return time.Time{}, errors.New("committed receipt response lost")
+	}
+	return when, err
+}
+
+func localBootstrapConfig(t *testing.T, request fleet.WorkerBootstrapRequest) workerbootstrap.Config {
+	t.Helper()
+	var document struct {
+		Schema string
+		Bundle fleetcontroller.WorkerBundleActuation
+	}
+	if err := json.Unmarshal(request.BundleManifest, &document); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(request.BundleManifest)
+	document.Bundle.RevisionDigest = hex.EncodeToString(digest[:])
+	launch, err := fleetcontroller.WorkerMemberLaunchManifest(document.Bundle, request.WorkerInstanceID, request.WorkerMemberID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyring, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{"bootstrap-key": bytes.Repeat([]byte{3}, 32)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { stageauthority.ClearKeyring(keyring) })
+	validator, err := stageauthority.NewVerifier(keyring, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"bootstrap", "worker-admission", "runtime-admission", "inputs", "outputs"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return workerbootstrap.Config{Bundle: document.Bundle, Launch: launch, NodeIdentity: "h3-node-01", ActorIdentity: request.ActorIdentity,
+		ScratchDirectory: root, MaxRecords: 4, Validator: validator}
+}
 
 func TestWorkerBootstrapConsumesFirstUseOnceAndPreservesReceipt(t *testing.T) {
 	database, service, request := newWorkerBootstrapFixture(t)

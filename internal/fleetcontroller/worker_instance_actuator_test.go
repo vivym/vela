@@ -1197,6 +1197,46 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 	}
 }
 
+func TestWorkerMemberLaunchManifestMatchesEmittedPodContract(t *testing.T) {
+	h3, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bundle := range []fleetcontroller.WorkerBundleActuation{h3, cpuMediaBundle(t)} {
+		pods, _, err := fleetcontroller.MaterializeWorkerInstanceLaunchResources(bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pod := range pods {
+			workerID := uuid.MustParse(pod.Labels["vela.ai/worker-instance-id"])
+			memberID := uuid.MustParse(pod.Labels["vela.ai/worker-member-id"])
+			manifest, err := fleetcontroller.WorkerMemberLaunchManifest(bundle, workerID, memberID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := modelruntime.EncodeLaunchManifest(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, container := range pod.Spec.InitContainers {
+				for _, variable := range container.Env {
+					if variable.Name == "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON" {
+						found = variable.Value == string(encoded)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("bootstrap launch contract differs from emitted Pod manifest")
+			}
+		}
+		worker := bundle.WorkerInstances[0]
+		if _, err := fleetcontroller.WorkerMemberLaunchManifest(bundle, worker.ID, uuid.New()); err == nil {
+			t.Fatal("bootstrap launch accepted an unapproved member")
+		}
+	}
+}
+
 func cpuMediaBundle(t *testing.T) fleetcontroller.WorkerBundleActuation {
 	t.Helper()
 	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())

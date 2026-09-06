@@ -251,6 +251,16 @@ retirement and retain scratch until upgraded.
 
 ## Remaining Lifecycle Boundary
 
+The [local bootstrap coordinator](../worker-bootstrap-local-evidence-2026-09-06.md)
+connects one-time Registry claims to offline preparation of the actual journals.
+It requires its preprovisioned private layout, persists an immutable operation
+and pair, and only recovers retained state. Keep incomplete operations and
+journals intact; deleting them or rerunning offline `initialize` is not recovery
+authority. A retained operation without a complete pair requires independent
+reconciliation, including when an RPC response or initializer outcome was lost.
+This library has no authenticated node command or Fleet activation yet. Its
+receipt reports inspected journal identity, not writer drain or readiness.
+
 The [authenticated member discovery RPC](../member-discovery-evidence-2026-09-06.md)
 can observe current remote Runtime identities before assignment or readiness.
 It requires complete configured `MemberBinding.IdentityDigest` values and the
