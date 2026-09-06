@@ -75,13 +75,42 @@ existing durable READY and RETIRED transitions.
   Both containers run as UID/GID 65534 with no network or capabilities,
   read-only root/binaries, private tmpfs and `no-new-privileges`.
 
+## Automatic recovery follow-up
+
+After committing the implementation as `0811ed5`, a separate test-only increment
+exercises ProductionAgent -> StreamAgent -> terminal retirement -> actual Runtime
+UDS. It covers both renewal outcomes and six scenarios each: normal recovery,
+malformed discovery correlation, malformed cancellation identity, malformed drain
+checkpoint, lost drain response after persistence and failed stop observation
+after durable drain. The Control service and terminal history reader are test
+doubles; this is not a PostgreSQL-backed full Job execution receipt.
+
+All twelve scenarios validate latest-grant/original-Acquire query identity,
+capacity withdrawal before history, zero capacity and preserved scratch during
+INTENT, restored capacity and Acquire only after RETIRED, and exactly one physical
+cancel/drain. After Acquire returns the fixture's NoWork response, the test passes
+a new allocation through the real Worker admission gate and Runtime Prepare to
+verify that the advertised slot is usable. The original actual signed backend
+checkpoint remains exact after that next Prepare. No materialization I/O is
+performed or inferred from this terminal cleanup.
+
+Three further counterexamples prepare live backends but leave an active input
+writer, unknown input-writer history, or one lost floor acknowledgement. All
+retain INTENT/scratch with zero backend inspect/cancel/drain calls. Completing
+the active writer or recovering the lost floor reply permits a successful retry;
+unknown writer history remains blocked.
+
+The added tests and existing ProductionAgent terminal recovery regressions pass
+under the race detector (`9.141s`) and in the same restricted Linux arm64 image,
+using `/tmp/vela-terminal-live-production-linux.test`. Lint and diff checks pass.
+The implementation and generated contracts are unchanged from `0811ed5`.
+
 ## Limits and continuation
 
 The new live path is exercised through the retirement coordinator and actual
-Runtime UDS. Existing ProductionAgent capacity-withdrawal and terminal recovery
-regressions pass, but a combined automatic ProductionAgent live-renewal scenario
-still needs direct coverage, including malformed and lost RPC responses.
-Candidate identities remain in memory; restart cannot infer unknown historical
+Runtime UDS, including the automatic ProductionAgent scenarios above. This does
+not establish every late-reply or distributed failure interleaving. Candidate
+identities remain in memory; restart cannot infer unknown historical
 writers from an empty backend. Durable renewal candidate restoration, physical
 containment, sealed receipt persistence, bounded history reclamation and default
 Fleet durable activation remain open. No remote deployment, push, GPU execution

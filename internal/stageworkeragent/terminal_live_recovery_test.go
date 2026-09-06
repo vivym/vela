@@ -1,6 +1,7 @@
 package stageworkeragent_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -94,6 +95,54 @@ func TestTerminalRetirementRecoversLiveMembersWithDifferentRenewalOutcomes(t *te
 			if recovered, err := terminalRetirer(t, gate, f).Resume(t.Context(), result.StageRunID); err != nil || recovered.Phase != stageworkeragent.TerminalRetirementRetired {
 				t.Fatalf("complete proof did not resume offline: %+v %v", recovered, err)
 			}
+		})
+	}
+}
+
+func TestTerminalLiveRecoveryRequiresInputExclusionAndAllFloors(t *testing.T) {
+	for _, fault := range []string{"active-input", "unknown-input", "lost-floor-reply"} {
+		t.Run(fault, func(t *testing.T) {
+			f := newAssignmentFloorFixture(t)
+			gate := f.open(t)
+			handle := beginAdmission(t, gate, f.assignment, f.acquireID)
+			switch fault {
+			case "unknown-input":
+				handle.Release()
+			case "lost-floor-reply":
+				completeAdmissionInputs(t, handle)
+			}
+			group := startFloorCollectorRuntimes(t, f, t.TempDir(), true, fault == "lost-floor-reply")
+			for index, client := range group.clients {
+				if response, err := client.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.assignment.Authority, ExecutionSpec: f.assignment.ExecutionSpec}); err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+					t.Fatalf("prepare: %v %v", response, err)
+				}
+				group.activeBackends[index].stopOnCancel.Store(true)
+			}
+			paths := retirementScratch(t, f)
+			queries := map[string]*velav1.StageAuthority{f.assignment.Authority.StageAllocationId: f.assignment.Authority}
+			retirer := terminalRetirer(t, gate, f)
+			ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+			defer cancel()
+			result, err := retirer.Retire(ctx, f.disposition, queries, drainCollectorTargets(f))
+			if err == nil || result.Phase != stageworkeragent.TerminalRetirementIntent {
+				t.Fatalf("missing prerequisite retired scratch: %+v %v", result, err)
+			}
+			assertRetirementScratch(t, paths, true)
+			for _, backend := range group.activeBackends {
+				if backend.inspectCalls.Load() != 0 || backend.cancelCalls.Load() != 0 || backend.drainCalls.Load() != 0 {
+					t.Fatal("live recovery reached backend before input exclusion and every floor acknowledgement")
+				}
+			}
+			if fault == "unknown-input" {
+				return
+			}
+			if fault == "active-input" {
+				completeAdmissionInputs(t, handle)
+			}
+			if result, err := retirer.Retire(t.Context(), f.disposition, queries, drainCollectorTargets(f)); err != nil || result.Phase != stageworkeragent.TerminalRetirementRetired {
+				t.Fatalf("completed prerequisites did not permit recovery: %+v %v", result, err)
+			}
+			assertRetirementScratch(t, paths, false)
 		})
 	}
 }

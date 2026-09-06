@@ -626,8 +626,12 @@ survives cancellation and cleanup. Terminal slots below the floor block readines
 Two-member UDS recovery, failed stop-observation retries, actual compiled CPU
 process reuse, full unit, related race/lint, four PostgreSQL integrations,
 generated checks and Linux non-root checks pass. Live recovery is now wired into
-the retirement coordinator; combined ProductionAgent live-renewal recovery,
-durable candidate restoration, historical unknown writers, bounded history
+the retirement coordinator. A test-only follow-up covers twelve ProductionAgent
+live-renewal/fault scenarios with actual Runtime UDS: incomplete recovery retains
+zero capacity and scratch; successful retry restores Acquire and permits the next
+Prepare. Three prerequisite counterexamples reject backend entry before input
+exclusion and all floor replies. Focused race and non-root Linux checks pass.
+Durable candidate restoration, historical unknown writers, bounded history
 reclamation, sealed receipt persistence and Fleet durable activation remain open.
 PostgreSQL schema 94, Worker journal 5, Runtime journal 4, Registry binding 1 and
 Production Gates `0/9` are unchanged.
