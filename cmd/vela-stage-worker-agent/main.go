@@ -98,19 +98,19 @@ type memberConfig struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := runCommand(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "vela-stage-worker-agent stopped: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(ctx context.Context) error {
 	configuration, err := loadConfig()
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	return runWithContext(ctx, configuration)
 }
 

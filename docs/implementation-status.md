@@ -381,6 +381,15 @@ intact and require separate authoritative reconciliation. Full unit, Worker
 race, ordinary lint, replacement/capacity PostgreSQL integration and non-root
 Linux checks pass. Runtime journal stays 4 and other versions are unchanged;
 default durable Worker assembly and Production Gates remain open.
+The [offline Worker journal command](worker-journal-preparation-evidence-2026-09-06.md)
+now provides explicit initialization, recovery and validated schema-2/3/4
+upgrades through the same locked admission store. It derives complete trusted
+topology and shared input/output roots from the launch manifest without inventing
+Runtime observations or starting models. Its status reports unknown inputs and
+INTENT/READY/RETIRED history without advancing retirement or deleting scratch.
+Full unit, Worker/command race, lint, a separate-process main entrypoint and
+non-root Linux checks pass. Schemas are unchanged. Default serving assembly,
+approved peer/launch binding and Fleet first-use provisioning remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

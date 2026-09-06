@@ -117,6 +117,46 @@ reject schema 5; use the newer reader for forward recovery. See
 [Durable Terminal Retirement](../durable-terminal-retirement-evidence-2026-09-06.md)
 for the output lifetime premise, tests and remaining default assembly work.
 
+## Offline Admission Journal Preparation
+
+`vela-stage-worker-agent journal` validates local history without loading the
+serving environment, contacting Control/peers or starting a ModelRuntime.
+Supply the approved launch manifest as visible in the Worker filesystem and
+the public StageAuthority verifier keyring. Its input/output directories come
+from that manifest; all local Runtime entries must use the same pair.
+
+For an existing journal, with deployment-specific file paths:
+
+```sh
+vela-stage-worker-agent journal \
+  --action recover \
+  --launch-manifest-file /run/vela/launch.json \
+  --verifier-keyring-file /run/vela/verifier.json \
+  --directory /var/lib/vela/stage-worker/admission \
+  --max-records 64
+```
+
+Use the same `--max-records` used at first initialization. Recovery validates
+and syncs the existing journal, then releases its exclusive lock. It fails if
+the directories, state, ownership markers, topology, signature/proof or lock
+cannot be validated. It does not create missing directories or state.
+
+`--action initialize` is separate first-use provisioning and requires independent
+first-use authority plus existing empty private state/input/output directories.
+It is not a restart fallback. If the command's output is lost, use `recover` to
+inspect whether initialization persisted. `upgrade-v2`, `upgrade-v3` and
+`upgrade-v4` retain the signed-floor requirement described above; do not use
+initialization to bypass a failed upgrade. Concurrent online/offline owners
+cannot share the journal lock.
+
+The JSON output reports local journal metadata, unproven inputs and retirement
+phase counts. Success is not readiness, Runtime epoch observation or writer
+drain. Preparation leaves INTENT/READY/RETIRED unchanged and never deletes
+scratch. Later serving startup must reacquire and validate the journal with
+complete trusted current Runtime bindings. Default Worker serving assembly and
+Fleet provisioning do not yet select this path. See
+[preparation evidence](../worker-journal-preparation-evidence-2026-09-06.md).
+
 ## Explicit Stream Reconciliation
 
 `DurableStreamConfig.TerminalRetirement` must reference the coordinator built
