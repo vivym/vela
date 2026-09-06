@@ -9,6 +9,27 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func LegacyAssignmentAdmissionStateForTest(document []byte, schema int) ([]byte, error) {
+	var state assignmentAdmissionState
+	if err := json.Unmarshal(document, &state); err != nil {
+		return nil, err
+	}
+	state.SchemaVersion, state.Scope = schema, nil
+	return json.Marshal(state)
+}
+
+func CopyAssignmentAdmissionScopeForTest(document, source []byte) ([]byte, error) {
+	var state, other assignmentAdmissionState
+	if err := json.Unmarshal(document, &state); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(source, &other); err != nil {
+		return nil, err
+	}
+	state.Scope = other.Scope
+	return json.Marshal(state)
+}
+
 // SetAssignmentAdmissionSyncHookForTest injects the post-Rename durability boundary.
 func SetAssignmentAdmissionSyncHookForTest(gate *FileAssignmentAdmission, hook func(func() error) error) func() {
 	gate.mu.Lock()

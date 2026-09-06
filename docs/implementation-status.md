@@ -370,6 +370,17 @@ recovery, without changing journal bytes or backend lifecycle. Full unit,
 related race, ordinary lint, protobuf compatibility and non-root Linux checks
 pass. Peer collection, approved launch-topology binding, Worker journal bootstrap
 and default durable admission/Stream wiring remain open.
+The [Worker journal topology repair](worker-journal-topology-evidence-2026-09-06.md)
+now binds empty and populated journals to complete trusted Worker/member/device
+topology, independent of replaceable Runtime routes. Schema 5 validates the
+persisted scope and retained signed history on reopen; invalid or incomplete
+configuration rejects before filesystem initialization. Explicit schema-2/3/4
+upgrade requires a retained signed floor proving the original topology and
+preserves all existing proof. Legacy journals without that witness remain
+intact and require separate authoritative reconciliation. Full unit, Worker
+race, ordinary lint, replacement/capacity PostgreSQL integration and non-root
+Linux checks pass. Runtime journal stays 4 and other versions are unchanged;
+default durable Worker assembly and Production Gates remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

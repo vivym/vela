@@ -43,11 +43,14 @@ type AssignmentAdmissionConfig struct {
 	// Initialize is a separate, explicitly authorized first bootstrap. Recovery
 	// must leave it false even when every local directory has been replaced.
 	Initialize bool
-	// UpgradeV2 validates and preserves schema-2 history without inventing input
-	// drain evidence. It cannot be combined with first bootstrap.
+	// All upgrades require a retained signed floor proving the original topology.
+	// Empty legacy journals cannot establish it from replacement configuration.
+	// UpgradeV2 preserves schema-2 history without inventing input drain evidence.
 	UpgradeV2 bool
 	// UpgradeV3 preserves schema-3 history without creating retirement evidence.
-	UpgradeV3           bool
+	UpgradeV3 bool
+	// UpgradeV4 preserves schema-4 history including retirement evidence.
+	UpgradeV4           bool
 	Directory           string
 	InputRoot           string
 	OutputRoot          string
@@ -85,6 +88,8 @@ type FileAssignmentAdmission struct {
 	state                      assignmentAdmissionState
 	validator                  *stageauthority.Validator
 	bindings                   []AdmissionRuntimeBinding
+	scope                      assignmentAdmissionScope
+	scopeDigest                [sha256.Size]byte
 	maxSkew                    time.Duration
 	active                     *AssignmentAdmission
 	failed                     error
@@ -103,7 +108,13 @@ type AssignmentAdmission struct {
 }
 
 func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignmentAdmission, error) {
-	if config.Initialize && (config.UpgradeV2 || config.UpgradeV3) || config.UpgradeV2 && config.UpgradeV3 {
+	upgrades := 0
+	for _, selected := range []bool{config.UpgradeV2, config.UpgradeV3, config.UpgradeV4} {
+		if selected {
+			upgrades++
+		}
+	}
+	if config.Initialize && upgrades > 0 || upgrades > 1 {
 		return nil, errors.New("assignment admission upgrade cannot initialize state")
 	}
 	if config.WorkerInstanceID == uuid.Nil || config.WorkerInstanceEpoch <= 0 || config.WorkerMemberID == uuid.Nil ||
@@ -123,14 +134,22 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		binding.Runtime.MembershipDigest = slices.Clone(binding.Runtime.MembershipDigest)
 		bindings = append(bindings, binding)
 	}
-	files, state, err := openAssignmentAdmissionFiles(config)
+	scope, err := newAssignmentAdmissionScope(config, bindings)
 	if err != nil {
 		return nil, err
 	}
-	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings, maxSkew: config.MaxClockSkew}
-	upgrade := config.UpgradeV2 && state.SchemaVersion == 2 || config.UpgradeV3 && state.SchemaVersion == 3
+	scopeDigest, err := scope.digest()
+	if err != nil {
+		return nil, err
+	}
+	files, state, err := openAssignmentAdmissionFiles(config, scopeDigest)
+	if err != nil {
+		return nil, err
+	}
+	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings, scope: scope, scopeDigest: scopeDigest, maxSkew: config.MaxClockSkew}
+	upgrade := config.UpgradeV2 && state.SchemaVersion == 2 || config.UpgradeV3 && state.SchemaVersion == 3 || config.UpgradeV4 && state.SchemaVersion == 4
 	if upgrade {
-		if len(state.Retirements) != 0 {
+		if state.SchemaVersion < 4 && len(state.Retirements) != 0 {
 			_ = files.close()
 			return nil, errors.New("legacy assignment admission cannot contain retirement evidence")
 		}
@@ -140,7 +159,15 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 				return nil, errors.New("schema-2 assignment admission cannot contain input drain proof")
 			}
 		}
-		state.SchemaVersion = 4
+		if len(state.Scope) != 0 || state.Floor <= 0 {
+			_ = files.close()
+			return nil, errors.New("legacy assignment admission requires a retained signed topology witness")
+		}
+		if _, err := gate.decodeFloor(state); err != nil {
+			_ = files.close()
+			return nil, err
+		}
+		state.SchemaVersion, state.Scope = 5, bytes.Clone(scopeDigest[:])
 	}
 	if err := gate.validateState(state); err != nil {
 		_ = files.close()
@@ -437,6 +464,9 @@ func (gate *FileAssignmentAdmission) verifyCurrent(authority *velav1.StageAuthor
 	if verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 {
 		return stageauthority.Verified{}, ErrAdmissionClosed
 	}
+	if err := gate.scope.matchAuthority(verified.Authority); err != nil {
+		return stageauthority.Verified{}, err
+	}
 	for _, retirement := range gate.state.Retirements {
 		if retirement.StageRunID.String() == verified.Authority.GetStageRunId() {
 			return stageauthority.Verified{}, ErrAdmissionClosed
@@ -531,7 +561,7 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 }
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
-	if state.SchemaVersion != 4 || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
+	if state.SchemaVersion != 5 || !bytes.Equal(state.Scope, gate.scopeDigest[:]) || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
 		state.MaxRecords < 1 || state.MaxRecords > 64 || state.Watermark < 0 || len(state.Pending) >= state.MaxRecords ||
 		(state.Latest == nil && (state.Watermark != 0 || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")
@@ -552,6 +582,9 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 		}
 		record, err := gate.record(entry)
 		if err != nil {
+			return err
+		}
+		if err := gate.scope.matchAuthority(record.Original); err != nil {
 			return err
 		}
 		identity, err := assignmentExecutionIdentity(record.Original)

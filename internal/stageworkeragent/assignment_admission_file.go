@@ -43,6 +43,7 @@ type admissionDirectoryIdentity struct {
 
 type assignmentAdmissionState struct {
 	SchemaVersion       int                           `json:"schema_version"`
+	Scope               []byte                        `json:"scope,omitempty"`
 	ID                  uuid.UUID                     `json:"journal_id"`
 	WorkerInstanceID    uuid.UUID                     `json:"worker_instance_id"`
 	WorkerInstanceEpoch int64                         `json:"worker_instance_epoch"`
@@ -69,7 +70,7 @@ type assignmentAdmissionFiles struct {
 	syncDirectory func(*os.Root) error
 }
 
-func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignmentAdmissionFiles, assignmentAdmissionState, error) {
+func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig, scope [sha256.Size]byte) (*assignmentAdmissionFiles, assignmentAdmissionState, error) {
 	files := &assignmentAdmissionFiles{paths: [3]string{config.Directory, config.InputRoot, config.OutputRoot}, syncDirectory: syncAdmissionDirectory}
 	success := false
 	defer func() {
@@ -129,7 +130,7 @@ func openAssignmentAdmissionFiles(config AssignmentAdmissionConfig) (*assignment
 				return nil, state, err
 			}
 		}
-		state = assignmentAdmissionState{SchemaVersion: 4, ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
+		state = assignmentAdmissionState{SchemaVersion: 5, Scope: bytes.Clone(scope[:]), ID: uuid.New(), WorkerInstanceID: config.WorkerInstanceID, WorkerInstanceEpoch: config.WorkerInstanceEpoch, WorkerMemberID: config.WorkerMemberID, MaxRecords: config.MaxRecords}
 		for i, info := range files.infos {
 			state.Directories[i] = admissionFileIdentity(info)
 		}
@@ -366,6 +367,7 @@ func admissionPathsOverlap(a, b string) bool {
 }
 
 func cloneAdmissionState(state assignmentAdmissionState) assignmentAdmissionState {
+	state.Scope = bytes.Clone(state.Scope)
 	state.Pending = slices.Clone(state.Pending)
 	state.Retirements = slices.Clone(state.Retirements)
 	if state.Latest != nil {

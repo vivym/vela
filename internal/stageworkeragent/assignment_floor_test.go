@@ -201,7 +201,7 @@ func TestAssignmentFloorRecoveryBindsWitnessAndPreservesRestrictionAcrossRuntime
 			case "floor":
 				document = bytes.Replace(document, []byte(`"floor":7`), []byte(`"floor":6`), 1)
 			case "old schema":
-				document = bytes.Replace(document, []byte(`"schema_version":4`), []byte(`"schema_version":1`), 1)
+				document = legacyAdmissionDocument(t, document, 1)
 			case "missing witness", "signature":
 				encoded, err := proto.MarshalOptions{Deterministic: true}.Marshal(f.disposition)
 				if err != nil {

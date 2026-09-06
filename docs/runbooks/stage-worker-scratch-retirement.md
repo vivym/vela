@@ -98,10 +98,22 @@ Missing namespaces still require syncing their bound surviving parent before
 RETIRED. A sync error retains READY and must not be replaced by a manual phase
 edit merely because the directory is absent.
 
-Worker admission journal is now schema 4, independently of materialization
-journal schema 2. Explicit `AssignmentAdmissionConfig.UpgradeV3` or `UpgradeV2`
-preserves older evidence without creating retirement proof. Ordinary recovery
-does not migrate, and schema 1 still requires separate reconciliation. See
+Worker admission journal is now schema 5, independently of materialization
+journal schema 2. It binds complete Worker/member/device topology even without
+assignment history or a floor. Runtime epoch/profile/residency replacement and
+configuration ordering do not change this scope. Signed history is independently
+matched to the configured topology on recovery.
+
+Explicit `AssignmentAdmissionConfig.UpgradeV4`, `UpgradeV3` or `UpgradeV2`
+preserves older evidence without creating retirement or writer proof. It now
+requires an existing signed floor proving the complete original topology,
+including member identity and device subset digests. Old empty journals or
+journals containing only assignments cannot be upgraded from replacement
+configuration. Preserve their files and scratch for authoritative reconciliation;
+never treat this rejection as permission to initialize. Ordinary recovery does
+not migrate, and schema 1 still requires separate reconciliation. Older binaries
+reject schema 5; use the newer reader for forward recovery. See
+[topology evidence](../worker-journal-topology-evidence-2026-09-06.md) and
 [Durable Terminal Retirement](../durable-terminal-retirement-evidence-2026-09-06.md)
 for the output lifetime premise, tests and remaining default assembly work.
 
@@ -153,9 +165,9 @@ old writer stopped. Missing original drain/non-admission proof leaves INTENT
 and scratch intact after replacement. See
 [replacement Runtime evidence](../runtime-replacement-floor-evidence-2026-09-06.md).
 
-The newer Worker reader accepts retained v1 and v2 floor replies. An older
-Worker rejects retained v2 replies despite unchanged outer journal schema 4;
-use the newer reader for forward recovery. Do not relabel, strip or erase proof
+The newer Worker reader accepts retained v1 and v2 floor replies. Before schema
+5, some older schema-4 readers already rejected retained v2 replies;
+the version number alone therefore did not establish compatibility. Do not relabel, strip or erase proof
 to force binary rollback. V1-only Runtime/member hops cannot finish v2
 retirement and retain scratch until upgraded.
 

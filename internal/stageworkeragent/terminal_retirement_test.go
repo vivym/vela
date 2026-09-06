@@ -304,7 +304,7 @@ func TestTerminalScratchRetirementSchema3UpgradePreservesEvidence(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacy := bytes.Replace(original, []byte(`"schema_version":4`), []byte(`"schema_version":3`), 1)
+	legacy := legacyAdmissionDocument(t, original, 3)
 	if err := os.WriteFile(name, legacy, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +491,7 @@ func TestTerminalScratchRetirementRejectsLegacyProofAndConflictingUpgradeFlags(t
 			if err != nil {
 				t.Fatal(err)
 			}
-			document = bytes.Replace(document, []byte(`"schema_version":4`), []byte(`"schema_version":3`), 1)
+			document = legacyAdmissionDocument(t, document, 3)
 			if err := os.WriteFile(name, document, 0o600); err != nil {
 				t.Fatal(err)
 			}
