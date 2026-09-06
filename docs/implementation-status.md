@@ -784,6 +784,13 @@ explicitly declares its crash-phase input. External H3 dependency conformance
 remains unverified; this behavior requires new release images and is not a
 driver sandbox, executable attestation or startup grant. Schema/journal versions
 and Production Gates are unchanged.
+The [Runtime launch snapshot repair](runtime-launch-snapshot-evidence-2026-09-06.md)
+also deep-copies the validated manifest before callbacks. Two synchronous
+counterexamples previously changed the second AUX factory's configuration after
+the journal recorded its launch digest; both now preserve the original snapshot.
+Lifecycle evidence collection waits for the existing phase setup gate before
+archiving journal files, avoiding in-progress publication without accepting
+partial archives. Executable binding, startup grants and retirement remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

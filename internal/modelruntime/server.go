@@ -82,6 +82,9 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 	if err := validateLaunchManifest(config.Manifest); err != nil {
 		return nil, err
 	}
+	// Journal identity and every factory must use the same startup snapshot,
+	// independent of caller slices and aliases between AUX runtime entries.
+	config.Manifest = cloneLaunchManifest(config.Manifest)
 	if (config.RegistryBinding == nil) != (config.RegistryVerifier == nil) {
 		return nil, errors.New("ModelRuntime Registry binding and verifier must be configured together")
 	}

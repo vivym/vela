@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -97,6 +98,70 @@ func TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup(t *testing
 			after, err := os.ReadFile(filepath.Join(config.ExecutionFloor.State.Directory, durableStateFileName))
 			if err != nil || !bytes.Equal(before, after) {
 				t.Fatalf("recovery changed unresolved lifecycle history: %v", err)
+			}
+		})
+	}
+}
+
+func TestRuntimeServerFreezesLaunchBeforeBackendCallbacks(t *testing.T) {
+	for _, mutation := range []string{"caller-manifest", "shared-runtime-slices"} {
+		t.Run(mutation, func(t *testing.T) {
+			f := newExecutionFloorFixture(t, "")
+			config := recoveredRuntimeServerConfig(t, f, privateExecutionStateDirectory(t))
+			config.ExecutionFloor.State.Initialize = true
+			command, environment := []string{"/approved-backend"}, []string{"APPROVED=value"}
+			for index := range config.Manifest.Runtimes {
+				config.Manifest.Runtimes[index].Command = command
+				config.Manifest.Runtimes[index].Environment = environment
+			}
+			wire, err := modelruntime.EncodeLaunchManifest(config.Manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var frozen modelruntime.LaunchManifest
+			if err := json.Unmarshal(wire, &frozen); err != nil {
+				t.Fatal(err)
+			}
+			factory, calls := config.BackendFactory, 0
+			config.BackendFactory = func(ctx context.Context, runtime modelruntime.LaunchRuntime, binding stageauthority.RuntimeBinding, backend modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+				index := calls
+				calls++
+				lifecycle := readDurableExecutionState(t, config.ExecutionFloor.State.Directory).BackendLifecycle
+				if lifecycle == nil || lifecycle.LaunchDigest != sha256.Sum256(wire) {
+					t.Fatal("factory did not retain the original durable launch digest")
+				}
+				expected, err := frozen.Runtimes[index].ProcessBackendConfig(frozen.LocalDevices)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(runtime, frozen.Runtimes[index]) || !reflect.DeepEqual(backend, expected) {
+					t.Errorf("factory %d configuration differs from the durable launch preimage", calls)
+				}
+				if calls == 1 {
+					// Mutations are synchronous, after the journal write and before
+					// the second factory. No concurrent caller writes are assumed.
+					if mutation == "caller-manifest" {
+						config.Manifest.Runtimes[1].Command[0] = "/changed-backend"
+						config.Manifest.Runtimes[1].Environment[0] = "APPROVED=changed"
+						config.Manifest.Runtimes[1].ScratchRoot += "-changed"
+						config.Manifest.LocalDevices[0].DeviceEpoch++
+					} else {
+						runtime.Command[0] = "/changed-through-factory"
+						runtime.Environment[0] = "APPROVED=changed-through-factory"
+					}
+				}
+				return factory(ctx, runtime, binding, backend)
+			}
+			server, err := modelruntime.StartRuntimeServer(t.Context(), config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = server.Close() })
+			if calls != len(frozen.Runtimes) {
+				t.Fatalf("factory calls = %d, expected %d", calls, len(frozen.Runtimes))
+			}
+			if err := server.Close(); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

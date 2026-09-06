@@ -77,6 +77,10 @@ func TestRuntimePIDNamespaceContainsBackendWriters(t *testing.T) {
 				}
 				container := createLifecycleContainer(t, image, binary, volume, mode, phase)
 				lifecycleDocker(t, "start", container)
+				// Do not archive in-progress journal temporary files. The gate is
+				// published only after this phase's durable startup/admission work.
+				lifecycleDocker(t, "exec", "--env", lifecycleProcessMode+"=wait-owner-ready",
+					container, "/runtime.test", "-test.run=^TestRuntimeLifecycleProcessHelper$")
 				before := waitLifecycleSnapshot(t, container, func(files map[string][]byte) bool {
 					return files["owner-ready"] != nil && len(files["writer-data"]) > 0
 				})
@@ -243,7 +247,20 @@ func waitLifecycleContainerExit(t *testing.T, container string, wantExit int) {
 
 func readLifecycleSnapshot(t *testing.T, container string) map[string][]byte {
 	t.Helper()
-	archive := tar.NewReader(bytes.NewReader(lifecycleDocker(t, "cp", container+":"+lifecycleProcessRoot+"/.", "-")))
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "docker", "cp", container+":"+lifecycleProcessRoot+"/.", "-")
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
+	// Docker diagnostics must not be mixed into the binary tar stream.
+	output, err := command.Output()
+	if diagnostics.Len() != 0 {
+		t.Logf("Docker snapshot diagnostics: %s", diagnostics.String())
+	}
+	if err != nil {
+		t.Fatalf("collect lifecycle snapshot: %v", err)
+	}
+	archive := tar.NewReader(bytes.NewReader(output))
 	files := make(map[string][]byte)
 	for {
 		header, err := archive.Next()
@@ -261,7 +278,7 @@ func readLifecycleSnapshot(t *testing.T, container string) map[string][]byte {
 		}
 		data, err := io.ReadAll(archive)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("read lifecycle snapshot entry %q (%d bytes): %v", header.Name, header.Size, err)
 		}
 		files[strings.TrimPrefix(header.Name, "./")] = data
 	}

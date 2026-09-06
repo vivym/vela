@@ -98,6 +98,8 @@ func TestRuntimeLifecycleProcessHelper(t *testing.T) {
 		runLifecycleDriver(t)
 	case "writer":
 		runLifecycleWriter(t)
+	case "wait-owner-ready":
+		waitLifecycleFile(t, "owner-ready")
 	case "exit-owner", "stop-writer", "stop-wrapper":
 		writeLifecycleJSON(t, mode, true)
 	case "inspect-writer":

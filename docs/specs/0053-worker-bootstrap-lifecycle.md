@@ -87,6 +87,13 @@ backend factory. Both AUX factories share that one intent. Persistence failure
 or cancellation after persistence cannot dispatch a factory. Initialization
 failure, ordinary `Close()` and successful execution drain never clear it.
 
+The Server deep-copies its validated manifest before invoking epoch-store or
+backend callbacks. Journal digest and all AUX backend configurations derive from
+that snapshot; caller-owned slices and aliases between runtime entries cannot
+change a later factory's launch parameters. This is an in-process ownership
+contract, not executable attestation or permission for an untrusted factory.
+See the [snapshot evidence](../runtime-launch-snapshot-evidence-2026-09-06.md).
+
 An `UNRESOLVED` or `LEGACY_UNKNOWN` journal reopens only a process-free recovery
 endpoint. Readiness and fresh execution reject; historical pending execution
 retains its drain-specific rejection. Offline journal status exposes this
