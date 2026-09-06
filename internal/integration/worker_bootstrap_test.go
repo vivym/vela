@@ -358,7 +358,7 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	completed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
-	if err != nil || completed.SchemaVersion != 92 || completed.Inventory["worker_bootstrap_claims"] != 0 {
+	if err != nil || completed.SchemaVersion != 93 || completed.Inventory["worker_bootstrap_claims"] != 0 {
 		t.Fatalf("completed first use did not release quiescence: %+v %v", completed, err)
 	}
 }

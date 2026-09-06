@@ -151,7 +151,7 @@ func TestWorkerBootstrapMutualTLSBindsNodeAndPreservesLostResponses(t *testing.T
 					t.Fatalf("other principal read original operation: %v", err)
 				}
 				_, err := other.rpc.RecordWorkerBootstrapReceipt(t.Context(), &velav1.RecordWorkerBootstrapReceiptRequest{
-					RequestId: operationID.String(), WorkerJournalId: uuid.NewString(), RuntimeJournalId: uuid.NewString(), WorkerScope: make([]byte, 32), RuntimeScope: make([]byte, 32)})
+					RequestId: operationID.String(), WorkerJournalId: uuid.NewString(), RuntimeJournalId: uuid.NewString(), WorkerScope: bytes.Repeat([]byte{1}, 32), RuntimeScope: bytes.Repeat([]byte{2}, 32)})
 				if status.Code(err) != codes.NotFound {
 					t.Fatalf("other principal reported original operation: %v", err)
 				}

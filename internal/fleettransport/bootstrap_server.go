@@ -204,12 +204,16 @@ func sameBootstrapClaimScope(a, b fleet.WorkerBootstrapClaim) bool {
 func validBootstrapClaim(claim fleet.WorkerBootstrapClaim) bool {
 	return claim.RequestID != uuid.Nil && claim.WorkerInstanceID != uuid.Nil && claim.WorkerInstanceEpoch > 0 &&
 		claim.WorkerMemberID != uuid.Nil && claim.WorkerMemberEpoch > 0 && validText(claim.NodeIdentity, 253) &&
-		len(claim.BundleDigest) == sha256.Size && validBootstrapTime(timestamppb.New(claim.ClaimedAt))
+		validBootstrapDigest(claim.BundleDigest) && validBootstrapTime(timestamppb.New(claim.ClaimedAt))
 }
 
 func validBootstrapReceipt(receipt fleet.WorkerBootstrapReceipt) bool {
 	return receipt.RequestID != uuid.Nil && receipt.WorkerJournalID != uuid.Nil && receipt.RuntimeJournalID != uuid.Nil &&
-		receipt.WorkerJournalID != receipt.RuntimeJournalID && len(receipt.WorkerScope) == sha256.Size && len(receipt.RuntimeScope) == sha256.Size
+		receipt.WorkerJournalID != receipt.RuntimeJournalID && validBootstrapDigest(receipt.WorkerScope) && validBootstrapDigest(receipt.RuntimeScope)
+}
+
+func validBootstrapDigest(value []byte) bool {
+	return len(value) == sha256.Size && [sha256.Size]byte(value) != ([sha256.Size]byte{})
 }
 
 func encodeBootstrapClaim(claim fleet.WorkerBootstrapClaim, actor string) *velav1.WorkerBootstrapClaim {

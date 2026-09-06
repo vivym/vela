@@ -125,6 +125,7 @@ func (service *Service) RecordWorkerBootstrapReceipt(ctx context.Context, receip
 	}
 	if receipt.RequestID == uuid.Nil || receipt.WorkerJournalID == uuid.Nil || receipt.RuntimeJournalID == uuid.Nil ||
 		receipt.WorkerJournalID == receipt.RuntimeJournalID || len(receipt.WorkerScope) != 32 || len(receipt.RuntimeScope) != 32 ||
+		[32]byte(receipt.WorkerScope) == ([32]byte{}) || [32]byte(receipt.RuntimeScope) == ([32]byte{}) ||
 		!validText(receipt.ActorIdentity, 500) {
 		return time.Time{}, &Failure{Code: FailureInvalid, Message: "Worker bootstrap receipt is invalid"}
 	}

@@ -102,6 +102,27 @@ func TestBootstrapServerFailsClosedWithoutConfiguredAuthority(t *testing.T) {
 	}
 }
 
+func TestBootstrapReceiptRejectsZeroScopeBeforeRegistry(t *testing.T) {
+	request, identity := bootstrapTransportFixture(t)
+	principal, _ := parseNodeAgentSPIFFEIdentity(identity)
+	service := &bootstrapServiceStub{}
+	server, err := NewServer(service, Config{SPIFFEIdentity: fleetSPIFFE, ActorIdentity: "fleet/primary", BootstrapService: service,
+		NodeAgentRegistrations: []NodeAgentRegistration{{NodeIdentity: principal.NodeIdentity, AgentID: principal.AgentID, SPIFFEIdentity: identity}}})
+	mustBootstrap(t, err)
+	for _, field := range []string{"worker", "runtime"} {
+		receipt := &velav1.RecordWorkerBootstrapReceiptRequest{RequestId: request.RequestID.String(), WorkerJournalId: uuid.NewString(), RuntimeJournalId: uuid.NewString(),
+			WorkerScope: bytes.Repeat([]byte{1}, 32), RuntimeScope: bytes.Repeat([]byte{2}, 32)}
+		if field == "worker" {
+			clear(receipt.WorkerScope)
+		} else {
+			clear(receipt.RuntimeScope)
+		}
+		if _, err := server.RecordWorkerBootstrapReceipt(verifiedPeerContext(t, identity), receipt); status.Code(err) != codes.InvalidArgument || service.receiptCalls != 0 {
+			t.Fatalf("zero scope reached Registry: %v writes=%d", err, service.receiptCalls)
+		}
+	}
+}
+
 func TestBootstrapClientRejectsChangedClaimResponses(t *testing.T) {
 	request, identity := bootstrapTransportFixture(t)
 	for _, fault := range []string{"request", "worker", "epoch", "member", "member-epoch", "node", "actor", "digest", "time", "unknown", "unknown-claim", "unavailable"} {

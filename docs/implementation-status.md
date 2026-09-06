@@ -485,6 +485,14 @@ pass. Nondurable modes remain separate; Fleet durable activation, unrecorded
 first-initialization reconciliation, pending writers, backend containment,
 terminal retirement and bounded reclamation remain open. Schema remains 92 and
 Production Gates remain `0/9`.
+The [bootstrap scope repair](worker-bootstrap-scope-evidence-2026-09-06.md)
+advances the schema to 93 and rejects all-zero Worker/Runtime scopes at transport,
+service and database boundaries. Four PostgreSQL counterexamples reproduced
+permanently unusable immutable receipts before the repair. Regressions prove
+rejection leaves the original claim completable, valid replay preserves its
+timestamp, and migration rejects invalid history without rewriting it. The
+bootstrap PostgreSQL/TLS suite, full unit suite, transport race and lint checks
+pass. Remaining lifecycle work and Production Gates `0/9` are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
