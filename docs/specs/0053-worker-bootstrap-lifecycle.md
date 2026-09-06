@@ -181,6 +181,21 @@ task recreation is not evidence of CRI/kubelet restart behavior; the pinned CRI
 start guard accepts only `CONTAINER_CREATED`. This experiment exercises synthetic
 callers and native containerd, not production Node binding or Runtime retirement.
 
+The Linux Node library now accepts a challenge-bound local seqpacket from an
+expected non-root UID/GID. `SO_PEERPIDFD` pins its connection opener and
+`SCM_PIDFD`/`SCM_CREDENTIALS` authenticate the actual message sender. Both must
+name the same live process. Inherited connections, excess descriptor rights,
+truncated/oversized messages and cancellation reject without retaining received
+descriptors. An opaque caller handle supports bounded process observations and
+stops yielding live observations after process exit or handle closure. Its
+payload remains subject to Registry/launch validation.
+
+This library is exercised by real containerd CPU tests, but has no serving
+command or durable startup-grant integration yet. The Runtime client must also
+authenticate the Node endpoint. A process observation alone cannot authorize
+backend dispatch, namespace ownership, containment or retirement. See the
+[caller evidence](../node-runtime-caller-evidence-2026-09-06.md).
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

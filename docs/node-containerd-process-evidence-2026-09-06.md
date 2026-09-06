@@ -56,6 +56,12 @@ namespace. The helper stays alive until the parent sends its exit command.
 These controlled process-lifetime conditions are part of the fixture, not a
 production race/replay or descriptor-delegation proof.
 
+The subsequent [authenticated caller implementation](node-runtime-caller-evidence-2026-09-06.md)
+replaces that original numeric `pidfd_open` fixture path with a challenge-bound
+seqpacket exchange using both connection and per-message kernel pidfds. The
+current reproduction also exercises inherited-connection rejection; the
+measurements below describe the original `5adea05` experiment.
+
 | Case | Actual result | Consequence |
 | --- | --- | --- |
 | Direct helper is namespace PID 1 | Task PID equals socket peer PID; host `NSpid` ends in `1`; its pidfd stays live | Positive process-correlation control |

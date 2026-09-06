@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -44,7 +43,7 @@ type containerdProcessFixture struct {
 type containerdCaller struct {
 	connection *net.UnixConn
 	pid        int32
-	pidfd      int
+	proof      *RuntimeCaller
 	startTicks uint64
 	namespace  string
 	nestedPIDs []string
@@ -230,7 +229,7 @@ func (fixture *containerdProcessFixture) create(t *testing.T, mode, pidNamespace
 			t.Fatal(err)
 		}
 	}
-	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(root, "socket", "caller.sock"), Net: "unix"})
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: filepath.Join(root, "socket", "caller.sock"), Net: "unixpacket"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,51 +304,17 @@ func (fixture *containerdProcessFixture) start(t *testing.T, id string, listener
 	if err := connection.SetDeadline(time.Now().Add(40 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := connection.SyscallConn()
+	proof, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var credential *unix.Ucred
-	var credentialErr error
-	if err := raw.Control(func(fd uintptr) {
-		credential, credentialErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-	}); err != nil || credentialErr != nil || credential.Uid != 65532 || credential.Gid != 65532 || credential.Pid <= 0 {
-		t.Fatalf("read kernel caller credentials: %+v %v %v", credential, err, credentialErr)
+	t.Cleanup(func() { _ = proof.Close() })
+	observed, err := proof.Inspect(t.Context())
+	if err != nil || observed.NamespaceDepth != 2 || string(proof.Payload()) != "containerd-cpu-caller" {
+		t.Fatalf("authenticate nested CPU caller: %+v %v", observed, err)
 	}
-	caller := &containerdCaller{connection: connection, pid: credential.Pid}
-	caller.pidfd, err = unix.PidfdOpen(int(caller.pid), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = unix.Close(caller.pidfd) })
-	caller.namespace, err = os.Readlink(fmt.Sprintf("/proc/%d/ns/pid", caller.pid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", caller.pid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	fields := strings.Fields(string(stat)[strings.LastIndexByte(string(stat), ')')+1:])
-	if len(fields) < 20 {
-		t.Fatal("missing kernel process start time")
-	}
-	caller.startTicks, err = strconv.ParseUint(fields[19], 10, 64)
-	if err != nil || caller.startTicks == 0 {
-		t.Fatalf("invalid kernel start time: %s %v", fields[19], err)
-	}
-	processStatus, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", caller.pid))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for line := range strings.SplitSeq(string(processStatus), "\n") {
-		if strings.HasPrefix(line, "NSpid:") {
-			caller.nestedPIDs = strings.Fields(strings.TrimPrefix(line, "NSpid:"))
-		}
-	}
-	if len(caller.nestedPIDs) < 2 || caller.nestedPIDs[0] != strconv.Itoa(int(caller.pid)) {
-		t.Fatalf("fixture did not enter a nested PID namespace: %v", caller.nestedPIDs)
-	}
+	caller := &containerdCaller{connection: connection, proof: proof, pid: observed.HostPID, startTicks: observed.StartTicks,
+		namespace: observed.PIDNamespace, nestedPIDs: []string{fmt.Sprint(observed.HostPID), fmt.Sprint(observed.NamespacePID)}}
 	assertContainerdCallerAlive(t, caller)
 	return fixture.task(t, id), caller
 }
@@ -374,16 +339,19 @@ func (fixture *containerdProcessFixture) stop(t *testing.T, id string, caller *c
 
 func assertContainerdCallerAlive(t *testing.T, caller *containerdCaller) {
 	t.Helper()
-	if count, err := unix.Poll([]unix.PollFd{{Fd: int32(caller.pidfd), Events: unix.POLLIN}}, 0); err != nil || count != 0 {
-		t.Fatalf("original kernel process handle is no longer live: %d %v", count, err)
+	if _, err := caller.proof.Inspect(t.Context()); err != nil {
+		t.Fatalf("original kernel process handle is no longer live: %v", err)
 	}
 }
 
 func assertContainerdCallerExited(t *testing.T, caller *containerdCaller) {
 	t.Helper()
-	fds := []unix.PollFd{{Fd: int32(caller.pidfd), Events: unix.POLLIN}}
+	fds := []unix.PollFd{{Fd: int32(caller.proof.pidfd.Fd()), Events: unix.POLLIN}}
 	if count, err := unix.Poll(fds, 1000); err != nil || count != 1 || fds[0].Revents&unix.POLLIN == 0 {
 		t.Fatalf("original kernel process handle did not report exit: %d %v %+v", count, err, fds)
+	}
+	if result, err := caller.proof.Inspect(t.Context()); err == nil || result != (RuntimeCallerObservation{}) {
+		t.Fatal("exited owner still produced a live process observation")
 	}
 }
 
@@ -403,12 +371,19 @@ func TestContainerdRuntimeCallerHelper(t *testing.T) {
 	if mode != "owner" {
 		t.Fatalf("unknown fixture mode: %s", mode)
 	}
-	connection, err := net.DialTimeout("unix", "/proof/caller.sock", 10*time.Second)
+	connection, err := net.DialTimeout("unixpacket", "/proof/caller.sock", 10*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = connection.Close() }()
 	if err := connection.SetDeadline(time.Now().Add(40 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	challenge := make([]byte, len(runtimeCallerProtocol)+32)
+	if count, err := connection.Read(challenge); err != nil || count != len(challenge) || !bytes.HasPrefix(challenge, []byte(runtimeCallerProtocol)) {
+		t.Fatalf("read Node caller challenge: %d %v", count, err)
+	}
+	if _, err := connection.Write(append(challenge, []byte("containerd-cpu-caller")...)); err != nil {
 		t.Fatal(err)
 	}
 	var command [4]byte

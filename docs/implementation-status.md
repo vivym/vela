@@ -726,6 +726,17 @@ API/synthetic-caller results, not CRI restart behavior or a production binding.
 The lifecycle contract now incorporates those limits. Authenticated startup
 binding, independent retirement and all schema/Production Gate boundaries remain
 unchanged.
+The [authenticated local Runtime caller](node-runtime-caller-evidence-2026-09-06.md)
+adds a challenge-bound Linux seqpacket receiver using both socket-peer and
+per-message kernel pidfds/credentials. Actual non-root process tests reject
+inherited connections, mismatched identities, extra/truncated descriptors and
+oversized messages without receiver FD growth. Opaque process handles support
+bounded live observations and serialized closure. The real containerd fixture
+now uses this code. Full unit/vet/lint, Linux tagged checks and Linux race tests
+pass; the race fixture requires a static binary for its empty nested rootfs.
+This is a library boundary, not an assembled Node endpoint or Registry startup
+grant. Container/configuration correlation, client-side Node authentication,
+durable binding and retirement remain open; schema and Gate results are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
