@@ -195,7 +195,7 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
 			proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
 		)
 	}
-	response.Detail = "resident runtime identities discovered"
+	response.Detail = "runtime endpoint identities discovered"
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}

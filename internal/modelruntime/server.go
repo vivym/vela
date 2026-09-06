@@ -203,6 +203,11 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 			Binding: binding, EpochStore: config.EpochStore, Validator: config.Validator,
 			EpochFloor: runtime.ModelRuntimeEpochFloor, MaxClockSkew: config.MaxClockSkew,
 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
+				// A valid pending journal permits recovery RPCs, not replacement
+				// model startup while historical writers may still own the device.
+				if startupState != nil && startupState.recoveryDrain {
+					return recoveryOnlyBackend{}, nil
+				}
 				backend, backendErr := backendFactory(runtimeCtx, runtime, allocated, backendConfig)
 				startedBackend = backend
 				return backend, backendErr

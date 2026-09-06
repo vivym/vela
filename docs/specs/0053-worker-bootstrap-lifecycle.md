@@ -37,6 +37,27 @@ or ownership loss during forwarding cannot satisfy durable discovery.
 These observations do not create a continuing ownership lease or attest
 physical drain.
 
+An existing Runtime journal with any retained execution lacking a durable drain
+checkpoint starts only a recovery endpoint. Journal ownership and Registry
+binding are validated before epoch allocation. The endpoint receives fresh
+Runtime epochs and retains the same journal lifetime lock, but no configured
+backend factory or driver process may start for any of the member's profiles.
+The recovery backend has no process or device and rejects every backend
+operation. Runtime identity discovery names current endpoints, not successful
+model loading. Readiness remains false; historical reads and authenticated floor
+installation remain available. Current-epoch Prepare, Start, renewal, Seal and
+unproven cancellation cannot infer readiness or writer drain from this endpoint.
+
+This restriction applies without a terminal floor, across profile/residency
+replacement, to legacy original-only history and when only some retained
+executions have drain proof. It does not activate a backend in place. A later
+startup must independently validate complete journal evidence. Empty history or
+history whose every retained execution has validated drain proof follows the
+normal backend startup path. Neither process disappearance nor an empty backend
+can manufacture a missing checkpoint. Process/container containment before
+Prepare, during model initialization and while idle remains a separate lifecycle
+requirement; execution history alone does not establish it.
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

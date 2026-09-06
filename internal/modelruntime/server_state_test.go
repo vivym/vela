@@ -296,29 +296,27 @@ func TestRuntimeServerRecoversExistingSupervisorJournalBeforeNewEpochs(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := journalRuntimeServerConfig(t)
-	config.ExecutionFloor.State = &modelruntime.ExecutionFloorStateConfig{Directory: directory}
-	config.Validator = f.validator
-	manifest, binding := &config.Manifest, f.bindings[0]
-	manifest.WorkerInstanceEpoch, manifest.WorkerMemberEpoch = binding.WorkerInstanceEpoch, binding.WorkerMemberEpoch
-	manifest.DeviceSetDigest, manifest.MembershipDigest = hex.EncodeToString(binding.DeviceSetDigest), hex.EncodeToString(binding.MembershipDigest)
-	manifest.Devices[0].Epoch, manifest.LocalDevices[0].DeviceEpoch = binding.Devices[0].Epoch, binding.Devices[0].Epoch
-	manifest.Members[0].Epoch = binding.WorkerMemberEpoch
-	manifest.Members[0].IdentityDigest, manifest.Members[0].DeviceSubsetDigest = repeatHex("6"), hex.EncodeToString(bytes.Repeat([]byte{0x67}, 32))
-	for i, binding := range f.bindings {
-		manifest.Runtimes[i].RuntimeIdentity, manifest.Runtimes[i].ModelResidencyID = binding.ModelRuntimeIdentity, binding.ModelResidencyID
-		manifest.Runtimes[i].StageProfileRevisionID, manifest.Runtimes[i].ModelRuntimeEpochFloor = binding.StageProfileRevisionID, binding.ModelRuntimeEpoch
-	}
+	config := recoveredRuntimeServerConfig(t, f, directory)
+	binding := f.bindings[0]
 	history, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
 	if err != nil || history.Highest != 10 || history.Floor != 11 || history.RetainedExecutions != 1 || history.PendingExecutions != 1 {
 		t.Fatalf("offline preparation lost retained history: %+v %v", history, err)
 	}
 	config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, history, nil)
+	factory := config.BackendFactory
+	backendCalls := 0
+	config.BackendFactory = func(ctx context.Context, runtime modelruntime.LaunchRuntime, binding stageauthority.RuntimeBinding, backendConfig modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+		backendCalls++
+		return factory(ctx, runtime, binding, backendConfig)
+	}
 	server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.Close() })
+	if backendCalls != 0 {
+		t.Fatalf("pending historical writers allowed replacement backend startup: calls=%d", backendCalls)
+	}
 	client, err := modelruntimetransport.Dial(t.Context(), modelruntimetransport.Config{SocketPath: config.SocketPath, ExpectedUID: uint32(os.Geteuid())})
 	if err != nil {
 		t.Fatal(err)
@@ -385,4 +383,22 @@ func journalRuntimeServerConfig(t *testing.T) modelruntime.RuntimeServerConfig {
 			return modelruntime.NewFakeVAERuntime(), nil
 		},
 	}
+}
+
+func recoveredRuntimeServerConfig(t *testing.T, f *executionFloorFixture, directory string) modelruntime.RuntimeServerConfig {
+	t.Helper()
+	config := journalRuntimeServerConfig(t)
+	config.ExecutionFloor.State = &modelruntime.ExecutionFloorStateConfig{Directory: directory}
+	config.Validator = f.validator
+	manifest, binding := &config.Manifest, f.bindings[0]
+	manifest.WorkerInstanceEpoch, manifest.WorkerMemberEpoch = binding.WorkerInstanceEpoch, binding.WorkerMemberEpoch
+	manifest.DeviceSetDigest, manifest.MembershipDigest = hex.EncodeToString(binding.DeviceSetDigest), hex.EncodeToString(binding.MembershipDigest)
+	manifest.Devices[0].Epoch, manifest.LocalDevices[0].DeviceEpoch = binding.Devices[0].Epoch, binding.Devices[0].Epoch
+	manifest.Members[0].Epoch = binding.WorkerMemberEpoch
+	manifest.Members[0].IdentityDigest, manifest.Members[0].DeviceSubsetDigest = repeatHex("6"), hex.EncodeToString(bytes.Repeat([]byte{0x67}, 32))
+	for i, binding := range f.bindings {
+		manifest.Runtimes[i].RuntimeIdentity, manifest.Runtimes[i].ModelResidencyID = binding.ModelRuntimeIdentity, binding.ModelResidencyID
+		manifest.Runtimes[i].StageProfileRevisionID, manifest.Runtimes[i].ModelRuntimeEpochFloor = binding.StageProfileRevisionID, binding.ModelRuntimeEpoch
+	}
+	return config
 }

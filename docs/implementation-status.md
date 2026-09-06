@@ -663,6 +663,18 @@ drain checkpoint or capacity-release authority. Durable health/receipt state,
 physical writer recovery, history reclamation, renewal write-amplification
 measurements and Fleet durable activation remain open. PostgreSQL schema 94,
 Worker/Runtime journals 5, Registry binding 1 and Production Gates `0/9` remain.
+The [recovery startup repair](runtime-recovery-startup-evidence-2026-09-06.md)
+withholds all backend factories when the opened Runtime journal has any retained
+execution without drain proof. A recovery endpoint keeps Registry-bound journal
+discovery, historical reads and floor installation available at fresh epochs,
+without loading models or accepting execution. The previous startup invoked both
+AUX backend factories before reporting unready. Seven journal-state scenarios
+and an actual owner-process exit with a surviving escaped CPU writer now pass;
+the default process factory starts the same commands in an empty-journal positive
+control. Full unit, related race, four PostgreSQL integrations, lint and non-root
+Linux startup tests pass. Physical cleanup and durable backend lifecycle evidence
+for initialization/idle crashes remain unresolved, alongside the other recovery
+work above. No schema version or Production Gate result changes.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
