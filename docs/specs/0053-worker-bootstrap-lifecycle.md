@@ -196,6 +196,23 @@ authenticate the Node endpoint. A process observation alone cannot authorize
 backend dispatch, namespace ownership, containment or retirement. See the
 [caller evidence](../node-runtime-caller-evidence-2026-09-06.md).
 
+`RuntimeContainerObserver.ObserveCaller` now correlates that opaque live caller
+with the exact CRI container and native running task on the same authenticated
+socket. The namespace is fixed to `k8s.io`; the task init PID must match the
+retained caller, which must also be PID 1 in a nested PID namespace. The adapter
+supports the tested containerd `v2.3.1`, repeats CRI/task/process reads within
+one bounded interval and rejects visible changes or lost identities. Actual
+CRI CPU tests accept direct init, reject wrapper/shared-PID callers, observe
+original-process exit, and confirm that CRI cannot restart the exited container
+under the same ID. Missing metadata still yields no observation. See the
+[combined observation evidence](../node-runtime-container-caller-evidence-2026-09-06.md).
+
+This combined observation is not immutable launch configuration, complete
+containment, a continuing lifetime lock or Registry startup authority. Effective
+configuration authentication, trusted client/endpoint assembly, durable journal
+and startup-nonce binding before factory dispatch, and independent exact-owner
+retirement remain required. No observation clears unresolved backend ownership.
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

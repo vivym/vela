@@ -38,6 +38,8 @@ type containerdProcessFixture struct {
 	tasks      tasksapi.TasksClient
 	root       string
 	binary     string
+	socket     string
+	connection *grpc.ClientConn
 }
 
 type containerdCaller struct {
@@ -141,6 +143,10 @@ func TestRuntimeContainerdProcessEvidence(t *testing.T) {
 }
 
 func startProcessContainerd(t *testing.T) *containerdProcessFixture {
+	return startConfiguredProcessContainerd(t, "version = 3\ndisabled_plugins = [\"io.containerd.cri.v1.runtime\", \"io.containerd.cri.v1.images\"]\n")
+}
+
+func startConfiguredProcessContainerd(t *testing.T, configuration string) *containerdProcessFixture {
 	t.Helper()
 	version, err := exec.CommandContext(t.Context(), "containerd", "--version").CombinedOutput()
 	if err != nil || strings.TrimSpace(string(version)) != "containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a" {
@@ -162,7 +168,7 @@ func startProcessContainerd(t *testing.T) *containerdProcessFixture {
 		}
 	})
 	config := filepath.Join(root, "containerd.toml")
-	if err := os.WriteFile(config, []byte("version = 3\ndisabled_plugins = [\"io.containerd.cri.v1.runtime\", \"io.containerd.cri.v1.images\"]\n"), 0o600); err != nil {
+	if err := os.WriteFile(config, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	log, err := os.Create(filepath.Join(root, "daemon.log"))
@@ -201,7 +207,7 @@ func startProcessContainerd(t *testing.T) *containerdProcessFixture {
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 	ctx = metadata.AppendToOutgoingContext(ctx, "containerd-namespace", "vela-cpu-"+uuid.NewString())
-	fixture := &containerdProcessFixture{ctx: ctx, root: root, containers: containersapi.NewContainersClient(connection),
+	fixture := &containerdProcessFixture{ctx: ctx, root: root, socket: socket, connection: connection, containers: containersapi.NewContainersClient(connection),
 		tasks: tasksapi.NewTasksClient(connection)}
 	fixture.binary, err = os.Executable()
 	if err != nil {

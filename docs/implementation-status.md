@@ -737,6 +737,18 @@ pass; the race fixture requires a static binary for its empty nested rootfs.
 This is a library boundary, not an assembled Node endpoint or Registry startup
 grant. Container/configuration correlation, client-side Node authentication,
 durable binding and retirement remain open; schema and Gate results are unchanged.
+The [Runtime caller and actual CRI task correlation](node-runtime-container-caller-evidence-2026-09-06.md)
+adds `ObserveCaller` on the same root-authenticated CRI/native socket, with a
+fixed `k8s.io` namespace and repeated live task/process/Pod identity checks.
+Actual containerd CRI accepts the direct PID 1 positive control and rejects
+wrapper/shared-PID callers. Original exit, refused CRI restart and metadata
+removal are exercised alongside 17 protocol-fault scenarios. The ordinary CPU
+campaign, unit/vet/lint and relevant tagged checks pass. The complete static
+Linux race selection passes without skips after fixing inherited-child cleanup
+in the rejection fixture; the actual CRI portion takes `7.22s`.
+This remains a library observation. Effective launch configuration, Runtime
+client authentication, durable Registry/startup-nonce binding and independent
+retirement remain open. Schema/journal versions and Production Gates stay fixed.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

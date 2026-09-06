@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -62,8 +63,13 @@ type runtimeContainerReader interface {
 	PodSandboxStatus(context.Context, *runtimev1.PodSandboxStatusRequest, ...grpc.CallOption) (*runtimev1.PodSandboxStatusResponse, error)
 }
 
+type runtimeContainerTaskReader interface {
+	Get(context.Context, *tasksapi.GetRequest, ...grpc.CallOption) (*tasksapi.GetResponse, error)
+}
+
 type RuntimeContainerObserver struct {
 	reader       runtimeContainerReader
+	tasks        runtimeContainerTaskReader
 	nodeIdentity string
 	bootID       func() (string, error)
 	check        func() error

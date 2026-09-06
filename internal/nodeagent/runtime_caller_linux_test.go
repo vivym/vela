@@ -71,7 +71,7 @@ func TestRuntimeCallerRejectsInvalidMessages(t *testing.T) {
 			if mode == "stream" {
 				network = "unix"
 			}
-			connection, _, _ := runtimeCallerConnection(t, mode, network)
+			connection, _, wait := runtimeCallerConnection(t, mode, network)
 			before := runtimeCallerDescriptorCount(t)
 			expected := RuntimeCallerCredentials{UID: 65532, GID: 65532}
 			if mode == "wrong-uid" {
@@ -96,6 +96,13 @@ func TestRuntimeCallerRejectsInvalidMessages(t *testing.T) {
 			}
 			if after := runtimeCallerDescriptorCount(t); before != after {
 				t.Fatalf("rejected ancillary data leaked descriptors: before=%d after=%d", before, after)
+			}
+			if mode == "delegated" {
+				// Let the opener reap its child before fixture cleanup kills it.
+				if err := connection.Close(); err != nil {
+					t.Fatal(err)
+				}
+				wait()
 			}
 			t.Logf("rejected %s without descriptor growth", mode)
 		})
@@ -165,7 +172,7 @@ func runtimeCallerDescriptorCount(t *testing.T) int {
 	return len(files)
 }
 
-func runtimeCallerConnection(t *testing.T, mode, network string) (*net.UnixConn, *os.Process, func()) {
+func runtimeCallerConnection(t *testing.T, mode, network string, privatePID ...bool) (*net.UnixConn, *os.Process, func()) {
 	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("the Runtime caller fixture must launch a different non-root UID")
@@ -194,6 +201,9 @@ func runtimeCallerConnection(t *testing.T, mode, network string) (*net.UnixConn,
 	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeCallerProcessHelper$", "-test.timeout=15s")
 	command.Env = []string{runtimeCallerTestMode + "=" + mode, "VELA_RUNTIME_CALLER_TEST_SOCKET=" + socket, "VELA_RUNTIME_CALLER_TEST_NETWORK=" + network}
 	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65532, Gid: 65532}}
+	if len(privatePID) != 0 && privatePID[0] {
+		command.SysProcAttr.Cloneflags = unix.CLONE_NEWPID
+	}
 	var output bytes.Buffer
 	command.Stdout, command.Stderr = &output, &output
 	if err := command.Start(); err != nil {

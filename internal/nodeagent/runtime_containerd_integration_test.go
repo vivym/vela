@@ -43,7 +43,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
 		"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
-		"-test.run=^Test(RuntimeContainerdProcessEvidence|RuntimeCallerAuthenticatedMessage|RuntimeCallerRejectsInvalidMessages|RuntimeCallerDeadline|RuntimeCallerProcessParser)$", "-test.v", "-test.timeout=120s")))
+		"-test.run=^Test(RuntimeContainerdProcessEvidence|RuntimeCallerAuthenticatedMessage|RuntimeCallerRejectsInvalidMessages|RuntimeCallerDeadline|RuntimeCallerProcessParser|RuntimeCallerContainerCRI|RuntimeContainerCallerCorrelation|RuntimeContainerCallerRejectsNonInit)$", "-test.v", "-test.timeout=120s")))
 	if !runtimeContainerIDPattern.MatchString(container) {
 		t.Fatalf("Docker returned an invalid fixture container ID: %q", container)
 	}

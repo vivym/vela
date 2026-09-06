@@ -108,7 +108,7 @@ func newContainerCRIServer() *containerCRIServer {
 	}
 }
 
-func serveContainerCRI(t *testing.T, service *containerCRIServer) string {
+func serveContainerCRI(t *testing.T, service *containerCRIServer, register ...func(*grpc.Server)) string {
 	t.Helper()
 	parent, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
@@ -132,12 +132,20 @@ func serveContainerCRI(t *testing.T, service *containerCRIServer) string {
 		case "/runtime.v1.RuntimeService/Version", "/runtime.v1.RuntimeService/ListContainers",
 			"/runtime.v1.RuntimeService/ContainerStatus", "/runtime.v1.RuntimeService/PodSandboxStatus":
 			return handler(ctx, request)
+		case "/containerd.services.tasks.v1.Tasks/Get":
+			if len(register) != 0 {
+				return handler(ctx, request)
+			}
+			fallthrough
 		default:
 			t.Errorf("observer attempted a non-observation RPC: %s", info.FullMethod)
 			return nil, status.Error(codes.PermissionDenied, "read only")
 		}
 	}))
 	runtimev1.RegisterRuntimeServiceServer(server, service)
+	for _, registration := range register {
+		registration(server)
+	}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Cleanup(func() {

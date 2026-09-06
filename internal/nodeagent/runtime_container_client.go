@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/vivym/vela/internal/securefile"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -118,7 +119,7 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 	if err != nil {
 		return nil, err
 	}
-	observer := &RuntimeContainerObserver{reader: runtimev1.NewRuntimeServiceClient(connection), nodeIdentity: config.NodeIdentity,
+	observer := &RuntimeContainerObserver{reader: runtimev1.NewRuntimeServiceClient(connection), tasks: tasksapi.NewTasksClient(connection), nodeIdentity: config.NodeIdentity,
 		bootID: boot, clock: time.Now, check: check, close: func() error {
 			if closed.Swap(true) {
 				return nil
