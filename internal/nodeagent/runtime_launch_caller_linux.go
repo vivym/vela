@@ -24,6 +24,8 @@ type RuntimeLaunchPodReader interface {
 
 // RuntimePlannedCallerObservation links a historical approved configuration to
 // API-observed Pod content and an authenticated live caller's declared manifest.
+// Schema 2 includes the current executable file observation, without approving
+// its bytes or associating them with the sender's pre-exec declaration.
 // It does not attest effective OCI configuration or grant backend startup.
 type RuntimePlannedCallerObservation struct {
 	SchemaVersion        int                               `json:"schema_version"`
@@ -31,6 +33,7 @@ type RuntimePlannedCallerObservation struct {
 	LaunchManifestDigest [sha256.Size]byte                 `json:"launch_manifest_digest"`
 	PodResourceVersion   string                            `json:"pod_resource_version"`
 	Caller               RuntimeContainerCallerObservation `json:"caller"`
+	Executable           RuntimeExecutableObservation      `json:"executable"`
 	ObservedFrom         time.Time                         `json:"observed_from"`
 	ObservedThrough      time.Time                         `json:"observed_through"`
 }
@@ -78,10 +81,11 @@ func (observer *RuntimeContainerObserver) ObservePlannedCaller(ctx context.Conte
 	if err != nil || !reflect.DeepEqual(first, last) {
 		return RuntimePlannedCallerObservation{}, errors.Join(ErrRuntimeLaunchPlan, err)
 	}
-	process, err := caller.Inspect(ctx)
+	executable, err := caller.InspectExecutable(ctx)
 	if err != nil {
 		return RuntimePlannedCallerObservation{}, err
 	}
+	process := executable.Process
 	previous := observation.Process
 	previous.ObservedAt = process.ObservedAt
 	if previous != process {
@@ -94,9 +98,9 @@ func (observer *RuntimeContainerObserver) ObservePlannedCaller(ctx context.Conte
 	if err := errors.Join(observer.check(), context.Cause(ctx)); err != nil {
 		return RuntimePlannedCallerObservation{}, err
 	}
-	return RuntimePlannedCallerObservation{SchemaVersion: 1, RegistryBinding: plan.RegistryBinding(),
+	return RuntimePlannedCallerObservation{SchemaVersion: 2, RegistryBinding: plan.RegistryBinding(),
 		LaunchManifestDigest: sha256.Sum256(plan.manifest), PodResourceVersion: first.ResourceVersion, Caller: observation,
-		ObservedFrom: from, ObservedThrough: through}, nil
+		Executable: executable, ObservedFrom: from, ObservedThrough: through}, nil
 }
 
 func (plan *RuntimeLaunchPlan) podTarget(pod corev1.Pod) (RuntimeContainerTarget, error) {

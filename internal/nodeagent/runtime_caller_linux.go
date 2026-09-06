@@ -223,6 +223,10 @@ func (caller *RuntimeCaller) Inspect(ctx context.Context) (RuntimeCallerObservat
 	}
 	caller.mu.Lock()
 	defer caller.mu.Unlock()
+	return caller.inspectLocked(ctx)
+}
+
+func (caller *RuntimeCaller) inspectLocked(ctx context.Context) (RuntimeCallerObservation, error) {
 	if caller.pidfd == nil || caller.process == nil || checkRuntimePIDFD(int(caller.pidfd.Fd()), caller.peer.Pid) != nil {
 		return RuntimeCallerObservation{}, ErrRuntimeCallerIdentity
 	}

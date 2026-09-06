@@ -233,6 +233,20 @@ attestation, endpoint/client assembly, actual journal-lock/startup-nonce binding
 and independent retirement remain unimplemented. No factory consumes this
 observation as a grant.
 
+`RuntimeCaller.InspectExecutable` now hashes the bounded regular file reached
+through the kernel's `exe` link in the retained original procfs directory. It
+checks the original pidfd/process identity, file metadata before/after reading,
+and a newly opened current `exe` reference before returning. Planned-caller
+observation schema 2 includes this file observation. It is not an approved image
+digest, loaded-memory measurement or effective configuration attestation.
+
+A CPU counterexample confirms that the same PID, pidfd, process start ticks and
+authenticated original payload can survive an exec into different executable
+file bytes. Repeated observations detect the new file but cannot authenticate
+which executable sent the earlier payload or rule out intervening ABA execs.
+The launch protocol must close that relationship before issuing startup
+authority. See the [executable evidence](../node-runtime-executable-evidence-2026-09-06.md).
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

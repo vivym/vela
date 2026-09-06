@@ -181,6 +181,15 @@ func runtimeCallerConnection(t *testing.T, mode, network string, privatePID ...b
 
 func runtimeCallerConfiguredConnection(t *testing.T, mode, network string, payload []byte, credentials RuntimeCallerCredentials, privatePID bool) (*net.UnixConn, *os.Process, func()) {
 	t.Helper()
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return runtimeCallerExecutableConnection(t, binary, mode, network, payload, credentials, privatePID)
+}
+
+func runtimeCallerExecutableConnection(t *testing.T, binary, mode, network string, payload []byte, credentials RuntimeCallerCredentials, privatePID bool) (*net.UnixConn, *os.Process, func()) {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("the Runtime caller fixture must launch a different non-root UID")
 	}
@@ -199,10 +208,6 @@ func runtimeCallerConfiguredConnection(t *testing.T, mode, network string, paylo
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 	if err := os.Chmod(socket, 0o666); err != nil {
-		t.Fatal(err)
-	}
-	binary, err := os.Executable()
-	if err != nil {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeCallerProcessHelper$", "-test.timeout=15s")
@@ -251,6 +256,10 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	mode := os.Getenv(runtimeCallerTestMode)
 	if mode == "" {
 		t.Skip("Runtime caller subprocess helper")
+	}
+	if mode == "exec-target" {
+		time.Sleep(30 * time.Second)
+		return
 	}
 	var connection *net.UnixConn
 	if mode == "inherited" {
@@ -330,6 +339,11 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	}
 	var response [4]byte
 	_, _ = io.ReadFull(connection, response[:])
+	if mode == "exec-after-challenge" && string(response[:]) == "exec" {
+		if err := unix.Exec(os.Args[0], os.Args, []string{runtimeCallerTestMode + "=exec-target"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func runtimeCallerPayload(t *testing.T, fallback string) []byte {

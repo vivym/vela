@@ -762,6 +762,18 @@ changed backend command. Registry and Kubernetes remain fixtures in the actual
 CRI case; effective configuration, current startup authorization, journal/nonce
 binding, endpoint assembly and independent retirement are not implemented.
 The factory and recovery restrictions, schema/journal versions and Gates remain.
+The [kernel executable observation](node-runtime-executable-evidence-2026-09-06.md)
+adds a bounded SHA-256 of the file referenced by the retained live process,
+with repeated descriptor metadata and current-executable checks. Planned-caller
+observation schema 2 includes that result. Actual CPU tests preserve the old
+executable identity after its pathname is replaced/deleted, and demonstrate
+that one PID/pidfd and original request survive an exec into different bytes.
+All 15 selected Linux CPU/race tests pass, including the real CRI helper whose
+observed digest is independently compared with its fixture image payload.
+This is not image approval, memory/configuration attestation or proof that the
+observed executable sent the original request. Startup authorization, endpoint
+assembly and independent retirement remain open; database/journal versions and
+Production Gates are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

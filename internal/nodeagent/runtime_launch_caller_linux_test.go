@@ -146,12 +146,17 @@ func TestRuntimePlannedCallerCorrelatesTrustedPod(t *testing.T) {
 			}
 			observation, err := observer.ObservePlannedCaller(ctx, plan, reader, caller)
 			if scenario == "matching" {
-				if err != nil || observation.SchemaVersion != 1 || observation.Caller.Container.Target.PodUID != uuid.MustParse(string(pod.UID)) ||
+				if err != nil || observation.SchemaVersion != 2 || observation.Caller.Container.Target.PodUID != uuid.MustParse(string(pod.UID)) ||
 					observation.Caller.Process.UID != 10001 || observation.RegistryBinding.GetPair().GetRuntimeJournalId() != fixture.binding.Pair.RuntimeJournalId ||
 					observation.LaunchManifestDigest != sha256.Sum256(plan.manifest) || observation.PodResourceVersion != "1" ||
 					observation.ObservedFrom.IsZero() || observation.ObservedThrough.Before(observation.ObservedFrom) ||
 					observation.ObservedThrough.Sub(observation.ObservedFrom) > 10*time.Second || pods.calls != 2 {
 					t.Fatalf("planned caller failed correlation: %+v %v", observation, err)
+				}
+				executable, err := caller.InspectExecutable(t.Context())
+				if err != nil || observation.Executable.Digest != executable.Digest || observation.Executable.SizeBytes != executable.SizeBytes ||
+					observation.Executable.FileInode != executable.FileInode || observation.Executable.Process.HostPID != process.HostPID {
+					t.Fatalf("planned observation omitted the actual executable: %+v %v", observation.Executable, err)
 				}
 				observation.RegistryBinding.Signature[0] ^= 1
 				if _, err := fixture.verifier.Verify(plan.RegistryBinding()); err != nil {

@@ -46,6 +46,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
 		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",
+		"TestRuntimeExecutableObservation", "TestRuntimeExecutablePathAndExec", "TestRuntimeExecutableFileBounds",
 	}
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",

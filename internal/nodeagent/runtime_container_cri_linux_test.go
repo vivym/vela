@@ -116,7 +116,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 					ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
 				pods = &runtimeLaunchPodFixture{pod: *pod, key: fleetcontroller.ResourceKey{Namespace: pod.Namespace, Name: pod.Name}}
 				planned, err := observer.ObservePlannedCaller(t.Context(), plan, pods, caller)
-				if err != nil || planned.Caller.Container.Target != target || planned.Caller.Process.UID != 10001 {
+				digest, size := runtimeExecutableDigest(t, fixture.binary)
+				if err != nil || planned.SchemaVersion != 2 || planned.Caller.Container.Target != target || planned.Caller.Process.UID != 10001 ||
+					planned.Executable.Digest != digest || planned.Executable.SizeBytes != size || planned.Executable.Process.HostPID != observation.Process.HostPID {
 					t.Fatalf("correlate planned caller through actual CRI: %+v %v", planned, err)
 				}
 				t.Log("Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested")

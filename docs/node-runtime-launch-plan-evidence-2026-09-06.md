@@ -6,6 +6,10 @@ Pod, and correlate a matching caller declaration with API-observed Pod content
 and the actual CRI/native task. This is a library observation path. It does not
 authorize backend startup or prove the configuration actually loaded by Runtime.
 
+The subsequent [kernel executable observation](node-runtime-executable-evidence-2026-09-06.md)
+adds current-file measurement in planned-observation schema 2 and a concrete
+same-PID exec counterexample. It does not remove the authority limits below.
+
 PostgreSQL 94, Worker journal 5, Runtime journal 6, Registry binding 1 and
 Production Gates `0/9` remain unchanged. No database, protocol, deployment,
 Runtime factory gate or journal retirement operation changes here.
