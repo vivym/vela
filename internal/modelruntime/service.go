@@ -78,6 +78,7 @@ const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
 	verified             stageauthority.Verified
+	backendAuthority     *stageauthority.Verified
 	state                velav1.ModelRuntimeExecutionState
 	workerReusable       bool
 	reuseAfterDrain      bool
@@ -263,6 +264,11 @@ func (service *Service) PrepareStage(
 	}
 	defer release()
 	if replayed {
+		if err := service.synchronizeBackendAuthority(ctx, verified); err != nil {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.Detail = boundedDetail(err.Error())
+			return response, nil
+		}
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = service.activeState()
 		response.Detail = "StageAttempt already prepared by the same authority"
@@ -295,6 +301,7 @@ func (service *Service) PrepareStage(
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
+	service.confirmBackendAuthority(verified)
 	service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED
@@ -325,12 +332,18 @@ func (service *Service) StartStage(
 		return response, nil
 	}
 	defer release()
-	state, replayed, err := service.requireActive(verified, true)
+	_, replayed, err := service.requireActive(verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
+	if err := service.synchronizeBackendAuthority(ctx, verified); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	state := service.activeState()
 	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = state
@@ -364,6 +377,7 @@ func (service *Service) StartStage(
 		return response, nil
 	}
 	startedAt := service.clock.Now()
+	service.confirmBackendAuthority(verified)
 	service.markStarted(verified.Digest, startedAt)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING
@@ -414,9 +428,12 @@ func (service *Service) CancelStage(
 		response.Detail = "StageAttempt output is already sealed"
 		return response, nil
 	}
-	target, state, err := service.cancellationTarget(verified, allowSuccessor)
+	target, state, err := service.resolveCancellationTarget(ctx, verified, allowSuccessor)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		if errors.Is(err, errBackendAuthorityUncertain) {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		}
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
@@ -428,7 +445,7 @@ func (service *Service) CancelStage(
 		response.Detail = "cancellation already acknowledged"
 		return response, nil
 	}
-	if terminalState(state) {
+	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.State = state
 		response.Detail = "StageAttempt no longer has cancellable compute"
@@ -522,6 +539,7 @@ func (service *Service) Status(
 		status.LocalReceiptID = receipt.GetReceiptId()
 		status.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
 	}
+	service.confirmBackendAuthority(verified)
 	service.setActiveState(verified.Digest, status.State)
 	service.setReuseAfterDrain(verified.Digest, status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 		(status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable))
@@ -536,7 +554,7 @@ func (service *Service) Status(
 		}
 		service.setActiveWorkerReusable(verified.Digest)
 	}
-	if terminalState(status.State) {
+	if terminalState(status.State) && (status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED || status.FailureEvidence.WorkerReusable) {
 		service.stopWatchdog(verified.Digest)
 	}
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
@@ -634,6 +652,12 @@ func (service *Service) SealOutput(
 	defer finishCall()
 	status, err := service.backend.Status(ctx, verified)
 	err = executionCallError(ctx, err)
+	if err == nil {
+		err = validateBackendStatus(status)
+		if err == nil {
+			service.confirmBackendAuthority(verified)
+		}
+	}
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = status.State
@@ -753,6 +777,9 @@ func (service *Service) renewActiveLocked(
 		) != nil {
 		return false, errActiveAuthorityMismatch
 	}
+	if service.active.backendAuthority == nil || service.active.backendAuthority.Digest != service.active.verified.Digest {
+		return false, errBackendAuthorityUncertain
+	}
 	service.active.verified = verified
 	service.resetWatchdogLocked(verified)
 	return true, nil
@@ -793,8 +820,7 @@ func (service *Service) cancelWatchdogLocked() {
 
 func (service *Service) expire(generation uint64) {
 	service.mu.Lock()
-	if service.active == nil || generation != service.generation || terminalState(service.active.state) ||
-		service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+	if !needsExecutionCancellation(service.active) || generation != service.generation {
 		service.mu.Unlock()
 		return
 	}
@@ -807,8 +833,7 @@ func (service *Service) expire(generation uint64) {
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	service.mu.Lock()
-	if service.active == nil || generation != service.generation || terminalState(service.active.state) ||
-		service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+	if !needsExecutionCancellation(service.active) || generation != service.generation {
 		service.mu.Unlock()
 		return
 	}
@@ -821,11 +846,11 @@ func (service *Service) expire(generation uint64) {
 	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
 	defer cancel()
-	if err := service.backend.Cancel(
-		ctx,
-		verified,
-		velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE,
-	); err != nil {
+	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
+	if err == nil {
+		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)
+	}
+	if err != nil {
 		service.setActiveState(
 			verified.Digest,
 			velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
@@ -844,7 +869,7 @@ func (service *Service) setActiveState(
 ) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	if service.active != nil && service.active.verified.Digest == digest {
+	if service.active.knowsAuthority(digest) {
 		service.active.state = state
 	}
 }

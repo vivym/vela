@@ -279,7 +279,7 @@ func TestModelRuntimeCancelRetainsUncooperativeExecutionUntilActualReturn(t *tes
 	}
 }
 
-func TestModelRuntimeInterruptedRenewalDoesNotFabricateCancellationAcknowledgement(t *testing.T) {
+func TestModelRuntimeInterruptedRenewalRecoversObservedCancellationIdentity(t *testing.T) {
 	backend := &canceledPrepareBackend{watchdogCallBackend: &watchdogCallBackend{
 		FakeRuntime: modelruntime.NewFakeDiTRuntime(), operation: "status",
 		entered: make(chan struct{}), canceled: make(chan struct{}), resume: make(chan struct{}),
@@ -299,15 +299,15 @@ func TestModelRuntimeInterruptedRenewalDoesNotFabricateCancellationAcknowledgeme
 	response, err := f.supervisor.CancelStage(t.Context(), &velav1.ModelRuntimeServiceCancelStageRequest{
 		Authority: renewed, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
 	})
-	if err != nil || response.GetCancellationAcknowledged() || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
-		t.Fatalf("interruption fabricated acknowledgement for an unobserved backend renewal: %v %v", response, err)
+	if err != nil || !response.GetCancellationAcknowledged() || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("interruption could not cancel the observed backend identity: %v %v", response, err)
 	}
 	if decision := <-finished; decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
 		t.Fatalf("interrupted renewal was accepted: %s", decision)
 	}
 	call := <-backend.calls
-	if !proto.Equal(call.authority, renewed) {
-		t.Fatal("cancellation did not use the Runtime-installed envelope")
+	if !proto.Equal(call.authority, f.authorities[0]) {
+		t.Fatal("cancellation did not use the backend-observed envelope")
 	}
 	assertExecutionDrainCheckpoint(t, f.supervisor, renewed, false)
 	other := f.authority(t, 1, 12)

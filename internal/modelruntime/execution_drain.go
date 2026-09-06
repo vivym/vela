@@ -138,7 +138,7 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 	}
 	defer release()
 	service.mu.Lock()
-	exact := service.active != nil && service.active.verified.Digest == verified.Digest &&
+	exact := service.active.knowsAuthority(verified.Digest) &&
 		(terminalState(service.active.state) || service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING)
 	state := velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
 	reusable := false

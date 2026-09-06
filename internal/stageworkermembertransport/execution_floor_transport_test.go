@@ -260,11 +260,24 @@ type memberFloorChain struct {
 
 type memberFloorBackend struct {
 	*modelruntime.FakeRuntime
-	closed          atomic.Bool
-	cancelCalls     atomic.Int64
-	failCancel      atomic.Bool
-	prepareEntered  chan struct{}
-	prepareCanceled chan struct{}
+	closed               atomic.Bool
+	cancelCalls          atomic.Int64
+	failCancel           atomic.Bool
+	prepareEntered       chan struct{}
+	prepareCanceled      chan struct{}
+	renewalResponseFault atomic.Int32
+}
+
+func (backend *memberFloorBackend) Status(ctx context.Context, verified stageauthority.Verified) (modelruntime.BackendStatus, error) {
+	fault := backend.renewalResponseFault.Load()
+	if fault == 1 {
+		return modelruntime.BackendStatus{}, errors.New("injected renewal failure before backend application")
+	}
+	result, err := backend.FakeRuntime.Status(ctx, verified)
+	if err == nil && fault == 2 {
+		return modelruntime.BackendStatus{}, errors.New("injected lost renewal response")
+	}
+	return result, err
 }
 
 func (backend *memberFloorBackend) Prepare(ctx context.Context, verified stageauthority.Verified, spec *velav1.StageExecutionSpec) error {

@@ -66,7 +66,7 @@ func (service *Service) InspectExecution(
 		inspection.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
 	} else {
 		service.mu.Lock()
-		exact := service.active != nil && service.active.verified.Digest == verified.Digest
+		exact := service.active.knowsAuthority(verified.Digest)
 		service.mu.Unlock()
 		if exact {
 			inspector, ok := service.backend.(BackendExecutionInspector)

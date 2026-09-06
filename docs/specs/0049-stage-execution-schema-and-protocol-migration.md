@@ -401,15 +401,38 @@ FAILED terminal state and suppress later explicit or deadline cancellation.
 Start still requires confirmed PREPARED state; admission remains held until
 explicit writer-drain evidence permits reuse.
 
+Runtime distinguishes its accepted execution grant from the last backend-confirmed
+signed envelope. Successful Prepare/Start and validated Status confirm the
+backend identity; a renewed Prepare replay or Start first synchronizes through
+backend Status. Failed or interrupted renewal retains both candidates. Runtime
+rejects another distinct renewal until the pending grant is confirmed, bounding
+the ambiguity to two envelopes. Retrying Status with that pending grant may
+confirm it. This candidate pair is active memory, not a durable recovery record.
+
 `CancelStage` never installs or renews execution authority. It accepts the exact
-installed signed envelope, including after expiry; while admission is healthy
+accepted or retained backend signed envelope, including after expiry; while admission is healthy
 and above its terminal floor, a fresh compatible successor may also authorize
-stopping that same execution. Runtime sends its installed envelope to the
-backend and preserves its watchdog deadline on success or failure. The response
+stopping that same execution. If renewal was unacknowledged, Runtime performs
+bounded exact read-only inspection of both candidates under the execution mutex.
+Exactly one must be known and valid; unavailable, malformed, timed-out, missing
+or contradictory observations reject without backend Cancel. Runtime rechecks
+request eligibility after resolving the observation: a superseded envelope
+cannot authorize cancellation. It sends the observed backend envelope and
+preserves its watchdog deadline on success or failure. The response
 digest correlates the request only: it does not make an uninstalled successor
 known to exact inspection or drain. Historical/failed-admission recovery still
-requires the exact installed envelope, and cancellation acknowledgement is not
+requires an exact retained envelope, and cancellation acknowledgement is not
 writer drain or permission to reuse a device.
+
+The watchdog uses the same reconciliation. FAILED without proven reusable state
+remains eligible for cleanup, including after partial Prepare failure or failed
+watchdog reconciliation. Exact inspection/drain can use the retained backend
+envelope; allocation-level checkpoint lookup returns the signed identity actually
+drained without rewriting it to the accepted grant. Confirmation of a new backend
+envelope removes the superseded candidate. Recovery callers must already possess
+the applicable signed envelope; durable candidate discovery, restart recovery
+beyond existing historical drain/replacement proof, and physical containment
+remain separate work.
 
 Before waiting for the execution mutex, CancelStage validates admission health,
 the terminal floor and its exact or permitted successor target, then interrupts

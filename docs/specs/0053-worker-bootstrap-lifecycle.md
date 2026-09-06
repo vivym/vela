@@ -68,13 +68,23 @@ lock; a pending interruption cannot bypass a subsequently installed floor.
 
 Cancellation itself grants no lifetime. With a healthy Runtime admission above
 its floor, a fresh compatible successor can authorize a stop using the existing
-installed authority; it cannot replace that authority or reset the watchdog.
-After observed monotonic expiry, only the exact installed envelope may cancel.
+backend authority; it cannot replace the accepted grant or reset the watchdog.
+After observed monotonic expiry, only an exact accepted or retained backend envelope may cancel.
 This holds even when the forwarding Worker's journal has failed. Runtime
-journal failure or a terminal floor continues to require an exact installed
+journal failure or a terminal floor continues to require an exact retained
 envelope. An acknowledged successor request does not create exact inspection
-or drain evidence for that successor; recovery keeps the actual installed
+or drain evidence for that successor; recovery keeps the actual backend
 envelope and may query allocation-level checkpoints to recover its proof.
+
+An unacknowledged renewal retains the accepted grant and last confirmed backend
+envelope in Runtime memory. Further distinct renewal rejects until confirmation.
+Cancellation/watchdog recovery inspects both exact identities and requires one
+unambiguous observation before backend Cancel, then rechecks request eligibility.
+FAILED with unproven reuse remains cancellable. The authenticated leader can use
+these recovery operations after Worker journal closure and terminal-floor
+installation, but must possess the relevant signed envelopes. Exact drain
+returns proof only for the envelope actually drained; no RPC enumerates pending
+candidates, and the pair is not restored from the Runtime journal on restart.
 
 Retention covers the forwarding call only: a timed-out UDS RPC can return while
 backend descendants remain active. It proves neither physical containment nor

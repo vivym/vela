@@ -584,8 +584,23 @@ preserves leader authorization and cancellation/drain recovery after Worker
 journal replacement. Full unit, related race/lint, four PostgreSQL integration
 checks and Linux non-root process/transport tests pass. Backend acknowledgement,
 writer drain and device reuse
-remain distinct; unobserved backend renewal and failed-backend recovery remain
-unresolved. Versions and Production Gates remain unchanged.
+remain distinct. The unobserved renewal and failed-backend cases recorded at
+that increment are addressed in part by the following recovery increment.
+Versions and Production Gates remain unchanged.
+The [Runtime renewal recovery repair](runtime-renewal-recovery-evidence-2026-09-06.md)
+separates accepted grants from backend-confirmed identities and retains at most
+two candidates when renewal acknowledgement is lost. Cancellation and watchdog
+recovery require one unambiguous exact backend inspection; failed inspection
+rejects without cancellation acknowledgement and permits later exact retry.
+Renewed Prepare/Start synchronize backend authority, and FAILED without proven
+reuse remains eligible for cleanup. Actual compiled H3 CPU processes and
+authenticated mTLS/UDS recovery after Worker journal closure preserve the
+original exact drain proof. Full unit, related race/lint, four PostgreSQL
+integrations and Linux non-root process/transport checks pass. Candidate identity
+is still in memory and callers must already possess its signed envelope;
+durable discovery, restart recovery, physical replacement, terminal retirement,
+bounded reclamation, pending input writers, sealed receipt persistence and Fleet
+durable activation remain open. Versions and Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

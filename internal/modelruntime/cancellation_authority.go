@@ -22,7 +22,10 @@ func (service *Service) cancellationTargetLocked(request stageauthority.Verified
 		return stageauthority.Verified{}, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED, errActiveAuthorityMismatch
 	}
 	active := service.active
-	if active.verified.Digest != request.Digest && (!allowSuccessor || active.deadlineExpired || terminalState(active.state) ||
+	if reusableExecution(active) {
+		return stageauthority.Verified{}, active.state, errActiveAuthorityMismatch
+	}
+	if !active.knowsAuthority(request.Digest) && (!allowSuccessor || active.deadlineExpired || terminalState(active.state) ||
 		stageauthority.ValidateRenewal(active.verified.Authority, request.Authority) != nil) {
 		return stageauthority.Verified{}, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED, errActiveAuthorityMismatch
 	}
@@ -53,11 +56,11 @@ func (admission *executionAdmission) interruptCancellation(ctx context.Context, 
 	if service.sealed[verified.Digest] != nil {
 		return func() {}, nil
 	}
-	_, state, err := service.cancellationTargetLocked(*verified, allowSuccessor)
+	_, _, err = service.cancellationTargetLocked(*verified, allowSuccessor)
 	if err != nil {
 		return nil, err
 	}
-	if terminalState(state) || state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+	if !needsExecutionCancellation(service.active) {
 		return func() {}, nil
 	}
 	active := service.active
@@ -70,4 +73,11 @@ func (admission *executionAdmission) interruptCancellation(ctx context.Context, 
 		defer service.mu.Unlock()
 		active.pendingCancellations--
 	}, nil
+}
+
+func needsExecutionCancellation(active *activeExecution) bool {
+	return active != nil && !reusableExecution(active) &&
+		active.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED &&
+		active.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED &&
+		active.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING
 }
