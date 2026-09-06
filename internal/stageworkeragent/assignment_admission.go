@@ -100,6 +100,8 @@ type FileAssignmentAdmission struct {
 	maxSkew                    time.Duration
 	active                     *AssignmentAdmission
 	failed                     error
+	registryBinding            *velav1.WorkerBootstrapBinding
+	registryVerifier           *journalbinding.Verifier
 	retirementAfterDirectory   func(int) error
 	retirementSyncAbsentParent func(*os.Root) error
 }
@@ -159,7 +161,8 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		return nil, err
 	}
 	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings,
-		routesBound: !config.DeferRuntimeRoutes, scope: scope, scopeDigest: scopeDigest, maxSkew: config.MaxClockSkew}
+		routesBound: !config.DeferRuntimeRoutes, scope: scope, scopeDigest: scopeDigest, maxSkew: config.MaxClockSkew,
+		registryBinding: config.RegistryBinding, registryVerifier: config.RegistryVerifier}
 	upgrade := config.UpgradeV2 && state.SchemaVersion == 2 || config.UpgradeV3 && state.SchemaVersion == 3 || config.UpgradeV4 && state.SchemaVersion == 4
 	if upgrade {
 		if state.SchemaVersion < 4 && len(state.Retirements) != 0 {
@@ -187,16 +190,7 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		return nil, err
 	}
 	if config.RegistryBinding != nil {
-		var memberEpoch int64
-		for _, member := range scope.Members {
-			if member.ID == scope.WorkerMemberID {
-				memberEpoch = member.Epoch
-			}
-		}
-		if err := config.RegistryVerifier.VerifyJournal(config.RegistryBinding, journalbinding.WorkerJournal, journalbinding.Journal{
-			WorkerInstanceID: scope.WorkerInstanceID, WorkerInstanceEpoch: scope.WorkerInstanceEpoch,
-			WorkerMemberID: scope.WorkerMemberID, WorkerMemberEpoch: memberEpoch, JournalID: state.ID, Scope: scopeDigest,
-		}); err != nil {
+		if err := gate.verifyRegistryJournal(); err != nil {
 			_ = files.close()
 			return nil, fmt.Errorf("match locked assignment journal to Registry: %w", err)
 		}

@@ -522,6 +522,15 @@ and Worker composition, PostgreSQL/TLS with the compiled Node binding command,
 full unit/race/lint, protocol compatibility and Linux non-root checks pass.
 Physical containment, remote Worker assignment-journal ownership and the
 remaining lifecycle work stay open. Versions and Production Gates are unchanged.
+The [peer Worker discovery repair](peer-worker-journal-discovery-evidence-2026-09-06.md)
+now observes the actual Worker journal before and after forwarding Runtime
+discovery. The durable Leader independently verifies both signatures and the
+shared Registry pair. Three command-composition counterexamples and an additional
+closure-during-RPC case reject; intact pending/deferred journals remain
+discoverable. Full unit/race/lint, PostgreSQL/TLS with the compiled Node command,
+protocol compatibility and Linux non-root checks pass. Post-discovery ownership
+loss, physical containment and remaining lifecycle work are still open. Versions
+and Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

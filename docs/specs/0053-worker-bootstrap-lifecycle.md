@@ -29,8 +29,14 @@ discovery must match its own recorded claim/pair, while each remote member uses
 its own signed pair. Identity and epoch alone cannot satisfy durable assembly.
 Discovery remains available for intact journals awaiting recovery even when
 readiness is false. Closed, failed or replaced journal ownership rejects.
-This observation does not attest physical drain or the forwarding remote
-Worker's own assignment-journal ownership.
+Member discovery also reports `worker_journal_binding` after observing the
+forwarding Worker's actual admission handle before and after the Runtime RPC.
+The durable Leader verifies both signatures, the member scope and equality of
+their immutable Registry claim/pair. A nondurable Worker, failed/closed journal,
+or ownership loss during forwarding cannot satisfy durable discovery.
+These observations do not create a continuing ownership lease or attest
+physical drain. Post-discovery loss and command admission remain separate
+lifecycle requirements.
 
 ## Terminal outcomes
 
@@ -106,7 +112,7 @@ files, but cannot publish a receipt for its abandoned request.
 Replacement needs independent containment and approved new Worker/member
 identities with isolated persistent namespaces. The existing signed journal
 identity binding does not replace those requirements. Lost Node credentials,
-already-observed Workers, remote Worker ownership, failed-backend
+already-observed Workers, ownership loss after discovery, failed-backend
 containment, successful terminal scratch retirement and bounded reclamation
 remain separate work. Default durable Fleet provisioning stays disabled until
 its complete activation and recovery contract is validated.

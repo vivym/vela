@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -38,8 +39,18 @@ func (client *Client) DiscoverRuntimeIdentities(ctx context.Context, request *ve
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
-	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 || !validDiscoveryResult(command, response.GetResult()) {
+	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 || proto.Size(response) > 81<<10 || !validDiscoveryResult(command, response.GetResult()) {
 		return nil, status.Error(codes.DataLoss, "Stage Worker member discovery result is invalid")
+	}
+	if client.registryVerifier != nil {
+		worker, workerErr := client.registryVerifier.Verify(response.GetWorkerJournalBinding())
+		runtime, runtimeErr := client.registryVerifier.Verify(response.GetResult().GetJournalBinding())
+		if workerErr != nil || runtimeErr != nil || !bindingMatchesDiscovery(command, worker) || !sameRegistryPair(worker, runtime) {
+			return nil, status.Error(codes.FailedPrecondition, "Stage Worker journal discovery requires a Registry-bound Worker/Runtime pair")
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
 	}
 	return proto.Clone(response.GetResult()).(*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse), nil
 }
@@ -65,6 +76,17 @@ func (server *Server) DiscoverRuntimeIdentities(ctx context.Context, request *ve
 	if !proto.Equal(command, discoveryRequestFor(server.localIdentities[0])) {
 		return nil, status.Error(codes.FailedPrecondition, "Stage Worker member discovery scope is stale")
 	}
+	var workerBinding *velav1.WorkerBootstrapBinding
+	if server.workerJournal != nil {
+		workerBinding, err = server.workerJournal.InspectJournalBinding(ctx)
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		if err != nil || !bindingMatchesDiscovery(command, workerBinding) {
+			return nil, status.Error(codes.FailedPrecondition, "Stage Worker journal ownership is unavailable for discovery")
+		}
+		workerBinding = proto.Clone(workerBinding).(*velav1.WorkerBootstrapBinding)
+	}
 	result, err := server.runtime.DiscoverRuntimeIdentities(ctx, proto.Clone(command).(*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest))
 	if err != nil {
 		return nil, err
@@ -84,9 +106,34 @@ func (server *Server) DiscoverRuntimeIdentities(ctx context.Context, request *ve
 			return nil, status.Error(codes.FailedPrecondition, "local ModelRuntime discovery changed its configured identity set")
 		}
 	}
+	if server.workerJournal != nil {
+		current, err := server.workerJournal.InspectJournalBinding(ctx)
+		if err := ctx.Err(); err != nil {
+			return nil, status.FromContextError(err).Err()
+		}
+		if err != nil || !proto.Equal(current, workerBinding) || !sameRegistryPair(workerBinding, result.GetJournalBinding()) {
+			return nil, status.Error(codes.FailedPrecondition, "Stage Worker journal ownership changed or disagrees with Runtime discovery")
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
 	return &velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse{
-		Result: proto.Clone(result).(*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse),
+		Result:               proto.Clone(result).(*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse),
+		WorkerJournalBinding: workerBinding,
 	}, nil
+}
+
+func bindingMatchesDiscovery(request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, binding *velav1.WorkerBootstrapBinding) bool {
+	claim := binding.GetClaim()
+	return claim != nil && binding.GetPair() != nil && proto.Size(binding) <= journalbinding.MaximumBytes &&
+		claim.GetWorkerInstanceId() == request.GetWorkerInstanceId() && claim.GetWorkerInstanceEpoch() == request.GetWorkerInstanceEpoch() &&
+		claim.GetWorkerMemberId() == request.GetWorkerMemberId() && claim.GetWorkerMemberEpoch() == request.GetWorkerMemberEpoch()
+}
+
+func sameRegistryPair(worker, runtime *velav1.WorkerBootstrapBinding) bool {
+	return worker != nil && runtime != nil && worker.GetClaim() != nil && worker.GetPair() != nil &&
+		proto.Equal(worker.GetClaim(), runtime.GetClaim()) && proto.Equal(worker.GetPair(), runtime.GetPair())
 }
 
 func validDiscoveryRequest(request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest) bool {

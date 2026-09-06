@@ -363,13 +363,14 @@ func (client *discoveryRuntimeClient) DiscoverRuntimeIdentities(ctx context.Cont
 
 type discoveryReplyClient struct {
 	velav1.StageWorkerMemberServiceClient
-	result *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
-	call   func(*velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest)
+	result        *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
+	call          func(*velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest)
+	workerBinding *velav1.WorkerBootstrapBinding
 }
 
 func (client *discoveryReplyClient) DiscoverRuntimeIdentities(_ context.Context, request *velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest, _ ...grpc.CallOption) (*velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse, error) {
 	if client.call != nil {
 		client.call(request)
 	}
-	return &velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse{Result: client.result}, nil
+	return &velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse{Result: client.result, WorkerJournalBinding: client.workerBinding}, nil
 }

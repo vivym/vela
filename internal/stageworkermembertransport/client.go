@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -30,6 +31,8 @@ type ClientConfig struct {
 	TransportCredentials credentials.TransportCredentials
 	Dialer               Dialer
 	FloorValidator       *stageauthority.Validator
+	// Configuring a Registry verifier requires both journals at discovery.
+	RegistryVerifier *journalbinding.Verifier
 }
 
 type Client struct {
@@ -38,6 +41,7 @@ type Client struct {
 	targetID             string
 	targetIdentityDigest [sha256.Size]byte
 	floorValidator       *stageauthority.Validator
+	registryVerifier     *journalbinding.Verifier
 }
 
 func Dial(ctx context.Context, config ClientConfig) (*Client, error) {
@@ -83,6 +87,7 @@ func Dial(ctx context.Context, config ClientConfig) (*Client, error) {
 		targetID:             config.TargetWorkerMemberID,
 		targetIdentityDigest: [sha256.Size]byte(config.TargetIdentityDigest),
 		floorValidator:       config.FloorValidator,
+		registryVerifier:     config.RegistryVerifier,
 	}, nil
 }
 

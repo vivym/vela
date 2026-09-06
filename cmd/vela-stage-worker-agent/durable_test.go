@@ -20,6 +20,7 @@ import (
 	"github.com/vivym/vela/internal/stageworkeragent"
 	"github.com/vivym/vela/internal/stageworkermembertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -184,7 +185,7 @@ func TestDurableWorkerDiscoveryRejectsUnapprovedOrIncompleteRoutes(t *testing.T)
 }
 
 func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testing.T) {
-	for _, fault := range []string{"approved", "unapproved-profile", "nondurable-runtime"} {
+	for _, fault := range []string{"approved", "unapproved-profile", "nondurable-runtime", "nondurable-worker", "closed-worker-journal", "replaced-worker-journal", "closed-during-discovery"} {
 		t.Run(fault, func(t *testing.T) {
 			leaderIdentity := productionSmokeIdentity("49800000-0000-0000-0000-000000000003", 9)
 			followerIdentity := productionSmokeIdentity("49800000-0000-0000-0000-000000000004", 11)
@@ -196,25 +197,58 @@ func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testi
 			configureDurablePeerPair(t, &leader, &follower)
 			enableDurableSmoke(t, &leader, leaderIdentity)
 			enableDurableSmoke(t, &follower, followerIdentity)
-			if fault == "nondurable-runtime" {
-				follower.runtimeSocket = nondurableSocket
+			if fault == "nondurable-runtime" || fault == "nondurable-worker" {
+				if fault == "nondurable-runtime" {
+					follower.runtimeSocket = nondurableSocket
+				}
 				follower.launchManifestFile, follower.assignmentAdmissionRoot, follower.assignmentAdmissionLimit = "", "", 0
 				follower.journalBindingFile, follower.journalBindingVerifierFile = "", ""
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			followerBuilt := false
-			followerRuntime, err := newProductionRuntimeUsing(ctx, follower, durableSmokeConsumers(func(config stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error) {
+			var followerAdmission *stageworkeragent.FileAssignmentAdmission
+			followerConsumers := durableSmokeConsumers(func(config stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error) {
 				followerBuilt = true
+				followerAdmission = config.Admission
 				if config.TerminalHistory != nil || config.TerminalRetirement != nil || config.Admission == nil {
 					t.Fatal("follower assembled Leader retirement or omitted its journal")
 				}
 				return stageworkeragent.NewDurableStreamAgent(config)
-			}))
-			if err != nil || followerBuilt != (fault != "nondurable-runtime") {
+			})
+			if fault == "closed-during-discovery" {
+				followerConsumers.newMemberServer = func(config stageworkermembertransport.ServerConfig) (*stageworkermembertransport.Server, error) {
+					gate, ok := config.WorkerJournal.(*stageworkeragent.FileAssignmentAdmission)
+					if !ok {
+						t.Fatal("member service omitted the actual Worker journal")
+					}
+					config.Runtime = &closeJournalDiscoveryClient{ModelRuntimeServiceClient: config.Runtime, gate: gate}
+					return stageworkermembertransport.NewServer(config)
+				}
+			}
+			followerRuntime, err := newProductionRuntimeUsing(ctx, follower, followerConsumers)
+			if err != nil || followerBuilt != (fault != "nondurable-runtime" && fault != "nondurable-worker") {
 				t.Fatalf("follower startup: %v", err)
 			}
 			defer func() { _ = followerRuntime.Close() }()
+			switch fault {
+			case "closed-worker-journal":
+				if err := followerAdmission.Close(); err != nil {
+					t.Fatal(err)
+				}
+			case "replaced-worker-journal":
+				path := filepath.Join(follower.assignmentAdmissionRoot, "assignment-admission.json")
+				wire, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(path, path+".retained"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, wire, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			leaderBuilt := false
 			leaderRuntime, err := newProductionRuntimeUsing(ctx, leader, durableSmokeConsumers(func(config stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error) {
 				leaderBuilt = true
@@ -223,10 +257,16 @@ func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testi
 				}
 				return stageworkeragent.NewDurableStreamAgent(config)
 			}))
+			if leaderRuntime != nil {
+				t.Cleanup(func() { _ = leaderRuntime.Close() })
+			}
 			if fault != "approved" {
 				message := "approved launch identity"
 				if fault == "nondurable-runtime" {
 					message = "Registry-bound"
+				}
+				if fault == "nondurable-worker" || fault == "closed-worker-journal" || fault == "replaced-worker-journal" || fault == "closed-during-discovery" {
+					message = "Worker journal"
 				}
 				if err == nil || leaderBuilt || leaderRuntime != nil || !strings.Contains(err.Error(), message) {
 					t.Fatalf("pinned but unapproved peer profile crossed startup: %t %v", leaderBuilt, err)
@@ -241,6 +281,19 @@ func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testi
 			}
 		})
 	}
+}
+
+type closeJournalDiscoveryClient struct {
+	velav1.ModelRuntimeServiceClient
+	gate *stageworkeragent.FileAssignmentAdmission
+}
+
+func (client *closeJournalDiscoveryClient) DiscoverRuntimeIdentities(ctx context.Context, request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, options ...grpc.CallOption) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
+	response, err := client.ModelRuntimeServiceClient.DiscoverRuntimeIdentities(ctx, request, options...)
+	if err != nil {
+		return nil, err
+	}
+	return response, client.gate.Close()
 }
 
 func durableSmokeConsumers(build func(stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error)) productionAuthorityConsumers {

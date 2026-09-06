@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestWorkerBootstrapBindingCommandUsesCommittedRegistryIdentity(t *testing.T) {
@@ -249,6 +250,10 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = worker.Close() })
+	observed, err := worker.InspectJournalBinding(t.Context())
+	if err != nil || !proto.Equal(observed, binding) {
+		t.Fatalf("live Worker journal observation lost committed Registry binding: %v %v", observed, err)
+	}
 	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
 		Manifest: manifest, EpochStore: epochStore, Validator: validator, SocketPath: filepath.Join(socketRoot, "runtime.sock"), CancelTimeout: time.Second,
 		ExecutionFloor: &modelruntime.ExecutionFloorConfig{State: &state}, RegistryBinding: binding, RegistryVerifier: verifier,

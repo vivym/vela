@@ -24,6 +24,12 @@ type MemberBinding struct {
 	IdentityDigest []byte
 }
 
+// WorkerJournalBindingObserver verifies Registry identity against its currently
+// held journal. Cached metadata alone cannot satisfy this interface's contract.
+type WorkerJournalBindingObserver interface {
+	InspectJournalBinding(context.Context) (*velav1.WorkerBootstrapBinding, error)
+}
+
 type ServerConfig struct {
 	Authenticator   stageworkertransport.Authenticator
 	Validator       *stageauthority.Validator
@@ -31,6 +37,7 @@ type ServerConfig struct {
 	LocalIdentities []*velav1.ModelRuntimeIdentity
 	Members         []MemberBinding
 	MaxClockSkew    time.Duration
+	WorkerJournal   WorkerJournalBindingObserver
 }
 
 type Server struct {
@@ -43,6 +50,7 @@ type Server struct {
 	membersByID           map[string]MemberBinding
 	discoveryLeaderDigest [sha256.Size]byte
 	maxClockSkew          time.Duration
+	workerJournal         WorkerJournalBindingObserver
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -111,6 +119,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 		authenticator: config.Authenticator, validator: config.Validator, runtime: config.Runtime,
 		localMember: local, localIdentities: identities,
 		membersByID: membersByID, maxClockSkew: config.MaxClockSkew, discoveryLeaderDigest: discoveryLeaderDigest,
+		workerJournal: config.WorkerJournal,
 	}, nil
 }
 

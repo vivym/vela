@@ -3,6 +3,7 @@ syntax = "proto3";
 package vela.v1;
 
 import "vela/v1/model_runtime.proto";
+import "vela/v1/fleet_maintenance.proto";
 
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
@@ -163,4 +164,7 @@ message StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest {
 
 message StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse {
   ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse result = 1;
+  // The forwarding Worker checks its actual held assignment journal before
+  // and after Runtime discovery. Both bindings must name the same Registry pair.
+  WorkerBootstrapBinding worker_journal_binding = 2;
 }

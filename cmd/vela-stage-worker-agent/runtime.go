@@ -275,6 +275,10 @@ func newProductionRuntimeUsing(
 		if credentialsErr != nil {
 			return fail(fmt.Errorf("configure Stage Worker member server mTLS: %w", credentialsErr))
 		}
+		var workerJournal stageworkermembertransport.WorkerJournalBindingObserver
+		if runtime.admission != nil {
+			workerJournal = runtime.admission
+		}
 		memberService, serviceErr := consumers.newMemberServer(
 			stageworkermembertransport.ServerConfig{
 				Authenticator:   stageworkertransport.PeerAuthenticator{},
@@ -283,6 +287,7 @@ func newProductionRuntimeUsing(
 				LocalIdentities: runtimeIdentities,
 				Members:         memberBindings,
 				MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
+				WorkerJournal:   workerJournal,
 			},
 		)
 		if serviceErr != nil {
@@ -329,6 +334,7 @@ func newProductionRuntimeUsing(
 						TargetIdentityDigest: member.identityDigest[:],
 						TransportCredentials: clientCredentials,
 						FloorValidator:       stageAuthorityValidator,
+						RegistryVerifier:     expectedRuntime.RegistryVerifier,
 					},
 				)
 				cancel()

@@ -1322,10 +1322,13 @@ func (x *StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest) GetCommand() 
 }
 
 type StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse struct {
-	state         protoimpl.MessageState                                `protogen:"open.v1"`
-	Result        *ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState                                `protogen:"open.v1"`
+	Result *ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	// The forwarding Worker checks its actual held assignment journal before
+	// and after Runtime discovery. Both bindings must name the same Registry pair.
+	WorkerJournalBinding *WorkerBootstrapBinding `protobuf:"bytes,2,opt,name=worker_journal_binding,json=workerJournalBinding,proto3" json:"worker_journal_binding,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse) Reset() {
@@ -1365,11 +1368,18 @@ func (x *StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse) GetResult() 
 	return nil
 }
 
+func (x *StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse) GetWorkerJournalBinding() *WorkerBootstrapBinding {
+	if x != nil {
+		return x.WorkerJournalBinding
+	}
+	return nil
+}
+
 var File_vela_v1_stage_worker_member_proto protoreflect.FileDescriptor
 
 const file_vela_v1_stage_worker_member_proto_rawDesc = "" +
 	"\n" +
-	"!vela/v1/stage_worker_member.proto\x12\avela.v1\x1a\x1bvela/v1/model_runtime.proto\"\xaf\x01\n" +
+	"!vela/v1/stage_worker_member.proto\x12\avela.v1\x1a\x1bvela/v1/model_runtime.proto\x1a\x1fvela/v1/fleet_maintenance.proto\"\xaf\x01\n" +
 	"+StageWorkerMemberServicePrepareStageRequest\x125\n" +
 	"\x17target_worker_member_id\x18\x01 \x01(\tR\x14targetWorkerMemberId\x12I\n" +
 	"\acommand\x18\x02 \x01(\v2/.vela.v1.ModelRuntimeServicePrepareStageRequestR\acommand\"x\n" +
@@ -1437,9 +1447,10 @@ const file_vela_v1_stage_worker_member_proto_rawDesc = "" +
 	"\x06result\x18\x01 \x01(\v2>.vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponseR\x06result\"\xc9\x01\n" +
 	"8StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest\x125\n" +
 	"\x17target_worker_member_id\x18\x01 \x01(\tR\x14targetWorkerMemberId\x12V\n" +
-	"\acommand\x18\x02 \x01(\v2<.vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequestR\acommand\"\x92\x01\n" +
+	"\acommand\x18\x02 \x01(\v2<.vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequestR\acommand\"\xe9\x01\n" +
 	"9StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse\x12U\n" +
-	"\x06result\x18\x01 \x01(\v2=.vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponseR\x06result2\xfa\x10\n" +
+	"\x06result\x18\x01 \x01(\v2=.vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponseR\x06result\x12U\n" +
+	"\x16worker_journal_binding\x18\x02 \x01(\v2\x1f.vela.v1.WorkerBootstrapBindingR\x14workerJournalBinding2\xfa\x10\n" +
 	"\x18StageWorkerMemberService\x12{\n" +
 	"\fPrepareStage\x124.vela.v1.StageWorkerMemberServicePrepareStageRequest\x1a5.vela.v1.StageWorkerMemberServicePrepareStageResponse\x12u\n" +
 	"\n" +
@@ -1527,6 +1538,7 @@ var file_vela_v1_stage_worker_member_proto_goTypes = []any{
 	(*ModelRuntimeServiceInstallStageExecutionFloorResponse)(nil),               // 53: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
 	(*ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest)(nil),                 // 54: vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
 	(*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse)(nil),                // 55: vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
+	(*WorkerBootstrapBinding)(nil),                                              // 56: vela.v1.WorkerBootstrapBinding
 }
 var file_vela_v1_stage_worker_member_proto_depIdxs = []int32{
 	28, // 0: vela.v1.StageWorkerMemberServicePrepareStageRequest.command:type_name -> vela.v1.ModelRuntimeServicePrepareStageRequest
@@ -1557,39 +1569,40 @@ var file_vela_v1_stage_worker_member_proto_depIdxs = []int32{
 	53, // 25: vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse.result:type_name -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
 	54, // 26: vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest.command:type_name -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
 	55, // 27: vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse.result:type_name -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
-	0,  // 28: vela.v1.StageWorkerMemberService.PrepareStage:input_type -> vela.v1.StageWorkerMemberServicePrepareStageRequest
-	2,  // 29: vela.v1.StageWorkerMemberService.StartStage:input_type -> vela.v1.StageWorkerMemberServiceStartStageRequest
-	4,  // 30: vela.v1.StageWorkerMemberService.CancelStage:input_type -> vela.v1.StageWorkerMemberServiceCancelStageRequest
-	6,  // 31: vela.v1.StageWorkerMemberService.Status:input_type -> vela.v1.StageWorkerMemberServiceStatusRequest
-	8,  // 32: vela.v1.StageWorkerMemberService.InspectExecution:input_type -> vela.v1.StageWorkerMemberServiceInspectExecutionRequest
-	11, // 33: vela.v1.StageWorkerMemberService.DrainStageExecution:input_type -> vela.v1.StageWorkerMemberServiceDrainStageExecutionRequest
-	13, // 34: vela.v1.StageWorkerMemberService.InspectStageExecutionDrain:input_type -> vela.v1.StageWorkerMemberServiceInspectStageExecutionDrainRequest
-	15, // 35: vela.v1.StageWorkerMemberService.InspectStageAllocationDrain:input_type -> vela.v1.StageWorkerMemberServiceInspectStageAllocationDrainRequest
-	17, // 36: vela.v1.StageWorkerMemberService.CheckpointStageNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceCheckpointStageNonAdmissionRequest
-	19, // 37: vela.v1.StageWorkerMemberService.InspectStageNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceInspectStageNonAdmissionRequest
-	21, // 38: vela.v1.StageWorkerMemberService.CheckpointStageTerminalNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest
-	23, // 39: vela.v1.StageWorkerMemberService.InspectStageTerminalNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest
-	10, // 40: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:input_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest
-	26, // 41: vela.v1.StageWorkerMemberService.DiscoverRuntimeIdentities:input_type -> vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest
-	1,  // 42: vela.v1.StageWorkerMemberService.PrepareStage:output_type -> vela.v1.StageWorkerMemberServicePrepareStageResponse
-	3,  // 43: vela.v1.StageWorkerMemberService.StartStage:output_type -> vela.v1.StageWorkerMemberServiceStartStageResponse
-	5,  // 44: vela.v1.StageWorkerMemberService.CancelStage:output_type -> vela.v1.StageWorkerMemberServiceCancelStageResponse
-	7,  // 45: vela.v1.StageWorkerMemberService.Status:output_type -> vela.v1.StageWorkerMemberServiceStatusResponse
-	9,  // 46: vela.v1.StageWorkerMemberService.InspectExecution:output_type -> vela.v1.StageWorkerMemberServiceInspectExecutionResponse
-	12, // 47: vela.v1.StageWorkerMemberService.DrainStageExecution:output_type -> vela.v1.StageWorkerMemberServiceDrainStageExecutionResponse
-	14, // 48: vela.v1.StageWorkerMemberService.InspectStageExecutionDrain:output_type -> vela.v1.StageWorkerMemberServiceInspectStageExecutionDrainResponse
-	16, // 49: vela.v1.StageWorkerMemberService.InspectStageAllocationDrain:output_type -> vela.v1.StageWorkerMemberServiceInspectStageAllocationDrainResponse
-	18, // 50: vela.v1.StageWorkerMemberService.CheckpointStageNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceCheckpointStageNonAdmissionResponse
-	20, // 51: vela.v1.StageWorkerMemberService.InspectStageNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceInspectStageNonAdmissionResponse
-	22, // 52: vela.v1.StageWorkerMemberService.CheckpointStageTerminalNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse
-	24, // 53: vela.v1.StageWorkerMemberService.InspectStageTerminalNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse
-	25, // 54: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:output_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse
-	27, // 55: vela.v1.StageWorkerMemberService.DiscoverRuntimeIdentities:output_type -> vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse
-	42, // [42:56] is the sub-list for method output_type
-	28, // [28:42] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	56, // 28: vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse.worker_journal_binding:type_name -> vela.v1.WorkerBootstrapBinding
+	0,  // 29: vela.v1.StageWorkerMemberService.PrepareStage:input_type -> vela.v1.StageWorkerMemberServicePrepareStageRequest
+	2,  // 30: vela.v1.StageWorkerMemberService.StartStage:input_type -> vela.v1.StageWorkerMemberServiceStartStageRequest
+	4,  // 31: vela.v1.StageWorkerMemberService.CancelStage:input_type -> vela.v1.StageWorkerMemberServiceCancelStageRequest
+	6,  // 32: vela.v1.StageWorkerMemberService.Status:input_type -> vela.v1.StageWorkerMemberServiceStatusRequest
+	8,  // 33: vela.v1.StageWorkerMemberService.InspectExecution:input_type -> vela.v1.StageWorkerMemberServiceInspectExecutionRequest
+	11, // 34: vela.v1.StageWorkerMemberService.DrainStageExecution:input_type -> vela.v1.StageWorkerMemberServiceDrainStageExecutionRequest
+	13, // 35: vela.v1.StageWorkerMemberService.InspectStageExecutionDrain:input_type -> vela.v1.StageWorkerMemberServiceInspectStageExecutionDrainRequest
+	15, // 36: vela.v1.StageWorkerMemberService.InspectStageAllocationDrain:input_type -> vela.v1.StageWorkerMemberServiceInspectStageAllocationDrainRequest
+	17, // 37: vela.v1.StageWorkerMemberService.CheckpointStageNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceCheckpointStageNonAdmissionRequest
+	19, // 38: vela.v1.StageWorkerMemberService.InspectStageNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceInspectStageNonAdmissionRequest
+	21, // 39: vela.v1.StageWorkerMemberService.CheckpointStageTerminalNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionRequest
+	23, // 40: vela.v1.StageWorkerMemberService.InspectStageTerminalNonAdmission:input_type -> vela.v1.StageWorkerMemberServiceInspectStageTerminalNonAdmissionRequest
+	10, // 41: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:input_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorRequest
+	26, // 42: vela.v1.StageWorkerMemberService.DiscoverRuntimeIdentities:input_type -> vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest
+	1,  // 43: vela.v1.StageWorkerMemberService.PrepareStage:output_type -> vela.v1.StageWorkerMemberServicePrepareStageResponse
+	3,  // 44: vela.v1.StageWorkerMemberService.StartStage:output_type -> vela.v1.StageWorkerMemberServiceStartStageResponse
+	5,  // 45: vela.v1.StageWorkerMemberService.CancelStage:output_type -> vela.v1.StageWorkerMemberServiceCancelStageResponse
+	7,  // 46: vela.v1.StageWorkerMemberService.Status:output_type -> vela.v1.StageWorkerMemberServiceStatusResponse
+	9,  // 47: vela.v1.StageWorkerMemberService.InspectExecution:output_type -> vela.v1.StageWorkerMemberServiceInspectExecutionResponse
+	12, // 48: vela.v1.StageWorkerMemberService.DrainStageExecution:output_type -> vela.v1.StageWorkerMemberServiceDrainStageExecutionResponse
+	14, // 49: vela.v1.StageWorkerMemberService.InspectStageExecutionDrain:output_type -> vela.v1.StageWorkerMemberServiceInspectStageExecutionDrainResponse
+	16, // 50: vela.v1.StageWorkerMemberService.InspectStageAllocationDrain:output_type -> vela.v1.StageWorkerMemberServiceInspectStageAllocationDrainResponse
+	18, // 51: vela.v1.StageWorkerMemberService.CheckpointStageNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceCheckpointStageNonAdmissionResponse
+	20, // 52: vela.v1.StageWorkerMemberService.InspectStageNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceInspectStageNonAdmissionResponse
+	22, // 53: vela.v1.StageWorkerMemberService.CheckpointStageTerminalNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceCheckpointStageTerminalNonAdmissionResponse
+	24, // 54: vela.v1.StageWorkerMemberService.InspectStageTerminalNonAdmission:output_type -> vela.v1.StageWorkerMemberServiceInspectStageTerminalNonAdmissionResponse
+	25, // 55: vela.v1.StageWorkerMemberService.InstallStageExecutionFloor:output_type -> vela.v1.StageWorkerMemberServiceInstallStageExecutionFloorResponse
+	27, // 56: vela.v1.StageWorkerMemberService.DiscoverRuntimeIdentities:output_type -> vela.v1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesResponse
+	43, // [43:57] is the sub-list for method output_type
+	29, // [29:43] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_stage_worker_member_proto_init() }
@@ -1598,6 +1611,7 @@ func file_vela_v1_stage_worker_member_proto_init() {
 		return
 	}
 	file_vela_v1_model_runtime_proto_init()
+	file_vela_v1_fleet_maintenance_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
