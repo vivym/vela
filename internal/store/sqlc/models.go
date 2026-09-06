@@ -7214,6 +7214,34 @@ type WebhookSubscriptionSecret struct {
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type WorkerBootstrapClaim struct {
+	RequestID           uuid.UUID          `db:"request_id" json:"request_id"`
+	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	WorkerMemberID      uuid.UUID          `db:"worker_member_id" json:"worker_member_id"`
+	WorkerMemberEpoch   int64              `db:"worker_member_epoch" json:"worker_member_epoch"`
+	WorkerBundleID      uuid.UUID          `db:"worker_bundle_id" json:"worker_bundle_id"`
+	NodeIdentity        string             `db:"node_identity" json:"node_identity"`
+	ActorIdentity       string             `db:"actor_identity" json:"actor_identity"`
+	ClaimedAt           pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
+}
+
+type WorkerBootstrapManifest struct {
+	WorkerBundleID uuid.UUID          `db:"worker_bundle_id" json:"worker_bundle_id"`
+	LayoutDigest   []byte             `db:"layout_digest" json:"layout_digest"`
+	Manifest       []byte             `db:"manifest" json:"manifest"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type WorkerBootstrapReceipt struct {
+	RequestID        uuid.UUID          `db:"request_id" json:"request_id"`
+	WorkerJournalID  uuid.UUID          `db:"worker_journal_id" json:"worker_journal_id"`
+	WorkerScope      []byte             `db:"worker_scope" json:"worker_scope"`
+	RuntimeJournalID uuid.UUID          `db:"runtime_journal_id" json:"runtime_journal_id"`
+	RuntimeScope     []byte             `db:"runtime_scope" json:"runtime_scope"`
+	RecordedAt       pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
 type WorkerBundle struct {
 	ID                      uuid.UUID          `db:"id" json:"id"`
 	StableID                string             `db:"stable_id" json:"stable_id"`

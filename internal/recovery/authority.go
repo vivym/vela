@@ -92,6 +92,9 @@ func (receipt Receipt) Validate() error {
 	}
 	keys := []string{"jobs", "attempts", "stage_runs", "stage_attempts", "stage_leases", "stage_allocations",
 		"materialization_leases", "transfer_tickets", "finalization_claims", "execution_pins", "edge_buffer_credits", "storage_reservations"}
+	if receipt.SchemaVersion >= 91 {
+		keys = append(keys, "worker_bootstrap_claims")
+	}
 	if len(receipt.Inventory) != len(keys) {
 		return errors.New("quiescence inventory is incomplete")
 	}

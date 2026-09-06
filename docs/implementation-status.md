@@ -416,6 +416,18 @@ volumes, with non-root ownership/mode and retained-content checks. Full unit,
 Fleet/launch/deployment regressions, ordinary lint and Fleet integration-tag
 lint pass. This proves script execution only; controlled Pod rollout, journal
 first-use authority and durable deployment activation remain open.
+The [one-time Worker bootstrap authority](worker-bootstrap-authority-evidence-2026-09-06.md)
+now persists the approved bundle digest preimage, a non-reissuable member claim
+and immutable reported journal identities. Schema 91 recomputes the approved
+layout digest, serializes first use with Registry observation/fencing and returns
+a fresh grant only from the inserting transaction. Lost-response retries cannot
+initialize again. Commit-quorum failure returns no usable grant, and recovery
+quiescence now includes unfinished bootstrap claims while its closed gate rejects
+new ones. Full unit, ordinary/changed-file integration lint, schema generation
+and 25 related PostgreSQL race regressions pass, including independent restore.
+Worker/Runtime journal and launch versions are unchanged. Authenticated node
+execution, actual paired journal provisioning, ambiguous-outcome reconciliation
+and durable deployment activation remain open; Production Gates stay `0/9`.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

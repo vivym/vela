@@ -149,6 +149,16 @@ inspect whether initialization persisted. `upgrade-v2`, `upgrade-v3` and
 initialization to bypass a failed upgrade. Concurrent online/offline owners
 cannot share the journal lock.
 
+Schema 91 adds Registry first-use claims through
+`fleet.Service.ClaimWorkerBootstrap`. Only a newly committed `Fresh=true` result
+may authorize that provisioner's initialization. A replay, new request UUID,
+missing state or lost response cannot authorize another attempt. The claim binds
+the exact approved bundle bytes and member scope; the reported Worker/Runtime
+journal pair is immutable. A claim without its prepared-pair receipt also blocks
+database quiescence. These Registry APIs are not yet wired to a node initializer
+or default Fleet deployment; do not put an unconditional `initialize` action in
+repeated Pod init. See [bootstrap authority evidence](../worker-bootstrap-authority-evidence-2026-09-06.md).
+
 The JSON output reports local journal metadata, unproven inputs and retirement
 phase counts. Success is not readiness, Runtime epoch observation or writer
 drain. Preparation leaves INTENT/READY/RETIRED unchanged and never deletes

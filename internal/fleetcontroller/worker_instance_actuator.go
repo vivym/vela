@@ -624,6 +624,24 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 }
 
 func ComputeWorkerBundleActuationDigest(bundle WorkerBundleActuation) (string, error) {
+	encoded, err := encodeWorkerBundleActuationManifest(bundle)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
+}
+
+// WorkerBundleActuationManifest returns the exact approved digest preimage.
+// Registry bootstrap validates these bytes against its stored layout authority.
+func WorkerBundleActuationManifest(bundle WorkerBundleActuation) ([]byte, error) {
+	if err := ValidateWorkerBundleActuation(bundle); err != nil {
+		return nil, err
+	}
+	return encodeWorkerBundleActuationManifest(bundle)
+}
+
+func encodeWorkerBundleActuationManifest(bundle WorkerBundleActuation) ([]byte, error) {
 	canonical := cloneWorkerBundleActuation(bundle)
 	canonical.RevisionDigest = ""
 	encoded, err := json.Marshal(struct {
@@ -634,10 +652,9 @@ func ComputeWorkerBundleActuationDigest(bundle WorkerBundleActuation) (string, e
 		Bundle: canonical,
 	})
 	if err != nil {
-		return "", fmt.Errorf("encode canonical WorkerBundle actuation: %w", err)
+		return nil, fmt.Errorf("encode canonical WorkerBundle actuation: %w", err)
 	}
-	digest := sha256.Sum256(encoded)
-	return hex.EncodeToString(digest[:]), nil
+	return encoded, nil
 }
 
 func validSharedSlotException(worker WorkerInstanceActuation) bool {

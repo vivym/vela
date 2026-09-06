@@ -39,6 +39,26 @@ func TestReceiptRejectsMissingAndActiveAuthority(t *testing.T) {
 	}
 }
 
+func TestReceiptRequiresBootstrapInventoryAtSchema91(t *testing.T) {
+	receipt := validTestReceipt()
+	receipt.SchemaVersion = 90
+	if err := receipt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.SchemaVersion = 91
+	if err := receipt.Validate(); err == nil {
+		t.Fatal("schema 91 receipt omitted bootstrap authority")
+	}
+	receipt.Inventory["worker_bootstrap_claims"] = 1
+	if err := receipt.Validate(); err == nil {
+		t.Fatal("pending bootstrap accepted as quiescent")
+	}
+	receipt.Inventory["worker_bootstrap_claims"] = 0
+	if err := receipt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRestoreRejectsCorruptDumpBeforeDocker(t *testing.T) {
 	directory := t.TempDir()
 	dumpPath := filepath.Join(directory, "database.dump")
