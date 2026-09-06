@@ -19,6 +19,8 @@ service FleetMaintenanceService {
       returns (RecordWorkerBootstrapReceiptResponse);
   rpc LookupWorkerBootstrap(LookupWorkerBootstrapRequest)
       returns (LookupWorkerBootstrapResponse);
+  rpc LookupWorkerBootstrapBinding(LookupWorkerBootstrapBindingRequest)
+      returns (LookupWorkerBootstrapBindingResponse);
 }
 
 message ClaimWorkerBootstrapRequest {
@@ -77,6 +79,23 @@ message LookupWorkerBootstrapRequest {
 message LookupWorkerBootstrapResponse {
   WorkerBootstrapClaim claim = 1;
   WorkerBootstrapJournalPair pair = 2;
+}
+
+// Immutable journal identity evidence, not current readiness or execution authority.
+message WorkerBootstrapBinding {
+  uint32 schema_version = 1;
+  WorkerBootstrapClaim claim = 2;
+  WorkerBootstrapJournalPair pair = 3;
+  string signing_key_id = 4;
+  bytes signature = 5;
+}
+
+message LookupWorkerBootstrapBindingRequest {
+  string request_id = 1;
+}
+
+message LookupWorkerBootstrapBindingResponse {
+  WorkerBootstrapBinding binding = 1;
 }
 
 message ApplyResidencyPlanRequest {

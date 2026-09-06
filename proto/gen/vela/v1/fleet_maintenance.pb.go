@@ -617,6 +617,171 @@ func (x *LookupWorkerBootstrapResponse) GetPair() *WorkerBootstrapJournalPair {
 	return nil
 }
 
+// Immutable journal identity evidence, not current readiness or execution authority.
+type WorkerBootstrapBinding struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	SchemaVersion uint32                      `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	Claim         *WorkerBootstrapClaim       `protobuf:"bytes,2,opt,name=claim,proto3" json:"claim,omitempty"`
+	Pair          *WorkerBootstrapJournalPair `protobuf:"bytes,3,opt,name=pair,proto3" json:"pair,omitempty"`
+	SigningKeyId  string                      `protobuf:"bytes,4,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
+	Signature     []byte                      `protobuf:"bytes,5,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerBootstrapBinding) Reset() {
+	*x = WorkerBootstrapBinding{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerBootstrapBinding) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerBootstrapBinding) ProtoMessage() {}
+
+func (x *WorkerBootstrapBinding) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerBootstrapBinding.ProtoReflect.Descriptor instead.
+func (*WorkerBootstrapBinding) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *WorkerBootstrapBinding) GetSchemaVersion() uint32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *WorkerBootstrapBinding) GetClaim() *WorkerBootstrapClaim {
+	if x != nil {
+		return x.Claim
+	}
+	return nil
+}
+
+func (x *WorkerBootstrapBinding) GetPair() *WorkerBootstrapJournalPair {
+	if x != nil {
+		return x.Pair
+	}
+	return nil
+}
+
+func (x *WorkerBootstrapBinding) GetSigningKeyId() string {
+	if x != nil {
+		return x.SigningKeyId
+	}
+	return ""
+}
+
+func (x *WorkerBootstrapBinding) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+type LookupWorkerBootstrapBindingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupWorkerBootstrapBindingRequest) Reset() {
+	*x = LookupWorkerBootstrapBindingRequest{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupWorkerBootstrapBindingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupWorkerBootstrapBindingRequest) ProtoMessage() {}
+
+func (x *LookupWorkerBootstrapBindingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupWorkerBootstrapBindingRequest.ProtoReflect.Descriptor instead.
+func (*LookupWorkerBootstrapBindingRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *LookupWorkerBootstrapBindingRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+type LookupWorkerBootstrapBindingResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Binding       *WorkerBootstrapBinding `protobuf:"bytes,1,opt,name=binding,proto3" json:"binding,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupWorkerBootstrapBindingResponse) Reset() {
+	*x = LookupWorkerBootstrapBindingResponse{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupWorkerBootstrapBindingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupWorkerBootstrapBindingResponse) ProtoMessage() {}
+
+func (x *LookupWorkerBootstrapBindingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupWorkerBootstrapBindingResponse.ProtoReflect.Descriptor instead.
+func (*LookupWorkerBootstrapBindingResponse) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *LookupWorkerBootstrapBindingResponse) GetBinding() *WorkerBootstrapBinding {
+	if x != nil {
+		return x.Binding
+	}
+	return nil
+}
+
 type ApplyResidencyPlanRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ApprovedPlanJson []byte                 `protobuf:"bytes,1,opt,name=approved_plan_json,json=approvedPlanJson,proto3" json:"approved_plan_json,omitempty"`
@@ -626,7 +791,7 @@ type ApplyResidencyPlanRequest struct {
 
 func (x *ApplyResidencyPlanRequest) Reset() {
 	*x = ApplyResidencyPlanRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +803,7 @@ func (x *ApplyResidencyPlanRequest) String() string {
 func (*ApplyResidencyPlanRequest) ProtoMessage() {}
 
 func (x *ApplyResidencyPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +816,7 @@ func (x *ApplyResidencyPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyResidencyPlanRequest.ProtoReflect.Descriptor instead.
 func (*ApplyResidencyPlanRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ApplyResidencyPlanRequest) GetApprovedPlanJson() []byte {
@@ -671,7 +836,7 @@ type ApplyResidencyPlanResponse struct {
 
 func (x *ApplyResidencyPlanResponse) Reset() {
 	*x = ApplyResidencyPlanResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -683,7 +848,7 @@ func (x *ApplyResidencyPlanResponse) String() string {
 func (*ApplyResidencyPlanResponse) ProtoMessage() {}
 
 func (x *ApplyResidencyPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -696,7 +861,7 @@ func (x *ApplyResidencyPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyResidencyPlanResponse.ProtoReflect.Descriptor instead.
 func (*ApplyResidencyPlanResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ApplyResidencyPlanResponse) GetPlanRevisionId() string {
@@ -722,7 +887,7 @@ type ObserveWorkerInstanceRequest struct {
 
 func (x *ObserveWorkerInstanceRequest) Reset() {
 	*x = ObserveWorkerInstanceRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -734,7 +899,7 @@ func (x *ObserveWorkerInstanceRequest) String() string {
 func (*ObserveWorkerInstanceRequest) ProtoMessage() {}
 
 func (x *ObserveWorkerInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -747,7 +912,7 @@ func (x *ObserveWorkerInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveWorkerInstanceRequest.ProtoReflect.Descriptor instead.
 func (*ObserveWorkerInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ObserveWorkerInstanceRequest) GetEvidenceJson() []byte {
@@ -770,7 +935,7 @@ type ObserveWorkerInstanceResponse struct {
 
 func (x *ObserveWorkerInstanceResponse) Reset() {
 	*x = ObserveWorkerInstanceResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +947,7 @@ func (x *ObserveWorkerInstanceResponse) String() string {
 func (*ObserveWorkerInstanceResponse) ProtoMessage() {}
 
 func (x *ObserveWorkerInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +960,7 @@ func (x *ObserveWorkerInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveWorkerInstanceResponse.ProtoReflect.Descriptor instead.
 func (*ObserveWorkerInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ObserveWorkerInstanceResponse) GetWorkerInstanceId() string {
@@ -852,7 +1017,7 @@ type AuthorizeMutationRequest struct {
 
 func (x *AuthorizeMutationRequest) Reset() {
 	*x = AuthorizeMutationRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -864,7 +1029,7 @@ func (x *AuthorizeMutationRequest) String() string {
 func (*AuthorizeMutationRequest) ProtoMessage() {}
 
 func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -877,7 +1042,7 @@ func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeMutationRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizeMutationRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *AuthorizeMutationRequest) GetRequestUid() string {
@@ -968,7 +1133,7 @@ type AuthorizeMutationResponse struct {
 
 func (x *AuthorizeMutationResponse) Reset() {
 	*x = AuthorizeMutationResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -980,7 +1145,7 @@ func (x *AuthorizeMutationResponse) String() string {
 func (*AuthorizeMutationResponse) ProtoMessage() {}
 
 func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -993,7 +1158,7 @@ func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeMutationResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizeMutationResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AuthorizeMutationResponse) GetRequestUid() string {
@@ -1068,7 +1233,18 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"request_id\x18\x01 \x01(\tR\trequestId\"\x8d\x01\n" +
 	"\x1dLookupWorkerBootstrapResponse\x123\n" +
 	"\x05claim\x18\x01 \x01(\v2\x1d.vela.v1.WorkerBootstrapClaimR\x05claim\x127\n" +
-	"\x04pair\x18\x02 \x01(\v2#.vela.v1.WorkerBootstrapJournalPairR\x04pair\"I\n" +
+	"\x04pair\x18\x02 \x01(\v2#.vela.v1.WorkerBootstrapJournalPairR\x04pair\"\xf1\x01\n" +
+	"\x16WorkerBootstrapBinding\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x123\n" +
+	"\x05claim\x18\x02 \x01(\v2\x1d.vela.v1.WorkerBootstrapClaimR\x05claim\x127\n" +
+	"\x04pair\x18\x03 \x01(\v2#.vela.v1.WorkerBootstrapJournalPairR\x04pair\x12$\n" +
+	"\x0esigning_key_id\x18\x04 \x01(\tR\fsigningKeyId\x12\x1c\n" +
+	"\tsignature\x18\x05 \x01(\fR\tsignature\"D\n" +
+	"#LookupWorkerBootstrapBindingRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"a\n" +
+	"$LookupWorkerBootstrapBindingResponse\x129\n" +
+	"\abinding\x18\x01 \x01(\v2\x1f.vela.v1.WorkerBootstrapBindingR\abinding\"I\n" +
 	"\x19ApplyResidencyPlanRequest\x12,\n" +
 	"\x12approved_plan_json\x18\x01 \x01(\fR\x10approvedPlanJson\"z\n" +
 	"\x1aApplyResidencyPlanResponse\x12(\n" +
@@ -1107,14 +1283,15 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x16FleetMutationOperation\x12(\n" +
 	"$FLEET_MUTATION_OPERATION_UNSPECIFIED\x10\x00\x12#\n" +
 	"\x1fFLEET_MUTATION_OPERATION_DELETE\x10\x01\x12-\n" +
-	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x04\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x032\x86\x05\n" +
+	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x04\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x032\x83\x06\n" +
 	"\x17FleetMaintenanceService\x12]\n" +
 	"\x12ApplyResidencyPlan\x12\".vela.v1.ApplyResidencyPlanRequest\x1a#.vela.v1.ApplyResidencyPlanResponse\x12f\n" +
 	"\x15ObserveWorkerInstance\x12%.vela.v1.ObserveWorkerInstanceRequest\x1a&.vela.v1.ObserveWorkerInstanceResponse\x12Z\n" +
 	"\x11AuthorizeMutation\x12!.vela.v1.AuthorizeMutationRequest\x1a\".vela.v1.AuthorizeMutationResponse\x12c\n" +
 	"\x14ClaimWorkerBootstrap\x12$.vela.v1.ClaimWorkerBootstrapRequest\x1a%.vela.v1.ClaimWorkerBootstrapResponse\x12{\n" +
 	"\x1cRecordWorkerBootstrapReceipt\x12,.vela.v1.RecordWorkerBootstrapReceiptRequest\x1a-.vela.v1.RecordWorkerBootstrapReceiptResponse\x12f\n" +
-	"\x15LookupWorkerBootstrap\x12%.vela.v1.LookupWorkerBootstrapRequest\x1a&.vela.v1.LookupWorkerBootstrapResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"\x15LookupWorkerBootstrap\x12%.vela.v1.LookupWorkerBootstrapRequest\x1a&.vela.v1.LookupWorkerBootstrapResponse\x12{\n" +
+	"\x1cLookupWorkerBootstrapBinding\x12,.vela.v1.LookupWorkerBootstrapBindingRequest\x1a-.vela.v1.LookupWorkerBootstrapBindingResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_fleet_maintenance_proto_rawDescOnce sync.Once
@@ -1129,7 +1306,7 @@ func file_vela_v1_fleet_maintenance_proto_rawDescGZIP() []byte {
 }
 
 var file_vela_v1_fleet_maintenance_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_vela_v1_fleet_maintenance_proto_goTypes = []any{
 	(FleetMutationOperation)(0),                  // 0: vela.v1.FleetMutationOperation
 	(*ClaimWorkerBootstrapRequest)(nil),          // 1: vela.v1.ClaimWorkerBootstrapRequest
@@ -1140,39 +1317,47 @@ var file_vela_v1_fleet_maintenance_proto_goTypes = []any{
 	(*RecordWorkerBootstrapReceiptResponse)(nil), // 6: vela.v1.RecordWorkerBootstrapReceiptResponse
 	(*LookupWorkerBootstrapRequest)(nil),         // 7: vela.v1.LookupWorkerBootstrapRequest
 	(*LookupWorkerBootstrapResponse)(nil),        // 8: vela.v1.LookupWorkerBootstrapResponse
-	(*ApplyResidencyPlanRequest)(nil),            // 9: vela.v1.ApplyResidencyPlanRequest
-	(*ApplyResidencyPlanResponse)(nil),           // 10: vela.v1.ApplyResidencyPlanResponse
-	(*ObserveWorkerInstanceRequest)(nil),         // 11: vela.v1.ObserveWorkerInstanceRequest
-	(*ObserveWorkerInstanceResponse)(nil),        // 12: vela.v1.ObserveWorkerInstanceResponse
-	(*AuthorizeMutationRequest)(nil),             // 13: vela.v1.AuthorizeMutationRequest
-	(*AuthorizeMutationResponse)(nil),            // 14: vela.v1.AuthorizeMutationResponse
-	(*timestamppb.Timestamp)(nil),                // 15: google.protobuf.Timestamp
+	(*WorkerBootstrapBinding)(nil),               // 9: vela.v1.WorkerBootstrapBinding
+	(*LookupWorkerBootstrapBindingRequest)(nil),  // 10: vela.v1.LookupWorkerBootstrapBindingRequest
+	(*LookupWorkerBootstrapBindingResponse)(nil), // 11: vela.v1.LookupWorkerBootstrapBindingResponse
+	(*ApplyResidencyPlanRequest)(nil),            // 12: vela.v1.ApplyResidencyPlanRequest
+	(*ApplyResidencyPlanResponse)(nil),           // 13: vela.v1.ApplyResidencyPlanResponse
+	(*ObserveWorkerInstanceRequest)(nil),         // 14: vela.v1.ObserveWorkerInstanceRequest
+	(*ObserveWorkerInstanceResponse)(nil),        // 15: vela.v1.ObserveWorkerInstanceResponse
+	(*AuthorizeMutationRequest)(nil),             // 16: vela.v1.AuthorizeMutationRequest
+	(*AuthorizeMutationResponse)(nil),            // 17: vela.v1.AuthorizeMutationResponse
+	(*timestamppb.Timestamp)(nil),                // 18: google.protobuf.Timestamp
 }
 var file_vela_v1_fleet_maintenance_proto_depIdxs = []int32{
-	15, // 0: vela.v1.WorkerBootstrapClaim.claimed_at:type_name -> google.protobuf.Timestamp
+	18, // 0: vela.v1.WorkerBootstrapClaim.claimed_at:type_name -> google.protobuf.Timestamp
 	2,  // 1: vela.v1.ClaimWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
-	15, // 2: vela.v1.WorkerBootstrapJournalPair.recorded_at:type_name -> google.protobuf.Timestamp
+	18, // 2: vela.v1.WorkerBootstrapJournalPair.recorded_at:type_name -> google.protobuf.Timestamp
 	5,  // 3: vela.v1.RecordWorkerBootstrapReceiptResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
 	2,  // 4: vela.v1.LookupWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
 	5,  // 5: vela.v1.LookupWorkerBootstrapResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
-	0,  // 6: vela.v1.AuthorizeMutationRequest.operation:type_name -> vela.v1.FleetMutationOperation
-	9,  // 7: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:input_type -> vela.v1.ApplyResidencyPlanRequest
-	11, // 8: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:input_type -> vela.v1.ObserveWorkerInstanceRequest
-	13, // 9: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
-	1,  // 10: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:input_type -> vela.v1.ClaimWorkerBootstrapRequest
-	4,  // 11: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:input_type -> vela.v1.RecordWorkerBootstrapReceiptRequest
-	7,  // 12: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:input_type -> vela.v1.LookupWorkerBootstrapRequest
-	10, // 13: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:output_type -> vela.v1.ApplyResidencyPlanResponse
-	12, // 14: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:output_type -> vela.v1.ObserveWorkerInstanceResponse
-	14, // 15: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
-	3,  // 16: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:output_type -> vela.v1.ClaimWorkerBootstrapResponse
-	6,  // 17: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:output_type -> vela.v1.RecordWorkerBootstrapReceiptResponse
-	8,  // 18: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:output_type -> vela.v1.LookupWorkerBootstrapResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	2,  // 6: vela.v1.WorkerBootstrapBinding.claim:type_name -> vela.v1.WorkerBootstrapClaim
+	5,  // 7: vela.v1.WorkerBootstrapBinding.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
+	9,  // 8: vela.v1.LookupWorkerBootstrapBindingResponse.binding:type_name -> vela.v1.WorkerBootstrapBinding
+	0,  // 9: vela.v1.AuthorizeMutationRequest.operation:type_name -> vela.v1.FleetMutationOperation
+	12, // 10: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:input_type -> vela.v1.ApplyResidencyPlanRequest
+	14, // 11: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:input_type -> vela.v1.ObserveWorkerInstanceRequest
+	16, // 12: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
+	1,  // 13: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:input_type -> vela.v1.ClaimWorkerBootstrapRequest
+	4,  // 14: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:input_type -> vela.v1.RecordWorkerBootstrapReceiptRequest
+	7,  // 15: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:input_type -> vela.v1.LookupWorkerBootstrapRequest
+	10, // 16: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:input_type -> vela.v1.LookupWorkerBootstrapBindingRequest
+	13, // 17: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:output_type -> vela.v1.ApplyResidencyPlanResponse
+	15, // 18: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:output_type -> vela.v1.ObserveWorkerInstanceResponse
+	17, // 19: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
+	3,  // 20: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:output_type -> vela.v1.ClaimWorkerBootstrapResponse
+	6,  // 21: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:output_type -> vela.v1.RecordWorkerBootstrapReceiptResponse
+	8,  // 22: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:output_type -> vela.v1.LookupWorkerBootstrapResponse
+	11, // 23: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:output_type -> vela.v1.LookupWorkerBootstrapBindingResponse
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_fleet_maintenance_proto_init() }
@@ -1186,7 +1371,7 @@ func file_vela_v1_fleet_maintenance_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_fleet_maintenance_proto_rawDesc), len(file_vela_v1_fleet_maintenance_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

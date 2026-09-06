@@ -25,6 +25,7 @@ const (
 	FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName         = "/vela.v1.FleetMaintenanceService/ClaimWorkerBootstrap"
 	FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName = "/vela.v1.FleetMaintenanceService/RecordWorkerBootstrapReceipt"
 	FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName        = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrap"
+	FleetMaintenanceService_LookupWorkerBootstrapBinding_FullMethodName = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrapBinding"
 )
 
 // FleetMaintenanceServiceClient is the client API for FleetMaintenanceService service.
@@ -37,6 +38,7 @@ type FleetMaintenanceServiceClient interface {
 	ClaimWorkerBootstrap(ctx context.Context, in *ClaimWorkerBootstrapRequest, opts ...grpc.CallOption) (*ClaimWorkerBootstrapResponse, error)
 	RecordWorkerBootstrapReceipt(ctx context.Context, in *RecordWorkerBootstrapReceiptRequest, opts ...grpc.CallOption) (*RecordWorkerBootstrapReceiptResponse, error)
 	LookupWorkerBootstrap(ctx context.Context, in *LookupWorkerBootstrapRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapResponse, error)
+	LookupWorkerBootstrapBinding(ctx context.Context, in *LookupWorkerBootstrapBindingRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapBindingResponse, error)
 }
 
 type fleetMaintenanceServiceClient struct {
@@ -107,6 +109,16 @@ func (c *fleetMaintenanceServiceClient) LookupWorkerBootstrap(ctx context.Contex
 	return out, nil
 }
 
+func (c *fleetMaintenanceServiceClient) LookupWorkerBootstrapBinding(ctx context.Context, in *LookupWorkerBootstrapBindingRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapBindingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LookupWorkerBootstrapBindingResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_LookupWorkerBootstrapBinding_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FleetMaintenanceServiceServer is the server API for FleetMaintenanceService service.
 // All implementations must embed UnimplementedFleetMaintenanceServiceServer
 // for forward compatibility.
@@ -117,6 +129,7 @@ type FleetMaintenanceServiceServer interface {
 	ClaimWorkerBootstrap(context.Context, *ClaimWorkerBootstrapRequest) (*ClaimWorkerBootstrapResponse, error)
 	RecordWorkerBootstrapReceipt(context.Context, *RecordWorkerBootstrapReceiptRequest) (*RecordWorkerBootstrapReceiptResponse, error)
 	LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error)
+	LookupWorkerBootstrapBinding(context.Context, *LookupWorkerBootstrapBindingRequest) (*LookupWorkerBootstrapBindingResponse, error)
 	mustEmbedUnimplementedFleetMaintenanceServiceServer()
 }
 
@@ -144,6 +157,9 @@ func (UnimplementedFleetMaintenanceServiceServer) RecordWorkerBootstrapReceipt(c
 }
 func (UnimplementedFleetMaintenanceServiceServer) LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LookupWorkerBootstrap not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) LookupWorkerBootstrapBinding(context.Context, *LookupWorkerBootstrapBindingRequest) (*LookupWorkerBootstrapBindingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LookupWorkerBootstrapBinding not implemented")
 }
 func (UnimplementedFleetMaintenanceServiceServer) mustEmbedUnimplementedFleetMaintenanceServiceServer() {
 }
@@ -275,6 +291,24 @@ func _FleetMaintenanceService_LookupWorkerBootstrap_Handler(srv interface{}, ctx
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FleetMaintenanceService_LookupWorkerBootstrapBinding_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LookupWorkerBootstrapBindingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).LookupWorkerBootstrapBinding(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_LookupWorkerBootstrapBinding_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).LookupWorkerBootstrapBinding(ctx, req.(*LookupWorkerBootstrapBindingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FleetMaintenanceService_ServiceDesc is the grpc.ServiceDesc for FleetMaintenanceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -305,6 +339,10 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LookupWorkerBootstrap",
 			Handler:    _FleetMaintenanceService_LookupWorkerBootstrap_Handler,
+		},
+		{
+			MethodName: "LookupWorkerBootstrapBinding",
+			Handler:    _FleetMaintenanceService_LookupWorkerBootstrapBinding_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
