@@ -134,6 +134,37 @@ intent to a trusted containment owner and independently proving its retirement
 remain unimplemented across epochs. The experiment and Pod contract assertions
 do not generate a drain checkpoint or a Launch Receipt.
 
+## Node container observation
+
+The Node command `inspect-runtime-container` now reads the standard CRI v1 API
+through a root-owned local socket and verifies the socket's kernel-reported peer
+UID. It pins socket and directory identities, bounds the connection and read
+intervals, and reads the kernel boot ID before and after observation. There is
+no TCP endpoint, container-supplied boot ID or configurable expected server UID.
+
+The caller supplies an exact full container ID, sandbox ID, Pod UUID/name/
+namespace, container name and container attempt from trusted inventory. Both
+list and status must match those identities. Repeated container/sandbox reads
+reject visible changes, missing metadata, unknown state, inconsistent times,
+missing namespace configuration, garbage collection, cancellation or connection
+identity loss. The output retains the collection interval and the original
+state/namespace meanings; it grants no continuing lease.
+
+This observation is not a backend startup binding or retirement receipt. The
+configured Node identity is a label, not an authenticated Fleet claim. CRI
+`LinuxPodSandboxStatus` reports sandbox namespace options, not the actual PID 1
+or OCI namespace configuration of an individual container. Runtime-specific
+`verbose` info is intentionally not interpreted as a portable proof. Similarly,
+the reported CRI image reference is not a release-image verification. `EXITED`,
+or a sandbox reporting `CONTAINER` PID scope, cannot unblock schema-6 backend
+ownership. The observer invokes no start/stop/remove/exec/image operation.
+
+The next binding layer must authenticate the Runtime caller, resolve its actual
+host process to the exact container and certified runtime configuration, and
+bind that observation to the Registry journal pair and durable startup intent
+before factory dispatch. Independent old-owner termination and replay-safe
+retirement remain separate steps. See the [Node CRI evidence](../node-runtime-container-evidence-2026-09-06.md).
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

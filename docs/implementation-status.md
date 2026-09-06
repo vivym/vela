@@ -704,6 +704,17 @@ startup. Trusted Node/container binding and retirement, durable health/receipt
 state, bounded reclamation, renewal write cost and Fleet durable activation
 remain open. PostgreSQL schema 94, Worker journal 5, Registry binding 1 and
 Production Gates `0/9` are unchanged.
+The [Node CRI observation adapter](node-runtime-container-evidence-2026-09-06.md)
+adds a read-only `inspect-runtime-container` command using pinned CRI v1 APIs.
+It authenticates a local root socket peer, checks exact container/sandbox/Pod
+identity, preserves namespace scope, repeats state reads and rejects boot or
+socket changes. Standard unit/race/lint and actual Linux CPU command tests pass,
+including kernel peer-UID mismatch and garbage-collected metadata. The CRI
+service in those tests is a protocol mock; production containerd behavior and
+individual-container PID 1/OCI namespace attestation are not established.
+Observations cannot retire or reset Runtime journals. Authenticated startup
+binding, independent retirement and the lifecycle work above remain open.
+PostgreSQL/journal versions and Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

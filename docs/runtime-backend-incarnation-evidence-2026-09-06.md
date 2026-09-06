@@ -5,6 +5,10 @@ PostgreSQL remains 94, Worker journal 5 and Registry binding 1. Production Gates
 remain `0/9`. This is a startup safety restriction, not completed restart
 availability or physical retirement.
 
+The subsequent [Node CRI observer](node-runtime-container-evidence-2026-09-06.md)
+adds bounded container status reads. It does not yet provide the independently
+verified containment binding or retirement required by this checkpoint.
+
 ## Problem and resulting behavior
 
 The prior CPU experiment showed surviving writers during failed initialization,
@@ -107,7 +111,7 @@ Diff checks pass; generated protocol/database contracts are unchanged.
 
 The UUID and digest are durable startup intent. They do not establish the actual
 container ID, node incarnation, PID 1 ownership, permitted external writers or
-device quiescence. Current Node Agent assembly has no trusted CRI/container
+device quiescence. At this checkpoint Node Agent assembly had no trusted CRI/container
 observation adapter. There is no backend retirement or reset operation.
 Consequently every durable restart after a backend startup attempt remains
 recovery-only, including after a successful Close or externally observed PID 1
