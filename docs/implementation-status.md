@@ -565,6 +565,14 @@ in active memory without inferring drain. Full unit, related race/lint, four
 PostgreSQL integration checks and Linux non-root process tests pass. Explicit
 CancelStage preemption, durable sealed receipt recovery, physical containment,
 remaining lifecycle work and Production Gates remain open.
+The [canceled-Prepare follow-up](runtime-prepare-cancellation-evidence-2026-09-06.md)
+also preserves cancellability when the caller cancels before the execution
+deadline. Four cooperative-error/late-success counterexamples previously caused
+a synthetic FAILED state to suppress exact CancelStage and the original
+watchdog. Canceled Prepare now retains PREPARING without confirming Start or
+releasing shared capacity. Backend failure recovery beyond request cancellation
+and the other lifecycle gates remain open. Full unit, related race and lint
+checks pass.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

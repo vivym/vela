@@ -275,15 +275,15 @@ func (service *Service) PrepareStage(
 	}
 	defer finishCall()
 	if err := executionCallError(ctx, service.backend.Prepare(ctx, verified, request.GetExecutionSpec())); err != nil {
-		if !errors.Is(context.Cause(ctx), errExecutionDeadline) {
-			service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
-		}
 		if ctx.Err() != nil {
+			// Request cancellation does not prove backend failure or stop. Keep
+			// this execution eligible for exact cancellation and its watchdog.
 			service.setReuseAfterDrain(verified.Digest, false)
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 			response.Detail = boundedDetail(err.Error())
 			return response, nil
 		}
+		service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
 		service.setReuseAfterDrain(verified.Digest, true)
 		if drainErr := service.checkpointExecutionDrain(ctx, verified); drainErr == nil {
 			service.clearActive(verified.Digest)

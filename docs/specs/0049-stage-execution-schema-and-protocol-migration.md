@@ -395,6 +395,12 @@ recovery without inferring drain. Admission and journal ownership last until
 the actual call returns, including when a backend ignores cancellation. Neither
 context cancellation nor process exit proves writer drain or device reuse.
 
+If a caller cancels an in-flight Prepare, rejection retains PREPARING and its
+installed authority/watchdog. Request cancellation alone must not synthesize a
+FAILED terminal state and suppress later explicit or deadline cancellation.
+Start still requires confirmed PREPARED state; admission remains held until
+explicit writer-drain evidence permits reuse.
+
 `CancelStage` never installs or renews execution authority. It accepts the exact
 installed signed envelope, including after expiry; while admission is healthy
 and above its terminal floor, a fresh compatible successor may also authorize
