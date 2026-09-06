@@ -162,12 +162,15 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			t.Fatalf("WorkerInstance Pod %q Stage Worker ModelRuntime socket = %#v", pod.Name, stageAgent.Env)
 		}
 		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		if pod.Spec.ShareProcessNamespace == nil || *pod.Spec.ShareProcessNamespace || pod.Spec.HostPID {
+			t.Fatalf("WorkerInstance Pod %q does not isolate Runtime's PID namespace", pod.Name)
+		}
 		if pod.Spec.TerminationGracePeriodSeconds == nil ||
 			*pod.Spec.TerminationGracePeriodSeconds != 150 {
 			t.Fatalf("WorkerInstance Pod %q termination grace = %v, want 150s", pod.Name, pod.Spec.TerminationGracePeriodSeconds)
 		}
-		if len(runtimeContainer.Command) != 0 {
-			t.Fatalf("WorkerInstance Pod %q overrides the ModelRuntime image entrypoint: %v", pod.Name, runtimeContainer.Command)
+		if len(runtimeContainer.Command) != 0 || len(runtimeContainer.Args) != 0 {
+			t.Fatalf("WorkerInstance Pod %q overrides the ModelRuntime image entrypoint: %v %v", pod.Name, runtimeContainer.Command, runtimeContainer.Args)
 		}
 		for name, value := range map[string]string{
 			"VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE":            "/etc/vela-model-runtime/private/launch.json",

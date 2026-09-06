@@ -675,6 +675,18 @@ control. Full unit, related race, four PostgreSQL integrations, lint and non-roo
 Linux startup tests pass. Physical cleanup and durable backend lifecycle evidence
 for initialization/idle crashes remain unresolved, alongside the other recovery
 work above. No schema version or Production Gate result changes.
+The [CPU Runtime containment experiment](runtime-process-containment-evidence-2026-09-06.md)
+uses actual Runtime startup, its Registry-bound journal and default process
+drivers. An isolated Runtime PID 1 exit stops the tested escaped writers, while
+a surviving wrapper leaves them active. Initialization and idle journals have no
+pending execution and permit replacement drivers beside those writers; admitted
+execution correctly blocks them. Even successful idle `Close()` can release the
+journal while the owner and writer live, allowing a distinct replacement
+namespace to start models. Fleet namespace/entrypoint assertions preserve the
+existing launch contract, but these tests do not implement backend incarnation
+retirement. Durable pre-start ownership and independent old-container quiescence
+remain required by the updated lifecycle contract. Versions and Production Gates
+are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

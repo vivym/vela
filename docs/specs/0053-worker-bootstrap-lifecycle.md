@@ -58,6 +58,56 @@ can manufacture a missing checkpoint. Process/container containment before
 Prepare, during model initialization and while idle remains a separate lifecycle
 requirement; execution history alone does not establish it.
 
+## Backend containment and replacement
+
+The current Fleet Pod contract gives ModelRuntime an independent PID namespace:
+`HostPID=false`, `ShareProcessNamespace=false`, no Runtime container command or
+argument override, and the release-validated exact `vela-model-runtime` image
+entrypoint. The executable is the namespace's PID 1. A surviving wrapper or
+shared Pod PID namespace changes that containment boundary and must not be
+substituted without a separately validated lifetime owner.
+
+The local Linux CPU experiment confirms that exiting Runtime PID 1 terminates
+the tested descendants even after they create separate process groups. A
+Runtime below a surviving wrapper leaves the same identified writer active
+during initialization, idle residency and admitted execution. The empty
+execution journal permits replacement drivers in the first two cases. A
+successful idle `Close()` also releases the journal while its Runtime owner and
+escaped writer can still live; a distinct replacement namespace can then start
+drivers. These are current implementation limits, not a completed physical
+replacement protocol. See the [CPU containment evidence](../runtime-process-containment-evidence-2026-09-06.md).
+
+The remaining durable lifecycle implementation must satisfy these obligations:
+
+- Record a non-reusable backend/container incarnation under the held,
+  Registry-bound journal before the first configured backend factory can create
+  a process or load a model. Bind it to the exact member, device ownership and
+  containment owner; include failed and interrupted initialization, idle
+  residency, execution and shutdown. Pending execution count is not its state.
+- Preserve an unresolved incarnation through startup failure, cancellation,
+  ordinary `Close()`, lost responses and owner crashes. Recovery endpoints may
+  retain histories and restrictions without loading another backend. Empty or
+  fully drained execution history cannot clear unresolved backend ownership.
+- Accept quiescence only from an independently validated observation of that
+  exact prior containment incarnation. A proposed implementation must bind the
+  trusted Node/container-runtime observation to immutable container identity,
+  node incarnation and journal ownership, and validate its freshness/replay
+  semantics before permitting a replacement. Missing or garbage-collected
+  container metadata is not positive termination evidence.
+- Do not use a new namespace, PID disappearance, successful process-group
+  signaling, `Close()` success or acquisition of the journal lock as prior-owner
+  retirement. Namespace inode numbers can be reused; they are diagnostics rather
+  than durable incarnation identities. Do not release an incarnation while its
+  PID 1 or any permitted external writer remains active.
+- Keep backend/container retirement separate from signed Stage execution drain,
+  input disposition, sealed output, capacity release and physical device
+  quiescence. The CPU namespace experiment establishes none of the GPU or
+  external-writer guarantees required to release a DeviceSet.
+
+These obligations remain unimplemented across epochs. The experiment and Pod
+contract assertions prevent broader claims while the durable protocol is built;
+they do not generate a drain checkpoint or a Launch Receipt.
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual
