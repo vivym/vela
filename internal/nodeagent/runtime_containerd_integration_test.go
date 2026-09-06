@@ -48,6 +48,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",
 		"TestRuntimeExecutableObservation", "TestRuntimeExecutablePathAndExec", "TestRuntimeExecutableFileBounds",
 		"TestRuntimeImageLayerExecutableIdentity",
+		"TestRuntimeImageTargetBounds", "TestRuntimeImageContentBounds", "TestRuntimeImageFileResolution",
 	}
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",

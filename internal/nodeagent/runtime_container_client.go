@@ -119,7 +119,7 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 	if err != nil {
 		return nil, err
 	}
-	observer := &RuntimeContainerObserver{reader: runtimev1.NewRuntimeServiceClient(connection), tasks: tasksapi.NewTasksClient(connection), nodeIdentity: config.NodeIdentity,
+	observer := &RuntimeContainerObserver{connection: connection, reader: runtimev1.NewRuntimeServiceClient(connection), tasks: tasksapi.NewTasksClient(connection), nodeIdentity: config.NodeIdentity,
 		bootID: boot, clock: time.Now, check: check, close: func() error {
 			if closed.Swap(true) {
 				return nil

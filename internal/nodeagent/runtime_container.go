@@ -68,6 +68,7 @@ type runtimeContainerTaskReader interface {
 }
 
 type RuntimeContainerObserver struct {
+	connection   *grpc.ClientConn
 	reader       runtimeContainerReader
 	tasks        runtimeContainerTaskReader
 	nodeIdentity string

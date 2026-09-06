@@ -779,10 +779,18 @@ compares five exact OCI fixture images through native containerd snapshots,
 real non-root processes and the pinned library's flattened tar. Same-layer
 whiteout/recreation and lower-hardlink target replacement produce incorrect
 flattened executable identities. Actual read-only snapshots match the expected
-kernel file in all five cases. All 16 selected Linux CPU tests pass. A production
-reader must use the supported runtime's materialized image view and retain its
-exact content/snapshot lifetime; that reader, startup grants and retirement are
-still pending. No Production Gate is advanced by this test-only increment.
+kernel file in all five cases. All 16 selected Linux CPU tests pass for that
+experiment. The subsequent [image reader](node-runtime-image-reader-evidence-2026-09-07.md)
+adds a separate Linux library using the authenticated local containerd socket,
+bounded exact manifest/config reads, ordered DiffID ChainID, retained native
+snapshot view and read-only inode hashing. It releases its exact mount/view/
+lease before success and retains the lease when cleanup fails. All 19 selected
+Linux CPU and static race tests pass, including actual image comparisons,
+concurrent readers, lost-response/cancel/cleanup faults and rooted symlink/file
+boundaries. It trusts containerd's unpacker/snapshot storage; it does not cryptographically
+reconstruct the rootfs from layers. Overlayfs qualification, process-crash GC
+recovery, serving endpoint integration, startup grants and retirement remain
+pending. Production Gates remain `0/9`.
 The [driver environment repair](driver-environment-evidence-2026-09-06.md)
 removes parent/image environment inheritance from backend launch and shares
 bounded, UTF-8-valid environment checks across Fleet, manifests and direct

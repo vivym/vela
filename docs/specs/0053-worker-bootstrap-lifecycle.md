@@ -258,11 +258,18 @@ Expected executable identity cannot be inferred from a generic flattened tar.
 The pinned image-library extractor loses a same-layer whiteout/recreation and
 changes lower hardlink identity after an upper target replacement. Real
 containerd CPU tests instead match the supported runtime's read-only image
-snapshot to the kernel executable. The production image reader must bind the
-exact image/config/DiffID chain, retain the actual snapshot view during file
-measurement and release its mount activation/snapshot/lease. That reader and
-its startup integration remain unimplemented. See the
-[image provenance evidence](../runtime-image-provenance-evidence-2026-09-07.md).
+snapshot to the kernel executable. `RuntimeImageObserver` now binds exact
+manifest/config bytes and the ordered DiffID ChainID to an already-unpacked
+committed native snapshot, retains a read-only view while measuring a rooted
+regular file, and releases its activation/view/lease before success. This
+trusts the authenticated containerd unpacker and snapshot storage; it is not
+independent layer-to-rootfs cryptographic verification. It accepts only the
+qualified native view shape and has no pull/unpack/process operations. Any
+observation or cleanup error returns no evidence; cleanup failure retains the
+lease, with its one-hour GC expiration, and reports its ID for explicit retry.
+Serving/startup integration, other snapshotters and observer-crash/GC recovery
+remain unfinished. See the [image provenance evidence](../runtime-image-provenance-evidence-2026-09-07.md)
+and [image reader evidence](../node-runtime-image-reader-evidence-2026-09-07.md).
 
 ## Declared driver environment
 

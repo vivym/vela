@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -44,6 +45,15 @@ func TestRuntimeImageLayerExecutableIdentity(t *testing.T) {
 		t.Skip("requires the explicitly enabled disposable containerd CPU sandbox")
 	}
 	fixture := startProcessContainerd(t)
+	md, _ := metadata.FromOutgoingContext(fixture.ctx)
+	observer, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{
+		RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-image-node"},
+		Namespace:                      md.Get("containerd-namespace")[0], Snapshotter: "native",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = observer.Close() })
 	original, originalSize := runtimeExecutableDigest(t, fixture.binary)
 	const trailer = "vela-image-upper-layer-v1"
 	replacement := runtimeImageDigestWithTrailer(t, fixture.binary, trailer)
@@ -98,6 +108,38 @@ func TestRuntimeImageLayerExecutableIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 			mount := fixture.mountExecutableImage(t, directory, scenario, image)
+			configDigest, err := image.ConfigName()
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := RuntimeImageTarget{ManifestDigest: imageDigest.String(), ConfigDigest: configDigest.String(), ExecutablePath: "/" + entrypoint}
+			imageObservation, err := observer.InspectExecutable(t.Context(), target)
+			if err != nil || imageObservation.Digest != expected || imageObservation.SizeBytes != expectedSize ||
+				imageObservation.Target != target || imageObservation.NodeIdentity != "cpu-image-node" || imageObservation.BootID == [16]byte{} {
+				t.Fatalf("production image reader differs from independently expected bytes: %+v %v", imageObservation, err)
+			}
+			assertRuntimeImageResourcesReleased(t, fixture)
+			if scenario == "regular-overlay" {
+				testRuntimeImageObserverFailures(t, fixture, observer, target)
+				t.Run("concurrent-observations", func(t *testing.T) {
+					results := make(chan error, 2)
+					for range 2 {
+						go func() {
+							result, err := observer.InspectExecutable(t.Context(), target)
+							if err == nil && (result.Digest != expected || result.SizeBytes != expectedSize) {
+								err = fmt.Errorf("concurrent observation returned different image bytes")
+							}
+							results <- err
+						}()
+					}
+					for range 2 {
+						if err := <-results; err != nil {
+							t.Error(err)
+						}
+					}
+					assertRuntimeImageResourcesReleased(t, fixture)
+				})
+			}
 			var filesystem unix.Statfs_t
 			if err := unix.Statfs(mount, &filesystem); err != nil || filesystem.Flags&unix.ST_RDONLY == 0 {
 				t.Fatalf("image view is not read-only: %v", err)
