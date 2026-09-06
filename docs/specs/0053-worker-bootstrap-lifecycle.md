@@ -267,9 +267,19 @@ independent layer-to-rootfs cryptographic verification. It accepts only the
 qualified native view shape and has no pull/unpack/process operations. Any
 observation or cleanup error returns no evidence; cleanup failure retains the
 lease, with its one-hour GC expiration, and reports its ID for explicit retry.
-Serving/startup integration, other snapshotters and observer-crash/GC recovery
-remain unfinished. See the [image provenance evidence](../runtime-image-provenance-evidence-2026-09-07.md)
-and [image reader evidence](../node-runtime-image-reader-evidence-2026-09-07.md).
+The expiry is eligibility for GC, not a cleanup deadline: idle containerd can
+skip collection. New leases include version, trusted Node identity hash and
+snapshotter ownership labels. `RecoverExpired` validates matching lease records
+before mutation and explicitly cleans at most 32 expired observations per call,
+preserving partial-progress counts on failure. The future Node service must
+invoke it at startup and periodically; prefix-only or unmarked legacy records
+cannot independently authorize explicit cleanup. Real process-death tests now
+cover lease/view/activation crash boundaries, repeated recovery and actual
+kernel mount removal while retaining live views and source images.
+Serving/startup and periodic-maintenance integration, other snapshotters and
+daemon/host restart remain unfinished. See the [image provenance evidence](../runtime-image-provenance-evidence-2026-09-07.md),
+[image reader evidence](../node-runtime-image-reader-evidence-2026-09-07.md) and
+[crash recovery evidence](../runtime-image-crash-recovery-evidence-2026-09-07.md).
 
 ## Declared driver environment
 

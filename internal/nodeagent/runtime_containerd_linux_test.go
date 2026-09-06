@@ -175,7 +175,9 @@ func startConfiguredProcessContainerd(t *testing.T, configuration string) *conta
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	// Testing cancels t.Context before Cleanup callbacks. Keep the daemon
+	// available for resource cleanup, then stop it in the registered callback.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 90*time.Second)
 	t.Cleanup(cancel)
 	socket := filepath.Join(root, "containerd.sock")
 	daemon := exec.CommandContext(ctx, "containerd", "--config", config, "--root", filepath.Join(root, "data"),

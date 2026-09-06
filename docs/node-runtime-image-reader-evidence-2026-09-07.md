@@ -89,7 +89,11 @@ It is not a startup grant, durable incarnation ownership or retirement proof.
 The Node serving endpoint and launch authorization assembly still do not call
 this library. Observer-process death and subsequent lease-expiration/daemon-GC
 recovery require a separate crash experiment; explicit error/cancel cleanup
-alone does not establish that recovery property.
+alone does not establish that recovery property. The subsequent
+[crash-recovery increment](runtime-image-crash-recovery-evidence-2026-09-07.md)
+adds actual process-death evidence and explicit expired-observation recovery;
+expiry alone is not a collection deadline, and deployed periodic integration
+and daemon/host restart remain open.
 
 ## Validation
 

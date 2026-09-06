@@ -157,7 +157,7 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 	}()
 	resources.lease = true
 	lease, err := observer.leases.Create(ctx, &leasesapi.CreateRequest{ID: key,
-		Labels: map[string]string{"containerd.io/gc.expire": from.Add(time.Hour).Format(time.RFC3339)}})
+		Labels: observer.leaseLabels(from.Add(time.Hour))})
 	if status.Code(err) == codes.AlreadyExists {
 		resources.lease = false
 	}

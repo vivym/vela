@@ -788,9 +788,16 @@ lease before success and retains the lease when cleanup fails. All 19 selected
 Linux CPU and static race tests pass, including actual image comparisons,
 concurrent readers, lost-response/cancel/cleanup faults and rooted symlink/file
 boundaries. It trusts containerd's unpacker/snapshot storage; it does not cryptographically
-reconstruct the rootfs from layers. Overlayfs qualification, process-crash GC
-recovery, serving endpoint integration, startup grants and retirement remain
-pending. Production Gates remain `0/9`.
+reconstruct the rootfs from layers. The subsequent
+[crash recovery](runtime-image-crash-recovery-evidence-2026-09-07.md) demonstrates
+that expiration alone does not schedule idle containerd GC. New leases carry
+version/Node/snapshotter ownership labels, and `RecoverExpired` explicitly
+reclaims at most 32 expired observations per call. Real SIGKILL cases cover
+death after lease, view and mount creation, restart with a new observer,
+idempotent recovery, actual kernel unmount and preserved live/source-image
+controls. Deployed periodic recovery, daemon/host restart, overlayfs
+qualification, serving endpoint integration, startup grants and retirement
+remain pending. Production Gates remain `0/9`.
 The [driver environment repair](driver-environment-evidence-2026-09-06.md)
 removes parent/image environment inheritance from backend launch and shares
 bounded, UTF-8-valid environment checks across Fleet, manifests and direct
