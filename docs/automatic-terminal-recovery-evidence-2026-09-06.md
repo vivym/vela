@@ -87,7 +87,7 @@ under UID/GID 65534, no network, read-only root/binary mounts, all capabilities
 dropped, no-new-privileges and a private `/tmp` tmpfs. Image:
 `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73`.
 
-## Production session registration follow-up
+## Production recovery availability
 
 Review after `8fa331a` reproduced a recovery stall when a Control stream exists
 but its epoch has not been registered in PostgreSQL. The production loop checked
@@ -96,28 +96,62 @@ opening the stream left it available, so subsequent iterations queried terminal
 history without retrying registration. A reconnect during a query caused the
 same problem. PostgreSQL correctly returns RETAIN for an unmatched session.
 
-For a Stream with automatic terminal history enabled, the production loop now
-requires successful readiness registration in its current Control session before
-recovery. It tracks the epoch already recorded by the existing readiness path;
-connection establishment alone cannot satisfy that condition. Failed
-registration or a changed epoch retries through the existing bounded backoff.
-The ordinary post-recovery discovery path remains responsible for acquisition.
+The `e1d423c` repair required successful readiness registration first. Further
+review exposed a dependency cycle: a Runtime with pending recovery or full
+execution history rejects readiness, so it could not reach that recovery. The
+old sequence also advertised ready capacity before checking retained writers.
 
-`TestTerminalRecoveryProductionRegistersCurrentSessionBeforeHistory` failed
-before the repair for all three triggers: an already-open unregistered stream,
-registration failure with a surviving stream, and reconnect during history
-lookup. The repaired tests finish retirement and resume acquisition without a
-history query in a known unregistered session. These are ProductionAgent
-CPU/mock loop tests using real local Runtime UDS and constructed materialization
-records. The authenticated PostgreSQL test separately verifies RETAIN for a
-mismatched database session.
+Production recovery now uses the existing zero-capacity report to synchronize
+the authenticated PostgreSQL session independently of local Runtime readiness.
+The sequence for an automatically configured Stream is:
 
-After this repair, full unit tests, Worker race, lint,
-`TestStageTerminalDispositionThroughAuthenticatedControl`, and Linux non-root
-`^(TestTerminalRecovery|TestTerminalMaterialization|TestProductionAgent)` pass.
-The offline READY/RETIRED guarantee belongs to `StreamAgent.ResumeMaterializations`;
-the enclosing Production service loop still requires online registration and
-readiness. This change does not provide a separate offline service startup mode.
+1. Resume already complete local READY/RETIRED checkpoints.
+2. If retained candidates require fresh history, confirm a zero-capacity lease
+   in the current Control session. Synchronization is inside the bounded history
+   pass and uses the durable production observation sequence.
+3. Query history and complete input/floor/member exclusion and retirement.
+4. Only after recovery succeeds, probe/register readiness, publish usable
+   capacity and acquire work through the existing discovery path.
+
+The internal recovery callback runs only when fresh history candidates exist;
+the public Stream API keeps its existing signature. A fresh confirmed zero lease
+can be reused across incomplete INTENT retries. Expired leases are renewed, and
+session changes or lost responses require a confirmed report. Failure to persist
+an accepted observation sequence locally preserves that exact sequence for
+replay but invalidates lease reuse until confirmation/persistence succeeds.
+Missing input or
+Runtime proof keeps recovery incomplete without probing readiness or restoring
+capacity. Already completed local checkpoints do not depend on an online
+Control session or Runtime, including inside Production recovery; continuing
+normal service after that cleanup still requires online readiness and authority.
+
+`TestTerminalRecoveryProductionSynchronizesUnavailableSessionBeforeHistory`
+reproduced premature ready-capacity publication and the readiness/recovery cycle
+before this change. Its repaired cases cover an already-open stream, failed
+registration after recovery, reconnect during history lookup, Runtime readiness
+that only succeeds after retirement, a lost zero-capacity response, and local
+sequence persistence failure followed by exact replay. Another
+regression keeps an unknown input writer at INTENT across retries and verifies
+zero capacity, no readiness probes, no registration/acquisition, retained
+scratch and reuse of one confirmed zero lease.
+
+The PostgreSQL-to-filesystem integration now runs the actual Production loop
+with a durable session/observation source and a deliberately unavailable
+readiness client. Its zero-capacity report synchronizes the real mTLS Control
+session, automatic history lookup completes retirement, and only then is
+readiness probed. PostgreSQL retains a zero vector in the current session and
+rejects the original session's history lookup. The later incomplete-history
+checks use the newly confirmed database session. No runtime registration or
+usable capacity is invented for the unavailable backend.
+
+After this change, full unit tests, Worker race, lint, integration vet,
+`TestStageTerminalHistoryCoversAllocatedUndeliveredRetry` and
+`TestStageTerminalDispositionThroughAuthenticatedControl` pass. Non-root Linux
+`^(TestTerminalRecovery|TestTerminalMaterialization|TestProductionAgent)` also
+passes with the same container restrictions and image listed above. This uses the
+existing database session/capacity authority: the Worker and member still need
+the persisted Fleet lifecycle/identity required by that authority. Recovery of
+removed or non-READY Fleet identities is not established by these tests.
 
 ## Remaining scope
 

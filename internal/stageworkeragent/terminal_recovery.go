@@ -31,7 +31,7 @@ type terminalRecoveryCandidate struct {
 
 // Called under materializationMu after all already complete proofs are resumed.
 // One bounded pass covers discovery plus proof collection for retained history.
-func (agent *StreamAgent) collectTerminalMaterializations(ctx context.Context) (int, error) {
+func (agent *StreamAgent) collectTerminalMaterializations(ctx context.Context, prepareHistory func(context.Context) error) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, agent.runtime.floor.timeout)
 	defer cancel()
 	records, err := agent.materialization.journal.List(ctx)
@@ -41,6 +41,11 @@ func (agent *StreamAgent) collectTerminalMaterializations(ctx context.Context) (
 	candidates, err := agent.admission.terminalRecoveryCandidates(ctx, records)
 	if err != nil {
 		return 0, err
+	}
+	if len(candidates) > 0 && prepareHistory != nil {
+		if err := prepareHistory(ctx); err != nil {
+			return 0, err
+		}
 	}
 	retired := 0
 	for _, candidate := range candidates {

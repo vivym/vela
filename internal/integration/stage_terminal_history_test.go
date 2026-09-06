@@ -161,6 +161,14 @@ func TestStageTerminalHistoryCoversAllocatedUndeliveredRetry(t *testing.T) {
 		t.Fatal("signed disposition omitted allocated but undelivered retry")
 	}
 	assertUnsignedTerminalAllocationNonAdmission(t, fixture, validator, acquired.Assignment, command, disposition, next.StageAllocationID.String())
+	if stale := readTerminalHistory(t, fixture, request); stale.Eligible || stale.Reason != "WORKER_SESSION_CHANGED" {
+		t.Fatalf("recovery reconnect did not fence the original session: eligible=%t reason=%s", stale.Eligible, stale.Reason)
+	}
+	var recoveredSession int64
+	if err := fixture.database.Admin.QueryRow(`SELECT control_session_epoch FROM worker_instances WHERE id = $1`, authority.GetWorkerInstanceId()).Scan(&recoveredSession); err != nil {
+		t.Fatal(err)
+	}
+	request["control_session_epoch"] = recoveredSession
 	// Global issuance can advance independently; it is not this StageRun's cutoff.
 	if _, err := fixture.database.Admin.Exec(`SELECT nextval('stage_allocation_execution_sequence')`); err != nil {
 		t.Fatal(err)

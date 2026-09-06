@@ -53,7 +53,7 @@ type terminalMaterializationPlan struct {
 // Called under materializationMu before ordinary replay or opening local output.
 // Validate all affected records before any cleanup, then recover every complete
 // checkpoint. An INTENT cannot grant cleanup or ordinary materialization entry.
-func (agent *StreamAgent) resumeTerminalMaterializations(ctx context.Context) (int, error) {
+func (agent *StreamAgent) resumeTerminalMaterializations(ctx context.Context, prepareHistory func(context.Context) error) (int, error) {
 	if agent.terminalRetirement == nil {
 		return 0, nil
 	}
@@ -97,7 +97,7 @@ func (agent *StreamAgent) resumeTerminalMaterializations(ctx context.Context) (i
 		}
 	}
 	if agent.terminalHistory != nil {
-		count, err := agent.collectTerminalMaterializations(ctx)
+		count, err := agent.collectTerminalMaterializations(ctx, prepareHistory)
 		return retired + count, errors.Join(incomplete, err)
 	}
 	return retired, incomplete

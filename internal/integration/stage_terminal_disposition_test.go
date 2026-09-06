@@ -210,8 +210,12 @@ func terminalDispositionControl(t *testing.T, fixture stageSchedulerFixture) (*s
 		t.Fatal(err)
 	}
 	unused := unusedMaterializationReplayDependencies{}
+	evidence, err := stageworkercontrol.NewPostgresWorkerEvidenceBackend(newRolePool(t, fixture.database.DSN, "vela_stage_worker_control_login", "vela-stage-worker-control-password"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	backend, err := stageworkercontrol.NewPostgresOperationBackend(stageworkercontrol.PostgresOperationConfig{
-		TerminalDispositions: terminal, WorkerEvidence: unused, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
+		TerminalDispositions: terminal, WorkerEvidence: evidence, Assignments: unused, Execution: unused, MaterializationIssuer: unused,
 		StageArtifacts: artifacts, StageAttempts: fixture.coordinator, Reattachments: unused, Transfers: unused,
 	})
 	if err != nil {
@@ -247,7 +251,7 @@ func (terminalQuietStops) Stops(context.Context, stageworkertransport.Identity, 
 	return nil
 }
 
-func terminalDispositionDialer(t *testing.T, handler *stageworkercontrol.Handler) func(string, int64) *stageworkertransport.Client {
+func terminalDispositionDialer(t *testing.T, handler *stageworkercontrol.Handler, sources ...stageworkertransport.ControlSessionEpochSource) func(string, int64) *stageworkertransport.Client {
 	t.Helper()
 	ca, caKey, caPEM := issueWorkerTransportTestCA(t)
 	serverName := "terminal-control.internal"
@@ -282,10 +286,16 @@ func terminalDispositionDialer(t *testing.T, handler *stageworkercontrol.Handler
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		config := stageworkertransport.ClientConfig{
 			Address: listener.Addr().String(), InitialControlSessionEpoch: epoch,
 			TransportCredentials: credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate}, RootCAs: roots, ServerName: serverName}),
-		})
+		}
+		if len(sources) == 1 {
+			config.InitialControlSessionEpoch, config.ControlSessionEpochSource = 0, sources[0]
+		} else if len(sources) != 0 {
+			t.Fatal("test dialer accepts at most one durable session source")
+		}
+		client, err := stageworkertransport.DialClient(ctx, config)
 		if err != nil {
 			t.Fatal(err)
 		}

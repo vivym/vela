@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"net"
 	"os"
@@ -204,7 +205,15 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 		t.Fatal(err)
 	}
 	handler, _, _ := terminalDispositionControl(t, fixture)
-	control := terminalDispositionDialer(t, handler)(command.Identity.SPIFFEID, command.ControlSessionEpoch)
+	productionState, err := stageworkeragent.NewFileProductionState(stageworkeragent.FileProductionStateConfig{
+		Directory: filepath.Join(base, "production-state"), WorkerInstanceID: admissionConfig.WorkerInstanceID,
+		WorkerInstanceEpoch: admissionConfig.WorkerInstanceEpoch, WorkerMemberID: admissionConfig.WorkerMemberID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = productionState.Close() })
+	control := terminalDispositionDialer(t, handler, productionState)(command.Identity.SPIFFEID, command.ControlSessionEpoch)
 	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
 	if err != nil {
 		t.Fatal(err)
@@ -234,14 +243,53 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := stream.ResumeMaterializations(t.Context())
-	if err != nil || result.TerminalRecordsRetired != 0 || result.Committed || result.SourceLostReported || result.L2Published {
-		t.Fatalf("automatic database-authorized scratch retirement: %+v %v", result, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	readiness := &terminalUnavailableReadiness{}
+	waits := 0
+	production, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: readiness, Stream: stream, RuntimeIdentity: identities.Identities[0],
+		Devices: original.Devices, Members: original.Members, CapacityVector: original.CapacityVector,
+		CapacityTTL: time.Minute, HeartbeatInterval: time.Second, RetryMinimum: time.Millisecond, RetryMaximum: time.Second,
+		ObservationSequenceSource: productionState, Now: time.Now,
+		Wait: func(context.Context, time.Duration) error {
+			waits++
+			state, err := gate.Snapshot(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(state.Retirements) == 1 && state.Retirements[0].Phase == stageworkeragent.TerminalRetirementRetired || waits > 5 {
+				cancel()
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := production.Run(ctx); err != nil {
+		t.Fatal(err)
 	}
 	state, err := gate.Snapshot(t.Context())
 	if err != nil || len(state.Retirements) != 1 || state.Retirements[0].Phase != stageworkeragent.TerminalRetirementRetired ||
 		state.Floor != disposition.GetCutoff() || state.Latest.Phase != stageworkeragent.AssignmentClosed || state.Latest.AcquireCommandID != command.CommandID {
 		t.Fatalf("automatic recovery lost durable proof or original Acquire: %+v %v", state, err)
+	}
+	var vector []byte
+	var session int64
+	if err := fixture.database.Admin.QueryRow(`SELECT capacity_vector, stage_worker_control_session_epoch
+		FROM capacity_observations WHERE worker_instance_id = $1 AND stage_worker_control_session_epoch IS NOT NULL
+		ORDER BY observation_sequence DESC LIMIT 1`, admissionConfig.WorkerInstanceID).Scan(&vector, &session); err != nil {
+		t.Fatal(err)
+	}
+	var capacity map[string]int64
+	if err := json.Unmarshal(vector, &capacity); err != nil || len(capacity) == 0 || session != control.CurrentControlSessionEpoch() || readiness.calls != 1 {
+		t.Fatalf("recovery capacity/session/readiness: %s epoch=%d probes=%d error=%v", vector, session, readiness.calls, err)
+	}
+	for _, quantity := range capacity {
+		if quantity != 0 {
+			t.Fatal("recovery advertised available capacity while Runtime was not ready")
+		}
 	}
 	if err := control.Close(); err != nil {
 		t.Fatal(err)
@@ -257,5 +305,12 @@ func assertDatabaseTerminalScratchRetirement(t *testing.T, fixture stageSchedule
 	if _, err := os.Stat(filepath.Join(base, "outputs", "unrelated", "keep")); err != nil {
 		t.Fatal("retirement changed unrelated scratch")
 	}
-	t.Log("persisted original Acquire -> automatic authenticated PostgreSQL history query -> Worker INTENT/floor -> UDS Runtime proof -> durable READY/RETIRED -> offline replay")
+	t.Log("unready Runtime -> zero capacity/current PostgreSQL session -> automatic authenticated history query -> UDS Runtime proof -> durable RETIRED -> offline replay")
+}
+
+type terminalUnavailableReadiness struct{ calls int }
+
+func (runtime *terminalUnavailableReadiness) ProbeReadiness(context.Context, *velav1.ModelRuntimeServiceProbeReadinessRequest, ...grpc.CallOption) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
+	runtime.calls++
+	return nil, errors.New("Runtime readiness remains unavailable during this recovery fixture")
 }

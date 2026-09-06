@@ -352,7 +352,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			return fmt.Errorf("consume Stage Worker control commands: %w", err)
 		default:
 		}
-		if !agent.controlSessionAvailable() || agent.terminalHistoryNeedsRegistration() {
+		if agent.stream.terminalHistory == nil && !agent.controlSessionAvailable() {
 			if _, _, err := agent.refreshEvidence(ctx, 0); err != nil {
 				if ctx.Err() != nil {
 					return nil
@@ -367,7 +367,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 				continue
 			}
 		}
-		if _, err := agent.stream.ResumeMaterializations(ctx); err != nil {
+		if _, err := agent.stream.resumeMaterializations(ctx, agent.prepareTerminalRecoverySession); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -756,14 +756,35 @@ func (agent *ProductionAgent) controlSessionAvailable() bool {
 	return !ok || reader.HasActiveControlSession()
 }
 
-func (agent *ProductionAgent) terminalHistoryNeedsRegistration() bool {
-	if agent.stream == nil || agent.stream.terminalHistory == nil {
-		return false
+func (agent *ProductionAgent) prepareTerminalRecoverySession(ctx context.Context) error {
+	if !agent.isCapacityReporter() {
+		return errors.New("terminal history recovery requires the capacity-reporting WorkerMember")
 	}
-	// Opening a transport does not register its epoch with PostgreSQL. A failed
-	// registration or a reconnect during history lookup must retry registration.
-	return agent.readinessValidatedAt.IsZero() ||
-		agent.readinessControlSessionEpoch != agent.currentControlSessionEpoch()
+	if agent.capacityPublicationState == capacityPublicationUnavailable && agent.capacityPublicationLeaseFresh() {
+		return nil
+	}
+	sequence := agent.reusableCapacityObservationSequence(capacityPublicationUnavailable)
+	if sequence == 0 {
+		var err error
+		sequence, err = agent.nextObservationSequence(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	unavailable := maps.Clone(agent.capacityVector)
+	for resource := range unavailable {
+		unavailable[resource] = 0
+	}
+	// Zero-capacity reporting synchronizes the authenticated Control session without
+	// probing a Runtime whose readiness may depend on completing this recovery.
+	publication, err := agent.reportCapacity(ctx, agent.primaryRuntimeIdentity(), sequence, unavailable)
+	if err != nil {
+		// Keep a server-accepted sequence for replay, but retry failed local
+		// persistence before treating this zero lease as reusable recovery evidence.
+		publication.expiresAt = time.Time{}
+	}
+	agent.recordCapacityPublication(capacityPublicationUnavailable, publication)
+	return err
 }
 
 func (agent *ProductionAgent) reusableCapacityObservationSequence(

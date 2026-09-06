@@ -314,10 +314,14 @@ execution envelopes, latest renewals and original Acquire IDs. It advances
 INTENT through complete trusted Runtime exclusion and durable retirement;
 RETAIN/missing envelopes preserve incomplete INTENT and READY/RETIRED recover
 offline. Automatic PostgreSQL-to-filesystem recovery covers an allocated but
-undelivered retry. Production recovery also checks successful registration of
-the current Control session; an open but unregistered/reconnected transport
-cannot bypass registration into repeated RETAIN. Regression, full unit, Worker
-race, lint, authenticated Control and non-root Linux checks pass.
+undelivered retry. Production recovery synchronizes the current Control session
+through a confirmed zero-capacity report before fresh history queries, without
+requiring local Runtime readiness. Complete local checkpoints recover first;
+incomplete INTENT keeps capacity unavailable, and readiness/usable capacity and
+acquisition follow successful recovery. This removes the readiness/recovery
+cycle and rejects an open but unsynchronized transport as session proof.
+Regression, full unit, Worker race, lint and authenticated PostgreSQL/Control
+checks pass.
 Default command/bootstrap assembly, unknown historical
 writers, sealed receipt recovery and bounded checkpoint reclamation remain
 open; the default retention policy is still active.

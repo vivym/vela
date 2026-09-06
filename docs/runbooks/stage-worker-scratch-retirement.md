@@ -131,11 +131,15 @@ uses the Runtime floor timeout. Existing READY/RETIRED recover before fresh
 collection and require no online Control or Runtime. Missing writer proof still
 requires writer recovery, not repeated cleanup or a forced journal deletion.
 See [automatic recovery evidence](../automatic-terminal-recovery-evidence-2026-09-06.md).
-The Production loop registers the current Control session before this automatic
-recovery. An open stream is insufficient: failed registration or a changed
-session epoch triggers registration retry. Stream-level READY/RETIRED cleanup
-remains offline-capable; the enclosing Production loop still requires online
-readiness/registration.
+The Production loop first resumes complete local checkpoints. Before a fresh
+history query, it synchronizes the Control session through a confirmed
+zero-capacity report, independently of Runtime readiness. An open stream is
+insufficient: a changed session epoch or lost response requires confirmation.
+Incomplete recovery keeps capacity unavailable; readiness registration, usable
+capacity and acquisition follow successful recovery. A Runtime that rejects
+readiness because it needs recovery therefore cannot block that recovery.
+This uses the existing Fleet identity/lifecycle conditions for capacity reports;
+it does not bypass them for removed or non-READY Fleet identities.
 
 ## Remaining Lifecycle Boundary
 

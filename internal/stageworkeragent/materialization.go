@@ -245,13 +245,17 @@ func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterial
 func (agent *StreamAgent) ResumeMaterializations(
 	ctx context.Context,
 ) (MaterializationResult, error) {
+	return agent.resumeMaterializations(ctx, nil)
+}
+
+func (agent *StreamAgent) resumeMaterializations(ctx context.Context, prepareHistory func(context.Context) error) (MaterializationResult, error) {
 	result := MaterializationResult{}
 	if agent == nil || agent.materialization == nil || ctx == nil {
 		return result, errors.New("stage worker materialization is not configured")
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()
-	retired, err := agent.resumeTerminalMaterializations(ctx)
+	retired, err := agent.resumeTerminalMaterializations(ctx, prepareHistory)
 	result.TerminalRecordsRetired = retired
 	if err != nil {
 		return result, err
