@@ -66,6 +66,15 @@ func (service *Service) checkReadinessAdmission() error {
 	if admission.store != nil && len(admission.store.state.Executions) >= maxRetainedExecutions {
 		return ErrExecutionHistoryFull
 	}
+	for _, resident := range admission.services {
+		resident.mu.Lock()
+		active := resident.active
+		blocked := active != nil && active.verified.Authority.GetExecutionSequence() <= admission.floor && !reusableExecution(active)
+		resident.mu.Unlock()
+		if blocked {
+			return errors.New("terminal execution still holds the shared Runtime slot")
+		}
+	}
 	return nil
 }
 
@@ -255,7 +264,7 @@ func (admission *executionAdmission) closeStateLocked() {
 }
 
 func reusableExecution(active *activeExecution) bool {
-	return active.workerReusable &&
+	return active.workerReusable && !active.workerReuseDenied &&
 		(active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 			active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
 }

@@ -30,6 +30,23 @@ func (service *Service) confirmBackendAuthority(verified stageauthority.Verified
 	}
 }
 
+// Cleanup can observe STOPPED without a health assertion. Preserve explicit
+// non-reusability across cancellation until a validated Status clears it.
+func (service *Service) confirmBackendStatus(verified stageauthority.Verified, status BackendStatus) {
+	service.confirmBackendAuthority(verified)
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.active == nil || service.active.verified.Digest != verified.Digest {
+		return
+	}
+	switch status.State {
+	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
+		service.active.workerReuseDenied = !status.FailureEvidence.WorkerReusable
+	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED:
+		service.active.workerReuseDenied = false
+	}
+}
+
 // A renewed Prepare/Start replay must reach the backend before it can claim
 // the new envelope is prepared/running. Status is the existing renewal RPC.
 func (service *Service) synchronizeBackendAuthority(ctx context.Context, verified stageauthority.Verified) error {
@@ -57,7 +74,7 @@ func (service *Service) synchronizeBackendAuthority(ctx context.Context, verifie
 		current == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED && status.State != current) {
 		return errors.New("backend status contradicts terminal execution")
 	}
-	service.confirmBackendAuthority(verified)
+	service.confirmBackendStatus(verified, status)
 	service.setActiveState(verified.Digest, status.State)
 	return nil
 }

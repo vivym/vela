@@ -31,20 +31,28 @@ type TerminalExecutionExclusionResult struct {
 	AllExcluded         bool
 }
 
+type terminalExclusionMode uint8
+
+const (
+	inspectTerminalExclusion terminalExclusionMode = iota
+	checkpointTerminalExclusion
+	recoverTerminalExclusion
+)
+
 // Authorities may omit allocations with no available execution envelope. Those
 // allocations require terminal-identity non-admission proof from every member.
 func (agent *Agent) InspectTerminalExecutionExclusions(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (TerminalExecutionExclusionResult, error) {
-	return agent.collectTerminalExecutionExclusions(ctx, disposition, authorities, targets, false)
+	return agent.collectTerminalExecutionExclusions(ctx, disposition, authorities, targets, inspectTerminalExclusion)
 }
 
 // CheckpointTerminalExecutionExclusions may persist current-epoch non-admission
 // proofs after independently installed Runtime floors. It never installs a floor,
 // cancels/drains a backend, or infers history from a missing Runtime record.
 func (agent *Agent) CheckpointTerminalExecutionExclusions(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity) (TerminalExecutionExclusionResult, error) {
-	return agent.collectTerminalExecutionExclusions(ctx, disposition, authorities, targets, true)
+	return agent.collectTerminalExecutionExclusions(ctx, disposition, authorities, targets, checkpointTerminalExclusion)
 }
 
-func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity, checkpoint bool) (TerminalExecutionExclusionResult, error) {
+func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disposition *velav1.StageTerminalDisposition, authorities map[string]*velav1.StageAuthority, targets map[string]*velav1.ModelRuntimeIdentity, mode terminalExclusionMode) (TerminalExecutionExclusionResult, error) {
 	result := TerminalExecutionExclusionResult{}
 	if agent == nil || agent.floor == nil || ctx == nil {
 		return result, errors.New("terminal execution exclusion is not configured")
@@ -85,9 +93,9 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 				var proof ExecutionExclusionProof
 				var err error
 				if history.authorities[id] == nil {
-					proof, err = agent.collectMemberTerminalNonAdmission(ctx, memberID, history.verified.Disposition, allocation, history.readers[memberID], checkpoint)
+					proof, err = agent.collectMemberTerminalNonAdmission(ctx, memberID, history.verified.Disposition, allocation, history.readers[memberID], mode != inspectTerminalExclusion)
 				} else {
-					proof, err = agent.collectMemberExclusion(ctx, memberID, scopes[memberID], history.verified.Disposition, checkpoint)
+					proof, err = agent.collectMemberExclusion(ctx, memberID, scopes[memberID], history.verified.Disposition, mode)
 				}
 				completed <- memberResult{id: memberID, proof: proof, err: err}
 			}()
@@ -126,7 +134,7 @@ func (agent *Agent) collectTerminalExecutionExclusions(ctx context.Context, disp
 	return result, joined
 }
 
-func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string, scope *velav1.ModelRuntimeExecutionDrainScope, disposition *velav1.StageTerminalDisposition, checkpoint bool) (ExecutionExclusionProof, error) {
+func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string, scope *velav1.ModelRuntimeExecutionDrainScope, disposition *velav1.StageTerminalDisposition, mode terminalExclusionMode) (ExecutionExclusionProof, error) {
 	proof := ExecutionExclusionProof{}
 	if err := ctx.Err(); err != nil {
 		return proof, err
@@ -154,6 +162,11 @@ func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string,
 	}
 	if drain.GetResult().GetCheckpoint() != nil {
 		proof.Drain = proto.Clone(drain.GetResult()).(*velav1.ModelRuntimeExecutionDrainResult)
+		if mode == recoverTerminalExclusion {
+			if err := agent.finishMemberDrainedExecution(ctx, memberID, scope, proof.Drain.GetCheckpoint()); err != nil {
+				return ExecutionExclusionProof{}, err
+			}
+		}
 		return proof, nil
 	}
 	read, err := client.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: proto.Clone(scope).(*velav1.ModelRuntimeExecutionDrainScope)})
@@ -185,7 +198,7 @@ func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string,
 			return proof, nil
 		}
 	}
-	if result.GetCheckpoint() == nil && checkpoint {
+	if result.GetCheckpoint() == nil && mode != inspectTerminalExclusion {
 		// Other members may already have historical proof after retiring their
 		// original profile. Only this new checkpoint requires original residency.
 		checkpointScope, err := agent.executionDrainMemberScope(verified.Authority, memberID, nil, false)
@@ -208,6 +221,9 @@ func (agent *Agent) collectMemberExclusion(ctx context.Context, memberID string,
 		}
 	}
 	if result.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || result.GetCheckpoint() == nil {
+		if mode == recoverTerminalExclusion {
+			return agent.recoverMemberExecutionDrain(ctx, memberID, scope)
+		}
 		return proof, errors.New("member execution exclusion is unproven")
 	}
 	proof.NeverAdmitted = proto.Clone(result).(*velav1.ModelRuntimeExecutionNonAdmissionResult)

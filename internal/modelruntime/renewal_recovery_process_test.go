@@ -90,6 +90,15 @@ func TestModelRuntimeRenewalRecoveryWithCompiledH3Process(t *testing.T) {
 			if readiness, err := process.Probe(t.Context(), velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP); err != nil || !readiness.Ready {
 				t.Fatalf("identity reconciliation unloaded the resident CPU process: %+v %v", readiness, err)
 			}
+			next := f.authority(t, 0, 13)
+			next.ExecutionSpecDigest = digest[:]
+			next, err = f.signer.Sign(next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response, err := f.supervisor.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: next, ExecutionSpec: spec}); err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+				t.Fatalf("drained CPU process could not prepare its next allocation: %v %v", response, err)
+			}
 		})
 	}
 }

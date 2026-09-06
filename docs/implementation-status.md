@@ -615,6 +615,22 @@ protobuf compatibility pass. Discovery is live observation only: durable
 candidate restoration, automatic recovery orchestration, terminal retirement,
 capacity reclamation and other lifecycle work remain open. Versions and
 Production Gates remain unchanged.
+The [live terminal recovery increment](terminal-live-recovery-evidence-2026-09-06.md)
+connects terminal retirement to backend authority discovery, exact cancellation
+and durable drain after input-writer exclusion and all Runtime floor
+acknowledgements. Members may retain different renewals of one allocation;
+recovery preserves each actual signed envelope and retries partial proof without
+repeating a completed backend drain. A stopped execution regains its shared slot
+only after durable drain and validated state; explicit unhealthy Worker status
+survives cancellation and cleanup. Terminal slots below the floor block readiness.
+Two-member UDS recovery, failed stop-observation retries, actual compiled CPU
+process reuse, full unit, related race/lint, four PostgreSQL integrations,
+generated checks and Linux non-root checks pass. Live recovery is now wired into
+the retirement coordinator; combined ProductionAgent live-renewal recovery,
+durable candidate restoration, historical unknown writers, bounded history
+reclamation, sealed receipt persistence and Fleet durable activation remain open.
+PostgreSQL schema 94, Worker journal 5, Runtime journal 4, Registry binding 1 and
+Production Gates `0/9` are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

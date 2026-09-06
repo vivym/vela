@@ -2,6 +2,7 @@ package stageworkeragent_test
 
 import (
 	"context"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -142,7 +143,53 @@ type floorCollectorRuntimes struct {
 
 type floorCollectorBackend struct {
 	*modelruntime.FakeRuntime
-	closed atomic.Bool
+	closed                atomic.Bool
+	stopOnCancel          atomic.Bool
+	renewalResponseFault  atomic.Int32
+	inspectCalls          atomic.Int64
+	cancelCalls           atomic.Int64
+	drainCalls            atomic.Int64
+	failDrain             atomic.Bool
+	failInspectAfterDrain atomic.Bool
+}
+
+func (backend *floorCollectorBackend) Status(ctx context.Context, authority stageauthority.Verified) (modelruntime.BackendStatus, error) {
+	fault := backend.renewalResponseFault.Load()
+	if fault == 1 {
+		return modelruntime.BackendStatus{}, errors.New("injected renewal failure before application")
+	}
+	result, err := backend.FakeRuntime.Status(ctx, authority)
+	if err == nil && fault == 2 {
+		return modelruntime.BackendStatus{}, errors.New("injected renewal response loss")
+	}
+	return result, err
+}
+
+func (backend *floorCollectorBackend) InspectExecution(ctx context.Context, authority stageauthority.Verified) (modelruntime.ExecutionInspection, error) {
+	backend.inspectCalls.Add(1)
+	if backend.failInspectAfterDrain.Load() && backend.drainCalls.Load() > 0 {
+		return modelruntime.ExecutionInspection{}, errors.New("injected lost stop observation after durable drain")
+	}
+	return backend.FakeRuntime.InspectExecution(ctx, authority)
+}
+
+func (backend *floorCollectorBackend) Cancel(ctx context.Context, authority stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
+	backend.cancelCalls.Add(1)
+	if err := backend.FakeRuntime.Cancel(ctx, authority, reason); err != nil {
+		return err
+	}
+	if backend.stopOnCancel.Load() {
+		backend.FinishStop()
+	}
+	return nil
+}
+
+func (backend *floorCollectorBackend) DrainExecution(ctx context.Context, authority stageauthority.Verified) (modelruntime.BackendDrain, error) {
+	backend.drainCalls.Add(1)
+	if backend.failDrain.Load() {
+		return modelruntime.BackendDrain{}, errors.New("injected pending writer drain")
+	}
+	return backend.FakeRuntime.DrainExecution(ctx, authority)
 }
 
 func (backend *floorCollectorBackend) Close() error {

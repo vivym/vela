@@ -90,8 +90,28 @@ same-execution relationship and exact nested observation independently at both
 forwarding boundaries. It does not publish pending candidates as confirmed
 identities, renew execution, take the execution lock or produce drain proof.
 Missing live history stays unknown; a replacement Runtime cannot inspect an old
-epoch. The candidate pair is not restored from the Runtime journal on restart,
-and automatic recovery orchestration remains separate work.
+epoch. The candidate pair is not restored from the Runtime journal on restart.
+
+Terminal scratch retirement may recover an admitted live execution only after
+Worker input writers finish and every signed Runtime floor acknowledgement is
+validated. It first reads durable exclusion evidence. If non-admission cannot
+be established, the original resident Runtime may discover the exact live
+envelope, cancel it unless already STOPPED or OUTPUT_SEALED, and drain that exact
+identity. The collector re-reads the allocation checkpoint using its original
+query; it never relabels another envelope's correlation digest. Replacement
+Runtime owners may replay historical proof but cannot execute this live recovery
+against the previous epoch. Partial or invalid proof leaves retirement at INTENT.
+
+An exact durable drain can reconcile a CANCELING or unclassified FAILED slot
+only after a validated exact backend STOPPED observation. Explicit
+`WorkerReusable=false` survives Cancel and drain, and only a validated Status
+may clear that health denial. Inspection alone cannot release a slot. A terminal
+execution at or below the installed floor blocks readiness across shared
+resident profiles until it is reusable. A saved drain followed by a failed stop
+observation remains retryable at the original current Runtime without repeating
+the backend drain. Known OUTPUT_SEALED may release its slot only while preserving
+its validated local receipt. Receipt persistence and historical writer recovery
+after loss of live identity remain separate requirements.
 
 Retention covers the forwarding call only: a timed-out UDS RPC can return while
 backend descendants remain active. It proves neither physical containment nor

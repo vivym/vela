@@ -67,7 +67,7 @@ func TestExecutionDrainRPCPersistsBeforeReplyAndReadsAcrossEpochs(t *testing.T) 
 	}
 }
 
-func TestExecutionDrainRPCAfterExpiredCancellationDoesNotInventReuse(t *testing.T) {
+func TestExecutionDrainRPCAfterExpiredCancellationRestoresObservedStoppedSlot(t *testing.T) {
 	backend := &executionDrainBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
 	f := newExecutionDrainFixture(t, privateExecutionStateDirectory(t), backend)
 	client := dialExecutionFloorServer(t, f.supervisor)
@@ -88,8 +88,8 @@ func TestExecutionDrainRPCAfterExpiredCancellationDoesNotInventReuse(t *testing.
 		t.Fatalf("expired cancellation could not checkpoint real drain: %v %v", response, err)
 	}
 	prepared, err := f.supervisor.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authority(t, 1, 12), ExecutionSpec: runtimeExecutionSpec()})
-	if err != nil || prepared.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
-		t.Fatalf("drain invented healthy reusable slot: %v %v", prepared, err)
+	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("durable drain and exact STOPPED observation did not restore slot: %v %v", prepared, err)
 	}
 	if backend.closed.Load() {
 		t.Fatal("drain unloaded residency")

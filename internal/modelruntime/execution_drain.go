@@ -140,12 +140,6 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 	service.mu.Lock()
 	exact := service.active.knowsAuthority(verified.Digest) &&
 		(terminalState(service.active.state) || service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING)
-	state := velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
-	reusable := false
-	if exact {
-		state = service.active.state
-		reusable = service.active.reuseAfterDrain
-	}
 	service.mu.Unlock()
 	if !exact {
 		return supervisor.InspectExecutionDrain(ctx, authority)
@@ -159,13 +153,8 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 	if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
 		return nil, err
 	}
-	// A canceled execution may have finished after its authority expired. Its
-	// explicit backend proof can be persisted without inventing terminal state
-	// or WorkerReusable health that ordinary Status has not established.
-	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
-		(state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED && reusable) {
-		service.setActiveWorkerReusable(verified.Digest)
-		service.stopWatchdog(verified.Digest)
+	if err := service.restoreDrainedExecution(ctx, verified); err != nil {
+		return nil, err
 	}
 	return supervisor.InspectExecutionDrain(ctx, authority)
 }

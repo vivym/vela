@@ -81,6 +81,7 @@ type activeExecution struct {
 	backendAuthority     *stageauthority.Verified
 	state                velav1.ModelRuntimeExecutionState
 	workerReusable       bool
+	workerReuseDenied    bool
 	reuseAfterDrain      bool
 	startedAt            time.Time
 	timer                Timer
@@ -539,7 +540,7 @@ func (service *Service) Status(
 		status.LocalReceiptID = receipt.GetReceiptId()
 		status.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
 	}
-	service.confirmBackendAuthority(verified)
+	service.confirmBackendStatus(verified, status)
 	service.setActiveState(verified.Digest, status.State)
 	service.setReuseAfterDrain(verified.Digest, status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 		(status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable))
@@ -655,7 +656,7 @@ func (service *Service) SealOutput(
 	if err == nil {
 		err = validateBackendStatus(status)
 		if err == nil {
-			service.confirmBackendAuthority(verified)
+			service.confirmBackendStatus(verified, status)
 		}
 	}
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {
@@ -908,6 +909,10 @@ func (service *Service) rememberSealedReceipt(
 ) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
+	service.rememberSealedReceiptLocked(digest, receipt)
+}
+
+func (service *Service) rememberSealedReceiptLocked(digest [sha256.Size]byte, receipt *velav1.LocalMaterializationReceipt) {
 	if receipt == nil {
 		return
 	}

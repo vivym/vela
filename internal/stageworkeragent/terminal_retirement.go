@@ -90,7 +90,9 @@ func (retirer *TerminalScratchRetirement) Retire(ctx context.Context, dispositio
 	if err != nil {
 		return snapshot, err
 	}
-	excluded, err := retirer.runtime.CheckpointTerminalExecutionExclusions(ctx, value, history.authorities, history.readers)
+	// Live backend recovery is permitted only after local input exclusion and
+	// every independently verified Runtime floor acknowledgement are complete.
+	excluded, err := retirer.runtime.collectTerminalExecutionExclusions(ctx, value, history.authorities, history.readers, recoverTerminalExclusion)
 	if err != nil {
 		return snapshot, err
 	}
