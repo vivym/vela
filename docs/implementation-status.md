@@ -469,6 +469,22 @@ reject. CPU fault, subprocess exit, PostgreSQL/TLS command, full unit/race/lint
 and Linux non-root checks pass. First initialization without a recorded pair,
 serving lifetime checks and Fleet activation remain open; versions and Production
 Gates are unchanged.
+The [Registry binding protocol](worker-journal-binding-evidence-2026-09-06.md)
+and [authenticated signature retrieval](worker-journal-binding-transport-evidence-2026-09-06.md)
+now use dedicated Control-only Ed25519 keys and independently provisioned public
+verifiers. Only a complete committed journal pair can be signed; the Node
+`binding` action verifies the original request/node/actor and grants no current
+execution or initialization authority. The [Runtime startup check](runtime-journal-binding-evidence-2026-09-06.md)
+matches the actual locked journal before epoch/backend startup. The subsequent
+[Worker serving check](worker-journal-serving-binding-evidence-2026-09-06.md)
+opens and verifies admission before member endpoint publication, retains its
+lifetime lock through Runtime discovery and binds discovered routes once without
+reopening or changing historical state. PostgreSQL/TLS, compiled Node retrieval,
+CPU Worker/Runtime composition, full unit/race/lint and Linux non-root checks
+pass. Nondurable modes remain separate; Fleet durable activation, unrecorded
+first-initialization reconciliation, pending writers, backend containment,
+terminal retirement and bounded reclamation remain open. Schema remains 92 and
+Production Gates remain `0/9`.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

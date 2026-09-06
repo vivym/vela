@@ -280,11 +280,21 @@ func enableDurableSmoke(t *testing.T, configuration *config, identity *velav1.Mo
 	if err := os.Mkdir(configuration.assignmentAdmissionRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	launch := durableLaunchForTest(t, *configuration)
-	launch.admission.Initialize = true
-	if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), launch.admission); err != nil {
+	validator, err := stageauthority.NewValidator(map[string][]byte{"stage-authority-smoke-v1": bytes.Repeat([]byte{0x71}, 32)}, time.Now)
+	if err != nil {
 		t.Fatal(err)
 	}
+	admission, err := offlineAdmissionConfig(manifest, stageworkeragent.AssignmentAdmissionConfig{
+		Initialize: true, Directory: configuration.assignmentAdmissionRoot, MaxRecords: 4, Validator: validator,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), admission)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configureWorkerJournalBinding(t, configuration, manifest, journal, nil)
 }
 
 func durableLaunchForTest(t *testing.T, configuration config) *durableWorkerLaunch {

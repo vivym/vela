@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -61,6 +62,11 @@ type AssignmentAdmissionConfig struct {
 	Bindings            []AdmissionRuntimeBinding
 	MaxRecords          int
 	MaxClockSkew        time.Duration
+	RegistryBinding     *velav1.WorkerBootstrapBinding
+	RegistryVerifier    *journalbinding.Verifier
+	// DeferRuntimeRoutes holds journal ownership during startup discovery while
+	// refusing execution admission until BindRuntimeRoutes succeeds once.
+	DeferRuntimeRoutes bool
 }
 
 // AssignmentAdmissionRecord keeps original lookup evidence without delivery content.
@@ -88,6 +94,7 @@ type FileAssignmentAdmission struct {
 	state                      assignmentAdmissionState
 	validator                  *stageauthority.Validator
 	bindings                   []AdmissionRuntimeBinding
+	routesBound                bool
 	scope                      assignmentAdmissionScope
 	scopeDigest                [sha256.Size]byte
 	maxSkew                    time.Duration
@@ -108,6 +115,19 @@ type AssignmentAdmission struct {
 }
 
 func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignmentAdmission, error) {
+	if (config.RegistryBinding == nil) != (config.RegistryVerifier == nil) {
+		return nil, errors.New("assignment journal Registry binding and verifier must be configured together")
+	}
+	if config.RegistryBinding != nil {
+		if config.Initialize || config.UpgradeV2 || config.UpgradeV3 || config.UpgradeV4 {
+			return nil, errors.New("assignment journal Registry binding requires recovery without initialization or upgrade")
+		}
+		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)
+		if err != nil {
+			return nil, err
+		}
+		config.RegistryBinding = verified
+	}
 	upgrades := 0
 	for _, selected := range []bool{config.UpgradeV2, config.UpgradeV3, config.UpgradeV4} {
 		if selected {
@@ -122,17 +142,9 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 		config.MaxRecords < 1 || config.MaxRecords > 64 || config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
 		return nil, errors.New("assignment admission configuration is invalid")
 	}
-	bindings := make([]AdmissionRuntimeBinding, 0, len(config.Bindings))
-	for _, binding := range config.Bindings {
-		if binding.Runtime.WorkerInstanceID != config.WorkerInstanceID.String() || binding.Runtime.WorkerInstanceEpoch != config.WorkerInstanceEpoch ||
-			binding.Runtime.WorkerMemberID == "" || binding.IdentityDigest == ([sha256.Size]byte{}) || binding.DeviceSubsetDigest == ([sha256.Size]byte{}) {
-			return nil, errors.New("assignment admission Runtime binding is invalid")
-		}
-		binding.Runtime.Devices = slices.Clone(binding.Runtime.Devices)
-		binding.Runtime.Members = slices.Clone(binding.Runtime.Members)
-		binding.Runtime.DeviceSetDigest = slices.Clone(binding.Runtime.DeviceSetDigest)
-		binding.Runtime.MembershipDigest = slices.Clone(binding.Runtime.MembershipDigest)
-		bindings = append(bindings, binding)
+	bindings, err := cloneAdmissionRuntimeBindings(config.WorkerInstanceID.String(), config.WorkerInstanceEpoch, config.Bindings)
+	if err != nil {
+		return nil, err
 	}
 	scope, err := newAssignmentAdmissionScope(config, bindings)
 	if err != nil {
@@ -146,7 +158,8 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 	if err != nil {
 		return nil, err
 	}
-	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings, scope: scope, scopeDigest: scopeDigest, maxSkew: config.MaxClockSkew}
+	gate := &FileAssignmentAdmission{files: files, state: state, validator: config.Validator, bindings: bindings,
+		routesBound: !config.DeferRuntimeRoutes, scope: scope, scopeDigest: scopeDigest, maxSkew: config.MaxClockSkew}
 	upgrade := config.UpgradeV2 && state.SchemaVersion == 2 || config.UpgradeV3 && state.SchemaVersion == 3 || config.UpgradeV4 && state.SchemaVersion == 4
 	if upgrade {
 		if state.SchemaVersion < 4 && len(state.Retirements) != 0 {
@@ -172,6 +185,21 @@ func NewFileAssignmentAdmission(config AssignmentAdmissionConfig) (*FileAssignme
 	if err := gate.validateState(state); err != nil {
 		_ = files.close()
 		return nil, err
+	}
+	if config.RegistryBinding != nil {
+		var memberEpoch int64
+		for _, member := range scope.Members {
+			if member.ID == scope.WorkerMemberID {
+				memberEpoch = member.Epoch
+			}
+		}
+		if err := config.RegistryVerifier.VerifyJournal(config.RegistryBinding, journalbinding.WorkerJournal, journalbinding.Journal{
+			WorkerInstanceID: scope.WorkerInstanceID, WorkerInstanceEpoch: scope.WorkerInstanceEpoch,
+			WorkerMemberID: scope.WorkerMemberID, WorkerMemberEpoch: memberEpoch, JournalID: state.ID, Scope: scopeDigest,
+		}); err != nil {
+			_ = files.close()
+			return nil, fmt.Errorf("match locked assignment journal to Registry: %w", err)
+		}
 	}
 	if !config.Initialize {
 		if err := files.recoverDurability(); err != nil {
@@ -457,6 +485,9 @@ func (gate *FileAssignmentAdmission) Close() error {
 }
 
 func (gate *FileAssignmentAdmission) verifyCurrent(authority *velav1.StageAuthority) (stageauthority.Verified, error) {
+	if !gate.routesBound {
+		return stageauthority.Verified{}, ErrAdmissionClosed
+	}
 	verified, err := gate.validator.ValidateEnvelopeWithClockSkew(authority, gate.maxSkew)
 	if err != nil {
 		return stageauthority.Verified{}, err

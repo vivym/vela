@@ -133,37 +133,42 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return nil, fmt.Errorf("configure StageAuthority validator: %w", err)
 	}
+	runtime := &productionRuntime{}
+	fail := func(cause error) (stageWorkerRuntime, error) {
+		return nil, errors.Join(cause, runtime.Close())
+	}
 	if launch != nil {
-		if err := launch.preflight(ctx, stageAuthorityValidator); err != nil {
-			return nil, err
+		runtime.admission, err = launch.openAdmission(ctx, stageAuthorityValidator)
+		if err != nil {
+			return fail(err)
 		}
 		if consumers.newDurableAgent == nil {
 			consumers.newDurableAgent = stageworkeragent.NewDurableStreamAgent
 		}
 	}
 	if err := ensureStageWorkerDirectories(configuration); err != nil {
-		return nil, err
+		return fail(err)
 	}
 	transferTicketSigner, err := stageartifact.NewTransferTicketKeyringSigner(
 		configuration.authorityActiveKeyID,
 		keyring,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("configure TransferTicket verifier: %w", err)
+		return fail(fmt.Errorf("configure TransferTicket verifier: %w", err))
 	}
 	accessKeyID, err := readSecretText(
 		configuration.artifactS3AccessKeyFile,
 		"Stage Worker Artifact Store access key id",
 	)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	secretAccessKey, err := readSecretText(
 		configuration.artifactS3SecretKeyFile,
 		"Stage Worker Artifact Store secret access key",
 	)
 	if err != nil {
-		return nil, err
+		return fail(err)
 	}
 	rootCAPEM, err := securefile.Read(
 		configuration.artifactS3CAFile,
@@ -171,7 +176,7 @@ func newProductionRuntimeUsing(
 		false,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("read Stage Worker Artifact Store root CA: %w", err)
+		return fail(fmt.Errorf("read Stage Worker Artifact Store root CA: %w", err))
 	}
 	defer clear(rootCAPEM)
 	store, err := artifactstore.NewS3(artifactstore.S3Config{
@@ -185,15 +190,10 @@ func newProductionRuntimeUsing(
 		RootCAPEM:       rootCAPEM,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("configure Stage Worker Artifact Store: %w", err)
+		return fail(fmt.Errorf("configure Stage Worker Artifact Store: %w", err))
 	}
 	if err := store.ValidateBucket(ctx); err != nil {
-		return nil, fmt.Errorf("validate Stage Worker Artifact Store: %w", err)
-	}
-
-	runtime := &productionRuntime{}
-	fail := func(cause error) (stageWorkerRuntime, error) {
-		return nil, errors.Join(cause, runtime.Close())
+		return fail(fmt.Errorf("validate Stage Worker Artifact Store: %w", err))
 	}
 	runtime.state, err = stageworkeragent.NewFileProductionState(
 		stageworkeragent.FileProductionStateConfig{
@@ -286,6 +286,11 @@ func newProductionRuntimeUsing(
 		if serviceErr != nil {
 			return fail(fmt.Errorf("configure Stage Worker member service: %w", serviceErr))
 		}
+		if runtime.admission != nil {
+			if _, err := runtime.admission.Snapshot(ctx); err != nil {
+				return fail(err)
+			}
+		}
 		runtime.memberListener, err = net.Listen("tcp", configuration.memberListenAddress)
 		if err != nil {
 			return fail(fmt.Errorf("listen for Stage Worker member service: %w", err))
@@ -364,20 +369,8 @@ func newProductionRuntimeUsing(
 			return fail(bindErr)
 		}
 		runtimeConfig.ExecutionFloor = floor
-		admission := launch.admission
-		admission.Bindings = bindings
-		runtime.admission, err = stageworkeragent.NewFileAssignmentAdmission(admission)
-		if err != nil {
-			return fail(fmt.Errorf("open durable Worker assignment admission: %w", err))
-		}
-		if !launch.leader {
-			history, err := runtime.admission.Snapshot(ctx)
-			if err != nil {
-				return fail(err)
-			}
-			if history.Latest != nil || len(history.Pending) != 0 || history.Floor != 0 || len(history.Retirements) != 0 {
-				return fail(errors.New("nonleader Worker cannot recover Leader assignment or retirement history"))
-			}
+		if err := runtime.admission.BindRuntimeRoutes(ctx, bindings); err != nil {
+			return fail(fmt.Errorf("bind durable Worker Runtime discovery: %w", err))
 		}
 	}
 	runtimeAgent, err := stageworkeragent.New(runtimeConfig)

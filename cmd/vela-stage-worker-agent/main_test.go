@@ -156,7 +156,8 @@ func TestLoadConfigRejectsInputTransferStateOutsideScratch(t *testing.T) {
 }
 
 func setValidStageWorkerEnv(t *testing.T) {
-	for _, name := range []string{"VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS"} {
+	for _, name := range []string{"VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS",
+		"VELA_STAGE_WORKER_JOURNAL_BINDING_FILE", "VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE"} {
 		t.Setenv(name, "")
 	}
 	t.Helper()
@@ -208,13 +209,15 @@ func setValidStageWorkerEnv(t *testing.T) {
 }
 
 func TestLoadConfigDurableAssignmentRequiresCompleteRecoverySettings(t *testing.T) {
-	for _, missing := range []string{"none", "manifest", "directory", "limit", "too-large"} {
+	for _, missing := range []string{"none", "manifest", "directory", "limit", "too-large", "binding", "verifier"} {
 		t.Run(missing, func(t *testing.T) {
 			setValidStageWorkerEnv(t)
 			root := t.TempDir()
 			t.Setenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", filepath.Join(root, "launch.json"))
 			t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", filepath.Join(root, "admission"))
 			t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "4")
+			t.Setenv("VELA_STAGE_WORKER_JOURNAL_BINDING_FILE", filepath.Join(root, "binding.json"))
+			t.Setenv("VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", filepath.Join(root, "registry-verifiers.json"))
 			switch missing {
 			case "manifest":
 				t.Setenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", "")
@@ -224,6 +227,10 @@ func TestLoadConfigDurableAssignmentRequiresCompleteRecoverySettings(t *testing.
 				t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "")
 			case "too-large":
 				t.Setenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "65")
+			case "binding":
+				t.Setenv("VELA_STAGE_WORKER_JOURNAL_BINDING_FILE", "")
+			case "verifier":
+				t.Setenv("VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", "")
 			}
 			configuration, err := loadConfig()
 			if missing != "none" {
@@ -232,7 +239,8 @@ func TestLoadConfigDurableAssignmentRequiresCompleteRecoverySettings(t *testing.
 				}
 				return
 			}
-			if err != nil || configuration.launchManifestFile == "" || configuration.assignmentAdmissionRoot == "" || configuration.assignmentAdmissionLimit != 4 {
+			if err != nil || configuration.launchManifestFile == "" || configuration.assignmentAdmissionRoot == "" || configuration.assignmentAdmissionLimit != 4 ||
+				configuration.journalBindingFile == "" || configuration.journalBindingVerifierFile == "" {
 				t.Fatalf("complete recovery settings: %+v %v", configuration, err)
 			}
 		})

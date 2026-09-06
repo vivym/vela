@@ -21,6 +21,8 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/workerjournal"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -235,12 +237,27 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(socketRoot) })
 	state := modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(scratch, "runtime-admission")}
+	workerConfig, err := workerjournal.AssignmentConfig(manifest, stageworkeragent.AssignmentAdmissionConfig{
+		Directory: filepath.Join(scratch, "worker-admission"), MaxRecords: 4, Validator: validator,
+		RegistryBinding: binding, RegistryVerifier: verifier, DeferRuntimeRoutes: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := stageworkeragent.NewFileAssignmentAdmission(workerConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = worker.Close() })
 	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
 		Manifest: manifest, EpochStore: epochStore, Validator: validator, SocketPath: filepath.Join(socketRoot, "runtime.sock"), CancelTimeout: time.Second,
 		ExecutionFloor: &modelruntime.ExecutionFloorConfig{State: &state}, RegistryBinding: binding, RegistryVerifier: verifier,
 		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
 			if _, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state); err == nil {
 				t.Fatal("bound journal lock was released before CPU backend startup")
+			}
+			if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), workerConfig); err == nil {
+				t.Fatal("bound Worker journal was released during Runtime startup")
 			}
 			return modelruntime.NewFakeDiTRuntime(), nil
 		},
@@ -261,6 +278,19 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	if err != nil || len(identities.GetIdentities()) != 1 || identities.GetIdentities()[0].GetModelRuntimeEpoch() != 2 {
 		t.Fatalf("Registry-bound CPU runtime identity: %v %v", identities, err)
 	}
+	routes, err := manifest.RuntimeBindings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes[0].ModelRuntimeEpoch = identities.GetIdentities()[0].GetModelRuntimeEpoch()
+	current := workerConfig.Bindings[0]
+	current.Runtime = routes[0]
+	if err := worker.BindRuntimeRoutes(t.Context(), []stageworkeragent.AdmissionRuntimeBinding{current}); err != nil {
+		t.Fatalf("bind actual Runtime discovery to recorded Worker journal: %v", err)
+	}
+	if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), workerConfig); err == nil {
+		t.Fatal("Runtime discovery reopened the bound Worker journal")
+	}
 	ready, err := client.ProbeReadiness(t.Context(), &velav1.ModelRuntimeServiceProbeReadinessRequest{
 		Identity: identities.GetIdentities()[0], Check: velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
 	})
@@ -269,6 +299,13 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	}
 	if err := server.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if err := worker.Close(); err != nil {
+		t.Fatal(err)
+	}
+	workerJournal, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), workerConfig)
+	if err != nil || workerJournal.JournalID.String() != binding.GetPair().GetWorkerJournalId() || !bytes.Equal(workerJournal.Scope[:], binding.GetPair().GetWorkerScope()) {
+		t.Fatalf("CPU startup replaced bound Worker journal: %+v %v", workerJournal, err)
 	}
 	recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state)
 	if err != nil || recovered.JournalID.String() != binding.GetPair().GetRuntimeJournalId() || !bytes.Equal(recovered.Scope[:], binding.GetPair().GetRuntimeScope()) {

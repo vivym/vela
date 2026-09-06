@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/vivym/vela/internal/authoritypolicy"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
@@ -24,12 +25,14 @@ type durableWorkerLaunch struct {
 }
 
 func loadDurableWorkerLaunch(configuration config) (*durableWorkerLaunch, error) {
-	if configuration.launchManifestFile == "" && configuration.assignmentAdmissionRoot == "" && configuration.assignmentAdmissionLimit == 0 {
+	if configuration.launchManifestFile == "" && configuration.assignmentAdmissionRoot == "" && configuration.assignmentAdmissionLimit == 0 &&
+		configuration.journalBindingFile == "" && configuration.journalBindingVerifierFile == "" {
 		return nil, nil
 	}
-	if configuration.launchManifestFile == "" || configuration.assignmentAdmissionLimit < 1 || configuration.assignmentAdmissionLimit > 64 ||
+	if configuration.launchManifestFile == "" || configuration.journalBindingFile == "" || configuration.journalBindingVerifierFile == "" ||
+		configuration.assignmentAdmissionLimit < 1 || configuration.assignmentAdmissionLimit > 64 ||
 		!filepath.IsAbs(configuration.assignmentAdmissionRoot) || filepath.Clean(configuration.assignmentAdmissionRoot) != configuration.assignmentAdmissionRoot {
-		return nil, errors.New("durable Worker requires launch manifest, canonical assignment journal directory and history bound")
+		return nil, errors.New("durable Worker requires launch manifest, Registry binding and verifier, canonical assignment journal directory and history bound")
 	}
 	for _, root := range []string{configuration.productionStateRoot, configuration.inputRoot, configuration.inputTransferJournalRoot, configuration.outputRoot, configuration.materializationJournalRoot} {
 		if root == configuration.assignmentAdmissionRoot || strings.HasPrefix(root, configuration.assignmentAdmissionRoot+string(filepath.Separator)) ||
@@ -80,20 +83,34 @@ func loadDurableWorkerLaunch(configuration config) (*durableWorkerLaunch, error)
 			return nil, errors.New("worker membership does not match launch manifest")
 		}
 	}
+	admission.RegistryVerifier, err = journalbinding.ReadVerifierFile(configuration.journalBindingVerifierFile)
+	if err != nil {
+		return nil, err
+	}
+	admission.RegistryBinding, err = journalbinding.LoadFile(configuration.journalBindingFile, admission.RegistryVerifier)
+	if err != nil {
+		return nil, err
+	}
 	return &durableWorkerLaunch{manifest: manifest, admission: admission,
 		leader: configuration.workerMemberID == configuration.members[0].workerMemberID}, nil
 }
 
-func (launch *durableWorkerLaunch) preflight(ctx context.Context, validator *stageauthority.Validator) error {
+func (launch *durableWorkerLaunch) openAdmission(ctx context.Context, validator *stageauthority.Validator) (*stageworkeragent.FileAssignmentAdmission, error) {
 	launch.admission.Validator = validator
-	status, err := stageworkeragent.PrepareAssignmentJournal(ctx, launch.admission)
+	configuration := launch.admission
+	configuration.DeferRuntimeRoutes = true
+	gate, err := stageworkeragent.NewFileAssignmentAdmission(configuration)
 	if err != nil {
-		return fmt.Errorf("recover Worker assignment journal before startup: %w", err)
+		return nil, fmt.Errorf("recover Worker assignment journal before startup: %w", err)
 	}
-	if !launch.leader && (status.RetainedExecutions != 0 || status.Floor != 0 || status.RetirementIntents != 0 || status.RetirementsReady != 0 || status.RetirementsRetired != 0) {
-		return errors.New("nonleader Worker cannot recover Leader assignment or retirement history")
+	history, err := gate.Snapshot(ctx)
+	if err != nil {
+		return nil, errors.Join(err, gate.Close())
 	}
-	return nil
+	if !launch.leader && (history.Latest != nil || len(history.Pending) != 0 || history.Floor != 0 || len(history.Retirements) != 0) {
+		return nil, errors.Join(errors.New("nonleader Worker cannot recover Leader assignment or retirement history"), gate.Close())
+	}
+	return gate, nil
 }
 
 func (launch *durableWorkerLaunch) bindMember(id string, identities []*velav1.ModelRuntimeIdentity) ([]stageworkeragent.AdmissionRuntimeBinding, error) {

@@ -75,6 +75,8 @@ type config struct {
 	memberDialTimeout               time.Duration
 	memberShutdownTimeout           time.Duration
 	launchManifestFile              string
+	journalBindingFile              string
+	journalBindingVerifierFile      string
 	assignmentAdmissionRoot         string
 	assignmentAdmissionLimit        int
 }
@@ -357,7 +359,8 @@ func loadConfig() (config, error) {
 	}); err != nil {
 		return config{}, err
 	}
-	if os.Getenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS") != "" {
+	if os.Getenv("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY") != "" || os.Getenv("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS") != "" ||
+		os.Getenv("VELA_STAGE_WORKER_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" {
 		configuration.launchManifestFile, err = requiredAbsolutePath("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE")
 		if err != nil {
 			return config{}, err
@@ -371,6 +374,14 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS must be between 1 and 64")
 		}
 		configuration.assignmentAdmissionLimit = int(limit)
+		configuration.journalBindingFile, err = requiredAbsolutePath("VELA_STAGE_WORKER_JOURNAL_BINDING_FILE")
+		if err != nil {
+			return config{}, err
+		}
+		configuration.journalBindingVerifierFile, err = requiredAbsolutePath("VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE")
+		if err != nil {
+			return config{}, err
+		}
 	}
 	return configuration, nil
 }
