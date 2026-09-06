@@ -33,6 +33,9 @@ type Receipt struct {
 	SealedAt       time.Time        `json:"sealed_at"`
 }
 
+// Quiesce retains its database operation across interruption. Cancellation can
+// close the caller-owned pgx connection; retries must use a usable connection
+// and the same operation ID, as separate operator command invocations do.
 func Quiesce(ctx context.Context, connection *pgx.Conn, id uuid.UUID, pollInterval time.Duration) (Receipt, error) {
 	if ctx == nil || connection == nil || id == uuid.Nil || pollInterval <= 0 {
 		return Receipt{}, errors.New("recovery operation and polling configuration are required")

@@ -19,9 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	FleetMaintenanceService_ApplyResidencyPlan_FullMethodName    = "/vela.v1.FleetMaintenanceService/ApplyResidencyPlan"
-	FleetMaintenanceService_ObserveWorkerInstance_FullMethodName = "/vela.v1.FleetMaintenanceService/ObserveWorkerInstance"
-	FleetMaintenanceService_AuthorizeMutation_FullMethodName     = "/vela.v1.FleetMaintenanceService/AuthorizeMutation"
+	FleetMaintenanceService_ApplyResidencyPlan_FullMethodName           = "/vela.v1.FleetMaintenanceService/ApplyResidencyPlan"
+	FleetMaintenanceService_ObserveWorkerInstance_FullMethodName        = "/vela.v1.FleetMaintenanceService/ObserveWorkerInstance"
+	FleetMaintenanceService_AuthorizeMutation_FullMethodName            = "/vela.v1.FleetMaintenanceService/AuthorizeMutation"
+	FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName         = "/vela.v1.FleetMaintenanceService/ClaimWorkerBootstrap"
+	FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName = "/vela.v1.FleetMaintenanceService/RecordWorkerBootstrapReceipt"
+	FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName        = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrap"
 )
 
 // FleetMaintenanceServiceClient is the client API for FleetMaintenanceService service.
@@ -31,6 +34,9 @@ type FleetMaintenanceServiceClient interface {
 	ApplyResidencyPlan(ctx context.Context, in *ApplyResidencyPlanRequest, opts ...grpc.CallOption) (*ApplyResidencyPlanResponse, error)
 	ObserveWorkerInstance(ctx context.Context, in *ObserveWorkerInstanceRequest, opts ...grpc.CallOption) (*ObserveWorkerInstanceResponse, error)
 	AuthorizeMutation(ctx context.Context, in *AuthorizeMutationRequest, opts ...grpc.CallOption) (*AuthorizeMutationResponse, error)
+	ClaimWorkerBootstrap(ctx context.Context, in *ClaimWorkerBootstrapRequest, opts ...grpc.CallOption) (*ClaimWorkerBootstrapResponse, error)
+	RecordWorkerBootstrapReceipt(ctx context.Context, in *RecordWorkerBootstrapReceiptRequest, opts ...grpc.CallOption) (*RecordWorkerBootstrapReceiptResponse, error)
+	LookupWorkerBootstrap(ctx context.Context, in *LookupWorkerBootstrapRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapResponse, error)
 }
 
 type fleetMaintenanceServiceClient struct {
@@ -71,6 +77,36 @@ func (c *fleetMaintenanceServiceClient) AuthorizeMutation(ctx context.Context, i
 	return out, nil
 }
 
+func (c *fleetMaintenanceServiceClient) ClaimWorkerBootstrap(ctx context.Context, in *ClaimWorkerBootstrapRequest, opts ...grpc.CallOption) (*ClaimWorkerBootstrapResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClaimWorkerBootstrapResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetMaintenanceServiceClient) RecordWorkerBootstrapReceipt(ctx context.Context, in *RecordWorkerBootstrapReceiptRequest, opts ...grpc.CallOption) (*RecordWorkerBootstrapReceiptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecordWorkerBootstrapReceiptResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetMaintenanceServiceClient) LookupWorkerBootstrap(ctx context.Context, in *LookupWorkerBootstrapRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LookupWorkerBootstrapResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FleetMaintenanceServiceServer is the server API for FleetMaintenanceService service.
 // All implementations must embed UnimplementedFleetMaintenanceServiceServer
 // for forward compatibility.
@@ -78,6 +114,9 @@ type FleetMaintenanceServiceServer interface {
 	ApplyResidencyPlan(context.Context, *ApplyResidencyPlanRequest) (*ApplyResidencyPlanResponse, error)
 	ObserveWorkerInstance(context.Context, *ObserveWorkerInstanceRequest) (*ObserveWorkerInstanceResponse, error)
 	AuthorizeMutation(context.Context, *AuthorizeMutationRequest) (*AuthorizeMutationResponse, error)
+	ClaimWorkerBootstrap(context.Context, *ClaimWorkerBootstrapRequest) (*ClaimWorkerBootstrapResponse, error)
+	RecordWorkerBootstrapReceipt(context.Context, *RecordWorkerBootstrapReceiptRequest) (*RecordWorkerBootstrapReceiptResponse, error)
+	LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error)
 	mustEmbedUnimplementedFleetMaintenanceServiceServer()
 }
 
@@ -96,6 +135,15 @@ func (UnimplementedFleetMaintenanceServiceServer) ObserveWorkerInstance(context.
 }
 func (UnimplementedFleetMaintenanceServiceServer) AuthorizeMutation(context.Context, *AuthorizeMutationRequest) (*AuthorizeMutationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthorizeMutation not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) ClaimWorkerBootstrap(context.Context, *ClaimWorkerBootstrapRequest) (*ClaimWorkerBootstrapResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimWorkerBootstrap not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) RecordWorkerBootstrapReceipt(context.Context, *RecordWorkerBootstrapReceiptRequest) (*RecordWorkerBootstrapReceiptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecordWorkerBootstrapReceipt not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LookupWorkerBootstrap not implemented")
 }
 func (UnimplementedFleetMaintenanceServiceServer) mustEmbedUnimplementedFleetMaintenanceServiceServer() {
 }
@@ -173,6 +221,60 @@ func _FleetMaintenanceService_AuthorizeMutation_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FleetMaintenanceService_ClaimWorkerBootstrap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimWorkerBootstrapRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).ClaimWorkerBootstrap(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_ClaimWorkerBootstrap_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).ClaimWorkerBootstrap(ctx, req.(*ClaimWorkerBootstrapRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetMaintenanceService_RecordWorkerBootstrapReceipt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecordWorkerBootstrapReceiptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).RecordWorkerBootstrapReceipt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_RecordWorkerBootstrapReceipt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).RecordWorkerBootstrapReceipt(ctx, req.(*RecordWorkerBootstrapReceiptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetMaintenanceService_LookupWorkerBootstrap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LookupWorkerBootstrapRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).LookupWorkerBootstrap(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).LookupWorkerBootstrap(ctx, req.(*LookupWorkerBootstrapRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FleetMaintenanceService_ServiceDesc is the grpc.ServiceDesc for FleetMaintenanceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -191,6 +293,18 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AuthorizeMutation",
 			Handler:    _FleetMaintenanceService_AuthorizeMutation_Handler,
+		},
+		{
+			MethodName: "ClaimWorkerBootstrap",
+			Handler:    _FleetMaintenanceService_ClaimWorkerBootstrap_Handler,
+		},
+		{
+			MethodName: "RecordWorkerBootstrapReceipt",
+			Handler:    _FleetMaintenanceService_RecordWorkerBootstrapReceipt_Handler,
+		},
+		{
+			MethodName: "LookupWorkerBootstrap",
+			Handler:    _FleetMaintenanceService_LookupWorkerBootstrap_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

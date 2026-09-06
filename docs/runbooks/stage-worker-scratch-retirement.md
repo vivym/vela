@@ -258,7 +258,11 @@ and pair, and only recovers retained state. Keep incomplete operations and
 journals intact; deleting them or rerunning offline `initialize` is not recovery
 authority. A retained operation without a complete pair requires independent
 reconciliation, including when an RPC response or initializer outcome was lost.
-This library has no authenticated node command or Fleet activation yet. Its
+The [authenticated Fleet transport](../worker-bootstrap-transport-evidence-2026-09-06.md)
+now supplies node-bound claim/receipt methods and a read-only history lookup.
+History lookup never grants initialization. Apply schema 92 first and use the
+original registered Node Agent actor to inspect or report its operation.
+The actual node bootstrap command and Fleet activation remain unfinished. Its
 receipt reports inspected journal identity, not writer drain or readiness.
 
 The [authenticated member discovery RPC](../member-discovery-evidence-2026-09-06.md)

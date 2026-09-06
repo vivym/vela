@@ -917,6 +917,7 @@ func run() error {
 			SPIFFEIdentity:         configuration.fleetControllerSPIFFEIdentity,
 			ActorIdentity:          configuration.fleetControllerActorIdentity,
 			NodeAgentRegistrations: nodeAgentRegistrations(remediationEndpoints),
+			BootstrapService:       fleetService,
 		},
 	)
 	if err != nil {
@@ -932,7 +933,7 @@ func run() error {
 	}
 	fleetGRPCServer := grpc.NewServer(
 		grpc.Creds(fleetTransportCredentials),
-		grpc.MaxRecvMsgSize(1<<20),
+		grpc.MaxRecvMsgSize(fleettransport.MaximumMessageBytes),
 		grpc.MaxSendMsgSize(1<<20),
 	)
 	velav1.RegisterFleetMaintenanceServiceServer(fleetGRPCServer, fleetMaintenanceAdapter)

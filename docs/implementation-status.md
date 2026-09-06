@@ -438,6 +438,17 @@ pass, alongside full unit and lint checks. Incomplete pairs preserve uncertainty
 and require independent reconciliation. This is an offline library; node
 authentication, lifetime-locked serving pair checks, partial reconciliation and
 Fleet activation remain open. Schema and journal versions are unchanged.
+The [authenticated bootstrap transport](worker-bootstrap-transport-evidence-2026-09-06.md)
+now binds first-use and receipt RPCs to registered Node Agent mTLS identity.
+Cross-node claims reject before consumption. Schema 92 adds a principal-scoped
+read-only history query; history has no fresh-permission field. The node-bound
+client validates exact returned authority and journal identities. Actual TLS 1.3,
+PostgreSQL, local journal response-loss, large-manifest, Linux non-root, generated
+contract and independent restore checks pass. A canceled-connection flaw in the
+existing recovery tests was repaired by matching the CLI's reconnect lifecycle,
+with the same operation identity and explicit timeout assertions. The node
+bootstrap command, partial reconciliation, lifetime-locked serving pair checks
+and Fleet activation remain open; Production Gates remain `0/9`.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

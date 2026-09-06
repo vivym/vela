@@ -43,6 +43,7 @@ type Config struct {
 	SPIFFEIdentity         string
 	ActorIdentity          string
 	NodeAgentRegistrations []NodeAgentRegistration
+	BootstrapService       WorkerBootstrapService
 }
 
 type NodeAgentRegistration struct {
@@ -72,6 +73,7 @@ type Server struct {
 	spiffeIdentity      string
 	actorIdentity       string
 	nodeAgentPrincipals map[string]nodeAgentPrincipal
+	bootstrap           WorkerBootstrapService
 }
 
 func NewServer(service Service, config Config) (*Server, error) {
@@ -97,6 +99,7 @@ func NewServer(service Service, config Config) (*Server, error) {
 	return &Server{
 		service: service, spiffeIdentity: config.SPIFFEIdentity,
 		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: principals,
+		bootstrap: config.BootstrapService,
 	}, nil
 }
 

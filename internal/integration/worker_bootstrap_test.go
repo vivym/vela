@@ -338,10 +338,17 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
 	}
 	operationID = uuid.New()
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-	if _, err := recovery.Quiesce(ctx, connection, operationID, time.Millisecond); err == nil {
-		t.Fatal("unfinished first use was accepted as database quiescence")
+	_, err = recovery.Quiesce(ctx, connection, operationID, time.Millisecond)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unfinished first use did not wait for quiescence: %v", err)
 	}
+	// A canceled pgx query may close its connection. The operator CLI reconnects
+	// for each invocation while retaining the same durable operation identity.
+	if err := connection.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	connection = newRoleConnection(t, database.DSN, "vela_recovery_login", "vela-recovery-test")
 	if replay, err := service.ClaimWorkerBootstrap(t.Context(), request); err != nil || replay.Fresh {
 		t.Fatalf("closed gate changed historical observation: %+v %v", replay, err)
 	}
@@ -351,7 +358,7 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	completed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
-	if err != nil || completed.SchemaVersion != 91 || completed.Inventory["worker_bootstrap_claims"] != 0 {
+	if err != nil || completed.SchemaVersion != 92 || completed.Inventory["worker_bootstrap_claims"] != 0 {
 		t.Fatalf("completed first use did not release quiescence: %+v %v", completed, err)
 	}
 }

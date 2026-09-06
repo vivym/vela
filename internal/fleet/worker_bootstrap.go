@@ -40,6 +40,55 @@ type WorkerBootstrapReceipt struct {
 	ActorIdentity    string
 }
 
+type WorkerBootstrapLookup struct {
+	RequestID     uuid.UUID
+	NodeIdentity  string
+	ActorIdentity string
+}
+
+type WorkerBootstrapHistory struct {
+	Claim         WorkerBootstrapClaim
+	ActorIdentity string
+	Receipt       *WorkerBootstrapReceipt
+	RecordedAt    time.Time
+}
+
+// LookupWorkerBootstrap observes immutable history without acquiring permission.
+// Missing requests and requests belonging to another principal both return NotFound.
+func (service *Service) LookupWorkerBootstrap(ctx context.Context, request WorkerBootstrapLookup) (WorkerBootstrapHistory, error) {
+	if service == nil || service.registryPool == nil {
+		return WorkerBootstrapHistory{}, errors.New("fleet service is not configured")
+	}
+	if request.RequestID == uuid.Nil || !validText(request.NodeIdentity, 253) || !validText(request.ActorIdentity, 500) {
+		return WorkerBootstrapHistory{}, &Failure{Code: FailureInvalid, Message: "Worker bootstrap lookup is invalid"}
+	}
+	var result WorkerBootstrapHistory
+	var workerID, runtimeID *uuid.UUID
+	var workerScope, runtimeScope []byte
+	var recordedAt *time.Time
+	err := service.registryPool.QueryRow(ctx, `
+		SELECT request_id, worker_instance_id, worker_instance_epoch, worker_member_id, worker_member_epoch,
+		       node_identity, bundle_digest, claimed_at, actor_identity,
+		       worker_journal_id, worker_scope, runtime_journal_id, runtime_scope, recorded_at
+		FROM vela_lookup_worker_bootstrap($1, $2, $3)
+	`, request.RequestID, request.NodeIdentity, request.ActorIdentity).Scan(
+		&result.Claim.RequestID, &result.Claim.WorkerInstanceID, &result.Claim.WorkerInstanceEpoch,
+		&result.Claim.WorkerMemberID, &result.Claim.WorkerMemberEpoch, &result.Claim.NodeIdentity,
+		&result.Claim.BundleDigest, &result.Claim.ClaimedAt, &result.ActorIdentity,
+		&workerID, &workerScope, &runtimeID, &runtimeScope, &recordedAt)
+	if err != nil {
+		return WorkerBootstrapHistory{}, mapDatabaseError("lookup Worker bootstrap", err)
+	}
+	if workerID != nil && runtimeID != nil && recordedAt != nil {
+		result.Receipt = &WorkerBootstrapReceipt{RequestID: request.RequestID, ActorIdentity: result.ActorIdentity,
+			WorkerJournalID: *workerID, WorkerScope: workerScope, RuntimeJournalID: *runtimeID, RuntimeScope: runtimeScope}
+		result.RecordedAt = *recordedAt
+	} else if workerID != nil || runtimeID != nil || recordedAt != nil || workerScope != nil || runtimeScope != nil {
+		return WorkerBootstrapHistory{}, errors.New("worker bootstrap history contains an incomplete receipt")
+	}
+	return result, nil
+}
+
 // ClaimWorkerBootstrap consumes first-use authority before any local journal
 // initialization. Fresh is true only for the insert that committed this claim.
 // A replay, lost response or ambiguous error never permits initialization.

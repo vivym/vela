@@ -4,6 +4,8 @@ package vela.v1;
 
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
+import "google/protobuf/timestamp.proto";
+
 service FleetMaintenanceService {
   rpc ApplyResidencyPlan(ApplyResidencyPlanRequest)
       returns (ApplyResidencyPlanResponse);
@@ -11,6 +13,70 @@ service FleetMaintenanceService {
       returns (ObserveWorkerInstanceResponse);
   rpc AuthorizeMutation(AuthorizeMutationRequest)
       returns (AuthorizeMutationResponse);
+  rpc ClaimWorkerBootstrap(ClaimWorkerBootstrapRequest)
+      returns (ClaimWorkerBootstrapResponse);
+  rpc RecordWorkerBootstrapReceipt(RecordWorkerBootstrapReceiptRequest)
+      returns (RecordWorkerBootstrapReceiptResponse);
+  rpc LookupWorkerBootstrap(LookupWorkerBootstrapRequest)
+      returns (LookupWorkerBootstrapResponse);
+}
+
+message ClaimWorkerBootstrapRequest {
+  string request_id = 1;
+  string worker_instance_id = 2;
+  int64 worker_instance_epoch = 3;
+  string worker_member_id = 4;
+  bytes bundle_manifest = 5;
+}
+
+// History carries no reusable initialization permission.
+message WorkerBootstrapClaim {
+  string request_id = 1;
+  string worker_instance_id = 2;
+  int64 worker_instance_epoch = 3;
+  string worker_member_id = 4;
+  int64 worker_member_epoch = 5;
+  string node_identity = 6;
+  bytes bundle_digest = 7;
+  google.protobuf.Timestamp claimed_at = 8;
+  string actor_identity = 9;
+}
+
+message ClaimWorkerBootstrapResponse {
+  WorkerBootstrapClaim claim = 1;
+  // True only for the inserting committed RPC; never true on replay or lookup.
+  bool fresh = 2;
+}
+
+message RecordWorkerBootstrapReceiptRequest {
+  string request_id = 1;
+  string worker_journal_id = 2;
+  bytes worker_scope = 3;
+  string runtime_journal_id = 4;
+  bytes runtime_scope = 5;
+}
+
+message WorkerBootstrapJournalPair {
+  string request_id = 1;
+  string worker_journal_id = 2;
+  bytes worker_scope = 3;
+  string runtime_journal_id = 4;
+  bytes runtime_scope = 5;
+  google.protobuf.Timestamp recorded_at = 6;
+  string actor_identity = 7;
+}
+
+message RecordWorkerBootstrapReceiptResponse {
+  WorkerBootstrapJournalPair pair = 1;
+}
+
+message LookupWorkerBootstrapRequest {
+  string request_id = 1;
+}
+
+message LookupWorkerBootstrapResponse {
+  WorkerBootstrapClaim claim = 1;
+  WorkerBootstrapJournalPair pair = 2;
 }
 
 message ApplyResidencyPlanRequest {

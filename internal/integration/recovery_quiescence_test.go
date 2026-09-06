@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -40,10 +41,16 @@ func TestRecoveryGateDrainReplayAndAdmissionReopen(t *testing.T) {
 	}
 	operation := uuid.New()
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
-	if _, err := recovery.Quiesce(ctx, connection, operation, 10*time.Millisecond); err == nil {
-		t.Fatal("active Job was accepted as quiescent")
+	_, err := recovery.Quiesce(ctx, connection, operation, 10*time.Millisecond)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("active Job did not wait for quiescence: %v", err)
 	}
+	// Match a new operator invocation after cancellation, which can close pgx.
+	if err := connection.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	connection = newRoleConnection(t, database.DSN, "vela_recovery_login", "vela-recovery-test")
 	refused := submitJob(t, server.URL, "recovery-blocked", []byte(recoveryJobRequest))
 	if refused.StatusCode != http.StatusServiceUnavailable || refused.Header.Get("Retry-After") == "" {
 		t.Fatalf("closed Admission = %d %s", refused.StatusCode, refused.Body)
