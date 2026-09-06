@@ -184,17 +184,23 @@ func TestDurableWorkerDiscoveryRejectsUnapprovedOrIncompleteRoutes(t *testing.T)
 }
 
 func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testing.T) {
-	for _, changed := range []bool{false, true} {
-		t.Run(map[bool]string{false: "approved", true: "unapproved-profile"}[changed], func(t *testing.T) {
+	for _, fault := range []string{"approved", "unapproved-profile", "nondurable-runtime"} {
+		t.Run(fault, func(t *testing.T) {
 			leaderIdentity := productionSmokeIdentity("49800000-0000-0000-0000-000000000003", 9)
 			followerIdentity := productionSmokeIdentity("49800000-0000-0000-0000-000000000004", 11)
-			if changed {
+			if fault == "unapproved-profile" {
 				followerIdentity.StageProfileRevisionId = uuid.NewString()
 			}
 			leader, follower := productionSmokeConfig(t, leaderIdentity), productionSmokeConfig(t, followerIdentity)
+			nondurableSocket := follower.runtimeSocket
 			configureDurablePeerPair(t, &leader, &follower)
 			enableDurableSmoke(t, &leader, leaderIdentity)
 			enableDurableSmoke(t, &follower, followerIdentity)
+			if fault == "nondurable-runtime" {
+				follower.runtimeSocket = nondurableSocket
+				follower.launchManifestFile, follower.assignmentAdmissionRoot, follower.assignmentAdmissionLimit = "", "", 0
+				follower.journalBindingFile, follower.journalBindingVerifierFile = "", ""
+			}
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			followerBuilt := false
@@ -205,7 +211,7 @@ func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testi
 				}
 				return stageworkeragent.NewDurableStreamAgent(config)
 			}))
-			if err != nil || !followerBuilt {
+			if err != nil || followerBuilt != (fault != "nondurable-runtime") {
 				t.Fatalf("follower startup: %v", err)
 			}
 			defer func() { _ = followerRuntime.Close() }()
@@ -217,8 +223,12 @@ func TestDurableWorkerLeaderDiscoversPinnedFollowerBeforeStreamAssembly(t *testi
 				}
 				return stageworkeragent.NewDurableStreamAgent(config)
 			}))
-			if changed {
-				if err == nil || leaderBuilt || leaderRuntime != nil || !strings.Contains(err.Error(), "approved launch identity") {
+			if fault != "approved" {
+				message := "approved launch identity"
+				if fault == "nondurable-runtime" {
+					message = "Registry-bound"
+				}
+				if err == nil || leaderBuilt || leaderRuntime != nil || !strings.Contains(err.Error(), message) {
 					t.Fatalf("pinned but unapproved peer profile crossed startup: %t %v", leaderBuilt, err)
 				}
 				return
@@ -294,7 +304,37 @@ func enableDurableSmoke(t *testing.T, configuration *config, identity *velav1.Mo
 	if err != nil {
 		t.Fatal(err)
 	}
-	configureWorkerJournalBinding(t, configuration, manifest, journal, nil)
+	runtimeState := modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(filepath.Dir(configuration.scratchRoot), "runtime-state"), Initialize: true}
+	if err := os.Mkdir(runtimeState.Directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runtimeJournal, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, runtimeState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeState.Initialize = false
+	configureWorkerJournalBinding(t, configuration, manifest, journal, func(value *velav1.WorkerBootstrapBinding) {
+		value.Pair.RuntimeJournalId, value.Pair.RuntimeScope = runtimeJournal.JournalID.String(), runtimeJournal.Scope[:]
+	})
+	launch := durableLaunchForTest(t, *configuration)
+	socketRoot, err := filepath.EvalSymlinks(filepath.Dir(configuration.runtimeSocket))
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration.runtimeSocket = filepath.Join(socketRoot, "durable.sock")
+	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
+		Manifest: manifest, Validator: validator, SocketPath: configuration.runtimeSocket, CancelTimeout: time.Second,
+		EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return identity.GetModelRuntimeEpoch(), nil }),
+		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
+			return modelruntime.NewFakeEncoderRuntime(), nil
+		},
+		ExecutionFloor:  &modelruntime.ExecutionFloorConfig{State: &runtimeState},
+		RegistryBinding: launch.admission.RegistryBinding, RegistryVerifier: launch.admission.RegistryVerifier,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
 }
 
 func durableLaunchForTest(t *testing.T, configuration config) *durableWorkerLaunch {

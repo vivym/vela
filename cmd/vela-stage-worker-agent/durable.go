@@ -167,6 +167,7 @@ func (launch *durableWorkerLaunch) bindExecution(ctx context.Context, members []
 			identities, err = stageworkeragent.DiscoverRuntimeIdentities(ctx, member.Client, stageworkeragent.RuntimeIdentityExpectation{
 				WorkerInstanceID: launch.manifest.WorkerInstanceID, WorkerInstanceEpoch: launch.manifest.WorkerInstanceEpoch,
 				WorkerMemberID: member.ID, WorkerMemberEpoch: launch.manifest.Members[index].Epoch,
+				RegistryVerifier: launch.admission.RegistryVerifier,
 			})
 			if err != nil {
 				return nil, nil, err

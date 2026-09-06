@@ -3,6 +3,7 @@ syntax = "proto3";
 package vela.v1;
 
 import "google/protobuf/timestamp.proto";
+import "vela/v1/fleet_maintenance.proto";
 import "vela/v1/stage_authority.proto";
 import "vela/v1/stage_terminal_disposition.proto";
 
@@ -53,6 +54,9 @@ message ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest {
 message ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse {
   repeated ModelRuntimeIdentity identities = 1;
   string detail = 2;
+  // Returned only after checking the currently held execution journal against
+  // this independently signed Registry binding. It does not establish readiness.
+  WorkerBootstrapBinding journal_binding = 3;
 }
 
 enum ModelRuntimeReadinessCheck {

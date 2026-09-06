@@ -8,19 +8,24 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
 type Supervisor struct {
 	velav1.UnimplementedModelRuntimeServiceServer
 
-	services   []*Service
-	identities []*velav1.ModelRuntimeIdentity
-	routes     map[runtimeRoute]*Service
-	admission  *executionAdmission
-	floor      *executionFloorVerifier
+	services         []*Service
+	identities       []*velav1.ModelRuntimeIdentity
+	routes           map[runtimeRoute]*Service
+	admission        *executionAdmission
+	floor            *executionFloorVerifier
+	registryBinding  *velav1.WorkerBootstrapBinding
+	registryVerifier *journalbinding.Verifier
 }
 
 var supervisorConstructionMu sync.Mutex
@@ -141,13 +146,16 @@ func (supervisor *Supervisor) Shutdown() error {
 }
 
 func (supervisor *Supervisor) DiscoverRuntimeIdentities(
-	_ context.Context,
+	ctx context.Context,
 	request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest,
 ) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
 	response := &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse{}
-	if supervisor == nil || len(supervisor.identities) == 0 || request == nil {
+	if supervisor == nil || len(supervisor.identities) == 0 || request == nil || ctx == nil || len(request.ProtoReflect().GetUnknown()) != 0 {
 		response.Detail = "ModelRuntime identity discovery request is invalid"
 		return response, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
 	}
 	baseline := supervisor.identities[0]
 	if request.GetWorkerInstanceId() != baseline.GetWorkerInstanceId() ||
@@ -157,6 +165,30 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
 		response.Detail = "resident runtimes do not match the requested WorkerInstance member"
 		return response, nil
 	}
+	admission := supervisor.admission
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
+	// Discovery remains available during recovery drain or full history. Those
+	// conditions block readiness, but do not invalidate held journal ownership.
+	if err := admission.checkStateLocked(); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if supervisor.registryBinding != nil {
+		if admission.store == nil {
+			return nil, status.Error(codes.FailedPrecondition, "Registry-bound Runtime journal is unavailable")
+		}
+		if err := supervisor.registryVerifier.VerifyJournal(supervisor.registryBinding, journalbinding.RuntimeJournal, journalbinding.Journal{
+			WorkerInstanceID: baseline.GetWorkerInstanceId(), WorkerInstanceEpoch: baseline.GetWorkerInstanceEpoch(),
+			WorkerMemberID: baseline.GetWorkerMemberId(), WorkerMemberEpoch: baseline.GetWorkerMemberEpoch(),
+			JournalID: admission.store.state.ID, Scope: admission.store.state.Scope,
+		}); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, admission.failStateLocked(err).Error())
+		}
+		response.JournalBinding = proto.Clone(supervisor.registryBinding).(*velav1.WorkerBootstrapBinding)
+	}
 	for _, identity := range supervisor.identities {
 		response.Identities = append(
 			response.Identities,
@@ -164,6 +196,9 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
 		)
 	}
 	response.Detail = "resident runtime identities discovered"
+	if err := ctx.Err(); err != nil {
+		return nil, status.FromContextError(err).Err()
+	}
 	return response, nil
 }
 

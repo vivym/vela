@@ -14,6 +14,7 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
@@ -325,6 +326,14 @@ func TestRuntimeServerRecoversExistingSupervisorJournalBeforeNewEpochs(t *testin
 	t.Cleanup(func() { _ = client.Close() })
 	binding.ModelRuntimeEpoch = 10
 	identity := discoverExecutionFloorIdentity(t, client, binding)
+	identities, err := stageworkeragent.DiscoverRuntimeIdentities(t.Context(), client, stageworkeragent.RuntimeIdentityExpectation{
+		WorkerInstanceID: binding.WorkerInstanceID, WorkerInstanceEpoch: binding.WorkerInstanceEpoch,
+		WorkerMemberID: binding.WorkerMemberID, WorkerMemberEpoch: binding.WorkerMemberEpoch,
+		RegistryVerifier: config.RegistryVerifier, RegistryBinding: config.RegistryBinding,
+	})
+	if err != nil || len(identities) != len(config.Manifest.Runtimes) {
+		t.Fatalf("pending recovery lost verified journal discovery: %v %v", identities, err)
+	}
 	if identity.GetModelRuntimeEpoch() != 10 {
 		t.Fatalf("replacement runtime epoch: %v", identity)
 	}

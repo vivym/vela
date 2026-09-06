@@ -227,15 +227,17 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(fmt.Errorf("connect to resident ModelRuntime: %w", err))
 	}
+	expectedRuntime := stageworkeragent.RuntimeIdentityExpectation{
+		WorkerInstanceID: configuration.workerInstanceID.String(), WorkerInstanceEpoch: configuration.workerInstanceEpoch,
+		WorkerMemberID: configuration.workerMemberID.String(), WorkerMemberEpoch: configuration.workerMemberEpoch,
+	}
+	if launch != nil {
+		expectedRuntime.RegistryVerifier, expectedRuntime.RegistryBinding = launch.admission.RegistryVerifier, launch.admission.RegistryBinding
+	}
 	runtimeIdentities, err := stageworkeragent.DiscoverRuntimeIdentities(
 		ctx,
 		runtime.modelRuntime,
-		stageworkeragent.RuntimeIdentityExpectation{
-			WorkerInstanceID:    configuration.workerInstanceID.String(),
-			WorkerInstanceEpoch: configuration.workerInstanceEpoch,
-			WorkerMemberID:      configuration.workerMemberID.String(),
-			WorkerMemberEpoch:   configuration.workerMemberEpoch,
-		},
+		expectedRuntime,
 	)
 	if err != nil {
 		return fail(err)

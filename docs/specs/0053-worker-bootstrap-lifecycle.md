@@ -22,6 +22,16 @@ Receipt recording/replay recovers and holds both journals while reporting their
 IDs/scopes. Serving separately verifies the Control-signed historical binding
 against its actual lifetime-locked journal before startup.
 
+Durable Worker assembly also requires live Runtime discovery to return that
+Registry binding after checking the held execution journal under its admission
+mutex. The Worker independently verifies the signature and member scope; local
+discovery must match its own recorded claim/pair, while each remote member uses
+its own signed pair. Identity and epoch alone cannot satisfy durable assembly.
+Discovery remains available for intact journals awaiting recovery even when
+readiness is false. Closed, failed or replaced journal ownership rejects.
+This observation does not attest physical drain or the forwarding remote
+Worker's own assignment-journal ownership.
+
 ## Terminal outcomes
 
 A claim has exactly one of these database states:
@@ -96,7 +106,7 @@ files, but cannot publish a receipt for its abandoned request.
 Replacement needs independent containment and approved new Worker/member
 identities with isolated persistent namespaces. The existing signed journal
 identity binding does not replace those requirements. Lost Node credentials,
-already-observed Workers, mixed durable/nondurable serving, failed-backend
+already-observed Workers, remote Worker ownership, failed-backend
 containment, successful terminal scratch retirement and bounded reclamation
 remain separate work. Default durable Fleet provisioning stays disabled until
 its complete activation and recovery contract is validated.

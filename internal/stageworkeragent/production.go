@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -82,6 +83,9 @@ type RuntimeIdentityExpectation struct {
 	WorkerInstanceEpoch int64
 	WorkerMemberID      string
 	WorkerMemberEpoch   int64
+	RegistryVerifier    *journalbinding.Verifier
+	// Expected local pair; remote members use their own independently verified pair.
+	RegistryBinding *velav1.WorkerBootstrapBinding
 }
 
 func DiscoverRuntimeIdentity(
@@ -89,6 +93,9 @@ func DiscoverRuntimeIdentity(
 	runtime RuntimeReadinessClient,
 	expected RuntimeIdentityExpectation,
 ) (*velav1.ModelRuntimeIdentity, error) {
+	if expected.RegistryVerifier != nil || expected.RegistryBinding != nil {
+		return nil, errors.New("durable Runtime discovery requires the identity discovery RPC")
+	}
 	if ctx == nil || runtime == nil || uuid.Validate(expected.WorkerInstanceID) != nil ||
 		expected.WorkerInstanceEpoch <= 0 || uuid.Validate(expected.WorkerMemberID) != nil ||
 		expected.WorkerMemberEpoch <= 0 {
@@ -128,6 +135,12 @@ func DiscoverRuntimeIdentities(
 		expected.WorkerMemberEpoch <= 0 {
 		return nil, errors.New("ModelRuntime identity discovery configuration is invalid")
 	}
+	if expected.RegistryBinding != nil && expected.RegistryVerifier == nil {
+		return nil, errors.New("durable Runtime discovery requires an independent Registry verifier")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	response, err := runtime.DiscoverRuntimeIdentities(
 		ctx,
 		&velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
@@ -140,15 +153,35 @@ func DiscoverRuntimeIdentities(
 	if err != nil {
 		return nil, fmt.Errorf("discover resident ModelRuntime identities: %w", err)
 	}
-	if response == nil || len(response.GetIdentities()) == 0 || len(response.GetIdentities()) > 16 {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 || proto.Size(response) > maxReadinessEvidenceBytes || len(response.GetIdentities()) == 0 || len(response.GetIdentities()) > 16 {
 		return nil, errors.New("resident ModelRuntime returned no bounded identity set")
+	}
+	if expected.RegistryVerifier != nil {
+		binding, err := expected.RegistryVerifier.Verify(response.GetJournalBinding())
+		if err != nil {
+			return nil, fmt.Errorf("resident Runtime discovery requires Registry-bound journal ownership: %w", err)
+		}
+		claim := binding.GetClaim()
+		if claim.GetWorkerInstanceId() != expected.WorkerInstanceID || claim.GetWorkerInstanceEpoch() != expected.WorkerInstanceEpoch ||
+			claim.GetWorkerMemberId() != expected.WorkerMemberID || claim.GetWorkerMemberEpoch() != expected.WorkerMemberEpoch {
+			return nil, errors.New("resident Runtime discovery has a Registry-bound journal for a different member")
+		}
+		if expected.RegistryBinding != nil {
+			local, err := expected.RegistryVerifier.Verify(expected.RegistryBinding)
+			if err != nil || !proto.Equal(local.GetClaim(), binding.GetClaim()) || !proto.Equal(local.GetPair(), binding.GetPair()) {
+				return nil, errors.New("resident Runtime discovery has a different Registry-bound Worker journal pair")
+			}
+		}
 	}
 	identities := make([]*velav1.ModelRuntimeIdentity, 0, len(response.GetIdentities()))
 	seen := make(map[string]struct{}, len(response.GetIdentities()))
 	var deviceSetDigest []byte
 	var membershipDigest []byte
 	for _, identity := range response.GetIdentities() {
-		if validateProductionRuntimeIdentity(identity) != nil ||
+		if validateProductionRuntimeIdentity(identity) != nil || len(identity.ProtoReflect().GetUnknown()) != 0 ||
 			identity.GetWorkerInstanceId() != expected.WorkerInstanceID ||
 			identity.GetWorkerInstanceEpoch() != expected.WorkerInstanceEpoch ||
 			identity.GetWorkerMemberId() != expected.WorkerMemberID ||

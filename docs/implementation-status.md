@@ -512,6 +512,16 @@ compiled Node/TLS, race-enabled Registry/recovery, independent database restore,
 full unit and lint checks pass. Physical containment/replacement, durable Fleet
 activation and remaining scratch lifecycle work are still open; Production
 Gates remain `0/9`.
+The [durable Runtime discovery repair](runtime-discovery-journal-binding-evidence-2026-09-06.md)
+rejects local or remote identity-only Runtime responses during durable Worker
+assembly. Runtime discovery checks its actual held journal before returning the
+Registry binding; the Worker independently verifies its signature, member scope
+and local recorded pair. Each remote member uses its own binding. Pending-writer
+recovery remains discoverable without advertising readiness. Actual CPU Runtime
+and Worker composition, PostgreSQL/TLS with the compiled Node binding command,
+full unit/race/lint, protocol compatibility and Linux non-root checks pass.
+Physical containment, remote Worker assignment-journal ownership and the
+remaining lifecycle work stay open. Versions and Production Gates are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

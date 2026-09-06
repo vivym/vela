@@ -229,6 +229,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		return rollbackStart(err)
 	}
 	startupState = nil
+	supervisor.registryBinding, supervisor.registryVerifier = config.RegistryBinding, config.RegistryVerifier
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),
 		grpc.MaxConcurrentStreams(128),

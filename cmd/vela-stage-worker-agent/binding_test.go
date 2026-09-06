@@ -55,6 +55,28 @@ func configureWorkerJournalBinding(t *testing.T, configuration *config, manifest
 	writeJournalJSON(t, configuration.journalBindingVerifierFile, map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)})
 }
 
+func TestDurableWorkerRejectsNondurableRuntimeBeforeStreamAssembly(t *testing.T) {
+	identity := productionSmokeIdentity("49800000-0000-0000-0000-000000000004", 11)
+	configuration := productionSmokeConfig(t, identity)
+	nondurableSocket := configuration.runtimeSocket
+	enableDurableSmoke(t, &configuration, identity)
+	configuration.runtimeSocket = nondurableSocket
+	built := false
+	runtime, err := newProductionRuntimeUsing(t.Context(), configuration, durableSmokeConsumers(func(value stageworkeragent.DurableStreamConfig) (*stageworkeragent.StreamAgent, error) {
+		built = true
+		return stageworkeragent.NewDurableStreamAgent(value)
+	}))
+	if runtime != nil {
+		_ = runtime.Close()
+	}
+	if err == nil || runtime != nil || built || !strings.Contains(err.Error(), "Registry-bound") {
+		t.Fatalf("nondurable Runtime crossed durable Worker assembly: built=%t runtime=%T error=%v", built, runtime, err)
+	}
+	if _, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), durableLaunchForTest(t, configuration).admission); err != nil {
+		t.Fatalf("rejected Runtime left Worker journal locked: %v", err)
+	}
+}
+
 func TestDurableWorkerRejectsRegistryMismatchBeforeExternalStartup(t *testing.T) {
 	for _, fault := range []string{"journal", "scope", "worker-epoch", "member-epoch", "missing-binding", "missing-verifier", "signature"} {
 		t.Run(fault, func(t *testing.T) {

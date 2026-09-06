@@ -17,6 +17,7 @@ import (
 // DiscoverRuntimeIdentities observes the pinned member before assignment. The
 // caller must bind the result to its trusted launch topology and approved routes;
 // these identities alone do not establish readiness or durable journal ownership.
+// Optional Registry binding evidence is forwarded intact for the caller to verify.
 func (client *Client) DiscoverRuntimeIdentities(ctx context.Context, request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, options ...grpc.CallOption) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
 	if client == nil || client.service == nil || ctx == nil {
 		return nil, status.Error(codes.FailedPrecondition, "Stage Worker member discovery client is not configured")

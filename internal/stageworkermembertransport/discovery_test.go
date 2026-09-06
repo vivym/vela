@@ -75,6 +75,35 @@ func TestMemberDiscoveryRequiresConfiguredLeaderBeforeRuntime(t *testing.T) {
 	}
 }
 
+func TestMemberDiscoveryPreservesOpaqueRegistryEvidenceAtBothHops(t *testing.T) {
+	f, runtime, _ := newDiscoveryFixture(t)
+	// Signature validation belongs to the independently configured Worker caller.
+	// Neither transport hop may synthesize, drop or retain mutable evidence.
+	evidence := &velav1.WorkerBootstrapBinding{SchemaVersion: 1, SigningKeyId: "registry", Signature: []byte{1, 2, 3},
+		Claim: &velav1.WorkerBootstrapClaim{WorkerMemberId: f.local.ID}}
+	runtime.response.JournalBinding = proto.Clone(evidence).(*velav1.WorkerBootstrapBinding)
+	client := &Client{targetID: f.local.ID, service: &discoveryReplyClient{result: runtime.response}}
+	request := discoveryRequestFor(f.runtime.identity)
+	response, err := f.server.DiscoverRuntimeIdentities(t.Context(), &velav1.StageWorkerMemberServiceDiscoverRuntimeIdentitiesRequest{
+		TargetWorkerMemberId: f.local.ID, Command: request,
+	})
+	if err != nil || !proto.Equal(response.GetResult().GetJournalBinding(), evidence) {
+		t.Fatalf("member server changed Registry evidence: %v %v", response, err)
+	}
+	response.Result.JournalBinding.Signature[0] = 9
+	if !proto.Equal(runtime.response.JournalBinding, evidence) {
+		t.Fatal("member server leaked mutable evidence")
+	}
+	forwarded, err := client.DiscoverRuntimeIdentities(t.Context(), request)
+	if err != nil || !proto.Equal(forwarded.GetJournalBinding(), evidence) {
+		t.Fatalf("member client changed Registry evidence: %v %v", forwarded, err)
+	}
+	forwarded.JournalBinding.Signature[0] = 9
+	if !proto.Equal(runtime.response.JournalBinding, evidence) {
+		t.Fatal("member client leaked mutable evidence")
+	}
+}
+
 func TestMemberDiscoveryRejectsMalformedResultsAtBothHops(t *testing.T) {
 	for _, hop := range []string{"runtime", "member"} {
 		t.Run(hop, func(t *testing.T) {

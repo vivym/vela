@@ -323,11 +323,14 @@ func (x *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest) GetWorkerMemberEpo
 }
 
 type ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Identities    []*ModelRuntimeIdentity `protobuf:"bytes,1,rep,name=identities,proto3" json:"identities,omitempty"`
-	Detail        string                  `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state      protoimpl.MessageState  `protogen:"open.v1"`
+	Identities []*ModelRuntimeIdentity `protobuf:"bytes,1,rep,name=identities,proto3" json:"identities,omitempty"`
+	Detail     string                  `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
+	// Returned only after checking the currently held execution journal against
+	// this independently signed Registry binding. It does not establish readiness.
+	JournalBinding *WorkerBootstrapBinding `protobuf:"bytes,3,opt,name=journal_binding,json=journalBinding,proto3" json:"journal_binding,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse) Reset() {
@@ -372,6 +375,13 @@ func (x *ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse) GetDetail() strin
 		return x.Detail
 	}
 	return ""
+}
+
+func (x *ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse) GetJournalBinding() *WorkerBootstrapBinding {
+	if x != nil {
+		return x.JournalBinding
+	}
+	return nil
 }
 
 type ModelRuntimeIdentity struct {
@@ -3325,17 +3335,18 @@ var File_vela_v1_model_runtime_proto protoreflect.FileDescriptor
 
 const file_vela_v1_model_runtime_proto_rawDesc = "" +
 	"\n" +
-	"\x1bvela/v1/model_runtime.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dvela/v1/stage_authority.proto\x1a(vela/v1/stage_terminal_disposition.proto\"\xf1\x01\n" +
+	"\x1bvela/v1/model_runtime.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fvela/v1/fleet_maintenance.proto\x1a\x1dvela/v1/stage_authority.proto\x1a(vela/v1/stage_terminal_disposition.proto\"\xf1\x01\n" +
 	"3ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12(\n" +
 	"\x10worker_member_id\x18\x03 \x01(\tR\x0eworkerMemberId\x12.\n" +
-	"\x13worker_member_epoch\x18\x04 \x01(\x03R\x11workerMemberEpoch\"\x8d\x01\n" +
+	"\x13worker_member_epoch\x18\x04 \x01(\x03R\x11workerMemberEpoch\"\xd7\x01\n" +
 	"4ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse\x12=\n" +
 	"\n" +
 	"identities\x18\x01 \x03(\v2\x1d.vela.v1.ModelRuntimeIdentityR\n" +
 	"identities\x12\x16\n" +
-	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xef\x03\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\x12H\n" +
+	"\x0fjournal_binding\x18\x03 \x01(\v2\x1f.vela.v1.WorkerBootstrapBindingR\x0ejournalBinding\"\xef\x03\n" +
 	"\x14ModelRuntimeIdentity\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12*\n" +
@@ -3678,125 +3689,127 @@ var file_vela_v1_model_runtime_proto_goTypes = []any{
 	(*ModelRuntimeServiceSealOutputRequest)(nil),                           // 47: vela.v1.ModelRuntimeServiceSealOutputRequest
 	(*LocalMaterializationReceipt)(nil),                                    // 48: vela.v1.LocalMaterializationReceipt
 	(*ModelRuntimeServiceSealOutputResponse)(nil),                          // 49: vela.v1.ModelRuntimeServiceSealOutputResponse
-	(*StageTerminalDisposition)(nil),                                       // 50: vela.v1.StageTerminalDisposition
-	(*StageAuthority)(nil),                                                 // 51: vela.v1.StageAuthority
-	(*timestamppb.Timestamp)(nil),                                          // 52: google.protobuf.Timestamp
+	(*WorkerBootstrapBinding)(nil),                                         // 50: vela.v1.WorkerBootstrapBinding
+	(*StageTerminalDisposition)(nil),                                       // 51: vela.v1.StageTerminalDisposition
+	(*StageAuthority)(nil),                                                 // 52: vela.v1.StageAuthority
+	(*timestamppb.Timestamp)(nil),                                          // 53: google.protobuf.Timestamp
 }
 var file_vela_v1_model_runtime_proto_depIdxs = []int32{
 	6,  // 0: vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse.identities:type_name -> vela.v1.ModelRuntimeIdentity
-	6,  // 1: vela.v1.ModelRuntimeServiceProbeReadinessRequest.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	0,  // 2: vela.v1.ModelRuntimeServiceProbeReadinessRequest.check:type_name -> vela.v1.ModelRuntimeReadinessCheck
-	6,  // 3: vela.v1.ModelRuntimeServiceProbeReadinessResponse.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	0,  // 4: vela.v1.ModelRuntimeServiceProbeReadinessResponse.check:type_name -> vela.v1.ModelRuntimeReadinessCheck
-	6,  // 5: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	50, // 6: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest.disposition:type_name -> vela.v1.StageTerminalDisposition
-	6,  // 7: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	1,  // 8: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	11, // 9: vela.v1.StageExecutionSpec.inputs:type_name -> vela.v1.StageInputArtifact
-	12, // 10: vela.v1.StageExecutionSpec.root_inputs:type_name -> vela.v1.StageRootInputMaterial
-	51, // 11: vela.v1.ModelRuntimeServicePrepareStageRequest.authority:type_name -> vela.v1.StageAuthority
-	13, // 12: vela.v1.ModelRuntimeServicePrepareStageRequest.execution_spec:type_name -> vela.v1.StageExecutionSpec
-	1,  // 13: vela.v1.ModelRuntimeServicePrepareStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 14: vela.v1.ModelRuntimeServicePrepareStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 15: vela.v1.ModelRuntimeServicePrepareStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	51, // 16: vela.v1.ModelRuntimeServiceStartStageRequest.authority:type_name -> vela.v1.StageAuthority
-	1,  // 17: vela.v1.ModelRuntimeServiceStartStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 18: vela.v1.ModelRuntimeServiceStartStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	52, // 19: vela.v1.ModelRuntimeServiceStartStageResponse.started_at:type_name -> google.protobuf.Timestamp
-	6,  // 20: vela.v1.ModelRuntimeServiceStartStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	51, // 21: vela.v1.ModelRuntimeServiceCancelStageRequest.authority:type_name -> vela.v1.StageAuthority
-	3,  // 22: vela.v1.ModelRuntimeServiceCancelStageRequest.reason:type_name -> vela.v1.ModelRuntimeCancelReason
-	1,  // 23: vela.v1.ModelRuntimeServiceCancelStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 24: vela.v1.ModelRuntimeServiceCancelStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 25: vela.v1.ModelRuntimeServiceCancelStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	51, // 26: vela.v1.ModelRuntimeServiceStatusRequest.authority:type_name -> vela.v1.StageAuthority
-	51, // 27: vela.v1.ModelRuntimeServiceInspectExecutionRequest.authority:type_name -> vela.v1.StageAuthority
-	6,  // 28: vela.v1.ModelRuntimeServiceInspectExecutionResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	1,  // 29: vela.v1.ModelRuntimeServiceInspectExecutionResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 30: vela.v1.ModelRuntimeServiceInspectExecutionResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	52, // 31: vela.v1.ModelRuntimeServiceInspectExecutionResponse.observed_at:type_name -> google.protobuf.Timestamp
-	6,  // 32: vela.v1.ModelRuntimeExecutionDrainScope.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	51, // 33: vela.v1.ModelRuntimeExecutionDrainScope.authority:type_name -> vela.v1.StageAuthority
-	51, // 34: vela.v1.ModelRuntimeExecutionDrainCheckpoint.authority:type_name -> vela.v1.StageAuthority
-	52, // 35: vela.v1.ModelRuntimeExecutionDrainCheckpoint.drained_at:type_name -> google.protobuf.Timestamp
-	6,  // 36: vela.v1.ModelRuntimeExecutionDrainResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	1,  // 37: vela.v1.ModelRuntimeExecutionDrainResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	24, // 38: vela.v1.ModelRuntimeExecutionDrainResult.checkpoint:type_name -> vela.v1.ModelRuntimeExecutionDrainCheckpoint
-	23, // 39: vela.v1.ModelRuntimeServiceDrainStageExecutionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
-	25, // 40: vela.v1.ModelRuntimeServiceDrainStageExecutionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
-	23, // 41: vela.v1.ModelRuntimeServiceInspectStageExecutionDrainRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
-	25, // 42: vela.v1.ModelRuntimeServiceInspectStageExecutionDrainResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
-	23, // 43: vela.v1.ModelRuntimeServiceInspectStageAllocationDrainRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
-	25, // 44: vela.v1.ModelRuntimeServiceInspectStageAllocationDrainResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
-	51, // 45: vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint.authority:type_name -> vela.v1.StageAuthority
-	52, // 46: vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint.observed_at:type_name -> google.protobuf.Timestamp
-	6,  // 47: vela.v1.ModelRuntimeExecutionNonAdmissionResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	1,  // 48: vela.v1.ModelRuntimeExecutionNonAdmissionResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	32, // 49: vela.v1.ModelRuntimeExecutionNonAdmissionResult.checkpoint:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint
-	23, // 50: vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
-	33, // 51: vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionResult
-	23, // 52: vela.v1.ModelRuntimeServiceInspectStageNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
-	33, // 53: vela.v1.ModelRuntimeServiceInspectStageNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionResult
-	6,  // 54: vela.v1.ModelRuntimeTerminalAllocationScope.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	50, // 55: vela.v1.ModelRuntimeTerminalAllocationScope.disposition:type_name -> vela.v1.StageTerminalDisposition
-	50, // 56: vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint.disposition:type_name -> vela.v1.StageTerminalDisposition
-	52, // 57: vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint.observed_at:type_name -> google.protobuf.Timestamp
-	6,  // 58: vela.v1.ModelRuntimeTerminalNonAdmissionResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
-	1,  // 59: vela.v1.ModelRuntimeTerminalNonAdmissionResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	39, // 60: vela.v1.ModelRuntimeTerminalNonAdmissionResult.checkpoint:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint
-	38, // 61: vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeTerminalAllocationScope
-	40, // 62: vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionResult
-	38, // 63: vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeTerminalAllocationScope
-	40, // 64: vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionResult
-	52, // 65: vela.v1.ModelRuntimeFailureEvidence.failed_at:type_name -> google.protobuf.Timestamp
-	52, // 66: vela.v1.ModelRuntimeFailureEvidence.retry_at:type_name -> google.protobuf.Timestamp
-	1,  // 67: vela.v1.ModelRuntimeServiceStatusResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 68: vela.v1.ModelRuntimeServiceStatusResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 69: vela.v1.ModelRuntimeServiceStatusResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	45, // 70: vela.v1.ModelRuntimeServiceStatusResponse.failure_evidence:type_name -> vela.v1.ModelRuntimeFailureEvidence
-	51, // 71: vela.v1.ModelRuntimeServiceSealOutputRequest.authority:type_name -> vela.v1.StageAuthority
-	52, // 72: vela.v1.LocalMaterializationReceipt.sealed_at:type_name -> google.protobuf.Timestamp
-	1,  // 73: vela.v1.ModelRuntimeServiceSealOutputResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 74: vela.v1.ModelRuntimeServiceSealOutputResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	48, // 75: vela.v1.ModelRuntimeServiceSealOutputResponse.receipt:type_name -> vela.v1.LocalMaterializationReceipt
-	6,  // 76: vela.v1.ModelRuntimeServiceSealOutputResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	4,  // 77: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:input_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
-	7,  // 78: vela.v1.ModelRuntimeService.ProbeReadiness:input_type -> vela.v1.ModelRuntimeServiceProbeReadinessRequest
-	9,  // 79: vela.v1.ModelRuntimeService.InstallStageExecutionFloor:input_type -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest
-	14, // 80: vela.v1.ModelRuntimeService.PrepareStage:input_type -> vela.v1.ModelRuntimeServicePrepareStageRequest
-	16, // 81: vela.v1.ModelRuntimeService.StartStage:input_type -> vela.v1.ModelRuntimeServiceStartStageRequest
-	18, // 82: vela.v1.ModelRuntimeService.CancelStage:input_type -> vela.v1.ModelRuntimeServiceCancelStageRequest
-	20, // 83: vela.v1.ModelRuntimeService.Status:input_type -> vela.v1.ModelRuntimeServiceStatusRequest
-	21, // 84: vela.v1.ModelRuntimeService.InspectExecution:input_type -> vela.v1.ModelRuntimeServiceInspectExecutionRequest
-	26, // 85: vela.v1.ModelRuntimeService.DrainStageExecution:input_type -> vela.v1.ModelRuntimeServiceDrainStageExecutionRequest
-	28, // 86: vela.v1.ModelRuntimeService.InspectStageExecutionDrain:input_type -> vela.v1.ModelRuntimeServiceInspectStageExecutionDrainRequest
-	30, // 87: vela.v1.ModelRuntimeService.InspectStageAllocationDrain:input_type -> vela.v1.ModelRuntimeServiceInspectStageAllocationDrainRequest
-	34, // 88: vela.v1.ModelRuntimeService.CheckpointStageNonAdmission:input_type -> vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest
-	36, // 89: vela.v1.ModelRuntimeService.InspectStageNonAdmission:input_type -> vela.v1.ModelRuntimeServiceInspectStageNonAdmissionRequest
-	41, // 90: vela.v1.ModelRuntimeService.CheckpointStageTerminalNonAdmission:input_type -> vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest
-	43, // 91: vela.v1.ModelRuntimeService.InspectStageTerminalNonAdmission:input_type -> vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest
-	47, // 92: vela.v1.ModelRuntimeService.SealOutput:input_type -> vela.v1.ModelRuntimeServiceSealOutputRequest
-	5,  // 93: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:output_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
-	8,  // 94: vela.v1.ModelRuntimeService.ProbeReadiness:output_type -> vela.v1.ModelRuntimeServiceProbeReadinessResponse
-	10, // 95: vela.v1.ModelRuntimeService.InstallStageExecutionFloor:output_type -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
-	15, // 96: vela.v1.ModelRuntimeService.PrepareStage:output_type -> vela.v1.ModelRuntimeServicePrepareStageResponse
-	17, // 97: vela.v1.ModelRuntimeService.StartStage:output_type -> vela.v1.ModelRuntimeServiceStartStageResponse
-	19, // 98: vela.v1.ModelRuntimeService.CancelStage:output_type -> vela.v1.ModelRuntimeServiceCancelStageResponse
-	46, // 99: vela.v1.ModelRuntimeService.Status:output_type -> vela.v1.ModelRuntimeServiceStatusResponse
-	22, // 100: vela.v1.ModelRuntimeService.InspectExecution:output_type -> vela.v1.ModelRuntimeServiceInspectExecutionResponse
-	27, // 101: vela.v1.ModelRuntimeService.DrainStageExecution:output_type -> vela.v1.ModelRuntimeServiceDrainStageExecutionResponse
-	29, // 102: vela.v1.ModelRuntimeService.InspectStageExecutionDrain:output_type -> vela.v1.ModelRuntimeServiceInspectStageExecutionDrainResponse
-	31, // 103: vela.v1.ModelRuntimeService.InspectStageAllocationDrain:output_type -> vela.v1.ModelRuntimeServiceInspectStageAllocationDrainResponse
-	35, // 104: vela.v1.ModelRuntimeService.CheckpointStageNonAdmission:output_type -> vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse
-	37, // 105: vela.v1.ModelRuntimeService.InspectStageNonAdmission:output_type -> vela.v1.ModelRuntimeServiceInspectStageNonAdmissionResponse
-	42, // 106: vela.v1.ModelRuntimeService.CheckpointStageTerminalNonAdmission:output_type -> vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse
-	44, // 107: vela.v1.ModelRuntimeService.InspectStageTerminalNonAdmission:output_type -> vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse
-	49, // 108: vela.v1.ModelRuntimeService.SealOutput:output_type -> vela.v1.ModelRuntimeServiceSealOutputResponse
-	93, // [93:109] is the sub-list for method output_type
-	77, // [77:93] is the sub-list for method input_type
-	77, // [77:77] is the sub-list for extension type_name
-	77, // [77:77] is the sub-list for extension extendee
-	0,  // [0:77] is the sub-list for field type_name
+	50, // 1: vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse.journal_binding:type_name -> vela.v1.WorkerBootstrapBinding
+	6,  // 2: vela.v1.ModelRuntimeServiceProbeReadinessRequest.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	0,  // 3: vela.v1.ModelRuntimeServiceProbeReadinessRequest.check:type_name -> vela.v1.ModelRuntimeReadinessCheck
+	6,  // 4: vela.v1.ModelRuntimeServiceProbeReadinessResponse.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	0,  // 5: vela.v1.ModelRuntimeServiceProbeReadinessResponse.check:type_name -> vela.v1.ModelRuntimeReadinessCheck
+	6,  // 6: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	51, // 7: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest.disposition:type_name -> vela.v1.StageTerminalDisposition
+	6,  // 8: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	1,  // 9: vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	11, // 10: vela.v1.StageExecutionSpec.inputs:type_name -> vela.v1.StageInputArtifact
+	12, // 11: vela.v1.StageExecutionSpec.root_inputs:type_name -> vela.v1.StageRootInputMaterial
+	52, // 12: vela.v1.ModelRuntimeServicePrepareStageRequest.authority:type_name -> vela.v1.StageAuthority
+	13, // 13: vela.v1.ModelRuntimeServicePrepareStageRequest.execution_spec:type_name -> vela.v1.StageExecutionSpec
+	1,  // 14: vela.v1.ModelRuntimeServicePrepareStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 15: vela.v1.ModelRuntimeServicePrepareStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 16: vela.v1.ModelRuntimeServicePrepareStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	52, // 17: vela.v1.ModelRuntimeServiceStartStageRequest.authority:type_name -> vela.v1.StageAuthority
+	1,  // 18: vela.v1.ModelRuntimeServiceStartStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 19: vela.v1.ModelRuntimeServiceStartStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	53, // 20: vela.v1.ModelRuntimeServiceStartStageResponse.started_at:type_name -> google.protobuf.Timestamp
+	6,  // 21: vela.v1.ModelRuntimeServiceStartStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	52, // 22: vela.v1.ModelRuntimeServiceCancelStageRequest.authority:type_name -> vela.v1.StageAuthority
+	3,  // 23: vela.v1.ModelRuntimeServiceCancelStageRequest.reason:type_name -> vela.v1.ModelRuntimeCancelReason
+	1,  // 24: vela.v1.ModelRuntimeServiceCancelStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 25: vela.v1.ModelRuntimeServiceCancelStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 26: vela.v1.ModelRuntimeServiceCancelStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	52, // 27: vela.v1.ModelRuntimeServiceStatusRequest.authority:type_name -> vela.v1.StageAuthority
+	52, // 28: vela.v1.ModelRuntimeServiceInspectExecutionRequest.authority:type_name -> vela.v1.StageAuthority
+	6,  // 29: vela.v1.ModelRuntimeServiceInspectExecutionResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	1,  // 30: vela.v1.ModelRuntimeServiceInspectExecutionResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 31: vela.v1.ModelRuntimeServiceInspectExecutionResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	53, // 32: vela.v1.ModelRuntimeServiceInspectExecutionResponse.observed_at:type_name -> google.protobuf.Timestamp
+	6,  // 33: vela.v1.ModelRuntimeExecutionDrainScope.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	52, // 34: vela.v1.ModelRuntimeExecutionDrainScope.authority:type_name -> vela.v1.StageAuthority
+	52, // 35: vela.v1.ModelRuntimeExecutionDrainCheckpoint.authority:type_name -> vela.v1.StageAuthority
+	53, // 36: vela.v1.ModelRuntimeExecutionDrainCheckpoint.drained_at:type_name -> google.protobuf.Timestamp
+	6,  // 37: vela.v1.ModelRuntimeExecutionDrainResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	1,  // 38: vela.v1.ModelRuntimeExecutionDrainResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	24, // 39: vela.v1.ModelRuntimeExecutionDrainResult.checkpoint:type_name -> vela.v1.ModelRuntimeExecutionDrainCheckpoint
+	23, // 40: vela.v1.ModelRuntimeServiceDrainStageExecutionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
+	25, // 41: vela.v1.ModelRuntimeServiceDrainStageExecutionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
+	23, // 42: vela.v1.ModelRuntimeServiceInspectStageExecutionDrainRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
+	25, // 43: vela.v1.ModelRuntimeServiceInspectStageExecutionDrainResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
+	23, // 44: vela.v1.ModelRuntimeServiceInspectStageAllocationDrainRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
+	25, // 45: vela.v1.ModelRuntimeServiceInspectStageAllocationDrainResponse.result:type_name -> vela.v1.ModelRuntimeExecutionDrainResult
+	52, // 46: vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint.authority:type_name -> vela.v1.StageAuthority
+	53, // 47: vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint.observed_at:type_name -> google.protobuf.Timestamp
+	6,  // 48: vela.v1.ModelRuntimeExecutionNonAdmissionResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	1,  // 49: vela.v1.ModelRuntimeExecutionNonAdmissionResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	32, // 50: vela.v1.ModelRuntimeExecutionNonAdmissionResult.checkpoint:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionCheckpoint
+	23, // 51: vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
+	33, // 52: vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionResult
+	23, // 53: vela.v1.ModelRuntimeServiceInspectStageNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeExecutionDrainScope
+	33, // 54: vela.v1.ModelRuntimeServiceInspectStageNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeExecutionNonAdmissionResult
+	6,  // 55: vela.v1.ModelRuntimeTerminalAllocationScope.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	51, // 56: vela.v1.ModelRuntimeTerminalAllocationScope.disposition:type_name -> vela.v1.StageTerminalDisposition
+	51, // 57: vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint.disposition:type_name -> vela.v1.StageTerminalDisposition
+	53, // 58: vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint.observed_at:type_name -> google.protobuf.Timestamp
+	6,  // 59: vela.v1.ModelRuntimeTerminalNonAdmissionResult.identity:type_name -> vela.v1.ModelRuntimeIdentity
+	1,  // 60: vela.v1.ModelRuntimeTerminalNonAdmissionResult.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	39, // 61: vela.v1.ModelRuntimeTerminalNonAdmissionResult.checkpoint:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionCheckpoint
+	38, // 62: vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeTerminalAllocationScope
+	40, // 63: vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionResult
+	38, // 64: vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest.scope:type_name -> vela.v1.ModelRuntimeTerminalAllocationScope
+	40, // 65: vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse.result:type_name -> vela.v1.ModelRuntimeTerminalNonAdmissionResult
+	53, // 66: vela.v1.ModelRuntimeFailureEvidence.failed_at:type_name -> google.protobuf.Timestamp
+	53, // 67: vela.v1.ModelRuntimeFailureEvidence.retry_at:type_name -> google.protobuf.Timestamp
+	1,  // 68: vela.v1.ModelRuntimeServiceStatusResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 69: vela.v1.ModelRuntimeServiceStatusResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 70: vela.v1.ModelRuntimeServiceStatusResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	45, // 71: vela.v1.ModelRuntimeServiceStatusResponse.failure_evidence:type_name -> vela.v1.ModelRuntimeFailureEvidence
+	52, // 72: vela.v1.ModelRuntimeServiceSealOutputRequest.authority:type_name -> vela.v1.StageAuthority
+	53, // 73: vela.v1.LocalMaterializationReceipt.sealed_at:type_name -> google.protobuf.Timestamp
+	1,  // 74: vela.v1.ModelRuntimeServiceSealOutputResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 75: vela.v1.ModelRuntimeServiceSealOutputResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	48, // 76: vela.v1.ModelRuntimeServiceSealOutputResponse.receipt:type_name -> vela.v1.LocalMaterializationReceipt
+	6,  // 77: vela.v1.ModelRuntimeServiceSealOutputResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	4,  // 78: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:input_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
+	7,  // 79: vela.v1.ModelRuntimeService.ProbeReadiness:input_type -> vela.v1.ModelRuntimeServiceProbeReadinessRequest
+	9,  // 80: vela.v1.ModelRuntimeService.InstallStageExecutionFloor:input_type -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorRequest
+	14, // 81: vela.v1.ModelRuntimeService.PrepareStage:input_type -> vela.v1.ModelRuntimeServicePrepareStageRequest
+	16, // 82: vela.v1.ModelRuntimeService.StartStage:input_type -> vela.v1.ModelRuntimeServiceStartStageRequest
+	18, // 83: vela.v1.ModelRuntimeService.CancelStage:input_type -> vela.v1.ModelRuntimeServiceCancelStageRequest
+	20, // 84: vela.v1.ModelRuntimeService.Status:input_type -> vela.v1.ModelRuntimeServiceStatusRequest
+	21, // 85: vela.v1.ModelRuntimeService.InspectExecution:input_type -> vela.v1.ModelRuntimeServiceInspectExecutionRequest
+	26, // 86: vela.v1.ModelRuntimeService.DrainStageExecution:input_type -> vela.v1.ModelRuntimeServiceDrainStageExecutionRequest
+	28, // 87: vela.v1.ModelRuntimeService.InspectStageExecutionDrain:input_type -> vela.v1.ModelRuntimeServiceInspectStageExecutionDrainRequest
+	30, // 88: vela.v1.ModelRuntimeService.InspectStageAllocationDrain:input_type -> vela.v1.ModelRuntimeServiceInspectStageAllocationDrainRequest
+	34, // 89: vela.v1.ModelRuntimeService.CheckpointStageNonAdmission:input_type -> vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest
+	36, // 90: vela.v1.ModelRuntimeService.InspectStageNonAdmission:input_type -> vela.v1.ModelRuntimeServiceInspectStageNonAdmissionRequest
+	41, // 91: vela.v1.ModelRuntimeService.CheckpointStageTerminalNonAdmission:input_type -> vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest
+	43, // 92: vela.v1.ModelRuntimeService.InspectStageTerminalNonAdmission:input_type -> vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest
+	47, // 93: vela.v1.ModelRuntimeService.SealOutput:input_type -> vela.v1.ModelRuntimeServiceSealOutputRequest
+	5,  // 94: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:output_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
+	8,  // 95: vela.v1.ModelRuntimeService.ProbeReadiness:output_type -> vela.v1.ModelRuntimeServiceProbeReadinessResponse
+	10, // 96: vela.v1.ModelRuntimeService.InstallStageExecutionFloor:output_type -> vela.v1.ModelRuntimeServiceInstallStageExecutionFloorResponse
+	15, // 97: vela.v1.ModelRuntimeService.PrepareStage:output_type -> vela.v1.ModelRuntimeServicePrepareStageResponse
+	17, // 98: vela.v1.ModelRuntimeService.StartStage:output_type -> vela.v1.ModelRuntimeServiceStartStageResponse
+	19, // 99: vela.v1.ModelRuntimeService.CancelStage:output_type -> vela.v1.ModelRuntimeServiceCancelStageResponse
+	46, // 100: vela.v1.ModelRuntimeService.Status:output_type -> vela.v1.ModelRuntimeServiceStatusResponse
+	22, // 101: vela.v1.ModelRuntimeService.InspectExecution:output_type -> vela.v1.ModelRuntimeServiceInspectExecutionResponse
+	27, // 102: vela.v1.ModelRuntimeService.DrainStageExecution:output_type -> vela.v1.ModelRuntimeServiceDrainStageExecutionResponse
+	29, // 103: vela.v1.ModelRuntimeService.InspectStageExecutionDrain:output_type -> vela.v1.ModelRuntimeServiceInspectStageExecutionDrainResponse
+	31, // 104: vela.v1.ModelRuntimeService.InspectStageAllocationDrain:output_type -> vela.v1.ModelRuntimeServiceInspectStageAllocationDrainResponse
+	35, // 105: vela.v1.ModelRuntimeService.CheckpointStageNonAdmission:output_type -> vela.v1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse
+	37, // 106: vela.v1.ModelRuntimeService.InspectStageNonAdmission:output_type -> vela.v1.ModelRuntimeServiceInspectStageNonAdmissionResponse
+	42, // 107: vela.v1.ModelRuntimeService.CheckpointStageTerminalNonAdmission:output_type -> vela.v1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse
+	44, // 108: vela.v1.ModelRuntimeService.InspectStageTerminalNonAdmission:output_type -> vela.v1.ModelRuntimeServiceInspectStageTerminalNonAdmissionResponse
+	49, // 109: vela.v1.ModelRuntimeService.SealOutput:output_type -> vela.v1.ModelRuntimeServiceSealOutputResponse
+	94, // [94:110] is the sub-list for method output_type
+	78, // [78:94] is the sub-list for method input_type
+	78, // [78:78] is the sub-list for extension type_name
+	78, // [78:78] is the sub-list for extension extendee
+	0,  // [0:78] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_model_runtime_proto_init() }
@@ -3804,6 +3817,7 @@ func file_vela_v1_model_runtime_proto_init() {
 	if File_vela_v1_model_runtime_proto != nil {
 		return
 	}
+	file_vela_v1_fleet_maintenance_proto_init()
 	file_vela_v1_stage_authority_proto_init()
 	file_vela_v1_stage_terminal_disposition_proto_init()
 	file_vela_v1_model_runtime_proto_msgTypes[42].OneofWrappers = []any{}

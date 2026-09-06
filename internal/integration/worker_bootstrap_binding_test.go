@@ -271,18 +271,19 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
-	identities, err := client.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
-		WorkerInstanceId: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch,
-		WorkerMemberId: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch,
+	identities, err := stageworkeragent.DiscoverRuntimeIdentities(t.Context(), client, stageworkeragent.RuntimeIdentityExpectation{
+		WorkerInstanceID: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch,
+		WorkerMemberID: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch,
+		RegistryBinding: binding, RegistryVerifier: verifier,
 	})
-	if err != nil || len(identities.GetIdentities()) != 1 || identities.GetIdentities()[0].GetModelRuntimeEpoch() != 2 {
+	if err != nil || len(identities) != 1 || identities[0].GetModelRuntimeEpoch() != 2 {
 		t.Fatalf("Registry-bound CPU runtime identity: %v %v", identities, err)
 	}
 	routes, err := manifest.RuntimeBindings()
 	if err != nil {
 		t.Fatal(err)
 	}
-	routes[0].ModelRuntimeEpoch = identities.GetIdentities()[0].GetModelRuntimeEpoch()
+	routes[0].ModelRuntimeEpoch = identities[0].GetModelRuntimeEpoch()
 	current := workerConfig.Bindings[0]
 	current.Runtime = routes[0]
 	if err := worker.BindRuntimeRoutes(t.Context(), []stageworkeragent.AdmissionRuntimeBinding{current}); err != nil {
@@ -292,7 +293,7 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 		t.Fatal("Runtime discovery reopened the bound Worker journal")
 	}
 	ready, err := client.ProbeReadiness(t.Context(), &velav1.ModelRuntimeServiceProbeReadinessRequest{
-		Identity: identities.GetIdentities()[0], Check: velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+		Identity: identities[0], Check: velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
 	})
 	if err != nil || !ready.GetReady() {
 		t.Fatalf("fresh bound CPU runtime was not warm: %v %v", ready, err)
