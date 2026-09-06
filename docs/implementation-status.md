@@ -405,6 +405,17 @@ not yet covered; that success remains an explicitly assembled integration fixtur
 Fleet first-use provisioning, deployment activation, unknown writer/receipt
 recovery and bounded reclamation remain open. Versions and Production Gates are
 unchanged.
+
+The subsequent [Fleet initializer execution repair](fleet-initializer-execution-evidence-2026-09-06.md)
+reproduces a fresh-volume failure in the actual rendered init commands: CHOWN
+alone cannot traverse a 0700 parent after handing it to UID 10001. Both root
+materializers now retain the required DAC_OVERRIDE/FOWNER capabilities alongside
+CHOWN, and the Runtime initializer no longer references its obsolete directory
+tree. Pinned BusyBox execution covers both commands on fresh and retained Linux
+volumes, with non-root ownership/mode and retained-content checks. Full unit,
+Fleet/launch/deployment regressions, ordinary lint and Fleet integration-tag
+lint pass. This proves script execution only; controlled Pod rollout, journal
+first-use authority and durable deployment activation remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

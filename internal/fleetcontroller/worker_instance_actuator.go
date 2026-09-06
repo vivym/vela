@@ -1315,8 +1315,7 @@ test -f /private/authority/verifier-keyring.json
 chmod 0700 /private /private/authority
 chmod 0400 /private/launch.json /private/authority/verifier-keyring.json
 chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime-epochs
-chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime/*
-chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-epochs /var/lib/vela/stage-worker/scratch/model-runtime
+chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-epochs
 `},
 		Env: []corev1.EnvVar{
 			literalEnvironment("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON", launchManifest),
@@ -1335,7 +1334,8 @@ chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-e
 			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
 			ReadOnlyRootFilesystem:   &readOnlyRootFilesystem,
 			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN"},
+				// Retried materialization must traverse and chmod existing UID 10001 roots.
+				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN", "DAC_OVERRIDE", "FOWNER"},
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
@@ -1400,7 +1400,8 @@ chown -R 10001:10001 /var/lib/vela/stage-worker/scratch /private
 			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
 			ReadOnlyRootFilesystem:   &readOnlyRootFilesystem,
 			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN"},
+				// Chowning a 0700 parent must not prevent visiting its remaining children.
+				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN", "DAC_OVERRIDE", "FOWNER"},
 			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
