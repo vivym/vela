@@ -77,15 +77,16 @@ type Service struct {
 const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
-	verified        stageauthority.Verified
-	state           velav1.ModelRuntimeExecutionState
-	workerReusable  bool
-	reuseAfterDrain bool
-	startedAt       time.Time
-	timer           Timer
-	timerCancel     chan struct{}
-	receipt         *velav1.LocalMaterializationReceipt
-	deadlineExpired bool
+	verified             stageauthority.Verified
+	state                velav1.ModelRuntimeExecutionState
+	workerReusable       bool
+	reuseAfterDrain      bool
+	startedAt            time.Time
+	timer                Timer
+	timerCancel          chan struct{}
+	receipt              *velav1.LocalMaterializationReceipt
+	deadlineExpired      bool
+	pendingCancellations int
 }
 
 func NewService(config Config) (*Service, error) {
@@ -390,6 +391,13 @@ func (service *Service) CancelStage(
 		response.Detail = "cancellation reason is invalid"
 		return response, nil
 	}
+	finishInterruption, err := service.executionAdmission().interruptCancellation(ctx, service, &verified)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer finishInterruption()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(service, &verified, true)
@@ -732,6 +740,9 @@ func (service *Service) renewActiveLocked(
 ) (bool, error) {
 	if service.active.deadlineExpired {
 		return false, errExecutionDeadline
+	}
+	if service.active.pendingCancellations != 0 {
+		return false, errExecutionCancellation
 	}
 	if service.active.verified.Digest == verified.Digest {
 		return true, nil

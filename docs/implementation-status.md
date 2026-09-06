@@ -562,8 +562,8 @@ CPU backends cover all four operations, and an actual blocked ProcessBackend
 test observes process-group exit and a stopped child writer. Late success
 rejects while admission remains retained; late Seal keeps its validated receipt
 in active memory without inferring drain. Full unit, related race/lint, four
-PostgreSQL integration checks and Linux non-root process tests pass. Explicit
-CancelStage preemption, durable sealed receipt recovery, physical containment,
+PostgreSQL integration checks and Linux non-root process tests pass. Durable
+sealed receipt recovery, physical containment,
 remaining lifecycle work and Production Gates remain open.
 The [canceled-Prepare follow-up](runtime-prepare-cancellation-evidence-2026-09-06.md)
 also preserves cancellability when the caller cancels before the execution
@@ -573,6 +573,19 @@ watchdog. Canceled Prepare now retains PREPARING without confirming Start or
 releasing shared capacity. Backend failure recovery beyond request cancellation
 and the other lifecycle gates remain open. Full unit, related race and lint
 checks pass.
+The [explicit cancellation interruption repair](runtime-cancel-interruption-evidence-2026-09-06.md)
+now validates cancellation admission and target before interrupting a blocked
+Prepare, Start, Status or Seal. Backend Cancel stays serialized and revalidates
+after waiting; pending cancellation never replaces an admitted operation or
+grants renewal. CPU tests cover authority/floor/journal restrictions, concurrent
+cancellation with uncooperative backends, late Seal recovery, post-interruption
+floor/expiry changes and actual process-group interruption. A real mTLS/UDS test
+preserves leader authorization and cancellation/drain recovery after Worker
+journal replacement. Full unit, related race/lint, four PostgreSQL integration
+checks and Linux non-root process/transport tests pass. Backend acknowledgement,
+writer drain and device reuse
+remain distinct; unobserved backend renewal and failed-backend recovery remain
+unresolved. Versions and Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

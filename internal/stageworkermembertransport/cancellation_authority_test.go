@@ -2,11 +2,14 @@ package stageworkermembertransport
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -83,5 +86,63 @@ func TestMemberCancellationTLSUnixCannotRenewAfterWorkerJournalFailure(t *testin
 				t.Fatalf("allocation inspection lost actual original checkpoint: %v %v", allocation, err)
 			}
 		})
+	}
+}
+
+func TestMemberCancellationTLSUnixInterruptsAdmittedPrepareAfterWorkerJournalReplacement(t *testing.T) {
+	f, floor, _ := newMemberFloorFixture(t)
+	gate, config := commandWorkerJournal(t, f, true)
+	chain := startMemberFloorChainWithWorkerJournal(t, f, floor.Command.Disposition, privateMemberFloorDirectory(t), true, false, gate)
+	chain.backend.prepareEntered = make(chan struct{})
+	chain.backend.prepareCanceled = make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		_, err := chain.client.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authority, ExecutionSpec: f.spec})
+		finished <- err
+	}()
+	select {
+	case <-chain.backend.prepareEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("forwarded Prepare did not reach blocked Runtime")
+	}
+	if err := gate.Close(); err == nil {
+		t.Fatal("Worker journal closed during forwarded Prepare")
+	}
+	replaceCommandJournalState(t, config.Directory)
+	nonleader := chain.dial(t, chain.followerCredentials)
+	request := &velav1.ModelRuntimeServiceCancelStageRequest{
+		Authority: f.authority, Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+	}
+	if _, err := nonleader.CancelStage(t.Context(), request); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("nonleader could cancel admitted execution: %v", err)
+	}
+	select {
+	case <-chain.backend.prepareCanceled:
+		t.Fatal("unauthorized peer interrupted backend execution")
+	default:
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	canceled, err := chain.client.CancelStage(ctx, request)
+	if err != nil || !canceled.GetCancellationAcknowledged() || chain.backend.cancelCalls.Load() != 1 {
+		t.Fatalf("authenticated cancellation could not interrupt after Worker journal replacement: %v %v", canceled, err)
+	}
+	select {
+	case err := <-finished:
+		if status.Code(err) != codes.FailedPrecondition {
+			t.Fatalf("replaced Worker journal did not reject the interrupted reply: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupted forwarded Prepare did not return")
+	}
+	scope := &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: proto.Clone(f.runtime.identity).(*velav1.ModelRuntimeIdentity), Authority: f.authority}
+	read, err := chain.client.InspectStageExecutionDrain(t.Context(), &velav1.ModelRuntimeServiceInspectStageExecutionDrainRequest{Scope: scope})
+	if err != nil || read.GetResult().GetCheckpoint() != nil {
+		t.Fatalf("interruption manufactured drain evidence: %v %v", read, err)
+	}
+	chain.backend.FinishStop()
+	drained, err := chain.client.DrainStageExecution(t.Context(), &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
+	if err != nil || drained.GetResult().GetCheckpoint() == nil || !proto.Equal(drained.GetResult().GetCheckpoint().GetAuthority(), f.authority) || chain.backend.closed.Load() {
+		t.Fatalf("interruption lost exact drain recovery: %v %v", drained, err)
 	}
 }

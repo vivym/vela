@@ -535,13 +535,14 @@ func runFloorOperation(f *executionFloorFixture, operation string) error {
 
 type floorBlockingBackend struct {
 	*modelruntime.FakeRuntime
-	blocked    string
-	entered    chan struct{}
-	resume     chan struct{}
-	enterOnce  sync.Once
-	resumeOnce sync.Once
-	calls      atomic.Int64
-	closed     atomic.Bool
+	blocked        string
+	entered        chan struct{}
+	resume         chan struct{}
+	enterOnce      sync.Once
+	resumeOnce     sync.Once
+	calls          atomic.Int64
+	closed         atomic.Bool
+	prepareContext context.Context
 }
 
 func (b *floorBlockingBackend) wait(operation string) {
@@ -554,6 +555,7 @@ func (b *floorBlockingBackend) wait(operation string) {
 func (b *floorBlockingBackend) unblock()     { b.resumeOnce.Do(func() { close(b.resume) }) }
 func (b *floorBlockingBackend) Close() error { b.closed.Store(true); b.unblock(); return nil }
 func (b *floorBlockingBackend) Prepare(ctx context.Context, a stageauthority.Verified, spec *velav1.StageExecutionSpec) error {
+	b.prepareContext = ctx
 	b.wait("prepare")
 	return b.FakeRuntime.Prepare(ctx, a, spec)
 }

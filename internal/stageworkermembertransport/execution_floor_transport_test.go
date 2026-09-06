@@ -260,9 +260,24 @@ type memberFloorChain struct {
 
 type memberFloorBackend struct {
 	*modelruntime.FakeRuntime
-	closed      atomic.Bool
-	cancelCalls atomic.Int64
-	failCancel  atomic.Bool
+	closed          atomic.Bool
+	cancelCalls     atomic.Int64
+	failCancel      atomic.Bool
+	prepareEntered  chan struct{}
+	prepareCanceled chan struct{}
+}
+
+func (backend *memberFloorBackend) Prepare(ctx context.Context, verified stageauthority.Verified, spec *velav1.StageExecutionSpec) error {
+	if err := backend.FakeRuntime.Prepare(ctx, verified, spec); err != nil {
+		return err
+	}
+	if backend.prepareEntered != nil {
+		close(backend.prepareEntered)
+		<-ctx.Done()
+		close(backend.prepareCanceled)
+		return ctx.Err()
+	}
+	return nil
 }
 
 func (backend *memberFloorBackend) Cancel(ctx context.Context, verified stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {

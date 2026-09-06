@@ -31,6 +31,9 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 	if service.active.deadlineExpired {
 		return nil, nil, errExecutionDeadline
 	}
+	if service.active.pendingCancellations != 0 {
+		return nil, nil, errExecutionCancellation
+	}
 	select {
 	case <-service.closed:
 		return nil, nil, errors.New("ModelRuntime service is closed")

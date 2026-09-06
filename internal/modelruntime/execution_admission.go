@@ -142,16 +142,24 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 func (admission *executionAdmission) begin(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
+	allowRenewal, err := admission.validateOperationLocked(service, verified, cancellation)
+	if err != nil {
+		return false, nil, err
+	}
+	return allowRenewal, admission.registerLocked(service, verified.Authority.GetExecutionSequence()), nil
+}
+
+func (admission *executionAdmission) validateOperationLocked(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, error) {
 	if admission.closing {
-		return false, nil, errors.New("ModelRuntime execution admission is closed")
+		return false, errors.New("ModelRuntime execution admission is closed")
 	}
 	stateErr := admission.checkStateLocked()
 	if stateErr != nil && !cancellation {
-		return false, nil, stateErr
+		return false, stateErr
 	}
 	allowRenewal, err := service.refreshExecutionAuthority(verified, cancellation)
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
 	if stateErr != nil {
 		allowRenewal = false
@@ -159,9 +167,9 @@ func (admission *executionAdmission) begin(service *Service, verified *stageauth
 	sequence := verified.Authority.GetExecutionSequence()
 	aboveFloor := sequence > admission.floor
 	if !aboveFloor && !cancellation {
-		return false, nil, errExecutionFloor
+		return false, errExecutionFloor
 	}
-	return allowRenewal && aboveFloor, admission.registerLocked(service, sequence), nil
+	return allowRenewal && aboveFloor, nil
 }
 
 // Initial validation precedes operationMu, which can wait behind backend work.

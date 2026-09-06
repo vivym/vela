@@ -411,6 +411,17 @@ known to exact inspection or drain. Historical/failed-admission recovery still
 requires the exact installed envelope, and cancellation acknowledgement is not
 writer drain or permission to reuse a device.
 
+Before waiting for the execution mutex, CancelStage validates admission health,
+the terminal floor and its exact or permitted successor target, then interrupts
+that installed generation's in-flight execution context. Concurrent cancellation
+requests retain independent pending markers; execution entry and renewal reject
+until all pending requests finish. These markers never replace the admitted
+backend operation or release its journal reference. Backend Cancel remains
+serialized and repeats admission, freshness and target validation after waiting.
+A floor or expiry during the wait can therefore reject a previously eligible
+successor; exact installed cancellation remains the recovery path. Interruption
+is not acknowledgement, and an uncooperative backend may still remain in flight.
+
 ## Migration sequence
 
 ### M0: freeze and inventory

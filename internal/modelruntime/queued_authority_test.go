@@ -36,13 +36,24 @@ func TestModelRuntimeRechecksAuthorityAfterWaitingForOperation(t *testing.T) {
 			case <-time.After(5 * time.Second):
 				t.Fatal("queued request did not validate its initial envelope")
 			}
+			if operation == "cancel-renewal" {
+				select {
+				case <-backend.prepareContext.Done():
+				case <-time.After(5 * time.Second):
+					t.Fatal("eligible cancellation did not interrupt admitted Prepare")
+				}
+			}
 			// The watchdog goroutine may be delayed independently of wall time.
 			// Do not deliver its timer: admission must enforce expiry itself.
 			clock.mu.Lock()
 			clock.now = clock.now.Add(time.Minute)
 			clock.mu.Unlock()
 			backend.unblock()
-			if decision := <-prepareResult; decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+			wantPrepare := velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
+			if operation == "cancel-renewal" {
+				wantPrepare = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			}
+			if decision := <-prepareResult; decision != wantPrepare {
 				t.Fatalf("previously admitted Prepare: %v", decision)
 			}
 			select {

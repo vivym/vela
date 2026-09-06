@@ -14,6 +14,15 @@ import (
 )
 
 func TestModelRuntimeWatchdogStopsBlockedProcessAndChildWriter(t *testing.T) {
+	testRuntimeStopsBlockedProcessAndChildWriter(t, false)
+}
+
+func TestModelRuntimeCancelStopsBlockedProcessAndChildWriter(t *testing.T) {
+	testRuntimeStopsBlockedProcessAndChildWriter(t, true)
+}
+
+func testRuntimeStopsBlockedProcessAndChildWriter(t *testing.T, explicitCancel bool) {
+	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -61,14 +70,32 @@ func TestModelRuntimeWatchdogStopsBlockedProcessAndChildWriter(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	f.clock.Advance(time.Minute)
+	if explicitCancel {
+		canceled := make(chan *velav1.ModelRuntimeServiceCancelStageResponse, 1)
+		go func() {
+			response, _ := f.supervisor.CancelStage(t.Context(), &velav1.ModelRuntimeServiceCancelStageRequest{
+				Authority: f.authorities[0], Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+			})
+			canceled <- response
+		}()
+		select {
+		case response := <-canceled:
+			if response.GetCancellationAcknowledged() || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
+				t.Fatalf("process abort fabricated a driver acknowledgement: %v", response)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("CancelStage did not interrupt the actual blocked process call")
+		}
+	} else {
+		f.clock.Advance(time.Minute)
+	}
 	select {
 	case decision := <-finished:
 		if decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
-			t.Fatalf("blocked process did not fail after watchdog: %s", decision)
+			t.Fatalf("blocked process did not fail after interruption: %s", decision)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("watchdog did not release the actual blocked process call")
+		t.Fatal("interruption did not release the actual blocked process call")
 	}
 	select {
 	case <-backend.Done():
@@ -82,7 +109,7 @@ func TestModelRuntimeWatchdogStopsBlockedProcessAndChildWriter(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	after, err := os.Stat(filepath.Join(root, "child-writes"))
 	if err != nil || before.Size() != after.Size() {
-		t.Fatalf("child kept writing after watchdog teardown: %v", err)
+		t.Fatalf("child kept writing after process teardown: %v", err)
 	}
 	assertExecutionDrainCheckpoint(t, f.supervisor, f.authorities[0], false)
 	other := f.authority(t, 1, 12)
