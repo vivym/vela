@@ -114,7 +114,7 @@ func (f *floorCollectorFixture) acknowledge(_ context.Context, request *velav1.M
 		return nil, err
 	}
 	return &velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse{
-		SchemaVersion: 1, Identity: proto.Clone(request.Identity).(*velav1.ModelRuntimeIdentity),
+		SchemaVersion: request.GetSchemaVersion(), Identity: proto.Clone(request.Identity).(*velav1.ModelRuntimeIdentity),
 		DispositionDigest: verified.Digest[:], InstalledCutoff: request.Disposition.Cutoff, Durable: true,
 		Decision: velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED,
 	}, nil
@@ -184,6 +184,50 @@ func TestExecutionFloorCollectionWaitsForAllMembersAndRetriesLostResponse(t *tes
 		if client.calls.Load() != 2 {
 			t.Fatal("retry reused an old acknowledgement")
 		}
+	}
+}
+
+func TestExecutionFloorRecoveryValidatesReadersAndReplyVersion(t *testing.T) {
+	for _, fault := range []string{"missing", "unknown", "epoch", "topology", "duplicate-binding", "v1-reply"} {
+		t.Run(fault, func(t *testing.T) {
+			f := newFloorCollectorFixture(t)
+			readers := drainCollectorTargets(f)
+			id := f.config.Members[0].ID
+			switch fault {
+			case "missing":
+				delete(readers, id)
+			case "unknown":
+				readers[uuid.NewString()] = readers[id]
+				delete(readers, id)
+			case "epoch":
+				readers[id].ModelRuntimeEpoch++
+			case "topology":
+				readers[id].MembershipDigest[0] ^= 1
+			case "duplicate-binding":
+				f.config.ExecutionFloor.Bindings = append(f.config.ExecutionFloor.Bindings, f.config.ExecutionFloor.Bindings[0])
+			case "v1-reply":
+				f.clients[0].reply = func(ctx context.Context, request *velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest) (*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
+					response, err := f.acknowledge(ctx, request)
+					response.SchemaVersion = 1
+					return response, err
+				}
+			}
+			result, err := f.agent(t).InstallRecoveryExecutionFloor(t.Context(), f.disposition, readers)
+			if err == nil || result.AllInstalled {
+				t.Fatalf("invalid recovery floor accepted: %+v %v", result, err)
+			}
+			if fault != "v1-reply" {
+				for _, client := range f.clients {
+					if client.calls.Load() != 0 {
+						t.Fatal("invalid reader reached an RPC")
+					}
+				}
+				f.config.ExecutionFloor.CurrentReaders = readers
+				if _, err := stageworkeragent.New(f.config); err == nil {
+					t.Fatal("automatic recovery accepted invalid reader configuration")
+				}
+			}
+		})
 	}
 }
 

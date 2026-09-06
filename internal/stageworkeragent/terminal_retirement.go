@@ -72,7 +72,7 @@ func (retirer *TerminalScratchRetirement) Retire(ctx context.Context, dispositio
 	if err != nil {
 		return TerminalRetirementSnapshot{}, err
 	}
-	if _, err := retirer.runtime.executionFloorTargets(history.verified.Disposition); err != nil {
+	if _, err := retirer.runtime.recoveryExecutionFloorTargets(history.verified.Disposition, history.readers); err != nil {
 		return TerminalRetirementSnapshot{}, err
 	}
 	value := history.verified.Disposition
@@ -86,7 +86,7 @@ func (retirer *TerminalScratchRetirement) Retire(ctx context.Context, dispositio
 	if err := retirer.gate.waitInputWriters(ctx, value.GetCutoff()); err != nil {
 		return snapshot, err
 	}
-	floors, err := retirer.runtime.InstallExecutionFloor(ctx, value)
+	floors, err := retirer.runtime.InstallRecoveryExecutionFloor(ctx, value, history.readers)
 	if err != nil {
 		return snapshot, err
 	}
@@ -161,7 +161,7 @@ func (gate *FileAssignmentAdmission) beginTerminalRetirement(ctx context.Context
 	if err != nil {
 		return TerminalRetirementSnapshot{}, err
 	}
-	if err := gate.matchFloor(verified.Disposition, gate.state, true); err != nil {
+	if err := gate.matchFloor(verified.Disposition, gate.state, false); err != nil {
 		return TerminalRetirementSnapshot{}, err
 	}
 	value := verified.Disposition

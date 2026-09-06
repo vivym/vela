@@ -43,7 +43,7 @@ func (client *Client) InstallStageExecutionFloor(ctx context.Context, request *v
 		return nil, status.FromContextError(err).Err()
 	}
 	if response == nil || len(response.ProtoReflect().GetUnknown()) != 0 ||
-		modelruntimetransport.ValidateExecutionFloorAcknowledgement(command.GetIdentity(), verified.Digest, verified.Disposition.GetCutoff(), response.GetResult()) != nil {
+		modelruntimetransport.ValidateExecutionFloorAcknowledgementForVersion(command.GetSchemaVersion(), command.GetIdentity(), verified.Digest, verified.Disposition.GetCutoff(), response.GetResult()) != nil {
 		return nil, status.Error(codes.DataLoss, "Stage Worker member floor acknowledgement is invalid")
 	}
 	return proto.Clone(response.GetResult()).(*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse), nil
@@ -93,7 +93,7 @@ func (server *Server) InstallStageExecutionFloor(ctx context.Context, request *v
 		if !bytes.Equal(peerDigest[:], leader.GetIdentityDigest()) {
 			return nil, status.Error(codes.PermissionDenied, "only the deterministic WorkerMember leader may install remote floors")
 		}
-		if !server.matchesFloorAllocation(command, allocation) {
+		if command.GetSchemaVersion() == 1 && !server.matchesFloorAllocation(command, allocation) {
 			return nil, status.Error(codes.FailedPrecondition, "Stage Worker member floor historical runtime is not resident")
 		}
 	}
@@ -104,7 +104,7 @@ func (server *Server) InstallStageExecutionFloor(ctx context.Context, request *v
 	if err := ctx.Err(); err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
-	if err := modelruntimetransport.ValidateExecutionFloorAcknowledgement(command.GetIdentity(), verified.Digest, verified.Disposition.GetCutoff(), result); err != nil {
+	if err := modelruntimetransport.ValidateExecutionFloorAcknowledgementForVersion(command.GetSchemaVersion(), command.GetIdentity(), verified.Digest, verified.Disposition.GetCutoff(), result); err != nil {
 		return nil, status.Error(codes.DataLoss, "local ModelRuntime floor acknowledgement is invalid")
 	}
 	return &velav1.StageWorkerMemberServiceInstallStageExecutionFloorResponse{

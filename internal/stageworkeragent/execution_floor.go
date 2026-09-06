@@ -28,6 +28,9 @@ type ExecutionFloorConfig struct {
 	Validator *stageauthority.Validator
 	Bindings  []ExecutionFloorBinding
 	Timeout   time.Duration
+	// CurrentReaders explicitly selects current journal owners for automatic
+	// recovery. Every reader must also match exactly one trusted Binding.
+	CurrentReaders map[string]*velav1.ModelRuntimeIdentity
 }
 
 // ExecutionFloorResult describes this call's member acknowledgements only. It
@@ -44,6 +47,7 @@ type executionFloorCollector struct {
 	validator *stageauthority.Validator
 	bindings  []ExecutionFloorBinding
 	timeout   time.Duration
+	readers   map[string]*velav1.ModelRuntimeIdentity
 }
 
 func newExecutionFloorCollector(config *ExecutionFloorConfig, memberIDs []string) (*executionFloorCollector, error) {
@@ -77,12 +81,40 @@ func newExecutionFloorCollector(config *ExecutionFloorConfig, memberIDs []string
 	if len(seen) != len(memberIDs) {
 		return nil, errors.New("execution floor collection membership is incomplete")
 	}
+	if config.CurrentReaders != nil {
+		if len(config.CurrentReaders) != len(memberIDs) {
+			return nil, errors.New("execution floor recovery readers are incomplete")
+		}
+		collector.readers = make(map[string]*velav1.ModelRuntimeIdentity, len(memberIDs))
+		for id, identity := range config.CurrentReaders {
+			matches := 0
+			for _, binding := range collector.bindings {
+				if id == binding.Runtime.WorkerMemberID && identity != nil && proto.Equal(identity, executionDrainIdentity(binding.Runtime)) {
+					matches++
+				}
+			}
+			if matches != 1 {
+				return nil, errors.New("execution floor recovery reader is not a unique trusted binding")
+			}
+			collector.readers[id] = proto.Clone(identity).(*velav1.ModelRuntimeIdentity)
+		}
+	}
 	return collector, nil
 }
 
 // InstallExecutionFloor sends the complete signed history to every configured
 // member. A partial installation is restrictive and may be retried in full.
 func (agent *Agent) InstallExecutionFloor(ctx context.Context, disposition *velav1.StageTerminalDisposition) (ExecutionFloorResult, error) {
+	return agent.installExecutionFloor(ctx, disposition, nil, false)
+}
+
+// InstallRecoveryExecutionFloor sends the restriction to independently trusted
+// current journal owners. It neither recreates nor certifies historical writers.
+func (agent *Agent) InstallRecoveryExecutionFloor(ctx context.Context, disposition *velav1.StageTerminalDisposition, readers map[string]*velav1.ModelRuntimeIdentity) (ExecutionFloorResult, error) {
+	return agent.installExecutionFloor(ctx, disposition, readers, true)
+}
+
+func (agent *Agent) installExecutionFloor(ctx context.Context, disposition *velav1.StageTerminalDisposition, readers map[string]*velav1.ModelRuntimeIdentity, recovery bool) (ExecutionFloorResult, error) {
 	result := ExecutionFloorResult{}
 	if agent == nil || agent.floor == nil || ctx == nil {
 		return result, errors.New("execution floor collection is not configured")
@@ -96,7 +128,14 @@ func (agent *Agent) InstallExecutionFloor(ctx context.Context, disposition *vela
 	if err != nil {
 		return result, err
 	}
-	targets, err := agent.executionFloorTargets(verified.Disposition)
+	var targets map[string]*velav1.ModelRuntimeIdentity
+	version := uint32(1)
+	if recovery {
+		version = 2
+		targets, err = agent.recoveryExecutionFloorTargets(verified.Disposition, readers)
+	} else {
+		targets, err = agent.executionFloorTargets(verified.Disposition)
+	}
 	if err != nil {
 		return result, err
 	}
@@ -117,7 +156,7 @@ func (agent *Agent) InstallExecutionFloor(ctx context.Context, disposition *vela
 		// Each hop receives its own copy; it cannot alter another member's request
 		// or the independently bound response identity and disposition digest.
 		request := &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{
-			SchemaVersion: 1, Identity: proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
+			SchemaVersion: version, Identity: proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
 			Disposition: proto.Clone(verified.Disposition).(*velav1.StageTerminalDisposition),
 		}
 		go func() {
@@ -130,7 +169,7 @@ func (agent *Agent) InstallExecutionFloor(ctx context.Context, disposition *vela
 				callErr = callContext.Err()
 			}
 			if callErr == nil {
-				callErr = modelruntimetransport.ValidateExecutionFloorAcknowledgement(identity, verified.Digest, verified.Disposition.GetCutoff(), response)
+				callErr = modelruntimetransport.ValidateExecutionFloorAcknowledgementForVersion(version, identity, verified.Digest, verified.Disposition.GetCutoff(), response)
 			}
 			if callErr == nil {
 				response = proto.Clone(response).(*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse)
@@ -165,6 +204,36 @@ func (agent *Agent) InstallExecutionFloor(ctx context.Context, disposition *vela
 	}
 	result.AllInstalled = joined == nil && len(result.Acknowledgements) == result.RequiredMembers
 	return result, joined
+}
+
+func (agent *Agent) recoveryExecutionFloorTargets(value *velav1.StageTerminalDisposition, readers map[string]*velav1.ModelRuntimeIdentity) (map[string]*velav1.ModelRuntimeIdentity, error) {
+	if len(readers) != len(agent.ids) {
+		return nil, errors.New("execution floor recovery readers are incomplete")
+	}
+	targets := make(map[string]*velav1.ModelRuntimeIdentity, len(readers))
+	for _, allocation := range value.GetAllocations() {
+		if len(allocation.GetMembers()) != len(agent.ids) {
+			return nil, errors.New("execution floor signed membership is incomplete")
+		}
+		for _, member := range allocation.GetMembers() {
+			id := member.GetWorkerMemberId()
+			identity := readers[id]
+			if agent.members[id] == nil || identity == nil {
+				return nil, errors.New("execution floor recovery member is not configured")
+			}
+			matches := 0
+			for _, binding := range agent.floor.bindings {
+				if binding.matchesTopology(value, allocation, member) && proto.Equal(executionDrainIdentity(binding.Runtime), identity) {
+					matches++
+				}
+			}
+			if matches != 1 {
+				return nil, errors.New("execution floor recovery reader does not match trusted member topology")
+			}
+			targets[id] = proto.Clone(identity).(*velav1.ModelRuntimeIdentity)
+		}
+	}
+	return targets, nil
 }
 
 func (agent *Agent) executionFloorTargets(value *velav1.StageTerminalDisposition) (map[string]*velav1.ModelRuntimeIdentity, error) {

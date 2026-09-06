@@ -341,6 +341,17 @@ selects ordinary durable recovery through
 separate commands. Full unit, command/Runtime race, lint, actual CPU subprocess
 startup and non-root Linux checks pass. Fleet first-use provisioning, default
 deployment activation and Worker durable assembly remain open.
+The [replacement Runtime floor repair](runtime-replacement-floor-evidence-2026-09-06.md)
+now separates current durable admission restriction from historical writer proof.
+Floor RPC v2 accepts an exact current journal owner with the same trusted
+Worker/member/device topology after epoch/profile replacement; v1 retains its
+resident-history checks and both hops require matching reply versions. Explicit
+current-reader configuration enables automatic INTENT recovery through those
+owners when prior proof is complete. Missing old proof still retains scratch.
+Full unit, related race, lint, PostgreSQL/Control and non-root Linux checks pass.
+Older Workers reject retained v2 acknowledgements; forward recovery requires the
+new reader despite unchanged journal versions. Default durable Worker assembly,
+unknown writer recovery and bounded reclamation remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

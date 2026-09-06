@@ -119,12 +119,17 @@ message ModelRuntimeServiceProbeReadinessResponse {
 
 // A signed member-wide restriction. No backend drain or deletion is requested.
 message ModelRuntimeServiceInstallStageExecutionFloorRequest {
+  // V1 requires all historical local Runtime routes to remain resident.
+  // V2 restricts the current durable journal owner with matching trusted
+  // Worker/member/device topology, even after historical Runtime replacement.
+  // Neither version proves historical writer drain or non-admission.
   uint32 schema_version = 1;
   ModelRuntimeIdentity identity = 2;
   StageTerminalDisposition disposition = 3;
 }
 
 message ModelRuntimeServiceInstallStageExecutionFloorResponse {
+  // Must match the accepted request version; cross-version replies reject.
   uint32 schema_version = 1;
   ModelRuntimeIdentity identity = 2;
   ModelRuntimeCommandDecision decision = 3;

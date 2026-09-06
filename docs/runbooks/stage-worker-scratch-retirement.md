@@ -124,8 +124,12 @@ Default command assembly does not yet enable this path.
 Set `DurableStreamConfig.TerminalHistory` to the authenticated Control client to
 enable fresh collection in this recovery loop. It queries retained execution
 envelopes, prefers the latest signed renewal and preserves original Acquire IDs.
-It derives Runtime targets from trusted historical bindings and supplies no
-invented authority for an undelivered retry. Fresh complete history can advance
+By default it derives Runtime targets from trusted historical bindings. After
+Runtime epoch/profile replacement, set `ExecutionFloorConfig.CurrentReaders`
+to the complete current member-to-Runtime identity map, with each entry matching
+exactly one trusted `Bindings` entry. It is validated and cloned at construction;
+historical signed allocations cannot supply current reader authority. No
+execution authority is invented for an undelivered retry. Fresh complete history can advance
 INTENT; RETAIN or missing retained query evidence leaves it blocked. The pass
 uses the Runtime floor timeout. Existing READY/RETIRED recover before fresh
 collection and require no online Control or Runtime. Missing writer proof still
@@ -140,6 +144,20 @@ capacity and acquisition follow successful recovery. A Runtime that rejects
 readiness because it needs recovery therefore cannot block that recovery.
 This uses the existing Fleet identity/lifecycle conditions for capacity reports;
 it does not bypass them for removed or non-READY Fleet identities.
+
+Terminal recovery now uses execution-floor RPC v2 to restrict those current
+durable journal owners. V1 retains its resident-historical-route requirement.
+V2 still requires exact current identity, fresh signed complete topology and
+matching-version durable replies from every member. It does not prove that an
+old writer stopped. Missing original drain/non-admission proof leaves INTENT
+and scratch intact after replacement. See
+[replacement Runtime evidence](../runtime-replacement-floor-evidence-2026-09-06.md).
+
+The newer Worker reader accepts retained v1 and v2 floor replies. An older
+Worker rejects retained v2 replies despite unchanged outer journal schema 4;
+use the newer reader for forward recovery. Do not relabel, strip or erase proof
+to force binary rollback. V1-only Runtime/member hops cannot finish v2
+retirement and retain scratch until upgraded.
 
 ## Remaining Lifecycle Boundary
 

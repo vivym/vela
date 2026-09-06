@@ -22,6 +22,91 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestExecutionFloorRecoveryRPCRestrictsCurrentOwnerWithoutHistoricalDrain(t *testing.T) {
+	directory := privateExecutionStateDirectory(t)
+	f := durableExecutionFixture(t, directory, true, "", 9, time.Time{})
+	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
+	if err := f.supervisor.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+	recovered := durableExecutionFixture(t, directory, false, "", 10, f.clock.Now())
+	client := dialExecutionFloorServer(t, recovered.supervisor)
+	request := &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{
+		SchemaVersion: 1, Identity: discoverExecutionFloorIdentity(t, client, recovered.bindings[0]), Disposition: f.disposition(t),
+	}
+	if response, err := client.InstallStageExecutionFloor(t.Context(), request); err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+		t.Fatalf("v1 accepted absent historical runtimes: %v %v", response, err)
+	}
+	request.SchemaVersion = 2
+	for range 2 {
+		response, err := client.InstallStageExecutionFloor(t.Context(), request)
+		if err != nil || response.GetSchemaVersion() != 2 || !response.GetDurable() || response.GetInstalledCutoff() != 11 || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+			t.Fatalf("v2 current-owner floor: %v %v", response, err)
+		}
+	}
+	assertFloorCommandsRejected(t, recovered.supervisor, recovered.authority(t, 0, 11))
+	assertRecoveryDrainBlocks(t, recovered, recovered.authority(t, 0, 12))
+	if proof, err := recovered.supervisor.CheckpointNonAdmission(t.Context(), f.authorities[1]); err == nil || proof != nil {
+		t.Fatalf("recovery floor manufactured old-epoch non-admission: %+v %v", proof, err)
+	}
+	if state := readDurableExecutionState(t, directory); state.Floor != 11 || state.Highest != 10 {
+		t.Fatalf("recovery floor lost durable restrictions: %+v", state)
+	}
+}
+
+func TestExecutionFloorRecoveryRPCRejectsUntrustedTopologyAndUnavailableJournal(t *testing.T) {
+	for _, fault := range []string{"worker", "device", "member-identity", "device-subset", "unknown-reader", "signature", "expired", "non-durable", "missing-state"} {
+		t.Run(fault, func(t *testing.T) {
+			directory := privateExecutionStateDirectory(t)
+			f := durableExecutionFixture(t, directory, true, "", 9, time.Time{})
+			if fault == "non-durable" {
+				f = newExecutionFloorFixture(t, "")
+			}
+			client := dialExecutionFloorServer(t, f.supervisor)
+			request := &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{
+				SchemaVersion: 2, Identity: discoverExecutionFloorIdentity(t, client, f.bindings[0]), Disposition: f.disposition(t),
+			}
+			switch fault {
+			case "worker":
+				request.Disposition.WorkerInstanceEpoch++
+			case "device":
+				request.Disposition.Devices[0].DeviceEpoch++
+			case "member-identity", "device-subset":
+				for _, allocation := range request.Disposition.Allocations {
+					if fault == "member-identity" {
+						allocation.Members[0].IdentityDigest[0] ^= 1
+					} else {
+						allocation.Members[0].DeviceSubsetDigest[0] ^= 1
+					}
+				}
+			case "unknown-reader":
+				request.Identity.ModelRuntimeEpoch++
+			case "expired":
+				f.clock.Advance(2 * time.Minute)
+			case "missing-state":
+				if err := os.Remove(filepath.Join(directory, durableStateFileName)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var err error
+			request.Disposition, err = f.signer.SignTerminalDisposition(request.Disposition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fault == "signature" {
+				request.Disposition.Signature[0] ^= 1
+			}
+			response, err := client.InstallStageExecutionFloor(t.Context(), request)
+			if response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || response.GetDurable() {
+				t.Fatalf("unproven v2 installation: %v %v", response, err)
+			}
+			if fault != "missing-state" && fault != "non-durable" && readDurableExecutionState(t, directory).Floor != 0 {
+				t.Fatal("invalid v2 request changed durable floor")
+			}
+		})
+	}
+}
+
 func TestExecutionFloorRPCPersistsWhileBackendIsBlockedAndReplays(t *testing.T) {
 	directory := privateExecutionStateDirectory(t)
 	f := durableExecutionFixture(t, directory, true, "prepare", 9, time.Time{})
@@ -86,7 +171,7 @@ func TestExecutionFloorRPCRejectsUntrustedAndNonDurableInstallation(t *testing.T
 			}
 			switch mutation {
 			case "schema":
-				request.SchemaVersion++
+				request.SchemaVersion = 3
 			case "unknown":
 				request.ProtoReflect().SetUnknown([]byte{0x78, 0x01})
 			case "identity unknown":

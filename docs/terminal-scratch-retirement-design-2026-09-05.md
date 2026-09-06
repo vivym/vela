@@ -121,6 +121,14 @@ now supplies explicit first initialization and validated recovery/upgrades
 without model startup. Runtime serving optionally selects existing journal
 recovery through its command configuration. This implements the local operation;
 Fleet first-use authorization and default Worker/deployment assembly remain open.
+The [replacement Runtime floor repair](runtime-replacement-floor-evidence-2026-09-06.md)
+adds floor RPC v2 for the current durable journal owner, independently of whether
+historical epoch/profile routes remain resident. Trusted Worker/member/device
+topology and complete historical writer proof remain required. Explicit current
+readers allow INTENT recovery after replacement; missing old proof cannot be
+manufactured by installing a new floor. V1 keeps its original route checks.
+Worker readers before this increment reject retained v2 acknowledgements even
+at journal schema 4, so recovery must retain the newer reader.
 
 ## Current ownership and evidence
 

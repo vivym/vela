@@ -33,6 +33,41 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func TestMemberFloorRecoveryTLSAndUnixUseCurrentJournalOwner(t *testing.T) {
+	f, request, _ := newMemberFloorFixture(t)
+	directory := privateMemberFloorDirectory(t)
+	chain := startMemberFloorChain(t, f, request.Command.Disposition, directory, true, false)
+	chain.close()
+	// Old allocation routes are gone; the same member-wide journal persists.
+	f.runtime.identity.ModelRuntimeEpoch++
+	f.runtime.identity.ModelResidencyId, f.runtime.identity.StageProfileRevisionId = uuid.NewString(), uuid.NewString()
+	f.runtime.identity.RuntimeIdentity = "replacement-runtime"
+	request.Command.Identity = proto.Clone(f.runtime.identity).(*velav1.ModelRuntimeIdentity)
+	chain = startMemberFloorChain(t, f, request.Command.Disposition, directory, false, true)
+	if response, err := chain.client.InstallStageExecutionFloor(t.Context(), request.Command); response != nil || status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("v1 accepted nonresident history: %v %v", response, err)
+	}
+	request.Command.SchemaVersion = 2
+	if response, err := chain.client.InstallStageExecutionFloor(t.Context(), request.Command); response != nil || status.Code(err) != codes.Unavailable {
+		t.Fatalf("v2 response loss was not exercised: %v %v", response, err)
+	}
+	response, err := chain.client.InstallStageExecutionFloor(t.Context(), request.Command)
+	if err != nil || response.GetSchemaVersion() != 2 || !response.GetDurable() || response.GetInstalledCutoff() != 11 {
+		t.Fatalf("v2 current-owner retry: %v %v", response, err)
+	}
+	nonleader := chain.dial(t, chain.followerCredentials)
+	if response, err := nonleader.InstallStageExecutionFloor(t.Context(), request.Command); response != nil || status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("v2 bypassed mTLS leader authorization: %v %v", response, err)
+	}
+	chain.close()
+	f.runtime.identity.ModelRuntimeEpoch++
+	request.Command.Identity = proto.Clone(f.runtime.identity).(*velav1.ModelRuntimeIdentity)
+	chain = startMemberFloorChain(t, f, request.Command.Disposition, directory, false, false)
+	if response, err := chain.client.InstallStageExecutionFloor(t.Context(), request.Command); err != nil || response.GetSchemaVersion() != 2 || response.GetInstalledCutoff() != 11 {
+		t.Fatalf("v2 floor did not survive another restart: %v %v", response, err)
+	}
+}
+
 func TestMemberFloorTLSAndUnixJournalSurviveResponseLossAndRestart(t *testing.T) {
 	f, request, _ := newMemberFloorFixture(t)
 	directory := privateMemberFloorDirectory(t)

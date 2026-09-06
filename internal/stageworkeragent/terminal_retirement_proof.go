@@ -27,7 +27,7 @@ func (gate *FileAssignmentAdmission) validateRetirementProofs(value *velav1.Stag
 		if err := gate.validateRetirementReader(value, allocations[0], member.GetWorkerMemberId(), ack.GetIdentity()); err != nil {
 			return err
 		}
-		if err := modelruntimetransport.ValidateExecutionFloorAcknowledgement(ack.GetIdentity(), verified.Digest, value.GetCutoff(), ack); err != nil {
+		if err := modelruntimetransport.ValidateExecutionFloorAcknowledgementForVersion(ack.GetSchemaVersion(), ack.GetIdentity(), verified.Digest, value.GetCutoff(), ack); err != nil {
 			return err
 		}
 	}

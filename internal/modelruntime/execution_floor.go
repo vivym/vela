@@ -106,7 +106,17 @@ func newExecutionFloorVerifier(config ExecutionFloorConfig, baseline stageauthor
 }
 
 func (supervisor *Supervisor) InstallExecutionFloor(ctx context.Context, value *velav1.StageTerminalDisposition) (*ExecutionFloorInstallation, error) {
-	if supervisor == nil || supervisor.floor == nil || supervisor.admission == nil {
+	return supervisor.installExecutionFloor(ctx, value, false)
+}
+
+// InstallRecoveryExecutionFloor restricts the current durable journal owner.
+// Historical routes need not be resident; their writer proofs remain separate.
+func (supervisor *Supervisor) InstallRecoveryExecutionFloor(ctx context.Context, value *velav1.StageTerminalDisposition) (*ExecutionFloorInstallation, error) {
+	return supervisor.installExecutionFloor(ctx, value, true)
+}
+
+func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *velav1.StageTerminalDisposition, recovery bool) (*ExecutionFloorInstallation, error) {
+	if supervisor == nil || supervisor.floor == nil || supervisor.admission == nil || ctx == nil {
 		return nil, errors.New("ModelRuntime execution floor verifier is not configured")
 	}
 	admission := supervisor.admission
@@ -118,12 +128,15 @@ func (supervisor *Supervisor) InstallExecutionFloor(ctx context.Context, value *
 	if err := admission.checkStateLocked(); err != nil {
 		return nil, err
 	}
+	if recovery && admission.store == nil {
+		return nil, errors.New("execution floor recovery requires a durable journal owner")
+	}
 	// Validate freshness at the same admission boundary that installs the cutoff.
 	verified, err := supervisor.floor.validator.ValidateTerminalDispositionEnvelope(value)
 	if err != nil {
 		return nil, err
 	}
-	if err := supervisor.matchExecutionFloorScope(verified.Disposition, true); err != nil {
+	if err := supervisor.matchExecutionFloorScope(verified.Disposition, !recovery); err != nil {
 		return nil, err
 	}
 	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {

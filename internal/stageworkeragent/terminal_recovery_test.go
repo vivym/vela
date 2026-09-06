@@ -60,7 +60,8 @@ func TestTerminalRecoveryCollectsFreshHistoryAndResumesLostProof(t *testing.T) {
 			f := terminalMaterializationFixture(t)
 			gate := f.open(t)
 			completeAdmissionInputs(t, beginAdmission(t, gate, f.assignment, f.acquireID))
-			group := startFloorCollectorRuntimes(t, f, t.TempDir(), true, false)
+			base := t.TempDir()
+			group := startFloorCollectorRuntimes(t, f, base, true, false)
 			// One allocated retry never received an execution envelope or entered Runtime.
 			// The original allocation executed and sealed, so it must supply drain proof.
 			a := f.assignment.Authority
@@ -95,9 +96,17 @@ func TestTerminalRecoveryCollectsFreshHistoryAndResumesLostProof(t *testing.T) {
 					t.Fatalf("lost proof did not retain INTENT: %+v %+v %v", state, result, err)
 				}
 				assertRetirementScratch(t, paths, true)
+				group.close()
 				if err := gate.Close(); err != nil {
 					t.Fatal(err)
 				}
+				for index := range f.config.ExecutionFloor.Bindings {
+					binding := &f.config.ExecutionFloor.Bindings[index]
+					binding.Runtime.ModelRuntimeEpoch++
+					f.admissionFixture.config.Bindings[index] = stageworkeragent.AdmissionRuntimeBinding(*binding)
+				}
+				group = startFloorCollectorRuntimes(t, f, base, false, false)
+				f.config.ExecutionFloor.CurrentReaders = drainCollectorTargets(f)
 				gate = f.open(t)
 				// The first signed response has expired. Re-query against the old envelope.
 				f.clock.Add(int64(2 * time.Minute))
@@ -105,6 +114,9 @@ func TestTerminalRecoveryCollectsFreshHistoryAndResumesLostProof(t *testing.T) {
 				f.disposition.ExpiresAt = timestamppb.New(f.disposition.ObservedAt.AsTime().Add(time.Minute))
 				f.signDisposition(t)
 				stream = automaticTerminalStream(t, terminalMaterializationConfig(t, f, gate, journal, validator, guard), reader)
+				for _, configured := range f.config.ExecutionFloor.CurrentReaders {
+					configured.ModelRuntimeEpoch++
+				}
 			}
 			result, err := stream.ResumeMaterializations(t.Context())
 			if err != nil || result.TerminalRecordsRetired != 1 || result.Committed || result.SourceLostReported || result.L2Published || guard.calls != 0 {

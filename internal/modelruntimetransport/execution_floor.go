@@ -47,10 +47,11 @@ func (client *Client) InstallExecutionFloor(
 }
 
 // ValidateExecutionFloorRequest authenticates a current restriction and its
-// target scope. A receiving Runtime must also check its complete trusted routes.
+// target scope. V1 requires resident historical routes at the receiving Runtime;
+// V2 restricts a current durable journal owner, independently of writer drain.
 func ValidateExecutionFloorRequest(validator *stageauthority.Validator, request *velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest) (stageauthority.VerifiedTerminalDisposition, error) {
 	identity := request.GetIdentity()
-	if validator == nil || request == nil || request.GetSchemaVersion() != 1 || identity == nil ||
+	if validator == nil || request == nil || (request.GetSchemaVersion() != 1 && request.GetSchemaVersion() != 2) || identity == nil ||
 		len(request.ProtoReflect().GetUnknown()) != 0 || len(identity.ProtoReflect().GetUnknown()) != 0 {
 		return stageauthority.VerifiedTerminalDisposition{}, errors.New("execution floor request is invalid")
 	}
@@ -79,7 +80,13 @@ func ValidateExecutionFloorRequest(validator *stageauthority.Validator, request 
 // ValidateExecutionFloorAcknowledgement binds a response to an independently
 // verified request. A valid acknowledgement proves admission exclusion, not drain.
 func ValidateExecutionFloorAcknowledgement(identity *velav1.ModelRuntimeIdentity, digest [sha256.Size]byte, cutoff int64, response *velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse) error {
-	if response == nil || response.GetSchemaVersion() != 1 || len(response.ProtoReflect().GetUnknown()) != 0 ||
+	return ValidateExecutionFloorAcknowledgementForVersion(1, identity, digest, cutoff, response)
+}
+
+// ValidateExecutionFloorAcknowledgementForVersion prevents cross-version reply
+// substitution. Both versions prove only a durable admission restriction.
+func ValidateExecutionFloorAcknowledgementForVersion(version uint32, identity *velav1.ModelRuntimeIdentity, digest [sha256.Size]byte, cutoff int64, response *velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse) error {
+	if (version != 1 && version != 2) || response == nil || response.GetSchemaVersion() != version || len(response.ProtoReflect().GetUnknown()) != 0 ||
 		identity == nil || cutoff <= 0 || !proto.Equal(response.GetIdentity(), identity) ||
 		response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
 		!response.GetDurable() || response.GetInstalledCutoff() < cutoff ||

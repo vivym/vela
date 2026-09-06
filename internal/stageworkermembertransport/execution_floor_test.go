@@ -18,6 +18,26 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func TestMemberFloorRecoveryRejectsResponseVersionSubstitution(t *testing.T) {
+	for _, hop := range []string{"runtime", "member"} {
+		f, request, runtime := newMemberFloorFixture(t)
+		request.Command.SchemaVersion = 2
+		runtime.mutate = func(response *velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse) *velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse {
+			response.SchemaVersion = 1
+			return response
+		}
+		var err error
+		if hop == "runtime" {
+			_, err = f.server.InstallStageExecutionFloor(t.Context(), request)
+		} else {
+			_, err = floorTestClient(f, &memberFloorReplyService{runtime: runtime}).InstallStageExecutionFloor(t.Context(), request.Command)
+		}
+		if status.Code(err) != codes.DataLoss {
+			t.Fatalf("v1 reply satisfied v2 request at %s: %v", hop, err)
+		}
+	}
+}
+
 func TestMemberFloorServerAuthenticatesAndPreservesSignedHistory(t *testing.T) {
 	f, request, runtime := newMemberFloorFixture(t)
 	for range 2 {
@@ -43,7 +63,7 @@ func TestMemberFloorServerRejectsUntrustedScopeBeforeRuntime(t *testing.T) {
 			case "target":
 				request.TargetWorkerMemberId = f.leader.ID
 			case "schema":
-				request.Command.SchemaVersion++
+				request.Command.SchemaVersion = 3
 			case "unknown wrapper":
 				request.ProtoReflect().SetUnknown([]byte{0x78, 0x01})
 			case "unknown command":
@@ -291,7 +311,7 @@ func (runtime *memberFloorRuntimeClient) InstallStageExecutionFloor(_ context.Co
 		return nil, err
 	}
 	response := &velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse{
-		SchemaVersion: 1, Identity: proto.Clone(request.GetIdentity()).(*velav1.ModelRuntimeIdentity),
+		SchemaVersion: request.GetSchemaVersion(), Identity: proto.Clone(request.GetIdentity()).(*velav1.ModelRuntimeIdentity),
 		Decision: velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED, DispositionDigest: bytes.Clone(verified.Digest[:]),
 		InstalledCutoff: request.GetDisposition().GetCutoff(), Durable: true,
 	}

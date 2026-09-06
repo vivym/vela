@@ -15,6 +15,61 @@ import (
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
+func TestTerminalScratchRetirementRecoversThroughReplacementRuntimeOwners(t *testing.T) {
+	for _, complete := range []bool{true, false} {
+		t.Run(map[bool]string{true: "complete-proof", false: "missing-old-checkpoint"}[complete], func(t *testing.T) {
+			f := newAssignmentFloorFixture(t)
+			gate := f.open(t)
+			base := t.TempDir()
+			group := startFloorCollectorRuntimes(t, f, base, true, false)
+			agent := f.agent(t)
+			if _, err := agent.InstallExecutionFloor(t.Context(), f.disposition); err != nil {
+				t.Fatal(err)
+			}
+			if complete {
+				proof, err := agent.CheckpointTerminalExecutionExclusions(t.Context(), f.disposition, nil, drainCollectorTargets(f))
+				if err != nil || !proof.AllExcluded {
+					t.Fatalf("original runtime exclusion: %+v %v", proof, err)
+				}
+			}
+			paths := retirementScratch(t, f)
+			group.close()
+			if err := gate.Close(); err != nil {
+				t.Fatal(err)
+			}
+			for index := range f.config.ExecutionFloor.Bindings {
+				binding := &f.config.ExecutionFloor.Bindings[index]
+				binding.Runtime.ModelRuntimeEpoch += 100
+				binding.Runtime.ModelResidencyID, binding.Runtime.StageProfileRevisionID = uuid.NewString(), uuid.NewString()
+				binding.Runtime.ModelRuntimeIdentity += "-replacement"
+				f.admissionFixture.config.Bindings[index] = stageworkeragent.AdmissionRuntimeBinding(*binding)
+			}
+			group = startFloorCollectorRuntimes(t, f, base, false, false)
+			gate = f.open(t)
+			result, err := terminalRetirer(t, gate, f).Retire(t.Context(), f.disposition, nil, drainCollectorTargets(f))
+			if complete {
+				if err != nil || result.Phase != stageworkeragent.TerminalRetirementRetired {
+					t.Fatalf("replacement runtime could not recover complete proof: %+v %v", result, err)
+				}
+				assertRetirementScratch(t, paths, false)
+				group.close()
+				if err := gate.Close(); err != nil {
+					t.Fatal(err)
+				}
+				gate = f.open(t)
+				if _, err := terminalRetirer(t, gate, f).Resume(t.Context(), result.StageRunID); err != nil {
+					t.Fatalf("offline recovery of replacement-owner proof: %v", err)
+				}
+			} else {
+				if err == nil || result.Phase != stageworkeragent.TerminalRetirementIntent {
+					t.Fatalf("missing old checkpoint must retain INTENT: %+v %v", result, err)
+				}
+				assertRetirementScratch(t, paths, true)
+			}
+		})
+	}
+}
+
 func terminalRetirer(t *testing.T, gate *stageworkeragent.FileAssignmentAdmission, f *floorCollectorFixture) *stageworkeragent.TerminalScratchRetirement {
 	t.Helper()
 	retirer, err := stageworkeragent.NewTerminalScratchRetirement(gate, f.agent(t), stageworkeragent.AttemptOwnedFilesystemScratchV1)

@@ -620,7 +620,11 @@ func (x *ModelRuntimeServiceProbeReadinessResponse) GetDetail() string {
 
 // A signed member-wide restriction. No backend drain or deletion is requested.
 type ModelRuntimeServiceInstallStageExecutionFloorRequest struct {
-	state         protoimpl.MessageState    `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// V1 requires all historical local Runtime routes to remain resident.
+	// V2 restricts the current durable journal owner with matching trusted
+	// Worker/member/device topology, even after historical Runtime replacement.
+	// Neither version proves historical writer drain or non-admission.
 	SchemaVersion uint32                    `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	Identity      *ModelRuntimeIdentity     `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
 	Disposition   *StageTerminalDisposition `protobuf:"bytes,3,opt,name=disposition,proto3" json:"disposition,omitempty"`
@@ -680,7 +684,8 @@ func (x *ModelRuntimeServiceInstallStageExecutionFloorRequest) GetDisposition() 
 }
 
 type ModelRuntimeServiceInstallStageExecutionFloorResponse struct {
-	state         protoimpl.MessageState      `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Must match the accepted request version; cross-version replies reject.
 	SchemaVersion uint32                      `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	Identity      *ModelRuntimeIdentity       `protobuf:"bytes,2,opt,name=identity,proto3" json:"identity,omitempty"`
 	Decision      ModelRuntimeCommandDecision `protobuf:"varint,3,opt,name=decision,proto3,enum=vela.v1.ModelRuntimeCommandDecision" json:"decision,omitempty"`

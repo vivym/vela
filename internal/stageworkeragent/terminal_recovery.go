@@ -76,7 +76,12 @@ func (agent *StreamAgent) collectTerminalMaterializations(ctx context.Context, p
 		if verified.Digest != response.Digest {
 			return retired, errors.New("terminal history reader returned a mismatched verified digest")
 		}
-		targets, err := agent.runtime.executionFloorTargets(verified.Disposition)
+		var targets map[string]*velav1.ModelRuntimeIdentity
+		if agent.runtime.floor.readers != nil {
+			targets, err = agent.runtime.recoveryExecutionFloorTargets(verified.Disposition, agent.runtime.floor.readers)
+		} else {
+			targets, err = agent.runtime.executionFloorTargets(verified.Disposition)
+		}
 		if err != nil {
 			return retired, err
 		}
