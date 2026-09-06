@@ -774,6 +774,15 @@ This is not image approval, memory/configuration attestation or proof that the
 observed executable sent the original request. Startup authorization, endpoint
 assembly and independent retirement remain open; database/journal versions and
 Production Gates are unchanged.
+The [image provenance experiment](runtime-image-provenance-evidence-2026-09-07.md)
+compares five exact OCI fixture images through native containerd snapshots,
+real non-root processes and the pinned library's flattened tar. Same-layer
+whiteout/recreation and lower-hardlink target replacement produce incorrect
+flattened executable identities. Actual read-only snapshots match the expected
+kernel file in all five cases. All 16 selected Linux CPU tests pass. A production
+reader must use the supported runtime's materialized image view and retain its
+exact content/snapshot lifetime; that reader, startup grants and retirement are
+still pending. No Production Gate is advanced by this test-only increment.
 The [driver environment repair](driver-environment-evidence-2026-09-06.md)
 removes parent/image environment inheritance from backend launch and shares
 bounded, UTF-8-valid environment checks across Fleet, manifests and direct

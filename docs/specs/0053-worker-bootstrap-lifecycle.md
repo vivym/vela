@@ -254,6 +254,16 @@ which executable sent the earlier payload or rule out intervening ABA execs.
 The launch protocol must close that relationship before issuing startup
 authority. See the [executable evidence](../node-runtime-executable-evidence-2026-09-06.md).
 
+Expected executable identity cannot be inferred from a generic flattened tar.
+The pinned image-library extractor loses a same-layer whiteout/recreation and
+changes lower hardlink identity after an upper target replacement. Real
+containerd CPU tests instead match the supported runtime's read-only image
+snapshot to the kernel executable. The production image reader must bind the
+exact image/config/DiffID chain, retain the actual snapshot view during file
+measurement and release its mount activation/snapshot/lease. That reader and
+its startup integration remain unimplemented. See the
+[image provenance evidence](../runtime-image-provenance-evidence-2026-09-07.md).
+
 ## Declared driver environment
 
 `LaunchRuntime.Environment` is the complete environment passed to its backend
