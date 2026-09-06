@@ -183,6 +183,7 @@ func TestWorkerBootstrapMutualTLSBindsNodeAndPreservesLostResponses(t *testing.T
 type bootstrapTLSClient struct {
 	bootstrap *fleettransport.BootstrapClient
 	rpc       velav1.FleetMaintenanceServiceClient
+	arguments []string
 }
 
 func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor grpc.UnaryServerInterceptor) []bootstrapTLSClient {
@@ -239,7 +240,8 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 		cert, key := issueWorkerTransportTestCertificate(t, ca, caKey, pkix.Name{CommonName: "node-agent"}, nil,
 			[]*url.URL{mustParseWorkerSPIFFEID(t, spiffe)}, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
 		prefix := identity.AgentID.String()
-		clientTLS, err := fleettransport.NewClientTLSCredentials(write(prefix+".pem", cert), write(prefix+".key", key), caPath, serverName)
+		certificatePath, keyPath := write(prefix+".pem", cert), write(prefix+".key", key)
+		clientTLS, err := fleettransport.NewClientTLSCredentials(certificatePath, keyPath, caPath, serverName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -259,7 +261,9 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = connection.Close() })
-		clients = append(clients, bootstrapTLSClient{bootstrap: bootstrap, rpc: velav1.NewFleetMaintenanceServiceClient(connection)})
+		clients = append(clients, bootstrapTLSClient{bootstrap: bootstrap, rpc: velav1.NewFleetMaintenanceServiceClient(connection),
+			arguments: []string{"--fleet-address", listener.Addr().String(), "--fleet-server-name", serverName,
+				"--fleet-ca-file", caPath, "--client-cert-file", certificatePath, "--client-key-file", keyPath}})
 	}
 	return clients
 }

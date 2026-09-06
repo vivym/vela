@@ -17,6 +17,32 @@ func NewClientTLSCredentials(
 	serverCAPath string,
 	serverName string,
 ) (credentials.TransportCredentials, error) {
+	config, err := clientTLSConfig(certificatePath, privateKeyPath, serverCAPath, serverName)
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewTLS(config), nil
+}
+
+// NewWorkerBootstrapTLSCredentials derives the expected principal from the same
+// certificate loaded into the transport, before any first-use authority call.
+func NewWorkerBootstrapTLSCredentials(certificatePath, privateKeyPath, serverCAPath, serverName string) (credentials.TransportCredentials, string, error) {
+	config, err := clientTLSConfig(certificatePath, privateKeyPath, serverCAPath, serverName)
+	if err != nil {
+		return nil, "", err
+	}
+	leaf, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil || len(leaf.URIs) != 1 || leaf.URIs[0] == nil {
+		return nil, "", errors.New("worker bootstrap certificate requires one canonical Node Agent identity")
+	}
+	identity := leaf.URIs[0].String()
+	if _, valid := parseNodeAgentSPIFFEIdentity(identity); !valid {
+		return nil, "", errors.New("worker bootstrap certificate requires one canonical Node Agent identity")
+	}
+	return credentials.NewTLS(config), identity, nil
+}
+
+func clientTLSConfig(certificatePath, privateKeyPath, serverCAPath, serverName string) (*tls.Config, error) {
 	if serverName == "" || len(serverName) > 253 ||
 		strings.TrimSpace(serverName) != serverName || strings.ContainsRune(serverName, '\x00') {
 		return nil, errors.New("fleet maintenance server name is invalid")
@@ -45,11 +71,11 @@ func NewClientTLSCredentials(
 	if !roots.AppendCertsFromPEM(serverCAPEM) {
 		return nil, errors.New("fleet maintenance server CA contains no certificates")
 	}
-	return credentials.NewTLS(&tls.Config{
+	return &tls.Config{
 		MinVersion: tls.VersionTLS13, ServerName: serverName,
 		RootCAs: roots, Certificates: []tls.Certificate{certificate},
 		NextProtos: []string{"h2"},
-	}), nil
+	}, nil
 }
 
 const (

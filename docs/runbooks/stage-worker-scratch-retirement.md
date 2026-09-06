@@ -258,6 +258,72 @@ and pair, and only recovers retained state. Keep incomplete operations and
 journals intact; deleting them or rerunning offline `initialize` is not recovery
 authority. A retained operation without a complete pair requires independent
 reconciliation, including when an RPC response or initializer outcome was lost.
+
+## Authenticated Node Bootstrap
+
+Schema 92 and a Control deployment supplying `BootstrapService` are prerequisites.
+The one-shot Node Agent command uses explicit configuration, independent of the
+root daemon and its device/remediation setup. The client certificate must contain
+exactly one canonical, registered Node Agent URI SAN with `ClientAuth` usage.
+The node and actor come from that same loaded certificate. A CA signature alone
+does not grant registration or ownership of another Agent's history.
+
+Run as the intended journal-owner UID, with all six directories in the local
+bootstrap layout already private and owned by that UID. Configuration/key files
+must satisfy the existing secure-file checks. Deliver Node Agent credentials
+only to the provisioning context; the serving Worker/Runtime does not need them.
+The scratch path is its canonical local mount. The launch file remains the
+original approved bundle member manifest; do not rewrite its Pod paths.
+
+Example arguments, using provisioned paths and endpoint values:
+
+```sh
+vela-node-agent bootstrap --action prepare \
+  --fleet-address fleet.internal:8444 --fleet-server-name fleet.internal \
+  --fleet-ca-file /run/vela-bootstrap/fleet-ca.pem \
+  --client-cert-file /run/vela-bootstrap/node-client.pem \
+  --client-key-file /run/vela-bootstrap/node-client.key \
+  --bundle-manifest-file /run/vela-bootstrap/bundle.json \
+  --launch-manifest-file /run/vela-bootstrap/launch.json \
+  --verifier-keyring-file /run/vela-bootstrap/verifier.json \
+  --scratch-directory /var/lib/vela/member-scratch --max-records 4 \
+  --timeout 30s
+```
+
+Successful stdout is one schema-1 JSON document with the immutable request ID,
+node/actor, inspected Worker/Runtime journal status and original Registry receipt
+timestamp. This output is journal preparation evidence, not readiness, writer
+drain, activation or a Launch Receipt. History, layout and journal versions are
+unchanged. `--timeout` is positive and at most five minutes; connection startup
+also has the existing 15-second bound. SIGINT/SIGTERM cancel the command.
+
+On interruption or output loss, preserve `bootstrap/operation.json`, its original
+request ID and all journal files. Repeating `prepare` with the same configuration
+only recovers a complete recorded pair and replays its receipt. It never repeats
+Claim or initializes a retained operation. An incomplete pair returns an error
+and needs independent reconciliation, even if Registry history shows a claim.
+
+Read the original `request_id` from the retained operation for inspection:
+
+```sh
+vela-node-agent bootstrap --action history \
+  --fleet-address fleet.internal:8444 --fleet-server-name fleet.internal \
+  --fleet-ca-file /run/vela-bootstrap/fleet-ca.pem \
+  --client-cert-file /run/vela-bootstrap/node-client.pem \
+  --client-key-file /run/vela-bootstrap/node-client.key \
+  --request-id <original-request-uuid> --timeout 30s
+```
+
+History takes no preparation settings and cannot issue permission or reconstruct
+missing local files. Its schema-1 JSON contains the original claim and optional
+journal pair, with digests/scopes as lowercase hex. Missing or differently owned
+history exits unsuccessfully without a result. A successful query does not
+validate current local journal contents. Keep its evidence separate from the
+offline journal inspection and future lifetime-locked serving checks.
+
+The default node daemon, systemd unit and recurring Fleet Pod init paths still
+do not invoke preparation. See
+[command verification](../node-bootstrap-command-evidence-2026-09-06.md).
 The [authenticated Fleet transport](../worker-bootstrap-transport-evidence-2026-09-06.md)
 now supplies node-bound claim/receipt methods and a read-only history lookup.
 History lookup never grants initialization. Apply schema 92 first and use the

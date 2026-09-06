@@ -134,11 +134,35 @@ The control plane uses this same registry as the inbound authorization map for
 WorkerInstance observations. A certificate chaining to the configured Fleet
 client CA is not sufficient: its canonical Node Agent SPIFFE URI, decoded Node
 identity, and legacy Worker UUID must exactly match a current registry entry.
-Registered Node Agents may call only `ObserveWorkerInstance`, and direct
-reports must contain a complete single-node WorkerInstance whose every Device
-and WorkerMember belongs to the authenticated Node. Fleet Controller identity
-remains required for every mutation, ResidencyPlan, and cross-node aggregate
-operation.
+Registered Node Agents may call `ObserveWorkerInstance` and the scoped Worker
+bootstrap claim, receipt and read-only history methods. Direct observations
+must contain a complete single-node WorkerInstance whose every Device and
+WorkerMember belongs to the authenticated Node. Bootstrap checks the approved
+member's Node before consuming first use and binds history to the original Agent
+UUID. Fleet Controller identity remains required for ResidencyPlans, Pod
+mutation authorization and cross-node aggregate observations.
+
+## Explicit Worker bootstrap command
+
+`vela-node-agent bootstrap --action prepare` is a separate one-shot command.
+It loads no daemon configuration, probes no devices, starts no backend and
+performs no remediation. `--action history --request-id <original-uuid>` reads
+the authenticated Registry history without opening or changing scratch.
+Both actions require explicit Fleet TLS settings and a registered Node Agent
+client certificate; node and actor are derived from that same loaded certificate.
+
+Run preparation in the provisioning context as the intended journal-owner UID,
+with its preprovisioned owner-only scratch layout and private configuration.
+The default root daemon does not provision these journals. Credential delivery
+to this one-shot context is a deployment responsibility; ordinary serving does
+not need Node Agent credentials. Do not change journal ownership or grant these
+credentials to a serving Pod to bypass provisioning failures.
+
+Schema 92 and the Control bootstrap service must be present. See the
+[bootstrap runbook](../../docs/runbooks/stage-worker-scratch-retirement.md#authenticated-node-bootstrap)
+for arguments and interruption handling. The systemd unit and recurring Fleet
+Pod init containers do not invoke this command; activation remains gated by the
+remaining reconciliation and serving journal-pair checks.
 
 Outbound observation uses a Node Agent certificate valid for `ClientAuth`, a
 pinned Fleet endpoint/TLS server name and server CA, immediate-first periodic

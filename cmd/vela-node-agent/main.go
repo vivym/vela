@@ -162,7 +162,7 @@ type workerCapacityTemplateConfig struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	if err := runCommand(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "vela-node-agent stopped: %v\n", err)
 		os.Exit(1)
 	}

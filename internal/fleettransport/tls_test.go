@@ -12,12 +12,47 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/nodeagent"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/test/bufconn"
 )
+
+func TestBootstrapTLSCredentialsDeriveOnlyOneCanonicalNodePrincipal(t *testing.T) {
+	ca, key, caPEM := issueFleetTestCA(t)
+	identity := nodeagent.NodeAgentSPIFFEIdentity(nodeagent.NodeAgentIdentity{NodeIdentity: "cpu-node-1", AgentID: uuid.New(), AgentEpoch: 1})
+	for _, identities := range [][]string{nil, {identity}, {identity, identity}, {"spiffe://vela.internal/fleet-controller/primary"}, {identity + "?extra=true"}} {
+		t.Run(strings.Join(identities, ","), func(t *testing.T) {
+			var uris []*url.URL
+			for _, value := range identities {
+				parsed, err := url.Parse(value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				uris = append(uris, parsed)
+			}
+			cert, private := issueFleetTestCertificate(t, ca, key, pkix.Name{CommonName: "bootstrap-test"}, nil, uris, []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth})
+			directory := t.TempDir()
+			for name, value := range map[string][]byte{"client.crt": cert, "client.key": private, "ca.crt": caPEM} {
+				if err := os.WriteFile(filepath.Join(directory, name), value, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			transport, actual, err := NewWorkerBootstrapTLSCredentials(filepath.Join(directory, "client.crt"), filepath.Join(directory, "client.key"), filepath.Join(directory, "ca.crt"), "fleet-maintenance.internal")
+			if len(identities) == 1 && identities[0] == identity {
+				if err != nil || transport == nil || actual != identity {
+					t.Fatalf("certificate principal: %q %v", actual, err)
+				}
+			} else if err == nil || transport != nil || actual != "" {
+				t.Fatalf("ambiguous/non-node certificate accepted: %q %v", actual, err)
+			}
+		})
+	}
+}
 
 func TestServerTLSCredentialsRequireVerifiedFleetControllerCertificate(t *testing.T) {
 	caCertificate, caKey, caPEM := issueFleetTestCA(t)

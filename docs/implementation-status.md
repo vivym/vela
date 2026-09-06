@@ -449,6 +449,16 @@ existing recovery tests was repaired by matching the CLI's reconnect lifecycle,
 with the same operation identity and explicit timeout assertions. The node
 bootstrap command, partial reconciliation, lifetime-locked serving pair checks
 and Fleet activation remain open; Production Gates remain `0/9`.
+The subsequent [node bootstrap command](node-bootstrap-command-evidence-2026-09-06.md)
+adds explicit `prepare` and read-only `history` actions to `vela-node-agent`.
+They run independently of daemon/device configuration, derive node/actor from
+the actual loaded mTLS certificate and use the existing bounded coordinator.
+Separate executable invocations against TLS and PostgreSQL preserve operation
+identity, journal pairs and original receipt timestamps through replay and
+committed-response loss. Incomplete local pairs still reject without repeating
+Claim. Default daemon/Fleet activation, independent partial reconciliation and
+lifetime-locked serving pair validation remain open. Schema remains 92 and
+Production Gates remain `0/9`.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
