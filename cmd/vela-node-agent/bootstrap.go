@@ -16,6 +16,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -44,7 +45,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	}
 	flags := flag.NewFlagSet("vela-node-agent bootstrap", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	action := flags.String("action", "", "prepare, reconcile-pair, or history")
+	action := flags.String("action", "", "prepare, reconcile-pair, history, or binding")
 	address := flags.String("fleet-address", "", "Fleet host and port")
 	serverName := flags.String("fleet-server-name", "", "Fleet TLS server name")
 	caPath := flags.String("fleet-ca-file", "", "Fleet server CA file")
@@ -54,6 +55,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	bundlePath := flags.String("bundle-manifest-file", "", "canonical approved Worker bundle manifest")
 	launchPath := flags.String("launch-manifest-file", "", "trusted private member launch manifest")
 	verifierPath := flags.String("verifier-keyring-file", "", "public StageAuthority verifier keyring file")
+	bindingVerifierPath := flags.String("binding-verifier-keyring-file", "", "public Registry journal binding verifier keyring file")
 	directory := flags.String("scratch-directory", "", "preprovisioned private scratch mount")
 	maxRecords := flags.Int("max-records", 0, "bound on retained Worker history (1-64)")
 	request := flags.String("request-id", "", "original bootstrap request UUID for history")
@@ -71,9 +73,10 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	defer cancel()
 	var config workerbootstrap.Config
 	var requestID uuid.UUID
+	var bindingVerifier *journalbinding.Verifier
 	switch *action {
 	case "prepare", "reconcile-pair":
-		if *request != "" || *bundlePath == "" || *launchPath == "" || *verifierPath == "" || *directory == "" || *maxRecords < 1 || *maxRecords > 64 {
+		if *request != "" || *bindingVerifierPath != "" || *bundlePath == "" || *launchPath == "" || *verifierPath == "" || *directory == "" || *maxRecords < 1 || *maxRecords > 64 {
 			return errors.New("prepare/reconcile-pair requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file, scratch-directory and max-records; request-id is reserved for history")
 		}
 		wire, err := securefile.Read(*bundlePath, fleet.MaximumWorkerBootstrapManifestBytes, true)
@@ -98,15 +101,22 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			return err
 		}
 		config.ScratchDirectory, config.MaxRecords = *directory, *maxRecords
-	case "history":
+	case "history", "binding":
 		var err error
 		requestID, err = uuid.Parse(*request)
 		if err != nil || requestID == uuid.Nil || requestID.String() != *request ||
-			*bundlePath != "" || *launchPath != "" || *verifierPath != "" || *directory != "" || *maxRecords != 0 {
-			return errors.New("history requires a canonical nonzero request-id and accepts no local preparation settings")
+			*bundlePath != "" || *launchPath != "" || *verifierPath != "" || *directory != "" || *maxRecords != 0 ||
+			(*action == "binding") != (*bindingVerifierPath != "") {
+			return errors.New("history/binding requires a canonical nonzero request-id and no local preparation settings; binding also requires binding-verifier-keyring-file")
+		}
+		if *action == "binding" {
+			bindingVerifier, err = journalbinding.ReadVerifierFile(*bindingVerifierPath)
+			if err != nil {
+				return err
+			}
 		}
 	default:
-		return errors.New("bootstrap action must be prepare, reconcile-pair, or history")
+		return errors.New("bootstrap action must be prepare, reconcile-pair, history, or binding")
 	}
 	transport, identity, err := fleettransport.NewWorkerBootstrapTLSCredentials(*certificatePath, *keyPath, *caPath, *serverName)
 	if err != nil {
@@ -129,6 +139,21 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			return err
 		}
 		return json.NewEncoder(stdout).Encode(bootstrapHistoryOutput(history))
+	}
+	if *action == "binding" {
+		binding, err := authority.LookupWorkerBootstrapBinding(ctx, requestID, bindingVerifier)
+		if err != nil {
+			return err
+		}
+		wire, err := journalbinding.Encode(binding)
+		if err != nil {
+			return err
+		}
+		if err := context.Cause(ctx); err != nil {
+			return err
+		}
+		_, err = stdout.Write(append(wire, '\n'))
+		return err
 	}
 	config.NodeIdentity, config.ActorIdentity = authority.NodeIdentity(), authority.ActorIdentity()
 	var result workerbootstrap.Result

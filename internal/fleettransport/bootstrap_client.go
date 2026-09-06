@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/journalbinding"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -101,6 +102,31 @@ func (client *BootstrapClient) LookupWorkerBootstrap(ctx context.Context, reques
 		result.Receipt, result.RecordedAt = &receipt, recordedAt
 	}
 	return result, nil
+}
+
+// LookupWorkerBootstrapBinding verifies both the Registry signature and the
+// original authenticated request/node/actor before exposing historical identity.
+func (client *BootstrapClient) LookupWorkerBootstrapBinding(ctx context.Context, requestID uuid.UUID, verifier *journalbinding.Verifier) (*velav1.WorkerBootstrapBinding, error) {
+	if !client.configured(ctx) || requestID == uuid.Nil || verifier == nil {
+		return nil, errors.New("worker bootstrap binding requires request identity and trusted Registry verifier")
+	}
+	response, err := client.service.LookupWorkerBootstrapBinding(ctx, &velav1.LookupWorkerBootstrapBindingRequest{RequestId: requestID.String()},
+		grpc.MaxCallRecvMsgSize(journalbinding.MaximumBytes))
+	if err != nil {
+		return nil, err
+	}
+	if !knownBootstrapMessage(response) {
+		return nil, errors.New("worker bootstrap binding response is invalid")
+	}
+	verified, err := verifier.Verify(response.GetBinding())
+	if err != nil {
+		return nil, err
+	}
+	if verified.GetClaim().GetRequestId() != requestID.String() || verified.GetClaim().GetNodeIdentity() != client.NodeIdentity() ||
+		verified.GetClaim().GetActorIdentity() != client.ActorIdentity() {
+		return nil, errors.New("worker bootstrap binding changed the requested principal or identity")
+	}
+	return verified, nil
 }
 
 func (client *BootstrapClient) configured(ctx context.Context) bool {

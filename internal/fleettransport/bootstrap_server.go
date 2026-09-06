@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/journalbinding"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -122,6 +123,38 @@ func (server *Server) LookupWorkerBootstrap(ctx context.Context, request *velav1
 		result.Pair = encodeBootstrapPair(*history.Receipt, history.RecordedAt)
 	}
 	return result, nil
+}
+
+func (server *Server) LookupWorkerBootstrapBinding(ctx context.Context, request *velav1.LookupWorkerBootstrapBindingRequest) (*velav1.LookupWorkerBootstrapBindingResponse, error) {
+	principal, err := server.authenticateBootstrap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if server.bootstrapSigner == nil {
+		return nil, status.Error(codes.Unimplemented, "Registry journal binding signer is not configured")
+	}
+	if !knownBootstrapMessage(request) {
+		return nil, invalidRequest("Worker bootstrap binding")
+	}
+	requestID, err := bootstrapUUID(request.GetRequestId())
+	if err != nil {
+		return nil, invalidRequest("Worker bootstrap binding")
+	}
+	history, err := server.lookupBootstrap(ctx, requestID, principal)
+	if err != nil {
+		return nil, err
+	}
+	if history.Receipt == nil {
+		return nil, status.Error(codes.FailedPrecondition, "Worker bootstrap has no committed journal pair")
+	}
+	binding, err := server.bootstrapSigner.Sign(&velav1.WorkerBootstrapBinding{
+		SchemaVersion: journalbinding.SchemaVersion, Claim: encodeBootstrapClaim(history.Claim, history.ActorIdentity),
+		Pair: encodeBootstrapPair(*history.Receipt, history.RecordedAt),
+	})
+	if err != nil {
+		return nil, invalidAuthoritativeResult("Worker bootstrap binding")
+	}
+	return &velav1.LookupWorkerBootstrapBindingResponse{Binding: binding}, nil
 }
 
 func (server *Server) lookupBootstrap(ctx context.Context, requestID uuid.UUID, principal nodeAgentPrincipal) (fleet.WorkerBootstrapHistory, error) {

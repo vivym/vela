@@ -261,6 +261,8 @@ type config struct {
 	artifactReplicationBackupSecretKeyFile string
 	leaseActiveKeyID                       string
 	leaseKeyringFile                       string
+	workerBootstrapSigningKeyringFile      string
+	workerBootstrapActiveKeyID             string
 	executionLeaseTTL                      time.Duration
 	artifactValidatorHelper                string
 	artifactFFprobePath                    string
@@ -344,6 +346,10 @@ func main() {
 
 func run() error {
 	configuration, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	bootstrapSigner, err := newWorkerBootstrapSigner(configuration)
 	if err != nil {
 		return err
 	}
@@ -918,6 +924,7 @@ func run() error {
 			ActorIdentity:          configuration.fleetControllerActorIdentity,
 			NodeAgentRegistrations: nodeAgentRegistrations(remediationEndpoints),
 			BootstrapService:       fleetService,
+			BootstrapSigner:        bootstrapSigner,
 		},
 	)
 	if err != nil {
@@ -1545,26 +1552,31 @@ func loadConfig() (config, error) {
 		artifactReplicationBackupSecretKeyFile: os.Getenv(
 			"VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
 		),
-		publisherBatchSize:        defaultPublisherBatch,
-		publisherTick:             defaultPublisherTick,
-		stageFinalizationTick:     defaultStageFinalizationTick,
-		artifactCleanupTick:       defaultArtifactCleanupTick,
-		leaseActiveKeyID:          os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
-		leaseKeyringFile:          os.Getenv("VELA_LEASE_KEYRING_FILE"),
-		executionLeaseTTL:         defaultExecutionLeaseTTL,
-		artifactValidatorHelper:   os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
-		artifactFFprobePath:       os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
-		artifactSandboxRoot:       os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
-		artifactSpoolDirectory:    os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
-		artifactFFprobeVersion:    os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
-		artifactValidatorRevision: os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
-		artifactInspectionTimeout: defaultArtifactInspectionTimeout,
-		artifactMaxInputBytes:     defaultArtifactMaxInputBytes,
-		artifactMaxProbeBytes:     defaultArtifactMaxProbeBytes,
-		artifactMaxStderrBytes:    defaultArtifactMaxStderrBytes,
-		stageFinalizerID:          os.Getenv("VELA_STAGE_FINALIZER_ID"),
-		artifactOrphanMinimumAge:  defaultArtifactOrphanMinimumAge,
-		artifactCleanupBatch:      defaultArtifactCleanupBatch,
+		publisherBatchSize:                defaultPublisherBatch,
+		publisherTick:                     defaultPublisherTick,
+		stageFinalizationTick:             defaultStageFinalizationTick,
+		artifactCleanupTick:               defaultArtifactCleanupTick,
+		leaseActiveKeyID:                  os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
+		leaseKeyringFile:                  os.Getenv("VELA_LEASE_KEYRING_FILE"),
+		workerBootstrapSigningKeyringFile: os.Getenv("VELA_WORKER_BOOTSTRAP_SIGNING_KEYRING_FILE"),
+		workerBootstrapActiveKeyID:        os.Getenv("VELA_WORKER_BOOTSTRAP_ACTIVE_KEY_ID"),
+		executionLeaseTTL:                 defaultExecutionLeaseTTL,
+		artifactValidatorHelper:           os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
+		artifactFFprobePath:               os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
+		artifactSandboxRoot:               os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
+		artifactSpoolDirectory:            os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
+		artifactFFprobeVersion:            os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
+		artifactValidatorRevision:         os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
+		artifactInspectionTimeout:         defaultArtifactInspectionTimeout,
+		artifactMaxInputBytes:             defaultArtifactMaxInputBytes,
+		artifactMaxProbeBytes:             defaultArtifactMaxProbeBytes,
+		artifactMaxStderrBytes:            defaultArtifactMaxStderrBytes,
+		stageFinalizerID:                  os.Getenv("VELA_STAGE_FINALIZER_ID"),
+		artifactOrphanMinimumAge:          defaultArtifactOrphanMinimumAge,
+		artifactCleanupBatch:              defaultArtifactCleanupBatch,
+	}
+	if err := validateWorkerBootstrapSigningConfig(configuration); err != nil {
+		return config{}, err
 	}
 	for name, value := range map[string]string{
 		"VELA_AUTH_DATABASE_URL":                                     configuration.authDatabaseURL,

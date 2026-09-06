@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/journalbinding"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -44,6 +45,7 @@ type Config struct {
 	ActorIdentity          string
 	NodeAgentRegistrations []NodeAgentRegistration
 	BootstrapService       WorkerBootstrapService
+	BootstrapSigner        *journalbinding.Signer
 }
 
 type NodeAgentRegistration struct {
@@ -74,9 +76,13 @@ type Server struct {
 	actorIdentity       string
 	nodeAgentPrincipals map[string]nodeAgentPrincipal
 	bootstrap           WorkerBootstrapService
+	bootstrapSigner     *journalbinding.Signer
 }
 
 func NewServer(service Service, config Config) (*Server, error) {
+	if config.BootstrapSigner != nil && config.BootstrapService == nil {
+		return nil, errors.New("journal binding signer requires bootstrap Registry authority")
+	}
 	if service == nil {
 		return nil, errors.New("fleet maintenance service is required")
 	}
@@ -99,7 +105,7 @@ func NewServer(service Service, config Config) (*Server, error) {
 	return &Server{
 		service: service, spiffeIdentity: config.SPIFFEIdentity,
 		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: principals,
-		bootstrap: config.BootstrapService,
+		bootstrap: config.BootstrapService, bootstrapSigner: config.BootstrapSigner,
 	}, nil
 }
 

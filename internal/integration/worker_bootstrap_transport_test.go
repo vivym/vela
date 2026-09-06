@@ -23,6 +23,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/workerbootstrap"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -186,7 +187,7 @@ type bootstrapTLSClient struct {
 	arguments []string
 }
 
-func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor grpc.UnaryServerInterceptor) []bootstrapTLSClient {
+func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor grpc.UnaryServerInterceptor, signers ...*journalbinding.Signer) []bootstrapTLSClient {
 	t.Helper()
 	identities := []nodeagent.NodeAgentIdentity{
 		{NodeIdentity: "h3-node-01", AgentID: uuid.New(), AgentEpoch: 1},
@@ -199,8 +200,12 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 		registrations = append(registrations, fleettransport.NodeAgentRegistration{
 			NodeIdentity: identity.NodeIdentity, AgentID: identity.AgentID, SPIFFEIdentity: nodeagent.NodeAgentSPIFFEIdentity(identity)})
 	}
-	server, err := fleettransport.NewServer(service, fleettransport.Config{SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
-		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service})
+	configuration := fleettransport.Config{SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
+		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service}
+	if len(signers) != 0 {
+		configuration.BootstrapSigner = signers[0]
+	}
+	server, err := fleettransport.NewServer(service, configuration)
 	if err != nil {
 		t.Fatal(err)
 	}
