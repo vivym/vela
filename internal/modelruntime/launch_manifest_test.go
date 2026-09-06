@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -201,6 +202,50 @@ func TestEncodeLaunchManifestRejectsManifestLargerThanLoaderLimit(t *testing.T) 
 	}
 	if _, err := modelruntime.EncodeLaunchManifest(manifest); err == nil {
 		t.Fatal("EncodeLaunchManifest accepted a manifest larger than its loader limit")
+	}
+}
+
+func TestLaunchManifestRejectsReservedDriverEnvironment(t *testing.T) {
+	for _, name := range []string{"VELA_MODEL_DRIVER_PROTOCOL", "VELA_MODEL_DRIVER_INSPECTION_FD", "VELA_MODEL_DRIVER_DRAIN_FD"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			manifest := runtimeServerManifest(root)
+			manifest.Runtimes[0].Environment = []string{name + "=99"}
+			if _, err := modelruntime.EncodeLaunchManifest(manifest); err == nil || !strings.Contains(err.Error(), "driver environment") {
+				t.Fatalf("encoder accepted reserved environment: %v", err)
+			}
+			path := filepath.Join(root, "launch.json")
+			writeLaunchManifest(t, path, manifest)
+			if _, err := modelruntime.LoadLaunchManifest(path); err == nil || !strings.Contains(err.Error(), "driver environment") {
+				t.Fatalf("loader accepted reserved environment: %v", err)
+			}
+		})
+	}
+}
+
+func TestLaunchManifestPreservesDriverEnvironmentBytes(t *testing.T) {
+	root := t.TempDir()
+	manifest := runtimeServerManifest(root)
+	environment := []string{"EMPTY=", "VALUE=\u4e2d\u6587=a=b\n"}
+	manifest.Runtimes[0].Environment = environment
+	encoded, err := modelruntime.EncodeLaunchManifest(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "launch.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := modelruntime.LoadLaunchManifest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(loaded.Runtimes[0].Environment, environment) {
+		t.Fatal("manifest round trip changed environment bytes")
+	}
+	manifest.Runtimes[0].Environment = []string{"VALUE=\xff"}
+	if _, err := modelruntime.EncodeLaunchManifest(manifest); err == nil || !strings.Contains(err.Error(), "driver environment") {
+		t.Fatalf("encoder silently replaced invalid UTF-8: %v", err)
 	}
 }
 

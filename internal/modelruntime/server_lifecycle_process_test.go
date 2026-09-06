@@ -244,7 +244,9 @@ func lifecycleRuntimeConfig(t *testing.T, driverMode string) (*executionFloorFix
 	for index := range config.Manifest.Runtimes {
 		runtime := &config.Manifest.Runtimes[index]
 		runtime.Command = []string{os.Args[0], "-test.run=^TestRuntimeLifecycleProcessHelper$"}
-		runtime.Environment = []string{lifecycleProcessMode + "=" + driverMode, "VELA_TEST_LIFECYCLE_COMPONENT=" + runtime.Component}
+		runtime.Environment = []string{lifecycleProcessMode + "=" + driverMode,
+			"VELA_TEST_LIFECYCLE_COMPONENT=" + runtime.Component,
+			"VELA_TEST_LIFECYCLE_PHASE=" + os.Getenv("VELA_TEST_LIFECYCLE_PHASE")}
 		runtime.ScratchRoot, runtime.InputRoot, runtime.OutputRoot = lifecycleProcessRoot,
 			filepath.Join(lifecycleProcessRoot, "inputs"), filepath.Join(lifecycleProcessRoot, "outputs")
 		runtime.InitializationTimeout, runtime.ShutdownTimeout = "30s", "1s"

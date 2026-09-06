@@ -1240,6 +1240,29 @@ func TestWorkerMemberLaunchManifestMatchesEmittedPodContract(t *testing.T) {
 	}
 }
 
+func TestWorkerBundleRejectsInvalidDriverEnvironment(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		environment []string
+	}{
+		{"protocol", []string{"VELA_MODEL_DRIVER_PROTOCOL=override"}},
+		{"inspection-channel", []string{"VELA_MODEL_DRIVER_INSPECTION_FD=99"}},
+		{"drain-channel", []string{"VELA_MODEL_DRIVER_DRAIN_FD=99"}},
+		{"invalid-utf8", []string{"VALUE=\xff"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bundle := cpuMediaBundle(t)
+			if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err != nil {
+				t.Fatalf("invalid unmodified fixture: %v", err)
+			}
+			bundle.WorkerInstances[0].ModelRuntimes[0].Environment = test.environment
+			if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err == nil {
+				t.Fatal("Fleet accepted invalid driver environment")
+			}
+		})
+	}
+}
+
 func cpuMediaBundle(t *testing.T) fleetcontroller.WorkerBundleActuation {
 	t.Helper()
 	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())

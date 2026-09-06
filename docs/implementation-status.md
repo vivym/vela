@@ -774,6 +774,16 @@ This is not image approval, memory/configuration attestation or proof that the
 observed executable sent the original request. Startup authorization, endpoint
 assembly and independent retirement remain open; database/journal versions and
 Production Gates are unchanged.
+The [driver environment repair](driver-environment-evidence-2026-09-06.md)
+removes parent/image environment inheritance from backend launch and shares
+bounded, UTF-8-valid environment checks across Fleet, manifests and direct
+constructors. Only explicitly declared values and three reserved protocol
+entries reach the child. Real CPU subprocess tests, full unit and related race,
+lint, and all nine Linux lifecycle scenarios pass. The lifecycle fixture now
+explicitly declares its crash-phase input. External H3 dependency conformance
+remains unverified; this behavior requires new release images and is not a
+driver sandbox, executable attestation or startup grant. Schema/journal versions
+and Production Gates are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

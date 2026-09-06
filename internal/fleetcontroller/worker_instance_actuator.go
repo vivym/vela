@@ -703,20 +703,8 @@ func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
 			return false
 		}
 	}
-	if len(runtime.Environment) > 128 {
+	if modelruntime.ValidateDriverEnvironment(runtime.Environment) != nil {
 		return false
-	}
-	seenEnvironment := make(map[string]struct{}, len(runtime.Environment))
-	for _, entry := range runtime.Environment {
-		name, _, found := strings.Cut(entry, "=")
-		if !found || name == "" || len(entry) > 4096 || strings.ContainsAny(name, "\x00=") ||
-			strings.ContainsRune(entry, '\x00') || name == "VELA_MODEL_DRIVER_PROTOCOL" {
-			return false
-		}
-		if _, duplicate := seenEnvironment[name]; duplicate {
-			return false
-		}
-		seenEnvironment[name] = struct{}{}
 	}
 	initializationTimeout, initializationErr := time.ParseDuration(runtime.InitializationTimeout)
 	shutdownTimeout, shutdownErr := time.ParseDuration(runtime.ShutdownTimeout)

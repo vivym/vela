@@ -247,6 +247,24 @@ which executable sent the earlier payload or rule out intervening ABA execs.
 The launch protocol must close that relationship before issuing startup
 authority. See the [executable evidence](../node-runtime-executable-evidence-2026-09-06.md).
 
+## Declared driver environment
+
+`LaunchRuntime.Environment` is the complete environment passed to its backend
+process. Runtime does not inherit parent/image environment variables into the
+driver. It adds only `VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1`,
+`VELA_MODEL_DRIVER_INSPECTION_FD=3` and `VELA_MODEL_DRIVER_DRAIN_FD=4`.
+Fleet, launch manifest and direct backend validation reject duplicate/reserved
+names, malformed UTF-8, NUL, missing `=`, empty names, more than 128 entries or
+an entry larger than 4096 bytes. Explicit empty values are preserved.
+
+Backend dependencies such as `PATH`, library paths, Python configuration and
+device selection must be declared in the approved launch configuration and
+verified with the corresponding release image. This behavior requires updated
+Runtime code; it cannot retroactively attest old images. It does not isolate the
+driver UID/filesystem, authenticate executable bytes or bind an earlier message
+to an observed process image. See the
+[environment evidence](../driver-environment-evidence-2026-09-06.md).
+
 ## Forwarded command lifetime
 
 A member configured with a durable Worker journal must retain its actual

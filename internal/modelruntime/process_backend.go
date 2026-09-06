@@ -53,7 +53,7 @@ type ProcessBackendConfig struct {
 	Component              string
 	ModelComponentRevision string
 	Command                []string
-	Environment            []string
+	Environment            []string // Complete declared environment, excluding reserved protocol entries.
 	LocalDevices           []DriverDevice
 	ScratchRoot            string
 	InputRoot              string
@@ -247,7 +247,7 @@ func NewProcessBackend(
 	}()
 	command.ExtraFiles = []*os.File{inspectionChild, drainChild}
 	command.Dir = config.ScratchRoot
-	command.Env = append(os.Environ(), config.Environment...)
+	command.Env = append(make([]string, 0, len(config.Environment)+3), config.Environment...)
 	command.Env = append(command.Env, "VELA_MODEL_DRIVER_PROTOCOL=stdio-json-v1", driverinspection.Environment+"=3", driverdrain.Environment+"=4")
 	stderrWriter := config.Stderr
 	if stderrWriter == nil {
@@ -929,19 +929,7 @@ func validateProcessBackendConfig(
 			return fmt.Errorf("ModelRuntime driver %s root must be below its scratch root", name)
 		}
 	}
-	seenEnvironment := make(map[string]struct{}, len(config.Environment))
-	for _, entry := range config.Environment {
-		name, _, found := strings.Cut(entry, "=")
-		if !found || name == "" || strings.ContainsAny(name, "\x00=") ||
-			strings.ContainsRune(entry, '\x00') {
-			return errors.New("ModelRuntime driver environment is invalid")
-		}
-		if _, duplicate := seenEnvironment[name]; duplicate || name == "VELA_MODEL_DRIVER_PROTOCOL" {
-			return errors.New("ModelRuntime driver environment is duplicated or reserved")
-		}
-		seenEnvironment[name] = struct{}{}
-	}
-	return nil
+	return ValidateDriverEnvironment(config.Environment)
 }
 
 func validDriverDevice(device DriverDevice) bool {

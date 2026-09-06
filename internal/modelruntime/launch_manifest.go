@@ -25,8 +25,6 @@ const (
 	maxLaunchDevices            = 64
 	maxLaunchMembers            = 64
 	maxLaunchRuntimes           = 2
-	maxLaunchEnvironmentEntries = 128
-	maxLaunchEnvironmentBytes   = 4096
 	h3AUXSharedSlotException    = "H3_AUX_ENCODER_VAE"
 )
 
@@ -323,20 +321,8 @@ func validateLaunchRuntime(runtime LaunchRuntime) error {
 			return fmt.Errorf("ModelRuntime %s root must be below its scratch root", name)
 		}
 	}
-	if len(runtime.Environment) > maxLaunchEnvironmentEntries {
-		return errors.New("ModelRuntime launch manifest environment is too large")
-	}
-	seenEnvironment := make(map[string]struct{}, len(runtime.Environment))
-	for _, entry := range runtime.Environment {
-		name, _, found := strings.Cut(entry, "=")
-		if !found || name == "" || len(entry) > maxLaunchEnvironmentBytes ||
-			strings.ContainsAny(name, "\x00=") || strings.ContainsRune(entry, '\x00') {
-			return errors.New("ModelRuntime launch manifest environment is invalid")
-		}
-		if _, duplicate := seenEnvironment[name]; duplicate || name == "VELA_MODEL_DRIVER_PROTOCOL" {
-			return errors.New("ModelRuntime launch manifest environment is duplicated or reserved")
-		}
-		seenEnvironment[name] = struct{}{}
+	if err := ValidateDriverEnvironment(runtime.Environment); err != nil {
+		return err
 	}
 	initializationTimeout, initializationErr := time.ParseDuration(runtime.InitializationTimeout)
 	shutdownTimeout, shutdownErr := time.ParseDuration(runtime.ShutdownTimeout)
