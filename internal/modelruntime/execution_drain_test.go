@@ -404,7 +404,7 @@ func TestExecutionDrainHistoryBackpressureNeverEvictsAndDoesNotPoisonReads(t *te
 		t.Fatalf("history overflow failed open or poisoned admission: %v %v", response, err)
 	}
 	assertExecutionDrainCheckpoint(t, f.supervisor, f.authorities[0], true)
-	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 4 {
+	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 5 {
 		t.Fatalf("history overflow consumed new authority: %+v", state)
 	}
 }
@@ -444,6 +444,10 @@ type retainedExecutionDocument struct {
 		Result    modelruntime.BackendDrain `json:"result"`
 		DrainedAt time.Time                 `json:"drained_at"`
 	} `json:"drain"`
+	Candidates *struct {
+		Accepted  []byte `json:"accepted"`
+		Confirmed []byte `json:"confirmed,omitempty"`
+	} `json:"candidates,omitempty"`
 }
 
 func TestExecutionDrainRecoveryRejectsDamagedProofs(t *testing.T) {

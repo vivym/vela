@@ -76,8 +76,12 @@ envelope. An acknowledged successor request does not create exact inspection
 or drain evidence for that successor; recovery keeps the actual backend
 envelope and may query allocation-level checkpoints to recover its proof.
 
-An unacknowledged renewal retains the accepted grant and last confirmed backend
-envelope in Runtime memory. Further distinct renewal rejects until confirmation.
+An unacknowledged renewal retains the accepted grant and confirmed backend
+envelope in Runtime memory and schema-5 execution history. Further distinct
+renewal rejects until confirmation. Every execution call persists its candidate
+pair before backend entry; backend acknowledgement is persisted before success
+is returned. Expiry/cancellation during persistence cannot authorize dispatch,
+and cancellation during acknowledgement persistence cannot return success.
 Cancellation/watchdog recovery inspects both exact identities and requires one
 unambiguous observation before backend Cancel, then rechecks request eligibility.
 FAILED with unproven reuse remains cancellable. The authenticated leader can use
@@ -90,7 +94,21 @@ same-execution relationship and exact nested observation independently at both
 forwarding boundaries. It does not publish pending candidates as confirmed
 identities, renew execution, take the execution lock or produce drain proof.
 Missing live history stays unknown; a replacement Runtime cannot inspect an old
-epoch. The candidate pair is not restored from the Runtime journal on restart.
+epoch. Restart can read the persisted candidate pair using the local
+`InspectRetainedAllocationAuthorities` API. That read reports journal history,
+does not inspect a backend or restore an active execution, and cannot release
+pending writer restrictions. Authenticated remote recovery of this history and
+physical recovery across Runtime epochs remain separate requirements.
+
+Runtime journal schema 5 retains the original allocation plus at most one
+accepted and one confirmed signed envelope. Canonical encoding, signatures,
+immutable execution scope, monotonic renewal relationships and drain membership
+are validated on recovery. The 32-execution and 12 MiB journal bounds remain.
+Explicit `upgrade-v2`, `upgrade-v3` and `upgrade-v4` preserve prior IDs, scopes,
+watermarks, floors and proofs; missing candidate history remains unknown.
+Ordinary serving never upgrades implicitly, and Registry-bound serving rejects
+every upgrade flag. The read API cannot infer an accepted/confirmed envelope
+for migrated history from its original grant or drain proof alone.
 
 Terminal scratch retirement may recover an admitted live execution only after
 Worker input writers finish and every signed Runtime floor acknowledgement is

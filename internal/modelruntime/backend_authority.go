@@ -21,23 +21,40 @@ func (active *activeExecution) knowsAuthority(digest [32]byte) bool {
 		active.backendAuthority != nil && active.backendAuthority.Digest == digest)
 }
 
-func (service *Service) confirmBackendAuthority(verified stageauthority.Verified) {
+func (service *Service) confirmBackendAuthority(ctx context.Context, verified stageauthority.Verified) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	admission := service.executionAdmission()
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	if err := admission.checkStateLocked(); err != nil {
+		return err
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == verified.Digest {
+		if admission.store != nil {
+			if err := admission.store.saveCandidates(verified, &verified); err != nil {
+				return admission.failStateLocked(err)
+			}
+		}
 		confirmed := copyVerified(verified)
 		service.active.backendAuthority = &confirmed
 	}
+	return ctx.Err()
 }
 
 // Cleanup can observe STOPPED without a health assertion. Preserve explicit
 // non-reusability across cancellation until a validated Status clears it.
-func (service *Service) confirmBackendStatus(verified stageauthority.Verified, status BackendStatus) {
-	service.confirmBackendAuthority(verified)
+func (service *Service) confirmBackendStatus(ctx context.Context, verified stageauthority.Verified, status BackendStatus) error {
+	if err := service.confirmBackendAuthority(ctx, verified); err != nil {
+		return err
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active == nil || service.active.verified.Digest != verified.Digest {
-		return
+		return nil
 	}
 	switch status.State {
 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
@@ -45,6 +62,7 @@ func (service *Service) confirmBackendStatus(verified stageauthority.Verified, s
 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED:
 		service.active.workerReuseDenied = false
 	}
+	return nil
 }
 
 // A renewed Prepare/Start replay must reach the backend before it can claim
@@ -74,7 +92,9 @@ func (service *Service) synchronizeBackendAuthority(ctx context.Context, verifie
 		current == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED && status.State != current) {
 		return errors.New("backend status contradicts terminal execution")
 	}
-	service.confirmBackendStatus(verified, status)
+	if err := service.confirmBackendStatus(ctx, verified, status); err != nil {
+		return err
+	}
 	service.setActiveState(verified.Digest, status.State)
 	return nil
 }

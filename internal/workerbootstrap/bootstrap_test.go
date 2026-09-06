@@ -36,7 +36,7 @@ func TestPrepareRecordsActualPairAndRecoversReceiptResponseLoss(t *testing.T) {
 	before := snapshotFiles(t, config.ScratchDirectory)
 	registry.loseReceipt = false
 	result, err := Prepare(t.Context(), config, registry)
-	if err != nil || result.RequestID == uuid.Nil || result.Worker.SchemaVersion != 5 || result.Runtime.SchemaVersion != 4 ||
+	if err != nil || result.RequestID == uuid.Nil || result.Worker.SchemaVersion != 5 || result.Runtime.SchemaVersion != 5 ||
 		result.Worker.Watermark != 0 || result.Runtime.Highest != 0 || registry.claimCalls != 1 || registry.receiptCalls != 2 {
 		t.Fatalf("recover complete pair: %+v %v, claims=%d receipts=%d", result, err, registry.claimCalls, registry.receiptCalls)
 	}

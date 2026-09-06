@@ -247,6 +247,14 @@ func (store *executionStateFile) validateRetainedExecutions() error {
 			return errors.New("retained execution history is unordered")
 		}
 		previous = sequence
+		if record.Candidates != nil {
+			if store.state.SchemaVersion < 5 {
+				return errors.New("legacy execution history cannot contain renewal candidates")
+			}
+			if err := store.validateCandidates(original, record.Candidates); err != nil {
+				return err
+			}
+		}
 		if record.Drain != nil {
 			verified, err := store.retainedAuthority(record.Drain.Authority)
 			if err != nil {
@@ -254,6 +262,10 @@ func (store *executionStateFile) validateRetainedExecutions() error {
 			}
 			if original.Digest != verified.Digest && stageauthority.ValidateRenewal(original.Authority, verified.Authority) != nil {
 				return errors.New("retained drain does not belong to the original execution")
+			}
+			if record.Candidates != nil && !bytes.Equal(record.Drain.Authority, record.Candidates.Accepted) &&
+				!bytes.Equal(record.Drain.Authority, record.Candidates.Confirmed) {
+				return errors.New("retained drain is outside its recorded authority candidates")
 			}
 			if err := validateBackendDrain(record.Drain.Result, verified); err != nil {
 				return err
@@ -299,6 +311,10 @@ func (store *executionStateFile) saveDrain(verified stageauthority.Verified, res
 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Authority)
 	if err != nil || len(wire) > maxExecutionWireBytes {
 		return errors.New("drained execution authority exceeds its persistence bound")
+	}
+	if candidates := store.state.Executions[index].Candidates; candidates != nil &&
+		!bytes.Equal(wire, candidates.Accepted) && !bytes.Equal(wire, candidates.Confirmed) {
+		return errors.New("drained authority is outside its recorded candidates")
 	}
 	state := store.state
 	state.Executions = slices.Clone(state.Executions)

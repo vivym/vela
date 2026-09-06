@@ -635,6 +635,20 @@ Durable candidate restoration, historical unknown writers, bounded history
 reclamation, sealed receipt persistence and Fleet durable activation remain open.
 PostgreSQL schema 94, Worker journal 5, Runtime journal 4, Registry binding 1 and
 Production Gates `0/9` are unchanged.
+The [durable renewal candidate increment](runtime-renewal-journal-evidence-2026-09-06.md)
+advances the Runtime journal to schema 5. It persists the accepted/confirmed
+candidate pair before backend dispatch and confirmation before successful reply,
+retaining the original allocation and exact drain binding. Failed sync and
+canceled/expired calls cannot acknowledge new execution. The local
+`InspectRetainedAllocationAuthorities` API recovers historical signed candidates
+after restart without entering a replacement backend or releasing pending writer
+restrictions. Explicit schema-2/3/4 upgrades preserve prior proof and leave lost
+candidate history unknown. Process-exit, damaged-history and persistence-fault
+tests pass with full unit, related race, four PostgreSQL integrations, lint,
+generated checks and Linux non-root CPU verification. Authenticated remote
+candidate recovery, cross-epoch writer cleanup, durable health/receipt state,
+history reclamation and Fleet durable activation remain open. PostgreSQL schema
+94, Worker journal 5, Registry binding 1 and Production Gates `0/9` are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

@@ -199,7 +199,7 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 			t.Fatal("durable command omitted Registry binding")
 		}
 		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Directory != stateDirectory ||
-			config.ExecutionFloor.State.Initialize || config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 {
+			config.ExecutionFloor.State.Initialize || config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 {
 			t.Fatalf("ordinary command did not select recovery-only journal configuration: %+v", config.ExecutionFloor)
 		}
 		cancel()

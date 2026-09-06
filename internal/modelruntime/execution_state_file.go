@@ -51,8 +51,14 @@ type executionDiskState struct {
 }
 
 type retainedExecution struct {
-	Authority []byte              `json:"authority"`
-	Drain     *executionDiskDrain `json:"drain"`
+	Authority  []byte                   `json:"authority"`
+	Drain      *executionDiskDrain      `json:"drain"`
+	Candidates *executionDiskCandidates `json:"candidates,omitempty"`
+}
+
+type executionDiskCandidates struct {
+	Accepted  []byte `json:"accepted"`
+	Confirmed []byte `json:"confirmed,omitempty"`
 }
 
 type executionDiskDrain struct {
@@ -78,7 +84,13 @@ type executionStateFile struct {
 }
 
 func openExecutionState(config ExecutionFloorStateConfig, journalScope executionJournalScope) (*executionStateFile, error) {
-	if config.Initialize && (config.UpgradeV2 || config.UpgradeV3) || config.UpgradeV2 && config.UpgradeV3 {
+	selected := 0
+	for _, enabled := range []bool{config.Initialize, config.UpgradeV2, config.UpgradeV3, config.UpgradeV4} {
+		if enabled {
+			selected++
+		}
+	}
+	if selected > 1 {
 		return nil, errors.New("ModelRuntime execution state bootstrap and upgrades are mutually exclusive")
 	}
 	if !filepath.IsAbs(config.Directory) || filepath.Clean(config.Directory) != config.Directory {
@@ -126,7 +138,7 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		if err := executionStateDirectoryEmpty(root); err != nil {
 			return nil, err
 		}
-		state := executionDiskState{SchemaVersion: 4, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
+		state := executionDiskState{SchemaVersion: 5, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo)}
 		store.lockID = state.ID
 		if _, err := store.lock.WriteString(state.ID.String()); err != nil {
 			return nil, err
@@ -163,9 +175,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
-	upgrade := !config.Initialize && len(store.state.TerminalNonAdmissions) == 0 &&
-		(config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0 || config.UpgradeV3 && store.state.SchemaVersion == 3)
-	if (store.state.SchemaVersion != 4 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
+	upgrade := !config.Initialize && (config.UpgradeV4 && store.state.SchemaVersion == 4 || len(store.state.TerminalNonAdmissions) == 0 &&
+		(config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0 || config.UpgradeV3 && store.state.SchemaVersion == 3))
+	if (store.state.SchemaVersion != 5 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
@@ -188,7 +200,7 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 	}
 	if upgrade {
 		next := store.state
-		next.SchemaVersion = 4
+		next.SchemaVersion = 5
 		if err := store.persist(next); err != nil {
 			return nil, fmt.Errorf("upgrade ModelRuntime execution state: %w", err)
 		}
@@ -261,7 +273,8 @@ func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority) e
 		return errors.New("ModelRuntime execution authority exceeds its persistence bound")
 	}
 	state.Highest, state.Authority = authority.GetExecutionSequence(), wire
-	state.Executions = append(slices.Clone(state.Executions), retainedExecution{Authority: bytes.Clone(wire)})
+	state.Executions = append(slices.Clone(state.Executions), retainedExecution{Authority: bytes.Clone(wire),
+		Candidates: &executionDiskCandidates{Accepted: bytes.Clone(wire)}})
 	return store.persist(state)
 }
 

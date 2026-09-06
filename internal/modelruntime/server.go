@@ -83,7 +83,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	}
 	if config.RegistryBinding != nil {
 		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
-			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 {
+			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 {
 			return nil, errors.New("ModelRuntime Registry binding requires an existing execution journal without initialization or upgrade")
 		}
 		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)

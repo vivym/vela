@@ -302,7 +302,11 @@ func (service *Service) PrepareStage(
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
-	service.confirmBackendAuthority(verified)
+	if err := service.confirmBackendAuthority(ctx, verified); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED
@@ -378,7 +382,11 @@ func (service *Service) StartStage(
 		return response, nil
 	}
 	startedAt := service.clock.Now()
-	service.confirmBackendAuthority(verified)
+	if err := service.confirmBackendAuthority(ctx, verified); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	service.markStarted(verified.Digest, startedAt)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING
@@ -540,7 +548,11 @@ func (service *Service) Status(
 		status.LocalReceiptID = receipt.GetReceiptId()
 		status.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
 	}
-	service.confirmBackendStatus(verified, status)
+	if err := service.confirmBackendStatus(ctx, verified, status); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	service.setActiveState(verified.Digest, status.State)
 	service.setReuseAfterDrain(verified.Digest, status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
 		(status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable))
@@ -656,7 +668,7 @@ func (service *Service) SealOutput(
 	if err == nil {
 		err = validateBackendStatus(status)
 		if err == nil {
-			service.confirmBackendStatus(verified, status)
+			err = service.confirmBackendStatus(ctx, verified, status)
 		}
 	}
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {

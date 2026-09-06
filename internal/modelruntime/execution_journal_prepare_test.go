@@ -83,7 +83,7 @@ func TestExecutionJournalPreparationRequiresExclusiveOwnership(t *testing.T) {
 }
 
 func TestExecutionJournalPreparationUpgradesOnlyExplicitValidatedSchema(t *testing.T) {
-	for _, version := range []int{2, 3} {
+	for _, version := range []int{2, 3, 4} {
 		config := journalRuntimeServerConfig(t)
 		state := *config.ExecutionFloor.State
 		initialized, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state)
@@ -101,7 +101,7 @@ func TestExecutionJournalPreparationUpgradesOnlyExplicitValidatedSchema(t *testi
 		if _, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err == nil {
 			t.Fatal("ordinary recovery implicitly upgraded legacy schema")
 		}
-		state.UpgradeV2, state.UpgradeV3 = version == 3, version == 2
+		state.UpgradeV2, state.UpgradeV3 = version != 2, version == 2
 		if _, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err == nil {
 			t.Fatal("upgrade accepted a different source schema")
 		}
@@ -110,11 +110,13 @@ func TestExecutionJournalPreparationUpgradesOnlyExplicitValidatedSchema(t *testi
 			t.Fatalf("rejected recovery changed legacy state: %v", err)
 		}
 		state.UpgradeV2, state.UpgradeV3 = version == 2, version == 3
+		state.UpgradeV4 = version == 4
 		upgraded, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state)
 		if err != nil || upgraded != initialized {
 			t.Fatalf("explicit upgrade lost journal identity/restrictions: %+v %v", upgraded, err)
 		}
 		state.UpgradeV2, state.UpgradeV3 = false, false
+		state.UpgradeV4 = false
 		if recovered, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, state); err != nil || recovered != upgraded {
 			t.Fatalf("ordinary recovery after upgrade: %+v %v", recovered, err)
 		}

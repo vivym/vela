@@ -38,6 +38,8 @@ type ExecutionFloorStateConfig struct {
 	// UpgradeV3 preserves schema-3 evidence without inventing terminal allocation
 	// non-admission proof. Upgrade flags are mutually exclusive.
 	UpgradeV3 bool
+	// UpgradeV4 preserves schema-4 evidence without inventing renewal candidates.
+	UpgradeV4 bool
 }
 
 type executionFloorVerifier struct {

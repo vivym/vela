@@ -30,7 +30,7 @@ func runJournal(ctx context.Context, arguments []string, stdout, stderr io.Write
 	}
 	flags := flag.NewFlagSet("vela-model-runtime journal", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	action := flags.String("action", "", "initialize, recover, upgrade-v2, or upgrade-v3")
+	action := flags.String("action", "", "initialize, recover, upgrade-v2, upgrade-v3, or upgrade-v4")
 	manifestPath := flags.String("launch-manifest-file", "", "trusted private launch manifest")
 	verifierPath := flags.String("verifier-keyring-file", "", "public StageAuthority verifier keyring file")
 	directory := flags.String("directory", "", "existing private execution journal directory")
@@ -52,8 +52,10 @@ func runJournal(ctx context.Context, arguments []string, stdout, stderr io.Write
 		state.UpgradeV2 = true
 	case "upgrade-v3":
 		state.UpgradeV3 = true
+	case "upgrade-v4":
+		state.UpgradeV4 = true
 	default:
-		return errors.New("journal action must be initialize, recover, upgrade-v2, or upgrade-v3")
+		return errors.New("journal action must be initialize, recover, upgrade-v2, upgrade-v3, or upgrade-v4")
 	}
 	manifest, err := modelruntime.LoadLaunchManifest(*manifestPath)
 	if err != nil {
