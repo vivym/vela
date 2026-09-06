@@ -356,6 +356,14 @@ func TestProcessBackendCleanupDriverHelper(t *testing.T) {
 				}
 				os.Exit(3)
 			}
+		case "prepare":
+			if mode == "prepare_timeout" {
+				_ = os.WriteFile(filepath.Join(root, "prepare-blocked"), nil, 0o600)
+				for !stopping() {
+					time.Sleep(10 * time.Millisecond)
+				}
+				os.Exit(0)
+			}
 		case "probe":
 			if mode == "timeout" {
 				for {

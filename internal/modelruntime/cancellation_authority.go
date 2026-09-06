@@ -15,7 +15,7 @@ func (service *Service) cancellationTarget(request stageauthority.Verified, allo
 		return stageauthority.Verified{}, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED, errActiveAuthorityMismatch
 	}
 	active := service.active
-	if active.verified.Digest != request.Digest && (!allowSuccessor || terminalState(active.state) ||
+	if active.verified.Digest != request.Digest && (!allowSuccessor || active.deadlineExpired || terminalState(active.state) ||
 		stageauthority.ValidateRenewal(active.verified.Authority, request.Authority) != nil) {
 		return stageauthority.Verified{}, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED, errActiveAuthorityMismatch
 	}

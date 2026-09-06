@@ -86,13 +86,13 @@ func TestModelRuntimeCanceledWatchdogCannotFenceRenewedGeneration(t *testing.T) 
 	currentTimer.channel <- currentTimer.deadline
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		response, err := client.Status(context.Background(), &velav1.ModelRuntimeServiceStatusRequest{Authority: renewed})
+		response, err := client.InspectExecution(context.Background(), &velav1.ModelRuntimeServiceInspectExecutionRequest{SchemaVersion: 1, Authority: renewed})
 		if err == nil && response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED &&
 			response.GetState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("current watchdog did not cancel runtime: Status = %v error=%v", response, err)
+			t.Fatalf("current watchdog did not cancel runtime: inspection = %v error=%v", response, err)
 		}
 		time.Sleep(time.Millisecond)
 	}

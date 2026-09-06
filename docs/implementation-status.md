@@ -554,6 +554,17 @@ unit, related race/lint, PostgreSQL terminal-recovery checks and Linux non-root
 process/transport checks pass. Cancellation still does not establish writer
 drain, device reuse or physical containment; remaining lifecycle work and
 Production Gates are unchanged.
+The [Runtime watchdog call repair](runtime-watchdog-call-evidence-2026-09-06.md)
+interrupts blocked Prepare, Start, Status and Seal contexts before waiting for
+the execution mutex. Expiry is generation-bound and cannot be renewed away;
+Shutdown also interrupts the registered call. Cooperative and uncooperative
+CPU backends cover all four operations, and an actual blocked ProcessBackend
+test observes process-group exit and a stopped child writer. Late success
+rejects while admission remains retained; late Seal keeps its validated receipt
+in active memory without inferring drain. Full unit, related race/lint, four
+PostgreSQL integration checks and Linux non-root process tests pass. Explicit
+CancelStage preemption, durable sealed receipt recovery, physical containment,
+remaining lifecycle work and Production Gates remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

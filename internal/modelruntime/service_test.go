@@ -358,12 +358,11 @@ func TestModelRuntimeMonotonicWatchdogStopsUnrenewedWork(t *testing.T) {
 	prepareAndStart(t, client, authority)
 
 	clock.Advance(30 * time.Second)
-	renewed := signRuntimeAuthority(t, signer, clock.Now())
 	deadline := time.Now().Add(time.Second)
 	for {
-		statusResponse, err := client.Status(
+		statusResponse, err := client.InspectExecution(
 			context.Background(),
-			&velav1.ModelRuntimeServiceStatusRequest{Authority: renewed},
+			&velav1.ModelRuntimeServiceInspectExecutionRequest{SchemaVersion: 1, Authority: authority},
 		)
 		if err == nil &&
 			statusResponse.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED &&
@@ -371,9 +370,13 @@ func TestModelRuntimeMonotonicWatchdogStopsUnrenewedWork(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("watchdog Status = %#v error=%v", statusResponse, err)
+			t.Fatalf("watchdog inspection = %#v error=%v", statusResponse, err)
 		}
 		runtime.Gosched()
+	}
+	renewed := signRuntimeAuthority(t, signer, clock.Now())
+	if response, err := client.Status(t.Context(), &velav1.ModelRuntimeServiceStatusRequest{Authority: renewed}); err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+		t.Fatalf("renewal revived expired execution: %v %v", response, err)
 	}
 }
 

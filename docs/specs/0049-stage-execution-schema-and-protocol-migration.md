@@ -385,6 +385,16 @@ Those operations belong to the Fleet residency Adapter after drain. The local
 runtime watchdog fences work at the monotonic lease deadline when control-plane
 renewal is unavailable.
 
+Deadline expiry first latches the installed execution generation as expired and
+cancels its in-flight Prepare, Start, Status or Seal context, before waiting for
+the execution mutex. Backend cancellation remains serialized. An old generation
+cannot interrupt a renewed call, and observed expiry cannot be renewed away.
+Shutdown also interrupts the registered call. Late successful replies reject;
+a successful late Seal retains its validated receipt in active memory for exact
+recovery without inferring drain. Admission and journal ownership last until
+the actual call returns, including when a backend ignores cancellation. Neither
+context cancellation nor process exit proves writer drain or device reuse.
+
 `CancelStage` never installs or renews execution authority. It accepts the exact
 installed signed envelope, including after expiry; while admission is healthy
 and above its terminal floor, a fresh compatible successor may also authorize

@@ -59,11 +59,15 @@ failed after restoring the path. No admission mutex is held across the RPC.
 non-admission recovery retain their own peer and Runtime authority checks and
 remain available after Worker journal failure. This guard introduces no Worker
 journal lock around those operations. Runtime operation serialization can still
-delay cancellation behind a blocked backend call.
+delay explicit CancelStage behind a blocked backend call. The monotonic watchdog
+interrupts the current generation's execution-call context before waiting for
+that lock. This does not release the admitted operation or journal ownership:
+an uncooperative backend must actually return before its reference is released.
 
 Cancellation itself grants no lifetime. With a healthy Runtime admission above
 its floor, a fresh compatible successor can authorize a stop using the existing
 installed authority; it cannot replace that authority or reset the watchdog.
+After observed monotonic expiry, only the exact installed envelope may cancel.
 This holds even when the forwarding Worker's journal has failed. Runtime
 journal failure or a terminal floor continues to require an exact installed
 envelope. An acknowledged successor request does not create exact inspection

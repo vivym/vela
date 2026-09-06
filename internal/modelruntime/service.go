@@ -62,6 +62,7 @@ type Service struct {
 	operationMu   sync.Mutex
 	mu            sync.Mutex
 	active        *activeExecution
+	backendCall   *backendExecutionCall
 	admission     *executionAdmission
 	admissionUsed bool
 	supervised    bool
@@ -84,6 +85,7 @@ type activeExecution struct {
 	timer           Timer
 	timerCancel     chan struct{}
 	receipt         *velav1.LocalMaterializationReceipt
+	deadlineExpired bool
 }
 
 func NewService(config Config) (*Service, error) {
@@ -166,7 +168,11 @@ func (service *Service) Shutdown() error {
 		service.mu.Lock()
 		service.cancelWatchdogLocked()
 		service.generation++
+		call := service.backendCall
 		service.mu.Unlock()
+		if call != nil {
+			call.cancel(errors.New("ModelRuntime service is closed"))
+		}
 		if closer, ok := service.backend.(interface{ Close() error }); ok {
 			service.closeErr = closer.Close()
 		}
@@ -261,8 +267,23 @@ func (service *Service) PrepareStage(
 		response.Detail = "StageAttempt already prepared by the same authority"
 		return response, nil
 	}
-	if err := service.backend.Prepare(ctx, verified, request.GetExecutionSpec()); err != nil {
-		service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
+	ctx, finishCall, err := service.executionCallContext(ctx, verified)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer finishCall()
+	if err := executionCallError(ctx, service.backend.Prepare(ctx, verified, request.GetExecutionSpec())); err != nil {
+		if !errors.Is(context.Cause(ctx), errExecutionDeadline) {
+			service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED)
+		}
+		if ctx.Err() != nil {
+			service.setReuseAfterDrain(verified.Digest, false)
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.Detail = boundedDetail(err.Error())
+			return response, nil
+		}
 		service.setReuseAfterDrain(verified.Digest, true)
 		if drainErr := service.checkpointExecutionDrain(ctx, verified); drainErr == nil {
 			service.clearActive(verified.Digest)
@@ -328,7 +349,14 @@ func (service *Service) StartStage(
 		response.Detail = "StageAttempt is not prepared"
 		return response, nil
 	}
-	if err := service.backend.Start(ctx, verified); err != nil {
+	ctx, finishCall, err := service.executionCallContext(ctx, verified)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer finishCall()
+	if err := executionCallError(ctx, service.backend.Start(ctx, verified)); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = state
 		response.Detail = boundedDetail(err.Error())
@@ -448,7 +476,15 @@ func (service *Service) Status(
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
+	ctx, finishCall, err := service.executionCallContext(ctx, verified)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer finishCall()
 	status, err := service.backend.Status(ctx, verified)
+	err = executionCallError(ctx, err)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.Detail = boundedDetail(err.Error())
@@ -581,7 +617,15 @@ func (service *Service) SealOutput(
 		response.Detail = "terminal StageAttempt cannot seal new output"
 		return response, nil
 	}
+	ctx, finishCall, err := service.executionCallContext(ctx, verified)
+	if err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
+	defer finishCall()
 	status, err := service.backend.Status(ctx, verified)
+	err = executionCallError(ctx, err)
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = status.State
@@ -619,6 +663,12 @@ func (service *Service) SealOutput(
 	service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
 	service.cancelWatchdogLocked()
 	service.mu.Unlock()
+	if err := context.Cause(ctx); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
@@ -680,6 +730,9 @@ func (service *Service) renewActiveLocked(
 	verified stageauthority.Verified,
 	allowRenewal bool,
 ) (bool, error) {
+	if service.active.deadlineExpired {
+		return false, errExecutionDeadline
+	}
 	if service.active.verified.Digest == verified.Digest {
 		return true, nil
 	}
@@ -728,6 +781,18 @@ func (service *Service) cancelWatchdogLocked() {
 }
 
 func (service *Service) expire(generation uint64) {
+	service.mu.Lock()
+	if service.active == nil || generation != service.generation || terminalState(service.active.state) ||
+		service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+		service.mu.Unlock()
+		return
+	}
+	service.active.deadlineExpired = true
+	call := service.backendCall
+	if call != nil && call.generation == generation {
+		call.cancel(errExecutionDeadline)
+	}
+	service.mu.Unlock()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	service.mu.Lock()

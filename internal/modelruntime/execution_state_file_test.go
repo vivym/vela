@@ -522,8 +522,8 @@ func TestDurableExecutionStateKeepsLifetimeLockUntilAdmittedCallsReturn(t *testi
 		t.Fatal("Shutdown released the journal while an admitted operation remained")
 	}
 	backend.unblock()
-	if decision := <-done; decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
-		t.Fatalf("previously admitted operation did not return: %s", decision)
+	if decision := <-done; decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
+		t.Fatalf("shutdown accepted a late backend success: %s", decision)
 	}
 	if err := supervisor.Shutdown(); err != nil {
 		t.Fatal(err)
