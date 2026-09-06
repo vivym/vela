@@ -50,6 +50,7 @@ type Backend interface {
 	Probe(context.Context, velav1.ModelRuntimeReadinessCheck) (ProbeResult, error)
 	Prepare(context.Context, stageauthority.Verified, *velav1.StageExecutionSpec) error
 	Start(context.Context, stageauthority.Verified) error
+	// Cancel receives the installed authority and grants no additional lifetime.
 	Cancel(context.Context, stageauthority.Verified, velav1.ModelRuntimeCancelReason) error
 	Status(context.Context, stageauthority.Verified) (BackendStatus, error)
 	Seal(context.Context, stageauthority.Verified) (SealedOutput, error)

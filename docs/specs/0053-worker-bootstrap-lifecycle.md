@@ -61,6 +61,15 @@ remain available after Worker journal failure. This guard introduces no Worker
 journal lock around those operations. Runtime operation serialization can still
 delay cancellation behind a blocked backend call.
 
+Cancellation itself grants no lifetime. With a healthy Runtime admission above
+its floor, a fresh compatible successor can authorize a stop using the existing
+installed authority; it cannot replace that authority or reset the watchdog.
+This holds even when the forwarding Worker's journal has failed. Runtime
+journal failure or a terminal floor continues to require an exact installed
+envelope. An acknowledged successor request does not create exact inspection
+or drain evidence for that successor; recovery keeps the actual installed
+envelope and may query allocation-level checkpoints to recover its proof.
+
 Retention covers the forwarding call only: a timed-out UDS RPC can return while
 backend descendants remain active. It proves neither physical containment nor
 device reuse safety. Runtime durable admission, terminal restrictions and writer

@@ -385,6 +385,16 @@ Those operations belong to the Fleet residency Adapter after drain. The local
 runtime watchdog fences work at the monotonic lease deadline when control-plane
 renewal is unavailable.
 
+`CancelStage` never installs or renews execution authority. It accepts the exact
+installed signed envelope, including after expiry; while admission is healthy
+and above its terminal floor, a fresh compatible successor may also authorize
+stopping that same execution. Runtime sends its installed envelope to the
+backend and preserves its watchdog deadline on success or failure. The response
+digest correlates the request only: it does not make an uninstalled successor
+known to exact inspection or drain. Historical/failed-admission recovery still
+requires the exact installed envelope, and cancellation acknowledgement is not
+writer drain or permission to reuse a device.
+
 ## Migration sequence
 
 ### M0: freeze and inventory

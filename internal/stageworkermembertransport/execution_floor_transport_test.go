@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -261,10 +262,14 @@ type memberFloorBackend struct {
 	*modelruntime.FakeRuntime
 	closed      atomic.Bool
 	cancelCalls atomic.Int64
+	failCancel  atomic.Bool
 }
 
 func (backend *memberFloorBackend) Cancel(ctx context.Context, verified stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
 	backend.cancelCalls.Add(1)
+	if backend.failCancel.Load() {
+		return errors.New("injected CPU cancellation failure")
+	}
 	return backend.FakeRuntime.Cancel(ctx, verified, reason)
 }
 

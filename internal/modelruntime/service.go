@@ -350,7 +350,7 @@ func (service *Service) CancelStage(
 	response := &velav1.ModelRuntimeServiceCancelStageResponse{
 		RuntimeIdentity: runtimeIdentityProto(service.binding),
 	}
-	verified, allowRenewal, err := service.verifyCancellation(request.GetAuthority())
+	verified, allowSuccessor, err := service.verifyCancellation(request.GetAuthority())
 	if err != nil {
 		response.Decision = authorityDecision(err)
 		response.Detail = boundedDetail(err.Error())
@@ -364,21 +364,21 @@ func (service *Service) CancelStage(
 	}
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	admissionAllowsRenewal, release, err := service.executionAdmission().begin(service, &verified, true)
+	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(service, &verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
 	defer release()
-	allowRenewal = allowRenewal && admissionAllowsRenewal
+	allowSuccessor = allowSuccessor && admissionAllowsSuccessor
 	if service.sealedReceipt(verified.Digest) != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
 		response.Detail = "StageAttempt output is already sealed"
 		return response, nil
 	}
-	state, _, err := service.requireActive(verified, allowRenewal)
+	target, state, err := service.cancellationTarget(verified, allowSuccessor)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -398,13 +398,13 @@ func (service *Service) CancelStage(
 		response.Detail = "StageAttempt no longer has cancellable compute"
 		return response, nil
 	}
-	if err := service.backend.Cancel(ctx, verified, request.GetReason()); err != nil {
+	if err := service.backend.Cancel(ctx, target, request.GetReason()); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = state
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
-	service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING)
+	service.setActiveState(target.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.CancellationAcknowledged = true
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING

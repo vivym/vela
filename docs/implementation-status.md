@@ -543,6 +543,17 @@ non-root checks pass. RPC lifetime protection does not prove backend containment
 after timeouts, physical replacement or device reuse. Durable Fleet activation
 and the remaining lifecycle work stay open; versions and Production Gates are
 unchanged.
+The [Runtime cancellation authority repair](runtime-cancellation-authority-evidence-2026-09-06.md)
+removes renewal from CancelStage. A valid fresh successor can authorize stopping
+the installed execution without replacing its authority or watchdog; errors
+preserve the original deadline and exact recovery identity. Expired/unseen,
+superseded, unrelated and invalid envelopes reject; terminal floors still allow
+only exact cancellation. Actual mTLS/UDS recovery after Worker journal closure
+and a compiled H3 CPU process preserve original inspection/drain evidence. Full
+unit, related race/lint, PostgreSQL terminal-recovery checks and Linux non-root
+process/transport checks pass. Cancellation still does not establish writer
+drain, device reuse or physical containment; remaining lifecycle work and
+Production Gates are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
