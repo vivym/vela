@@ -24,6 +24,7 @@ const (
 	velaImageArtifactSchemaVersion = 1
 	velaImageCount                 = 4
 	maximumOCIImageLayoutBytes     = int64(8 << 30)
+	maximumOCIImageExpandedBytes   = int64(32 << 30)
 )
 
 type VelaImageArtifactBuildRequest struct {
@@ -94,6 +95,7 @@ func buildVelaImageArtifacts(
 	}
 	for _, specification := range velaImageSpecifications() {
 		input, err := captureOCIImageArtifact(
+			ctx,
 			filepath.Join(layoutRoot, specification.name),
 			candidate,
 			validated,
@@ -188,11 +190,13 @@ func runVelaImageArtifactBake(
 }
 
 func captureOCIImageArtifact(
+	ctx context.Context,
 	layout, candidate string,
 	request VelaImageBuildRequest,
 	specification velaImageSpecification,
 ) (releasebundle.OCIManifestInput, error) {
 	manifestEncoded, configEncoded, manifestDigest, err := validateOCIImageLayout(
+		ctx,
 		layout,
 		request,
 		specification,
@@ -215,10 +219,17 @@ func captureOCIImageArtifact(
 }
 
 func validateOCIImageLayout(
+	ctx context.Context,
 	layout string,
 	request VelaImageBuildRequest,
 	specification velaImageSpecification,
 ) ([]byte, []byte, string, error) {
+	if ctx == nil {
+		return nil, nil, "", errors.New("OCI layout validation context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, "", err
+	}
 	root, err := openOCILayoutRoot(layout)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("open OCI layout: %w", err)
@@ -266,20 +277,16 @@ func validateOCIImageLayout(
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("read OCI config blob: %w", err)
 	}
-	totalLayerBytes := int64(0)
-	for _, layer := range manifest.Layers {
-		if !validOCIImageLayerMediaType(layer.MediaType) || layer.Size <= 0 ||
-			layer.Size > maximumOCIImageLayoutBytes-totalLayerBytes {
-			return nil, nil, "", errors.New("OCI image layer bytes exceed the bounded layout budget")
-		}
-		totalLayerBytes += layer.Size
-		if err := verifyOCIBlob(root, layer); err != nil {
-			return nil, nil, "", fmt.Errorf("verify OCI layer blob: %w", err)
-		}
-	}
 	if err := validateOCIImageConfig(
 		configEncoded, request, len(manifest.Layers), specification,
 	); err != nil {
+		return nil, nil, "", err
+	}
+	var config ociv1.Image
+	if err := decodeStrictJSON(configEncoded, &config); err != nil {
+		return nil, nil, "", err
+	}
+	if err := verifyOCIImageLayers(ctx, root, manifest.Layers, config.RootFS.DiffIDs, maximumOCIImageExpandedBytes); err != nil {
 		return nil, nil, "", err
 	}
 	return manifestEncoded, configEncoded, descriptor.Digest.String(), nil
@@ -341,22 +348,6 @@ func readVerifiedOCIMetadataBlob(
 		return nil, errors.New("OCI blob digest or size does not match its descriptor")
 	}
 	return content, nil
-}
-
-func verifyOCIBlob(root *ociLayoutRoot, descriptor ociv1.Descriptor) error {
-	file, err := openVerifiedOCIBlob(root, descriptor, descriptor.Size)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close() }()
-	digest := sha256.New()
-	if _, err := io.Copy(digest, file); err != nil {
-		return err
-	}
-	if descriptor.Digest.String() != "sha256:"+hex.EncodeToString(digest.Sum(nil)) {
-		return errors.New("OCI blob digest or size does not match its descriptor")
-	}
-	return nil
 }
 
 type ociLayoutRoot struct {

@@ -1,6 +1,8 @@
 package deploymentcontract
 
 import (
+	"archive/tar"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -169,6 +171,24 @@ func TestBuildVelaImageArtifactsRejectsConfigWithoutRootFS(t *testing.T) {
 	assertVelaImageArtifactBuildRejected(t, fixture, copyOCILayoutsFakeDocker, "OCI config without rootfs")
 }
 
+func TestBuildVelaImageArtifactsRejectsUnboundLayerDiffID(t *testing.T) {
+	fixture := newVelaImageArtifactFixture(t)
+	rewriteOCILayoutConfig(t, filepath.Join(fixture.layoutRoot, "vela-control"), func(config *ociv1.Image) {
+		config.RootFS.DiffIDs[0] = ocidigest.FromString("unrelated uncompressed layer")
+	})
+	output := filepath.Join(fixture.temporary, "artifacts")
+	encoded, err := fixture.run(t, output, copyOCILayoutsFakeDocker)
+	if err == nil {
+		t.Fatalf("build accepted an unrelated DiffID with valid manifest/config/blob digests:\n%s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte("uncompressed layer digest")) {
+		t.Fatalf("build rejected the fixture for an unrelated reason: %v\n%s", err, encoded)
+	}
+	if _, err := os.Lstat(output); !os.IsNotExist(err) {
+		t.Fatalf("published output with an unrelated DiffID: %v", err)
+	}
+}
+
 func TestBuildVelaImageArtifactsRejectsNonExactPlatform(t *testing.T) {
 	fixture := newVelaImageArtifactFixture(t)
 	rewriteOCILayoutConfig(
@@ -217,16 +237,28 @@ func writeOCIImageLayoutFixture(
 	for name, value := range additionalLabels {
 		labels[name] = value
 	}
+	var layer bytes.Buffer
+	archive := tar.NewWriter(&layer)
+	content := []byte("fixture-layer-" + title)
+	if err := archive.WriteHeader(&tar.Header{Name: "fixture.txt", Mode: 0o444, Size: int64(len(content))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := archive.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	layerEncoded := layer.Bytes()
 	config := ociv1.Image{
 		Platform: ociv1.Platform{OS: "linux", Architecture: "amd64"},
 		Config: ociv1.ImageConfig{
 			User: "10001:10001", Entrypoint: []string{entrypoint}, Labels: labels,
 		},
-		RootFS: ociv1.RootFS{Type: "layers", DiffIDs: []ocidigest.Digest{ocidigest.Digest("sha256:" + fmt.Sprintf("%064d", 1))}},
+		RootFS: ociv1.RootFS{Type: "layers", DiffIDs: []ocidigest.Digest{ocidigest.FromBytes(layerEncoded)}},
 	}
 	configEncoded := marshalJSONFixture(t, config)
 	configDigest := sha256.Sum256(configEncoded)
-	layerEncoded := []byte("fixture-layer-" + title)
 	layerDigest := sha256.Sum256(layerEncoded)
 	manifest := ociv1.Manifest{
 		Versioned: specs.Versioned{SchemaVersion: 2},

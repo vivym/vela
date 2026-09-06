@@ -1105,6 +1105,15 @@ verification, strict runtime contracts, fixed inventory, and atomic
 no-replace publication. It does not publish a registry image, sign or attach an
 SBOM, approve vulnerabilities, provide the production H3 backend, or create a
 Launch Receipt.
+The [OCI layer identity repair](oci-layer-diffid-evidence-2026-09-06.md) closes
+a reproduced artifact-export gap: valid manifest/config/blob hashes previously
+allowed an unrelated `rootfs.diff_ids` value. Validation now hashes the stored
+and decoded layer in one bounded stream, checks ordered DiffIDs across raw,
+gzip and zstd layers, and caps aggregate expansion at 32 GiB per image while
+retaining the 8 GiB stored-byte cap. CPU tests cover malformed streams,
+shared budgets, cancellation and failure before formal artifact publication.
+This does not authenticate effective Runtime executable/configuration or change
+startup permissions, journal/schema versions, or the `0/9` Production Gates.
 Slice 44 (`91e883f`) publishes the same fully validated layouts only by
 immutable digest, re-reads and compares the exact remote manifest bytes, and
 atomically records a credential-free publication receipt beside the unchanged

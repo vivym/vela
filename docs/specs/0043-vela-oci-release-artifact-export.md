@@ -38,6 +38,16 @@ remain mandatory. Before publication, repository code requires each layout to
 contain one OCI image manifest and recomputes the manifest, config, and layer
 descriptor digests and sizes from the layout blobs.
 
+The [2026-09-06 layer identity repair](../oci-layer-diffid-evidence-2026-09-06.md)
+also recomputes each uncompressed layer SHA-256 and compares it to the same
+position in config `rootfs.diff_ids`. Raw, gzip and zstd layers are decoded by
+their declared media types. The four image layouts are checked independently;
+each retains the 8 GiB stored-layer budget and now has a 32 GiB aggregate
+decoded-byte budget. Zstd decoding uses one worker and a 64 MiB maximum window.
+Cancellation is checked between reads. This validation hashes all decoded bytes,
+including concatenated compression frames; it does not extract or validate tar
+filesystem semantics, derive executable provenance, or attest a running process.
+
 The config must bind `linux/amd64`, numeric user `10001:10001`, the target's
 exact absolute entrypoint, `org.opencontainers.image.title`, and the supplied
 `org.opencontainers.image.revision`. The H3 stage runtime config must
