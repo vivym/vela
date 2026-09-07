@@ -839,6 +839,13 @@ after byte admission stops.
 This is an association library, not an authorization issuer: independent actual
 journal/launch/current-activation checks and the production endpoint remain open.
 No Runtime retirement/reset, DeviceSet release or Production Gate is added.
+The [passive Runtime file-lock observer](node-runtime-file-lock-evidence-2026-09-07.md)
+now associates a current descriptor's exclusive kernel `flock` with the pinned
+caller and observed inode. An `O_PATH` handle avoids extending lock lifetime;
+independent opens, shared/POSIX/OFD locks, permission changes and original-owner
+exit reject. The actual startup CPU fixture matches its known original lock
+before any mock decision. Original journal provenance, uninterrupted ownership,
+effective launch and current activation remain separate authorization gaps.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

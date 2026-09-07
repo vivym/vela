@@ -58,6 +58,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeStartupLedgerRestartDoesNotReconstructOwner", "TestRuntimeStartupLedgerRejectsUnboundRequests",
 		"TestRuntimeStartupLedgerUncertainAppendRemainsConsumed", "TestRuntimeStartupLedgerRejectsMissingAndChangedState",
 		"TestRuntimeStartupLedgerReservesExitCapacity",
+		"TestRuntimeFileLockKernelEvidence", "TestRuntimeCallerFileLock", "TestRuntimeFileLockInfoRejectsUnprovenLocks",
 		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
 		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",

@@ -284,6 +284,10 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 		}
 	}
 	defer func() { _ = connection.Close() }()
+	if mode == "file-lock" {
+		runtimeFileLockProcess(t, connection)
+		return
+	}
 	if mode == "delegated" {
 		file, err := connection.File()
 		if err != nil {

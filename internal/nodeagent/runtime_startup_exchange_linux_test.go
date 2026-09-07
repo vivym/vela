@@ -167,10 +167,16 @@ func TestRuntimeStartupLedgerBeforeActualFactory(t *testing.T) {
 				t.Fatal(err)
 			}
 			lockErr := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+			var lockIdentity unix.Stat_t
+			if err := unix.Fstat(int(lock.Fd()), &lockIdentity); err != nil {
+				_ = lock.Close()
+				t.Fatal(err)
+			}
 			_ = lock.Close()
 			if !errors.Is(lockErr, unix.EWOULDBLOCK) {
 				t.Fatalf("Runtime journal not locked during registration: %v", lockErr)
 			}
+			assertRuntimeFixtureFileLock(t, caller, lockIdentity)
 			if mode == "lost-response" || mode == "record-error" {
 				_ = caller.Close()
 				_ = connection.Close()

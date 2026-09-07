@@ -202,6 +202,17 @@ command or durable startup-grant integration yet. A process observation alone ca
 backend dispatch, namespace ownership, containment or retirement. See the
 [caller evidence](../node-runtime-caller-evidence-2026-09-06.md).
 
+`RuntimeCaller.InspectFileLock` passively observes a bounded descriptor through
+that original procfs root. It requires a caller-owned private regular file and
+one whole-file exclusive kernel `FLOCK`, with matching device/inode and numeric
+caller PID. `O_PATH` pins the inode without retaining the source lock; repeated
+process/descriptor/metadata reads reject visible changes. The observation does
+not prove original journal provenance, exclusive descriptor ownership or
+continuous locking across unobserved unlock/relock or descriptor-reuse ABA.
+The startup CPU fixture knows and matches its original lock independently;
+production must establish that association from trusted initialization state.
+See the [file-lock evidence](../node-runtime-file-lock-evidence-2026-09-07.md).
+
 `runtimechannel.Exchange` now provides the opposite-direction Linux client and
 `RuntimeCaller.Reply` one challenge-bound response. The client pins a root-owned
 `0660` socket under root-owned non-writable ancestors and authenticates a root
