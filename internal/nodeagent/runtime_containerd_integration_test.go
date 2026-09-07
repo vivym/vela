@@ -50,6 +50,8 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeContainerdProcessEvidence", "TestRuntimeCallerAuthenticatedMessage", "TestRuntimeCallerRejectsInvalidMessages",
 		"TestRuntimeCallerDeadline", "TestRuntimeCallerProcessParser", "TestRuntimeCallerContainerCRI",
 		"TestRuntimeCallerPIDFDExhaustion",
+		"TestRuntimeChannelRoundTrip", "TestRuntimeChannelRejectsUntrustedExchange", "TestRuntimeChannelReplyRejectsLostLifetime",
+		"TestRuntimeChannelPIDNamespaceIdentity",
 		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
 		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",

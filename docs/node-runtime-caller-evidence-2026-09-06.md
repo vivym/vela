@@ -183,8 +183,11 @@ exact container's actual task and namespace-init ownership, authenticate its
 effective launch configuration, and durably bind the Node-issued non-reusable
 incarnation to the Registry journal pair and startup nonce before factory
 dispatch. No endpoint may treat `RuntimeCallerObservation` alone as that grant.
-The Runtime client also needs trusted Node socket/server authentication; this
-receiver does not implement the opposite direction of authentication.
+The receiver now pairs with `runtimechannel.Exchange` and a one-shot
+`RuntimeCaller.Reply`; the [2026-09-07 channel evidence](node-runtime-channel-evidence-2026-09-07.md)
+records root socket/server authentication, including invisible Node processes
+whose credentials report PID 0 in Runtime's namespace. These remain libraries;
+trusted endpoint/command assembly and startup authority are still required.
 
 Independent exact-owner retirement, crash/restart and lost-response recovery,
 metadata GC, durable unhealthy/receipt recovery, history reclamation, renewal

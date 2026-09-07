@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -17,13 +16,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/runtimechannel"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	runtimeCallerProtocol = "vela-runtime-caller-v1\x00"
-	runtimeCallerMaximum  = 32 << 10
-	runtimeCallerTimeout  = 5 * time.Second
+	runtimeCallerProtocol = runtimechannel.Protocol
+	runtimeCallerMaximum  = runtimechannel.MaximumPayload
+	runtimeCallerTimeout  = runtimechannel.HandshakeTimeout
 )
 
 var ErrRuntimeCallerIdentity = errors.New("runtime caller kernel identity is untrusted or no longer live")
@@ -49,12 +49,16 @@ type RuntimeCallerObservation struct {
 // RuntimeCaller retains the kernel's original process handle. It cannot be
 // constructed from a caller-supplied PID or reconstructed from its observation.
 type RuntimeCaller struct {
-	mu      sync.Mutex
-	pidfd   *os.File
-	process *os.Root
-	peer    unix.Ucred
-	boot    uuid.UUID
-	payload []byte
+	mu            sync.Mutex
+	pidfd         *os.File
+	process       *os.Root
+	peer          unix.Ucred
+	boot          uuid.UUID
+	payload       []byte
+	connection    *net.UnixConn
+	challenge     []byte
+	replyDeadline time.Time
+	replied       bool
 }
 
 // ReceiveRuntimeCaller authenticates one challenge-bound Unix seqpacket from
@@ -153,7 +157,7 @@ func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expecte
 		count, ancillaryCount, flags, _, receiveErr = unix.Recvmsg(int(fd), packet, ancillary, unix.MSG_CMSG_CLOEXEC)
 		return !errors.Is(receiveErr, unix.EAGAIN) && !errors.Is(receiveErr, unix.EWOULDBLOCK)
 	})
-	messagePeer, messageFD, ancillaryErr := runtimeCallerAncillary(ancillary[:ancillaryCount])
+	messagePeer, messageFD, ancillaryErr := runtimechannel.ParseAncillary(ancillary[:ancillaryCount])
 	if messageFD >= 0 {
 		defer func() { _ = unix.Close(messageFD) }()
 	}
@@ -161,7 +165,7 @@ func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expecte
 		return nil, err
 	}
 	if ancillaryErr != nil {
-		return nil, ancillaryErr
+		return nil, errors.Join(ErrRuntimeCallerIdentity, ancillaryErr)
 	}
 	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || count <= len(challenge) ||
 		!bytes.Equal(packet[:min(count, len(challenge))], challenge) || messagePeer != *peer {
@@ -179,7 +183,8 @@ func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expecte
 		return nil, err
 	}
 	caller := &RuntimeCaller{pidfd: os.NewFile(uintptr(peerFD), "runtime-caller-pidfd"), process: process,
-		peer: *peer, boot: uuid.MustParse(boot), payload: slices.Clone(packet[len(challenge):count])}
+		peer: *peer, boot: uuid.MustParse(boot), payload: slices.Clone(packet[len(challenge):count]),
+		connection: connection, challenge: challenge, replyDeadline: time.Now().Add(runtimechannel.ExchangeTimeout)}
 	peerFD = -1
 	if _, err := caller.Inspect(ctx); err != nil {
 		_ = caller.Close()
@@ -202,6 +207,57 @@ func (caller *RuntimeCaller) Payload() []byte {
 	return slices.Clone(caller.payload)
 }
 
+// Reply attempts at most one challenge-bound response on the accepted socket.
+// The owner must retain that socket and avoid concurrent I/O until this returns.
+// Successful transmission does not prove receipt or grant startup authority.
+func (caller *RuntimeCaller) Reply(ctx context.Context, payload []byte) (resultErr error) {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if caller == nil || len(payload) == 0 || len(payload) > runtimeCallerMaximum {
+		return ErrRuntimeCallerIdentity
+	}
+	caller.mu.Lock()
+	defer caller.mu.Unlock()
+	if caller.pidfd == nil || caller.connection == nil || caller.replied {
+		return ErrRuntimeCallerIdentity
+	}
+	caller.replied = true
+	if _, err := caller.inspectLocked(ctx); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithDeadline(ctx, caller.replyDeadline)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	if err := caller.connection.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+	canceled := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		_ = caller.connection.SetWriteDeadline(time.Now())
+		close(canceled)
+	})
+	defer func() {
+		if !stop() {
+			<-canceled
+		}
+		cause := context.Cause(ctx)
+		if cause == nil && !time.Now().Before(deadline) {
+			cause = context.DeadlineExceeded
+		}
+		resultErr = errors.Join(resultErr, cause, caller.connection.SetWriteDeadline(time.Time{}))
+	}()
+	if err := context.Cause(ctx); err != nil {
+		return err
+	}
+	packet := append([]byte(runtimechannel.ResponseProtocol), caller.challenge...)
+	packet = append(packet, payload...)
+	if count, err := caller.connection.Write(packet); err != nil || count != len(packet) {
+		return errors.Join(errors.New("send Runtime caller response"), err)
+	}
+	return errors.Join(context.Cause(ctx), checkRuntimePIDFD(int(caller.pidfd.Fd()), caller.peer.Pid))
+}
+
 func (caller *RuntimeCaller) Close() error {
 	if caller == nil {
 		return nil
@@ -213,6 +269,7 @@ func (caller *RuntimeCaller) Close() error {
 	}
 	err := errors.Join(caller.pidfd.Close(), caller.process.Close())
 	caller.pidfd, caller.process, caller.payload = nil, nil, nil
+	caller.connection, caller.challenge = nil, nil
 	return err
 }
 
@@ -288,49 +345,6 @@ func checkRuntimePIDFD(fd int, expectedPID int32) error {
 		}
 	}
 	return ErrRuntimeCallerIdentity
-}
-
-// Always close all received descriptors, including rejected SCM_RIGHTS and
-// duplicate pidfds. Only one validated kernel message pidfd may escape.
-func runtimeCallerAncillary(data []byte) (unix.Ucred, int, error) {
-	messages, err := unix.ParseSocketControlMessage(data)
-	if err != nil {
-		return unix.Ucred{}, -1, err
-	}
-	var credential unix.Ucred
-	var descriptors []int
-	credentialCount, pidfdCount, pidfd := 0, 0, -1
-	for _, message := range messages {
-		switch {
-		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_CREDENTIALS:
-			value, parseErr := unix.ParseUnixCredentials(&message)
-			err = errors.Join(err, parseErr)
-			if parseErr == nil {
-				credential = *value
-				credentialCount++
-			}
-		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_PIDFD && len(message.Data) == 4:
-			pidfd = int(int32(binary.NativeEndian.Uint32(message.Data)))
-			descriptors = append(descriptors, pidfd)
-			pidfdCount++
-		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_RIGHTS:
-			values, parseErr := unix.ParseUnixRights(&message)
-			descriptors = append(descriptors, values...)
-			err = errors.Join(err, parseErr, ErrRuntimeCallerIdentity)
-		default:
-			err = errors.Join(err, ErrRuntimeCallerIdentity)
-		}
-	}
-	if credentialCount != 1 || pidfdCount != 1 || credential.Pid <= 0 || pidfd < 0 {
-		err = errors.Join(err, ErrRuntimeCallerIdentity)
-	}
-	if err != nil {
-		for _, fd := range descriptors {
-			_ = unix.Close(fd)
-		}
-		return unix.Ucred{}, -1, err
-	}
-	return credential, pidfd, nil
 }
 
 func parseRuntimeProcess(status, stat string, peer unix.Ucred) (RuntimeCallerObservation, error) {

@@ -198,10 +198,21 @@ stops yielding live observations after process exit or handle closure. Its
 payload remains subject to Registry/launch validation.
 
 This library is exercised by real containerd CPU tests, but has no serving
-command or durable startup-grant integration yet. The Runtime client must also
-authenticate the Node endpoint. A process observation alone cannot authorize
+command or durable startup-grant integration yet. A process observation alone cannot authorize
 backend dispatch, namespace ownership, containment or retirement. See the
 [caller evidence](../node-runtime-caller-evidence-2026-09-06.md).
+
+`runtimechannel.Exchange` now provides the opposite-direction Linux client and
+`RuntimeCaller.Reply` one challenge-bound response. The client pins a root-owned
+`0660` socket under root-owned non-writable ancestors and authenticates a root
+kernel peer before sending its request. Every received frame carries credentials
+and a live pidfd matching the retained peer's pidfs identity. Numeric PID equality
+is insufficient: from Runtime's child PID namespace, different root Node-side
+processes can both report PID 0. Distinct response framing, challenge binding,
+payload bounds, one-shot reply and cancellation reject delegation, replay and
+visible endpoint replacement. Linux pidfs is required. Command/endpoint assembly
+and domain startup authorization remain open. See the
+[channel evidence](../node-runtime-channel-evidence-2026-09-07.md).
 
 `RuntimeContainerObserver.ObserveCaller` now correlates that opaque live caller
 with the exact CRI container and native running task on the same authenticated
@@ -216,7 +227,7 @@ under the same ID. Missing metadata still yields no observation. See the
 
 This combined observation is not immutable launch configuration, complete
 containment, a continuing lifetime lock or Registry startup authority. Effective
-configuration authentication, trusted client/endpoint assembly, durable journal
+configuration authentication, trusted endpoint/command assembly, durable journal
 and startup-nonce binding before factory dispatch, and independent exact-owner
 retirement remain required. No observation clears unresolved backend ownership.
 
@@ -236,7 +247,7 @@ activation. The caller declares a manifest; the adapter does not prove that
 those bytes were loaded or that its actual OCI configuration matches. The real
 CRI positive control uses Registry/Pod fixtures and a synthetic helper image,
 so it is not live Kubernetes/release-image conformance. Effective launch
-attestation, endpoint/client assembly, actual journal-lock/startup-nonce binding
+attestation, endpoint/command assembly, actual journal-lock/startup-nonce binding
 and independent retirement remain unimplemented. No factory consumes this
 observation as a grant.
 
