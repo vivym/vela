@@ -815,6 +815,18 @@ the journal recorded its launch digest; both now preserve the original snapshot.
 Lifecycle evidence collection waits for the existing phase setup gate before
 archiving journal files, avoiding in-progress publication without accepting
 partial archives. Executable binding, startup grants and retirement remain open.
+The [Runtime Node startup gate](runtime-node-startup-gate-evidence-2026-09-07.md)
+now runs in `StartRuntimeServer` after the original Registry-bound journal's
+member-wide startup intent is durable and before the first backend factory.
+Fresh bound startup requires a gate; the durable command requires
+`VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET`. Authenticated decisions bind the exact
+canonical request. Denial, invalid responses, cancellation and lost responses
+dispatch no factories, and subsequent startup remains recovery-only with the
+original nonce. Actual root/non-root namespace PID-1 exchange, AUX-once dispatch,
+Registry integration and surviving-writer CPU experiments pass. The Node issuer,
+durable authorization transaction, independent held-journal/effective-launch
+binding and exact-owner retirement remain open; mock permits do not authorize
+production. Schema/journal versions and Production Gates `0/9` are unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

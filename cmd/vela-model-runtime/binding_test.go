@@ -46,4 +46,5 @@ func configureCommandJournalBinding(t *testing.T, manifest modelruntime.LaunchMa
 	writeCommandJSON(t, keyPath, map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)})
 	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", path)
 	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", keyPath)
+	t.Setenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET", "/run/vela-test-node-startup.sock")
 }

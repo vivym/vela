@@ -300,6 +300,8 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
 		Manifest: manifest, EpochStore: epochStore, Validator: validator, SocketPath: filepath.Join(socketRoot, "runtime.sock"), CancelTimeout: time.Second,
 		ExecutionFloor: &modelruntime.ExecutionFloorConfig{State: &state}, RegistryBinding: binding, RegistryVerifier: verifier,
+		// This integration exercises Registry issuance with an explicit CPU startup permit.
+		BackendStartupGate: func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() },
 		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
 			if _, err := modelruntime.PrepareExecutionJournal(t.Context(), manifest, validator, state); err == nil {
 				t.Fatal("bound journal lock was released before CPU backend startup")

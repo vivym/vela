@@ -104,7 +104,14 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- run(ctx) }()
+	go func() {
+		done <- runUsing(ctx, func(ctx context.Context, config modelruntime.RuntimeServerConfig) (modelRuntimeServer, error) {
+			// Command lifecycle uses an explicit Node authorization fixture. The
+			// actual root/non-root transport runs in the Linux startup sandbox.
+			config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
+			return modelruntime.StartRuntimeServer(ctx, config)
+		})
+	}()
 
 	waitForCommandEvent(t, eventPath, "initialize")
 	waitForPrivateCommandSocket(t, socketPath)
@@ -195,8 +202,8 @@ func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
 		config modelruntime.RuntimeServerConfig,
 	) (modelRuntimeServer, error) {
 		observed = config.MaxClockSkew
-		if config.RegistryBinding == nil || config.RegistryVerifier == nil {
-			t.Fatal("durable command omitted Registry binding")
+		if config.RegistryBinding == nil || config.RegistryVerifier == nil || config.BackendStartupGate == nil {
+			t.Fatal("durable command omitted Registry binding or Node startup gate")
 		}
 		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Directory != stateDirectory ||
 			config.ExecutionFloor.State.Initialize || config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 {
@@ -270,8 +277,24 @@ func TestLoadCommandConfigRequiresCanonicalPathsAndBoundedDurations(t *testing.T
 	if _, err := loadCommandConfig(); err == nil {
 		t.Fatal("durable journal configured without Registry public key")
 	}
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", filepath.Join(root, "registry-keys.json"))
+	for _, socket := range []string{"", "relative-node.sock", root + "/../node.sock"} {
+		t.Setenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET", socket)
+		if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "NODE_STARTUP_SOCKET") {
+			t.Fatalf("invalid Node startup socket %q: %v", socket, err)
+		}
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET", filepath.Join(root, "node.sock"))
+	if configuration, err := loadCommandConfig(); err != nil || configuration.nodeStartupSocket != filepath.Join(root, "node.sock") {
+		t.Fatalf("valid Node startup socket configuration: %+v %v", configuration, err)
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", "")
 	t.Setenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE", "")
 	t.Setenv("VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY", "")
+	if _, err := loadCommandConfig(); err == nil {
+		t.Fatal("Node startup socket configured without durable journal")
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET", "")
 	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "0s")
 	if _, err := loadCommandConfig(); err == nil || !strings.Contains(err.Error(), "CANCEL_TIMEOUT") {
 		t.Fatalf("zero cancellation timeout error = %v", err)

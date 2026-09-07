@@ -383,6 +383,8 @@ func enableDurableSmoke(t *testing.T, configuration *config, identity *velav1.Mo
 		},
 		ExecutionFloor:  &modelruntime.ExecutionFloorConfig{State: &runtimeState},
 		RegistryBinding: launch.admission.RegistryBinding, RegistryVerifier: launch.admission.RegistryVerifier,
+		// Worker command fixture authorizes its CPU backend independently of Registry binding.
+		BackendStartupGate: func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() },
 	})
 	if err != nil {
 		t.Fatal(err)

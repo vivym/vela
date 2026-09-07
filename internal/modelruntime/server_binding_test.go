@@ -52,6 +52,8 @@ func TestRuntimeServerRejectsUnboundJournalBeforeEpochAndBackend(t *testing.T) {
 	for _, fault := range []string{"signature", "journal-id", "scope", "worker", "worker-epoch", "member", "member-epoch", "verifier", "binding", "no-state", "initialize", "upgrade", "upgrade-v4", "upgrade-v5", "replacement"} {
 		t.Run(fault, func(t *testing.T) {
 			config := journalRuntimeServerConfig(t)
+			// A valid mock gate must not hide Registry rejection behind missing-gate errors.
+			config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
 			journal, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
 			if err != nil {
 				t.Fatal(err)
@@ -134,6 +136,7 @@ func TestRuntimeServerRejectsUnboundJournalBeforeEpochAndBackend(t *testing.T) {
 
 func TestRuntimeServerRetainsRegistryBoundJournalThroughStartupAndServing(t *testing.T) {
 	config := journalRuntimeServerConfig(t)
+	config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
 	journal, err := modelruntime.PrepareExecutionJournal(t.Context(), config.Manifest, config.Validator, *config.ExecutionFloor.State)
 	if err != nil {
 		t.Fatal(err)

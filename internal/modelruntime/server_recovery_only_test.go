@@ -71,6 +71,9 @@ func TestRuntimeServerRecoveryWithholdsAllBackendsUntilHistoryIsDrained(t *testi
 				t.Fatal(err)
 			}
 			config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, journal, nil)
+			if state == "empty" || state == "drained" {
+				config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
+			}
 			factory, calls := config.BackendFactory, 0
 			config.BackendFactory = func(ctx context.Context, runtime modelruntime.LaunchRuntime, binding stageauthority.RuntimeBinding, backend modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
 				calls++

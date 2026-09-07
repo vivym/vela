@@ -3,6 +3,7 @@
 package modelruntime_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -67,6 +68,9 @@ func TestRuntimeLifecycleProcessHelper(t *testing.T) {
 		writeLifecycleJSON(t, "replacement-journal.json", journal)
 		config.ExecutionFloor.State.Initialize = false
 		config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, journal, nil)
+		if mode == "fresh-replacement" {
+			config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
+		}
 		server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 		if err != nil {
 			t.Fatal(err)
@@ -135,6 +139,8 @@ func runLifecycleOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, journal, nil)
+	// Lifecycle experiments use a mock permit to reach the selected crash boundary.
+	config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
 	go func() {
 		waitLifecycleFile(t, "exit-owner")
 		os.Exit(72)

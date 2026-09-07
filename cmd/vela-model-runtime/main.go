@@ -25,6 +25,7 @@ type commandConfig struct {
 	executionStateDirectory    string
 	journalBindingFile         string
 	journalBindingVerifierFile string
+	nodeStartupSocket          string
 	socketPath                 string
 	cancelTimeout              time.Duration
 	shutdownTimeout            time.Duration
@@ -87,12 +88,17 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 	}
 	var binding *velav1.WorkerBootstrapBinding
 	var bindingVerifier *journalbinding.Verifier
+	var startupGate modelruntime.RuntimeBackendStartupGate
 	if configuration.executionStateDirectory != "" {
 		bindingVerifier, err = journalbinding.ReadVerifierFile(configuration.journalBindingVerifierFile)
 		if err != nil {
 			return err
 		}
 		binding, err = journalbinding.LoadFile(configuration.journalBindingFile, bindingVerifier)
+		if err != nil {
+			return err
+		}
+		startupGate, err = modelruntime.NewNodeBackendStartupGate(configuration.nodeStartupSocket)
 		if err != nil {
 			return err
 		}
@@ -108,6 +114,7 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 		MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
 		ExecutionFloor:  runtimeExecutionFloor(configuration),
 		RegistryBinding: binding, RegistryVerifier: bindingVerifier,
+		BackendStartupGate: startupGate,
 	})
 	if err != nil {
 		return err
@@ -163,7 +170,11 @@ func loadCommandConfig() (commandConfig, error) {
 		if err != nil {
 			return commandConfig{}, err
 		}
-	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" {
+		configuration.nodeStartupSocket, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET")
+		if err != nil {
+			return commandConfig{}, err
+		}
+	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET") != "" {
 		return commandConfig{}, errors.New("ModelRuntime journal binding requires VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY")
 	}
 	configuration.cancelTimeout, err = requiredCommandDuration(

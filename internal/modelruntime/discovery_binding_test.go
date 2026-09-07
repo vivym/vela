@@ -29,6 +29,7 @@ func TestRuntimeDiscoveryRequiresHeldRegistryBoundState(t *testing.T) {
 			switch mode {
 			case "bound":
 				config.RegistryBinding, config.RegistryVerifier = binding, verifier
+				config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
 			case "nondurable":
 				config.ExecutionFloor = nil
 			}
@@ -68,6 +69,7 @@ func TestRuntimeDiscoveryRechecksJournalOwnershipAndRetainsFailure(t *testing.T)
 			}
 			config.ExecutionFloor.State.Initialize = false
 			config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, journal, nil)
+			config.BackendStartupGate = func(_ context.Context, request modelruntime.BackendStartupRequest) error { return request.Validate() }
 			want := proto.Clone(config.RegistryBinding).(*velav1.WorkerBootstrapBinding)
 			server, err := modelruntime.StartRuntimeServer(t.Context(), config)
 			if err != nil {

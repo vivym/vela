@@ -35,17 +35,18 @@ type RuntimeBackendFactory func(
 ) (Backend, error)
 
 type RuntimeServerConfig struct {
-	Manifest         LaunchManifest
-	EpochStore       EpochStore
-	Validator        *stageauthority.Validator
-	SocketPath       string
-	CancelTimeout    time.Duration
-	ShutdownTimeout  time.Duration
-	MaxClockSkew     time.Duration
-	BackendFactory   RuntimeBackendFactory
-	ExecutionFloor   *ExecutionFloorConfig
-	RegistryBinding  *velav1.WorkerBootstrapBinding
-	RegistryVerifier *journalbinding.Verifier
+	Manifest           LaunchManifest
+	EpochStore         EpochStore
+	Validator          *stageauthority.Validator
+	SocketPath         string
+	CancelTimeout      time.Duration
+	ShutdownTimeout    time.Duration
+	MaxClockSkew       time.Duration
+	BackendFactory     RuntimeBackendFactory
+	BackendStartupGate RuntimeBackendStartupGate
+	ExecutionFloor     *ExecutionFloorConfig
+	RegistryBinding    *velav1.WorkerBootstrapBinding
+	RegistryVerifier   *journalbinding.Verifier
 }
 
 type RuntimeServer struct {
@@ -155,6 +156,9 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 		if opened != nil {
 			opened(startupState)
 		}
+		if config.RegistryBinding != nil && startupState.recoveryError() == nil && config.BackendStartupGate == nil {
+			return nil, ErrBackendStartupGateRequired
+		}
 	}
 	backendFactory := config.BackendFactory
 	if backendFactory == nil {
@@ -223,6 +227,11 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 					if !backendStartupRecorded {
 						if err := startupState.recordBackendStartup(config.Manifest); err != nil {
 							return nil, err
+						}
+						if config.RegistryBinding != nil {
+							if err := startupState.authorizeBackendStartup(runtimeCtx, config.RegistryBinding, config.BackendStartupGate); err != nil {
+								return nil, err
+							}
 						}
 						backendStartupRecorded = true
 					}
