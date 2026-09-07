@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -200,6 +203,79 @@ func TestRuntimeStartupLedgerRestartDoesNotReconstructOwner(t *testing.T) {
 		if current, err := recovered.Inspect(t.Context(), f.request.JournalID); err != nil || !reflect.DeepEqual(current, original) {
 			t.Fatalf("reopen altered original: %v", err)
 		}
+	}
+}
+
+func TestRuntimeStartupLedgerReservesExitCapacity(t *testing.T) {
+	f := newRuntimeStartupFixture(t, nil)
+	ledger, directory := startupTestLedger(t)
+	original, err := ledger.Record(t.Context(), f.plan, f.pods, f.observer, f.caller)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Pause the helper's own test timeout while the race build fills the ledger.
+	if err := f.process.Signal(syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	// Synthetic signed history exercises the byte limit without launching hundreds
+	// of processes. Escaped, bounded CRI text must count at its JSON wire size.
+	for {
+		fixture := runtimeLaunchFixture(t)
+		record := cloneRuntimeStartup(original)
+		record.OperationID, record.Request.JournalID = uuid.New(), uuid.MustParse(fixture.binding.Pair.RuntimeJournalId)
+		record.RegistryBinding, err = proto.MarshalOptions{Deterministic: true}.Marshal(fixture.binding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Request.RegistryBindingDigest = sha256.Sum256(record.RegistryBinding)
+		record.Owner.Container.ImageRef = strings.Repeat("<", 1024)
+		entry := runtimeStartupEntry{Startup: &record}
+		before := ledger.size
+		err = ledger.append(t.Context(), entry)
+		if err == nil {
+			if len(ledger.starts) >= maxRuntimeStartupRecords {
+				t.Fatal("fixture reached the record count limit before the byte limit")
+			}
+			continue
+		}
+		if !errors.Is(err, ErrRuntimeStartupLedger) || ledger.size != before || ledger.failed != nil {
+			t.Fatalf("capacity rejection changed or poisoned the ledger: %v", err)
+		}
+		wire, err := json.Marshal(entry)
+		if err != nil || before+int64(len(wire))+1 > maxRuntimeStartupLedgerBytes {
+			t.Fatal("new history exhausted the byte budget needed for pending exits")
+		}
+		break
+	}
+	t.Logf("startup admission rejected at %d records and %d persisted bytes", len(ledger.starts), ledger.size)
+	if _, err := ledger.RecordExit(t.Context(), f.request.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLive) {
+		t.Fatalf("capacity exhaustion or a paused owner manufactured exit: %v", err)
+	}
+	if err := f.process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	var exit RuntimeStartupExit
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		exit, err = ledger.RecordExit(t.Context(), f.request.JournalID)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, ErrRuntimeNamespaceOwnerLive) || time.Now().After(deadline) {
+			t.Fatalf("saturated ledger could not retain original-owner exit: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := OpenRuntimeStartupLedger(t.Context(), directory, "cpu-node", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = recovered.Close() })
+	if current, err := recovered.RecordExit(t.Context(), f.request.JournalID); err != nil || current != exit {
+		t.Fatalf("saturated ledger lost durable exit on reopen: %v", err)
 	}
 }
 

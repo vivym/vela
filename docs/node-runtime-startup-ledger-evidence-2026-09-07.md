@@ -36,8 +36,8 @@ backend or releases a DeviceSet.
 The ledger accepts at most 1024 startup records and 8 MiB of total bytes, with
 individual lines below 64 KiB. Append admission reserves bytes for pending
 owners' eventual exit entries. These are deliberate bounds without compaction;
-capacity exhaustion rejects new registrations. A saturation-specific experiment
-is still pending at this checkpoint.
+capacity exhaustion rejects new registrations. The follow-up saturation
+experiment below validates retained exit persistence after admission stops.
 
 ## CPU validation
 
@@ -62,9 +62,9 @@ using Docker `28.3.2`, containerd `v2.3.1` and runc `1.4.2`:
 
 - Complete Node wrapper: 53 mandatory main tests plus both volatile-state-reset
   scenarios, no skips, 158.97 seconds.
-- Static Linux race binary: all six new main tests plus authenticated channel,
+- Final static Linux race binary: all seven ledger main tests plus authenticated channel,
   actual CRI caller, planned caller and three namespace-owner regressions;
-  12 main tests passed without skips or race reports.
+  13 explicitly selected main tests passed without skips or race reports.
 - Full `go test ./...` and `go vet ./...`.
 - Linux integration-tag vet and pinned golangci-lint `v2.13.1` for
   `internal/nodeagent` and `cmd/vela-node-agent`, zero lint issues.
@@ -89,9 +89,38 @@ Logs are retained under `/tmp/vela-startup-validation.syiSMk`. SHA-256:
 | File | Digest |
 | --- | --- |
 | `ledger-full-cpu.log` | `efec447b5f5ce76cd4b6d24473153bb5d494c3e3430ddd6c09b84cf43276edca` |
-| `ledger-race-tests.log` | `996bd1a384ae90ed458587f3044b9d76aea22a39c001a5db1195c7139f00a0ec` |
+| `ledger-race-final-selected.log` | `84f69b54f769273ab989a47cabffe3beb222b7fe07d424ef67aed016b014fad4` |
 | `ledger-unit.log` | `c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8` |
 | `ledger-linux-lint-final.log` | `e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47` |
+
+## Capacity follow-up after 0cbca3e
+
+`TestRuntimeStartupLedgerReservesExitCapacity` fills real ledger storage using
+synthetic signed history and bounded CRI strings whose JSON encoding expands.
+It rejects further append at 504 records and approximately 4.49 MB of persisted
+bytes, before reaching either the raw 8 MiB limit or the record-count limit.
+That count is fixture-specific, not a production capacity estimate. Rejection
+leaves the ledger usable. A real retained owner remains live while paused;
+after explicit process termination, its exact exit persists and survives reopen.
+
+The initial race run exceeded the helper's 15-second test timeout while filling
+history. The final test pauses that helper during fixture construction and
+explicitly confirms that pause cannot produce exit. All seven ledger main tests
+pass within the final 13-test race selection without skips or race reports.
+The explicit selection excludes subprocess-only helpers. This corrects the test
+lifetime; production implementation is unchanged from `0cbca3e`.
+
+The complete wrapper passes 54 mandatory main tests and both state-reset
+scenarios without skips in 161.19 seconds. That wrapper ran before the
+helper-pause adjustment; the final 13-test race run covers the adjusted test.
+Linux integration-tag Node vet and golangci-lint also pass. Follow-up logs are
+retained beside the original logs; `ledger-capacity-full-cpu.log` has SHA-256
+`02a974c78ee8a1b05834c1afa1bb03ae5c0d0d9ca6c6e473e9468f1d5ef571d8`.
+`ledger-race-final-selected.log` records the final race run.
+
+These bounds still require a future retention/compaction policy with an external
+durable authority. Deleting history or starting a new ledger does not establish
+permission to reuse a prior Runtime journal or release its owner.
 
 ## Remaining authority
 

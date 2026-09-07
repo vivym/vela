@@ -832,8 +832,10 @@ now persists the authenticated declaration, verified historical Registry binding
 and independently retained namespace owner before returning a registration.
 Duplicate registration rejects. Exact-owner kernel exit survives reopening once
 durable; lost live pidfds cannot be reconstructed after Node restart. The actual
-Runtime exchange with an explicit mock permit, 53 mandatory Node CPU tests, both
-volatile-state-reset scenarios and 12 focused race tests pass without skips.
+Runtime exchange with an explicit mock permit, 54 mandatory Node CPU tests, both
+volatile-state-reset scenarios and 13 explicitly selected race tests pass without
+skips. The added saturation regression preserves original-owner exit persistence
+after byte admission stops.
 This is an association library, not an authorization issuer: independent actual
 journal/launch/current-activation checks and the production endpoint remain open.
 No Runtime retirement/reset, DeviceSet release or Production Gate is added.
