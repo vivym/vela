@@ -34,6 +34,28 @@ import (
 
 const runtimeImageCrashEnvironment = "VELA_TEST_IMAGE_CRASH_STAGE"
 
+// Independently owned test control resources do not use the observation journal.
+type runtimeImageControlResources runtimeImageResources
+
+func (resources *runtimeImageControlResources) close(ctx context.Context) error {
+	if resources.activation {
+		if _, err := resources.observer.mounts.Deactivate(ctx, &mountsapi.DeactivateRequest{Name: resources.key}); err != nil {
+			return err
+		}
+	}
+	if resources.view {
+		if _, err := resources.observer.snapshots.Remove(ctx, &snapshotsapi.RemoveSnapshotRequest{Snapshotter: resources.observer.snapshotter, Key: resources.key}); err != nil {
+			return err
+		}
+	}
+	if resources.lease {
+		if _, err := resources.observer.leases.Delete(ctx, &leasesapi.DeleteRequest{ID: resources.key, Sync: true}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type runtimeImageCrashPoint struct {
 	Key        string    `json:"key"`
 	ExpiresAt  time.Time `json:"expires_at"`
@@ -50,6 +72,10 @@ func TestRuntimeImageMaintenanceProcess(t *testing.T) {
 
 func TestRuntimeImageDaemonRestart(t *testing.T) {
 	runRuntimeImageCrashCases(t, []string{"daemon-term", "daemon-kill"})
+}
+
+func TestRuntimeImageBusyRecovery(t *testing.T) {
+	runRuntimeImageCrashCases(t, []string{"activation-busy"})
 }
 
 func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
@@ -104,7 +130,7 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	if _, err := observer.leases.Create(controlCtx, &leasesapi.CreateRequest{ID: controlKey}); err != nil {
 		t.Fatal(err)
 	}
-	control := runtimeImageResources{observer: observer, key: controlKey, lease: true}
+	control := runtimeImageControlResources{observer: observer, key: controlKey, lease: true}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(fixture.ctx), 5*time.Second)
 		defer cancel()
@@ -127,7 +153,7 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	expected, expectedSize := runtimeExecutableDigest(t, controlFile)
 	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) {
-			stage := strings.TrimSuffix(strings.TrimSuffix(scenario, "-gc"), "-service")
+			stage := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(scenario, "-gc"), "-service"), "-busy")
 			lifetime := 6 * time.Second
 			if strings.HasPrefix(scenario, "daemon-") {
 				stage, lifetime = "activation", 15*time.Second
@@ -162,8 +188,14 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 			}
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
 			switch scenario {
+			case "activation-busy":
+				testRuntimeImageBusyRecovery(t, fixture, observer, point)
 			case "activation-gc":
 				forceRuntimeImageGC(t, fixture)
+				assertRuntimeImageCrashResources(t, fixture, point, stage, true)
+				if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 1 {
+					t.Fatalf("Vela did not recover the GC-protected observation: %d %v", count, err)
+				}
 			case "activation-service", "daemon-term", "daemon-kill":
 				runRuntimeImageMaintenanceProcess(t, fixture, observer.namespace)
 			default:
@@ -208,6 +240,37 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 			assertRuntimeImageResourcesReleased(t, fixture)
 			t.Logf("SIGKILL %s: protected before expiry, retained while idle after expiry, then fully reclaimed; live view and source image preserved", scenario)
 		})
+	}
+}
+
+func testRuntimeImageBusyRecovery(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, point runtimeImageCrashPoint) {
+	t.Helper()
+	holder, err := os.Open(filepath.Join(point.MountPoint, "probe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = holder.Close() })
+	count, err := observer.RecoverExpired(t.Context())
+	if count != 0 || err == nil || !strings.Contains(err.Error(), "busy") {
+		t.Fatalf("open kernel file did not prevent first cleanup: %d %v", count, err)
+	}
+	// containerd has already deleted activation metadata even though umount
+	// returned EBUSY. A retry must not mistake that NotFound for completion.
+	assertRuntimeImageCrashResources(t, fixture, point, "view", true)
+	if _, err := os.Stat(filepath.Join(point.MountPoint, "probe")); err != nil {
+		t.Fatalf("failed unmount lost the retained file: %v", err)
+	}
+	count, err = observer.RecoverExpired(t.Context())
+	if count != 0 || err == nil {
+		t.Fatalf("retry reported recovery despite a still-busy kernel mount: %d %v", count, err)
+	}
+	assertRuntimeImageCrashResources(t, fixture, point, "view", true)
+	if err := holder.Close(); err != nil {
+		t.Fatal(err)
+	}
+	count, err = observer.RecoverExpired(t.Context())
+	if count != 1 || err != nil {
+		t.Fatalf("released mount did not complete recovery: %d %v", count, err)
 	}
 }
 
@@ -468,7 +531,7 @@ func TestRuntimeImageCrashHelper(t *testing.T) {
 	if stage == "" {
 		t.Skip("subprocess-only image observer crash helper")
 	}
-	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" || (stage != "lease" && stage != "view" && stage != "activation") {
+	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" || (stage != "lease" && stage != "view" && stage != "activation" && stage != "recorded-activation") {
 		t.Fatal("invalid private crash helper configuration")
 	}
 	observer, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{
@@ -495,7 +558,7 @@ func TestRuntimeImageCrashHelper(t *testing.T) {
 		select {}
 	}
 	observer.leases = &crashRuntimeImageLeases{LeasesClient: observer.leases, point: point, pause: pause, stage: stage, lifetime: lifetime}
-	observer.snapshots = &crashRuntimeImageSnapshots{SnapshotsClient: observer.snapshots, pause: pause, stage: stage}
+	observer.snapshots = &crashRuntimeImageSnapshots{SnapshotsClient: observer.snapshots, point: point, pause: pause, stage: stage}
 	observer.mounts = &crashRuntimeImageMounts{MountsClient: observer.mounts, point: point, pause: pause, stage: stage}
 	_, err = observer.InspectExecutable(t.Context(), RuntimeImageTarget{ManifestDigest: os.Getenv("VELA_TEST_IMAGE_MANIFEST"),
 		ConfigDigest: os.Getenv("VELA_TEST_IMAGE_CONFIG"), ExecutablePath: "/probe"})
@@ -511,12 +574,12 @@ type crashRuntimeImageLeases struct {
 }
 
 func (client *crashRuntimeImageLeases) Create(ctx context.Context, request *leasesapi.CreateRequest, options ...grpc.CallOption) (*leasesapi.CreateResponse, error) {
-	expires, err := time.Parse(time.RFC3339, request.Labels["containerd.io/gc.expire"])
+	expires, err := time.Parse(time.RFC3339, request.Labels[runtimeImageLeaseExpiryLabel])
 	if err != nil || time.Until(expires) < 59*time.Minute || time.Until(expires) > time.Hour {
 		return nil, errors.New("production reader omitted its one-hour lease expiry")
 	}
 	client.point.Key, client.point.ExpiresAt = request.ID, time.Now().Add(client.lifetime).Truncate(time.Second)
-	request.Labels["containerd.io/gc.expire"] = client.point.ExpiresAt.Format(time.RFC3339)
+	request.Labels[runtimeImageLeaseExpiryLabel] = client.point.ExpiresAt.Format(time.RFC3339)
 	response, err := client.LeasesClient.Create(ctx, request, options...)
 	if err == nil && client.stage == "lease" {
 		client.pause()
@@ -526,8 +589,18 @@ func (client *crashRuntimeImageLeases) Create(ctx context.Context, request *leas
 
 type crashRuntimeImageSnapshots struct {
 	snapshotsapi.SnapshotsClient
+	point *runtimeImageCrashPoint
 	pause func()
 	stage string
+}
+
+func (client *crashRuntimeImageSnapshots) Update(ctx context.Context, request *snapshotsapi.UpdateSnapshotRequest, options ...grpc.CallOption) (*snapshotsapi.UpdateSnapshotResponse, error) {
+	response, err := client.SnapshotsClient.Update(ctx, request, options...)
+	if err == nil && client.stage == "recorded-activation" && request.Info.Labels[runtimeImagePhaseLabel] == "MOUNTED" {
+		client.point.MountPoint = request.Info.Labels[runtimeImageMountPathLabel]
+		client.pause()
+	}
+	return response, err
 }
 
 func (client *crashRuntimeImageSnapshots) View(ctx context.Context, request *snapshotsapi.ViewSnapshotRequest, options ...grpc.CallOption) (*snapshotsapi.ViewSnapshotResponse, error) {

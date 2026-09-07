@@ -212,25 +212,36 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 		return result, err
 	}
 	resources.view = true
-	view, err := observer.snapshots.View(ctx, &snapshotsapi.ViewSnapshotRequest{Snapshotter: observer.snapshotter, Key: key, Parent: chain})
+	view, err := observer.snapshots.View(ctx, &snapshotsapi.ViewSnapshotRequest{Snapshotter: observer.snapshotter, Key: key, Parent: chain,
+		Labels: map[string]string{runtimeImagePhaseLabel: "VIEW", runtimeImageBootLabel: boot.String()}})
 	if status.Code(err) == codes.AlreadyExists {
 		resources.view = false
 	}
 	if err != nil {
 		return result, err
 	}
-	viewInfo, err := observer.statSnapshot(ctx, key, chain, snapshotsapi.Kind_VIEW)
-	if err != nil {
+	if _, err := observer.statSnapshot(ctx, key, chain, snapshotsapi.Kind_VIEW); err != nil {
 		return result, err
 	}
 	if !validRuntimeNativeView(view.GetMounts()) {
 		return result, errors.New("native image view does not specify one read-only bind mount")
+	}
+	if _, err := observer.setImagePhase(ctx, key, map[string]string{runtimeImagePhaseLabel: "ACTIVATING", runtimeImageBootLabel: boot.String()}); err != nil {
+		return result, err
 	}
 	resources.activation = true
 	activation, err := observer.mounts.Activate(ctx, &mountsapi.ActivateRequest{Name: key, Mounts: view.Mounts, Temporary: true})
 	if status.Code(err) == codes.AlreadyExists {
 		resources.activation = false
 	}
+	if err != nil {
+		return result, err
+	}
+	if _, err := runtimeImageActivationPath(key, activation.GetInfo()); err != nil {
+		return result, err
+	}
+	viewInfo, err := observer.setImagePhase(ctx, key, map[string]string{runtimeImagePhaseLabel: "MOUNTED", runtimeImageBootLabel: boot.String(),
+		runtimeImageMountPathLabel: activation.Info.Active[0].MountPoint})
 	if err != nil {
 		return result, err
 	}
@@ -336,8 +347,7 @@ type runtimeImageResources struct {
 
 func (resources *runtimeImageResources) close(ctx context.Context) error {
 	if resources.activation {
-		_, err := resources.observer.mounts.Deactivate(ctx, &mountsapi.DeactivateRequest{Name: resources.key})
-		if err != nil && status.Code(err) != codes.NotFound {
+		if err := resources.observer.closeImageActivation(ctx, resources.key); err != nil {
 			return fmt.Errorf("deactivate image observation %s (lease retained): %w", resources.key, err)
 		}
 	}

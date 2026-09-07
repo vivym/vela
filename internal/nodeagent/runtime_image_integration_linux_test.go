@@ -67,7 +67,7 @@ func assertRuntimeImageResourcesReleased(t *testing.T, fixture *containerdProces
 func testRuntimeImageObserverFailures(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, target RuntimeImageTarget) {
 	t.Helper()
 	for _, failure := range []string{"missing-file", "wrong-config", "corrupt-json", "lost-lease-response", "lost-view-response",
-		"lost-activation-response", "canceled-activation", "canceled-cleanup", "changed-activation", "cleanup-failure"} {
+		"lost-activation-response", "lost-journal-response", "journal-update-failure", "canceled-activation", "canceled-cleanup", "changed-activation", "cleanup-failure"} {
 		t.Run(failure, func(t *testing.T) {
 			candidate := *observer
 			requested := target
@@ -85,6 +85,8 @@ func testRuntimeImageObserverFailures(t *testing.T, fixture *containerdProcessFi
 				candidate.leases = &faultRuntimeImageLeases{LeasesClient: observer.leases}
 			case "lost-view-response":
 				candidate.snapshots = &faultRuntimeImageSnapshots{SnapshotsClient: observer.snapshots}
+			case "lost-journal-response", "journal-update-failure":
+				candidate.snapshots = &faultRuntimeImageJournal{SnapshotsClient: observer.snapshots, failBefore: failure == "journal-update-failure"}
 			case "lost-activation-response":
 				mounts.failActivation = true
 			case "canceled-activation":
@@ -104,7 +106,7 @@ func testRuntimeImageObserverFailures(t *testing.T, fixture *containerdProcessFi
 			if strings.HasPrefix(failure, "canceled-") && !errors.Is(err, context.Canceled) {
 				t.Fatalf("image observer lost cancellation: %v", err)
 			}
-			if failure == "cleanup-failure" {
+			if failure == "cleanup-failure" || failure == "changed-activation" || failure == "journal-update-failure" {
 				if !strings.Contains(err.Error(), "lease retained") || mounts.key == "" {
 					t.Fatalf("cleanup failure omitted the retained lease identity: %v", err)
 				}
@@ -152,6 +154,24 @@ func (client *faultRuntimeImageLeases) Create(ctx context.Context, request *leas
 }
 
 type faultRuntimeImageSnapshots struct{ snapshotsapi.SnapshotsClient }
+
+type faultRuntimeImageJournal struct {
+	snapshotsapi.SnapshotsClient
+	failBefore bool
+}
+
+func (client *faultRuntimeImageJournal) Update(ctx context.Context, request *snapshotsapi.UpdateSnapshotRequest, options ...grpc.CallOption) (*snapshotsapi.UpdateSnapshotResponse, error) {
+	if request.Info.Labels[runtimeImagePhaseLabel] != "MOUNTED" {
+		return client.SnapshotsClient.Update(ctx, request, options...)
+	}
+	if client.failBefore {
+		return nil, errors.New("fixture blocked cleanup journal commit")
+	}
+	if _, err := client.SnapshotsClient.Update(ctx, request, options...); err != nil {
+		return nil, err
+	}
+	return nil, errors.New("fixture lost committed journal response")
+}
 
 func (client *faultRuntimeImageSnapshots) View(ctx context.Context, request *snapshotsapi.ViewSnapshotRequest, options ...grpc.CallOption) (*snapshotsapi.ViewSnapshotResponse, error) {
 	if _, err := client.SnapshotsClient.View(ctx, request, options...); err != nil {

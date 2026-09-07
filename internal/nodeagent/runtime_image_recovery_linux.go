@@ -19,13 +19,13 @@ const (
 	runtimeImageLeaseKindLabel        = "vela.ai/runtime-image-observer"
 	runtimeImageLeaseNodeLabel        = "vela.ai/runtime-image-node"
 	runtimeImageLeaseSnapshotterLabel = "vela.ai/runtime-image-snapshotter"
-	runtimeImageLeaseExpiryLabel      = "containerd.io/gc.expire"
+	runtimeImageLeaseExpiryLabel      = "vela.ai/runtime-image-expires"
 	maximumRuntimeImageRecoveryBatch  = 32
 )
 
 func (observer *RuntimeImageObserver) leaseLabels(expires time.Time) map[string]string {
 	return map[string]string{
-		runtimeImageLeaseKindLabel:        "v1",
+		runtimeImageLeaseKindLabel:        "v2",
 		runtimeImageLeaseNodeLabel:        fmt.Sprintf("%x", sha256.Sum256([]byte(observer.local.nodeIdentity))),
 		runtimeImageLeaseSnapshotterLabel: observer.snapshotter,
 		runtimeImageLeaseExpiryLabel:      expires.UTC().Format(time.RFC3339),
@@ -33,10 +33,12 @@ func (observer *RuntimeImageObserver) leaseLabels(expires time.Time) map[string]
 }
 
 // RecoverExpired explicitly reclaims this Node's expired image observations.
-// Run it at service startup and periodically; expiry alone does not schedule
-// containerd GC. A call processes at most 32 leases. The count reports completed
+// Run it at service startup and periodically; Vela owns the expiration and
+// containerd GC must retain the lease until cleanup is proved. A call processes
+// at most 32 leases. The count reports completed
 // cleanups even when a later operation fails. It grants no Runtime authority.
-// Unmarked legacy leases remain subject to containerd's normal GC policy.
+// Legacy marked leases fail closed because their GC policy cannot retain the
+// cleanup journal. Unmarked legacy leases are outside this recovery protocol.
 func (observer *RuntimeImageObserver) RecoverExpired(ctx context.Context) (int, error) {
 	if err := contextError(ctx); err != nil {
 		return 0, err
@@ -59,7 +61,7 @@ func (observer *RuntimeImageObserver) RecoverExpired(ctx context.Context) (int, 
 	}
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("containerd-namespace", observer.namespace))
 	labels := observer.leaseLabels(from)
-	filter := fmt.Sprintf("labels.%q==%q,labels.%q==%q,labels.%q==%q", runtimeImageLeaseKindLabel, labels[runtimeImageLeaseKindLabel],
+	filter := fmt.Sprintf("labels.%q,labels.%q==%q,labels.%q==%q", runtimeImageLeaseKindLabel,
 		runtimeImageLeaseNodeLabel, labels[runtimeImageLeaseNodeLabel], runtimeImageLeaseSnapshotterLabel, labels[runtimeImageLeaseSnapshotterLabel])
 	response, err := observer.leases.List(ctx, &leasesapi.ListRequest{Filters: []string{filter}})
 	if err != nil {

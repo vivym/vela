@@ -58,11 +58,14 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeImageCrashRecovery",
 		"TestRuntimeImageMaintenanceProcess",
 		"TestRuntimeImageDaemonRestart",
+		"TestRuntimeImageBusyRecovery",
 		"TestRuntimeContainerObservationKeepsCRIStatesDistinct", "TestRuntimeContainerObservationRejectsIncompleteAndMismatchedEvidence",
 		"TestRuntimeContainerObservationRejectsLostObserverIdentity", "TestRuntimeContainerObserverRejectsUntrustedSocket",
 		"TestRuntimeContainerObserverUsesHostBootAndRootPeer", "TestRuntimeContainerObserverRejectsSocketOwnerDifferentFromKernelPeer",
 		"TestRuntimeContainerObserverCommandAgainstCRI", "TestRuntimeContainerObserverPinsSocketLifetime",
 		"TestRuntimeImageRecoveryOwnership", "TestRuntimeImageRecoveryBatch", "TestRuntimeImageRecoveryFailures",
+		"TestRuntimeImageRecoveryMissingActivation", "TestRuntimeImageRecoveryRejectsInvalidJournal",
+		"TestRuntimeImageMountPathObservation",
 	}
 	t.Run("runtime-contracts", func(t *testing.T) {
 		container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",

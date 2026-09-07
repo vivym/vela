@@ -123,3 +123,9 @@ Runtime configuration/message binding, durable incarnation ownership and
 independent retirement remain open. `UNRESOLVED` and `LEGACY_UNKNOWN` remain
 recovery-only. PostgreSQL 94, Worker journal 5, Runtime journal 6, Registry
 binding 1, release bundle schema 3 and Production Gates **0/9** are unchanged.
+
+The subsequent [cleanup journal increment](runtime-image-cleanup-journal-evidence-2026-09-07.md)
+replaces automatic lease expiry with a retained v2 cleanup protocol after a
+real busy-mount counterexample. Its current state-reset campaign distinguishes
+recorded paths from unrecorded same-boot activation loss; the latter is retained
+as unresolved instead of treating absent mount metadata as completion.

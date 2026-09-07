@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,14 +46,16 @@ func TestRuntimeImageStateReset(t *testing.T) {
 	if phase == "" {
 		t.Skip("requires the two-sandbox volatile state reset harness")
 	}
-	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" || (phase != "seed" && phase != "recover") {
+	operation, scenario, ok := strings.Cut(phase, "-")
+	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" || !ok || (operation != "seed" && operation != "recover") ||
+		(scenario != "recorded" && scenario != "unresolved") {
 		t.Fatal("invalid private state reset phase")
 	}
-	if phase == "seed" {
-		seedRuntimeImageStateReset(t)
+	if operation == "seed" {
+		seedRuntimeImageStateReset(t, scenario)
 		return
 	}
-	recoverRuntimeImageStateReset(t)
+	recoverRuntimeImageStateReset(t, scenario)
 }
 
 func stateResetContainerd(t *testing.T) *containerdProcessFixture {
@@ -75,7 +78,7 @@ func stateResetObserver(t *testing.T, fixture *containerdProcessFixture, namespa
 	return observer
 }
 
-func seedRuntimeImageStateReset(t *testing.T) {
+func seedRuntimeImageStateReset(t *testing.T, scenario string) {
 	t.Helper()
 	fixture := stateResetContainerd(t)
 	directory := filepath.Join(fixture.root, "reset-image")
@@ -130,7 +133,11 @@ func seedRuntimeImageStateReset(t *testing.T) {
 	controlMount := activation.Info.Active[0].MountPoint
 	expected, size := runtimeExecutableDigest(t, filepath.Join(controlMount, "probe"))
 	target := RuntimeImageTarget{ManifestDigest: manifest.String(), ConfigDigest: configHash.String(), ExecutablePath: "/probe"}
-	point := crashRuntimeImageObserver(t, fixture, namespace, target, "activation", 15*time.Second)
+	stage := "recorded-activation"
+	if scenario == "unresolved" {
+		stage = "activation"
+	}
+	point := crashRuntimeImageObserver(t, fixture, namespace, target, stage, 15*time.Second)
 	assertRuntimeImageCrashResources(t, fixture, point, "activation", true)
 	if info, err := os.Stat(filepath.Join(fixture.root, "state", "io.containerd.mount-manager.v1.bolt", "mounts.db")); err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("seed has no volatile mount database: %v", err)
@@ -160,7 +167,7 @@ func seedRuntimeImageStateReset(t *testing.T) {
 	select {}
 }
 
-func recoverRuntimeImageStateReset(t *testing.T) {
+func recoverRuntimeImageStateReset(t *testing.T, scenario string) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(runtimeImageStateResetRoot, "seed-ready.json"))
 	if err != nil {
@@ -201,7 +208,7 @@ func recoverRuntimeImageStateReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	control := runtimeImageResources{observer: observer, key: receipt.ControlKey, lease: true, view: true, activation: true}
+	control := runtimeImageControlResources{observer: observer, key: receipt.ControlKey, lease: true, view: true, activation: true}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(fixture.ctx), 5*time.Second)
 		defer cancel()
@@ -230,10 +237,17 @@ func recoverRuntimeImageStateReset(t *testing.T) {
 		t.Fatal(t.Context().Err())
 	}
 	assertRuntimeImageCrashResources(t, fixture, receipt.Point, "view", true)
-	runRuntimeImageMaintenanceProcess(t, fixture, receipt.Namespace)
-	assertRuntimeImageCrashResources(t, fixture, receipt.Point, "activation", false)
-	if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 0 {
-		t.Fatalf("state reset recovery was not idempotent: %d %v", count, err)
+	if scenario == "unresolved" {
+		if count, err := observer.RecoverExpired(t.Context()); err == nil || count != 0 || !strings.Contains(err.Error(), "unresolved") {
+			t.Fatalf("unrecorded mount loss was incorrectly declared recovered: %d %v", count, err)
+		}
+		assertRuntimeImageCrashResources(t, fixture, receipt.Point, "view", true)
+	} else {
+		runRuntimeImageMaintenanceProcess(t, fixture, receipt.Namespace)
+		assertRuntimeImageCrashResources(t, fixture, receipt.Point, "activation", false)
+		if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 0 {
+			t.Fatalf("state reset recovery was not idempotent: %d %v", count, err)
+		}
 	}
 	actual, size := runtimeExecutableDigest(t, controlPath)
 	if actual != receipt.Digest || size != receipt.Size {
@@ -264,7 +278,9 @@ func recoverRuntimeImageStateReset(t *testing.T) {
 	if err != nil || observed.Digest != receipt.Digest || observed.SizeBytes != receipt.Size {
 		t.Fatalf("state reset lost the source image: %+v %v", observed, err)
 	}
-	assertRuntimeImageResourcesReleased(t, fixture)
-	t.Logf("seed namespace=%s recovery namespace=%s (numbers may be reused); lost state and activations, retained unexpired lease/view, reclaimed one expired observation, preserved control and source image",
-		receipt.MountNamespace, mountNamespace)
+	if scenario == "recorded" {
+		assertRuntimeImageResourcesReleased(t, fixture)
+	}
+	t.Logf("seed namespace=%s recovery namespace=%s (numbers may be reused); lost state and activations; scenario=%s; preserved control and source image",
+		receipt.MountNamespace, mountNamespace, scenario)
 }

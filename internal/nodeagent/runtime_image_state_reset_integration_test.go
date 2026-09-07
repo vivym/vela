@@ -16,6 +16,15 @@ const runtimeImageStateResetRoot = "/vela-image-state-reset"
 
 func runRuntimeImageStateResetSandbox(t *testing.T, image, binary, maintenanceBinary string) {
 	t.Helper()
+	for _, scenario := range []string{"recorded", "unresolved"} {
+		t.Run(scenario, func(t *testing.T) {
+			runRuntimeImageStateResetCase(t, image, binary, maintenanceBinary, scenario)
+		})
+	}
+}
+
+func runRuntimeImageStateResetCase(t *testing.T, image, binary, maintenanceBinary, scenario string) {
+	t.Helper()
 	persistent := t.TempDir()
 	if err := os.Mkdir(filepath.Join(persistent, "data"), 0o700); err != nil {
 		t.Fatal(err)
@@ -23,7 +32,7 @@ func runRuntimeImageStateResetSandbox(t *testing.T, image, binary, maintenanceBi
 	create := func(phase string) string {
 		container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
 			"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
-			"--env", runtimeImageStateResetPhase+"="+phase, "--env", "VELA_TEST_NODE_AGENT_BINARY=/vela-node-agent",
+			"--env", runtimeImageStateResetPhase+"="+phase+"-"+scenario, "--env", "VELA_TEST_NODE_AGENT_BINARY=/vela-node-agent",
 			"--mount", "type=bind,src="+persistent+",dst="+runtimeImageStateResetRoot,
 			"--mount", "type=bind,src="+maintenanceBinary+",dst=/vela-node-agent,readonly",
 			"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,

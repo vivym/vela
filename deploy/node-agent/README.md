@@ -50,6 +50,15 @@ Unknown, duplicate, case-aliased, missing or null JSON fields, insecure
 files and unsupported snapshotters fail before dialing. Configuration is loaded
 once per process; an operator must restart the service to apply a change.
 
+Image observation leases use protocol `v2`: the one-hour recovery deadline is
+`vela.ai/runtime-image-expires`, not containerd's automatic GC expiry. A native
+view records its allocation phase, Node boot ID and, once known, mount path.
+The lease protects this cleanup journal until the kernel mount is absent.
+The independent maintenance service is therefore required to reclaim expired
+observations. A busy mount retains its view and lease across retries; a missing
+activation alone is not proof of successful cleanup. Marked `v1` leases fail
+closed for operator reconciliation instead of being silently migrated.
+
 The command immediately attempts one recovery pass, closes its connection, then
 waits one minute before the next pass. Every pass re-authenticates the socket,
 with a 10-second dial deadline and separate 30-second recovery deadline. At most
@@ -79,6 +88,9 @@ covers both graceful daemon exit and `SIGKILL` with the original root/state
 directories retained. It does not establish host reboot or systemd recovery.
 The [volatile state reset evidence](../../docs/runtime-image-state-reset-evidence-2026-09-07.md)
 also checks a fresh CPU sandbox with only containerd's persistent root retained.
+The subsequent [cleanup journal evidence](../../docs/runtime-image-cleanup-journal-evidence-2026-09-07.md)
+documents the real `EBUSY` counterexample, lease protocol change, and the
+unresolved boundary when allocation state is lost before a mount path is recorded.
 
 ## Remediation and quota service
 
