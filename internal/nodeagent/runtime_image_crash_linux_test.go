@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -39,6 +40,15 @@ type runtimeImageCrashPoint struct {
 }
 
 func TestRuntimeImageCrashRecovery(t *testing.T) {
+	runRuntimeImageCrashCases(t, []string{"lease", "view", "activation", "activation-gc"})
+}
+
+func TestRuntimeImageMaintenanceProcess(t *testing.T) {
+	runRuntimeImageCrashCases(t, []string{"activation-service"})
+}
+
+func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
+	t.Helper()
 	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" {
 		t.Skip("requires the explicitly enabled disposable containerd CPU sandbox")
 	}
@@ -110,9 +120,9 @@ func TestRuntimeImageCrashRecovery(t *testing.T) {
 	controlMount := activation.GetInfo().Active[0].MountPoint
 	controlFile := filepath.Join(controlMount, "probe")
 	expected, expectedSize := runtimeExecutableDigest(t, controlFile)
-	for _, scenario := range []string{"lease", "view", "activation", "activation-gc"} {
+	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) {
-			stage := strings.TrimSuffix(scenario, "-gc")
+			stage := strings.TrimSuffix(strings.TrimSuffix(scenario, "-gc"), "-service")
 			point := crashRuntimeImageObserver(t, fixture, observer.namespace, target, stage)
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
 			if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 0 {
@@ -134,9 +144,12 @@ func TestRuntimeImageCrashRecovery(t *testing.T) {
 				t.Fatal(t.Context().Err())
 			}
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
-			if scenario == "activation-gc" {
+			switch scenario {
+			case "activation-gc":
 				forceRuntimeImageGC(t, fixture)
-			} else {
+			case "activation-service":
+				runRuntimeImageMaintenanceProcess(t, fixture, observer.namespace)
+			default:
 				restarted, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{
 					RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-image-crash-node"},
 					Namespace:                      observer.namespace, Snapshotter: "native",
@@ -178,6 +191,85 @@ func TestRuntimeImageCrashRecovery(t *testing.T) {
 			assertRuntimeImageResourcesReleased(t, fixture)
 			t.Logf("SIGKILL %s: protected before expiry, retained while idle after expiry, then fully reclaimed; live view and source image preserved", scenario)
 		})
+	}
+}
+
+func runRuntimeImageMaintenanceProcess(t *testing.T, fixture *containerdProcessFixture, namespace string) {
+	t.Helper()
+	config, err := json.Marshal(map[string]any{"schema_version": 1, "containerd_socket": fixture.socket,
+		"node_identity": "cpu-image-crash-node", "namespace": namespace, "snapshotter": "native"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(fixture.root, "maintenance.json")
+	if err := os.WriteFile(configPath, config, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	log, err := os.Create(filepath.Join(fixture.root, "maintenance.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close() })
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "/usr/bin/setpriv", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs",
+		"/vela-node-agent", "runtime-image-maintenance", "--config-file", configPath)
+	// Deliberately unusable remediation configuration proves command isolation.
+	command.Env = []string{"PATH=/usr/bin:/bin", "VELA_NODE_IDENTITY=", "VELA_NODE_AGENT_COMMANDS_FILE=/does-not-exist"}
+	command.Stdout, command.Stderr = writer, log
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	t.Cleanup(func() {
+		if !waited {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+		if t.Failed() {
+			data, _ := os.ReadFile(log.Name())
+			t.Logf("image maintenance: %s", data)
+		}
+	})
+	_ = writer.Close()
+	if err := reader.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		SchemaVersion int    `json:"schema_version"`
+		Event         string `json:"event"`
+		Recovered     int    `json:"recovered"`
+	}
+	if err := json.NewDecoder(io.LimitReader(reader, 4096)).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.SchemaVersion != 1 || result.Event != "runtime_image_maintenance_completed" || result.Recovered != 1 {
+		t.Fatalf("service did not complete the expired recovery: %+v", result)
+	}
+	processStatus, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", command.Process.Pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"} {
+		if !strings.Contains(string(processStatus), field+":\t0000000000000000\n") {
+			t.Fatalf("maintenance retained %s", field)
+		}
+	}
+	if !strings.Contains(string(processStatus), "NoNewPrivs:\t1\n") {
+		t.Fatal("maintenance did not enforce no-new-privileges")
+	}
+	if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	err = command.Wait()
+	waited = true
+	if err != nil {
+		t.Fatalf("maintenance command did not stop cleanly on SIGTERM: %v", err)
 	}
 }
 

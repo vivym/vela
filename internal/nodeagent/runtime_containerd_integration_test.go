@@ -40,6 +40,12 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build Linux CPU fixture: %s %v", output, err)
 	}
+	maintenanceBinary := filepath.Join(filepath.Dir(binary), "vela-node-agent")
+	buildMaintenance := exec.CommandContext(t.Context(), "go", "build", "-o", maintenanceBinary, "../../cmd/vela-node-agent")
+	buildMaintenance.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+info.Architecture)
+	if output, err := buildMaintenance.CombinedOutput(); err != nil {
+		t.Fatalf("build Linux Node Agent command: %s %v", output, err)
+	}
 	testNames := []string{
 		"TestRuntimeContainerdProcessEvidence", "TestRuntimeCallerAuthenticatedMessage", "TestRuntimeCallerRejectsInvalidMessages",
 		"TestRuntimeCallerDeadline", "TestRuntimeCallerProcessParser", "TestRuntimeCallerContainerCRI",
@@ -50,12 +56,14 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeImageLayerExecutableIdentity",
 		"TestRuntimeImageTargetBounds", "TestRuntimeImageContentBounds", "TestRuntimeImageFileResolution",
 		"TestRuntimeImageCrashRecovery",
+		"TestRuntimeImageMaintenanceProcess",
 		"TestRuntimeImageRecoveryOwnership", "TestRuntimeImageRecoveryBatch", "TestRuntimeImageRecoveryFailures",
 	}
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
+		"--mount", "type=bind,src="+maintenanceBinary+",dst=/vela-node-agent,readonly",
 		"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
-		"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=120s")))
+		"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=180s")))
 	if !runtimeContainerIDPattern.MatchString(container) {
 		t.Fatalf("Docker returned an invalid fixture container ID: %q", container)
 	}

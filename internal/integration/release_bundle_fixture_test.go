@@ -144,6 +144,7 @@ UMask=0077
 RuntimeDirectory=vela-node-agent
 RuntimeDirectoryMode=0755
 StateDirectory=vela-node-agent
+StateDirectoryMode=0750
 ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
@@ -155,6 +156,11 @@ LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
 `))
+	maintenanceUnit, err := os.ReadFile("../../deploy/node-agent/vela-runtime-image-maintenance.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCatalogReleaseFile(t, filepath.Join(directory, "runtime-image-maintenance.service"), maintenanceUnit)
 	packageArtifact := []byte("production package for node-agent" + variant)
 	writeCatalogReleaseFile(t, filepath.Join(directory, "node-agent.tar"), packageArtifact)
 	writeJSONFixture(t, filepath.Join(directory, "node-agent-contract.json"), releasebundle.PackageContract{
@@ -165,8 +171,9 @@ WantedBy=multi-user.target
 
 	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
 	plan := releasebundle.BuildPlan{
-		SchemaVersion: releasebundle.SchemaVersion,
-		NodeAgentUnit: releasebundle.ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		SchemaVersion:               releasebundle.SchemaVersion,
+		NodeAgentUnit:               releasebundle.ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		RuntimeImageMaintenanceUnit: releasebundle.ArtifactInput{Name: "runtime-image-maintenance-systemd-unit", Ref: "runtime-image-maintenance.service"},
 		Packages: []releasebundle.PackageInput{{
 			Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: "node-agent.tar",
 		}},
@@ -342,6 +349,7 @@ func relocateCatalogReleaseBundleFixture(
 		references[render.Artifact.Ref] = struct{}{}
 	}
 	references[bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref] = struct{}{}
+	references[bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Artifact.Ref] = struct{}{}
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		references[item.Contract.Ref] = struct{}{}
 		references[item.Artifact.Ref] = struct{}{}

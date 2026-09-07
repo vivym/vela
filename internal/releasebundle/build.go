@@ -37,6 +37,7 @@ var (
 			"RuntimeDirectory":        "vela-node-agent",
 			"RuntimeDirectoryMode":    "0755",
 			"StateDirectory":          "vela-node-agent",
+			"StateDirectoryMode":      "0750",
 			"ProtectHome":             "true",
 			"PrivateTmp":              "true",
 			"RestrictAddressFamilies": "AF_UNIX AF_INET AF_INET6",
@@ -48,6 +49,33 @@ var (
 		"Install": {
 			"WantedBy": "multi-user.target",
 		},
+	}
+	runtimeImageMaintenanceSystemdV1 = map[string]map[string]string{
+		"Unit": {
+			"Description":           "Vela runtime image observation maintenance",
+			"StartLimitIntervalSec": "0",
+		},
+		"Service": {
+			"Type":                    "simple",
+			"User":                    "root",
+			"Group":                   "root",
+			"ExecStart":               "",
+			"Restart":                 "on-failure",
+			"RestartSec":              "5s",
+			"TimeoutStopSec":          "40s",
+			"UMask":                   "0077",
+			"CapabilityBoundingSet":   "",
+			"NoNewPrivileges":         "true",
+			"ProtectSystem":           "strict",
+			"ProtectHome":             "true",
+			"PrivateTmp":              "true",
+			"PrivateDevices":          "true",
+			"RestrictAddressFamilies": "AF_UNIX",
+			"LockPersonality":         "true",
+			"MemoryDenyWriteExecute":  "true",
+			"LimitNOFILE":             "1024",
+		},
+		"Install": {"WantedBy": "multi-user.target"},
 	}
 )
 
@@ -138,6 +166,14 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 		return Bundle{}, invalidf("read node Agent systemd unit: %v", err)
 	}
 	configuration.NodeAgentUnit = NamedArtifact{Name: plan.NodeAgentUnit.Name, Artifact: unitArtifact}
+	if plan.RuntimeImageMaintenanceUnit.Name != "runtime-image-maintenance-systemd-unit" {
+		return Bundle{}, invalid("runtime image maintenance unit name must be runtime-image-maintenance-systemd-unit")
+	}
+	maintenanceArtifact, maintenanceContent, err := artifacts.artifactFor(plan.RuntimeImageMaintenanceUnit.Ref, "text/plain", maxMetadataBytes)
+	if err != nil {
+		return Bundle{}, invalidf("read runtime image maintenance systemd unit: %v", err)
+	}
+	configuration.RuntimeImageMaintenanceUnit = NamedArtifact{Name: plan.RuntimeImageMaintenanceUnit.Name, Artifact: maintenanceArtifact}
 
 	var nodeAgentEntrypoint string
 	for index, input := range plan.Packages {
@@ -163,8 +199,11 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 			Name: input.Name, Contract: contractArtifact, Artifact: packageArtifact,
 		})
 	}
-	if err := validateSystemdUnit(unitContent, nodeAgentEntrypoint); err != nil {
+	if err := validateSystemdUnit(unitContent, nodeAgentEntrypoint, nodeAgentSystemdV1); err != nil {
 		return Bundle{}, err
+	}
+	if err := validateSystemdUnit(maintenanceContent, nodeAgentEntrypoint+" runtime-image-maintenance --config-file /etc/vela/runtime-image-maintenance.json", runtimeImageMaintenanceSystemdV1); err != nil {
+		return Bundle{}, invalidf("runtime image maintenance unit: %v", err)
 	}
 
 	if len(inventory.residencyRollouts) == 0 {
@@ -279,6 +318,10 @@ func verify(root *rootedFS, bundle Bundle) error {
 		Name: bundle.ConfigurationManifest.NodeAgentUnit.Name,
 		Ref:  bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref,
 	}
+	plan.RuntimeImageMaintenanceUnit = ArtifactInput{
+		Name: bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Name,
+		Ref:  bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Artifact.Ref,
+	}
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		plan.Packages = append(plan.Packages, PackageInput{
 			Name: item.Name, ContractRef: item.Contract.Ref, ArtifactRef: item.Artifact.Ref,
@@ -373,11 +416,11 @@ func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (Pa
 	return contract, nil
 }
 
-func validateSystemdUnit(encoded []byte, entrypoint string) error {
+func validateSystemdUnit(encoded []byte, entrypoint string, contract map[string]map[string]string) error {
 	if entrypoint == "" || containsTemplateValue(string(encoded)) {
 		return invalid("node agent systemd unit is not bound to the package entrypoint and hardening contract")
 	}
-	seenSections := make(map[string]struct{}, len(nodeAgentSystemdV1))
+	seenSections := make(map[string]struct{}, len(contract))
 	seenDirectives := make(map[string]struct{})
 	section := ""
 	for lineNumber, raw := range strings.Split(string(encoded), "\n") {
@@ -393,7 +436,7 @@ func validateSystemdUnit(encoded []byte, entrypoint string) error {
 				return invalidf("node agent systemd unit line %d has a malformed section", lineNumber+1)
 			}
 			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
-			if _, allowed := nodeAgentSystemdV1[section]; !allowed {
+			if _, allowed := contract[section]; !allowed {
 				return invalidf("node agent systemd unit contains unknown section %q", section)
 			}
 			if _, duplicate := seenSections[section]; duplicate {
@@ -406,7 +449,7 @@ func validateSystemdUnit(encoded []byte, entrypoint string) error {
 		if !found || section == "" || key == "" || strings.TrimSpace(key) != key {
 			return invalidf("node agent systemd unit line %d is malformed", lineNumber+1)
 		}
-		expected, allowed := nodeAgentSystemdV1[section][key]
+		expected, allowed := contract[section][key]
 		if !allowed {
 			return invalidf("node agent systemd unit contains unknown directive %s.%s", section, key)
 		}
@@ -422,7 +465,7 @@ func validateSystemdUnit(encoded []byte, entrypoint string) error {
 			return invalidf("node agent systemd unit directive %s does not match version 1", identity)
 		}
 	}
-	for expectedSection, directives := range nodeAgentSystemdV1 {
+	for expectedSection, directives := range contract {
 		if _, present := seenSections[expectedSection]; !present {
 			return invalidf("node agent systemd unit is missing section %q", expectedSection)
 		}

@@ -116,6 +116,7 @@ func bundleArtifactReferences(bundle releasebundle.Bundle) []string {
 		references = append(references, render.Artifact.Ref)
 	}
 	references = append(references, bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref)
+	references = append(references, bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Artifact.Ref)
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		references = append(references, item.Contract.Ref, item.Artifact.Ref)
 	}

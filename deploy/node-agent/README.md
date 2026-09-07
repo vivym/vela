@@ -9,12 +9,70 @@ persists the authoritative operation completion after the response.
 ## Release bundle boundary
 
 Production assembly must include the `node-agent` package and strict package
-contract plus the exact systemd unit in the canonical Slice 40 release bundle.
+contract plus both exact systemd units in the canonical schema 3 release bundle:
+`vela-node-agent.service` and `vela-runtime-image-maintenance.service`.
 The contract binds `linux/amd64`, revision, absolute entrypoint, package digest,
 and size. Bundle verification parses the unit as an exact directive allowlist
 with one package-bound `ExecStart`; extra start hooks or conflicting directives
 fail closed. Host configuration, capability files, PKI, hardware identity, and
 live service enablement remain external and require their own release evidence.
+
+## Runtime image maintenance service
+
+`vela-runtime-image-maintenance.service` runs the same package binary with
+`runtime-image-maintenance --config-file /etc/vela/runtime-image-maintenance.json`.
+It is independently enabled and supervised. Neither unit requires, orders,
+starts or stops the other; maintenance does not load the remediation environment,
+contact Fleet or probe GPUs. The remediation daemon has no new containerd
+dependency. Maintenance also does not require a particular containerd systemd
+unit name: it retries the configured local socket independently.
+
+Provision that JSON file as root-owned mode `0600`, under trusted directories,
+with the exact five fields:
+
+```json
+{
+  "schema_version": 1,
+  "containerd_socket": "/run/containerd/containerd.sock",
+  "node_identity": "node-1",
+  "namespace": "k8s.io",
+  "snapshotter": "native"
+}
+```
+
+The Node identity and namespace must match those used by image observations.
+The only currently qualified snapshotter is `native`. The socket must be
+root-owned mode `0600` or root-group `0660`, with a root kernel peer and trusted
+ancestors. Unknown, duplicate, case-aliased, missing or null JSON fields, insecure
+files and unsupported snapshotters fail before dialing. Configuration is loaded
+once per process; an operator must restart the service to apply a change.
+
+The command immediately attempts one recovery pass, closes its connection, then
+waits one minute before the next pass. Every pass re-authenticates the socket,
+with a 10-second dial deadline and separate 30-second recovery deadline. At most
+32 expired, ownership-validated records are cleaned per pass. Full batches wait
+the same interval, bounding sustained work; a large backlog has no fixed cleanup
+deadline. A partial failure retains its completed count in the error and exits.
+systemd retries after five seconds with start rate limiting disabled, including
+when containerd is absent or restarted. This allows recovery after prolonged
+runtime downtime. Persistent errors still require operator attention.
+
+Only a fully completed pass emits `runtime_image_maintenance_completed` and its
+recovered count. SIGTERM during the idle wait stops cleanly; an interrupted or
+failed pass exits with an error after closing its connection. The unit runs as
+root to authenticate to the host socket, with an empty capability bounding set,
+`NoNewPrivileges=true`, a read-only filesystem and only `AF_UNIX`. These settings
+do not restrict what containerd's privileged API can do; the command's exact
+ownership checks remain the cleanup boundary.
+
+The release bundle binds both unit files and their package entrypoints. It does
+not bind or provision the host-specific JSON values, prove effective systemd
+drop-ins, or enable the services. Image maintenance grants no startup, readiness,
+incarnation retirement, scratch reset or execution permission. See the
+[CPU maintenance evidence](../../docs/runtime-image-maintenance-evidence-2026-09-07.md)
+for the tested process path and the remaining deployment boundary.
+
+## Remediation and quota service
 
 The same host process owns a second gRPC server on a Unix socket for XFS project
 quota observations. That service is never registered on the remote mTLS

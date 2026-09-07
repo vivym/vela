@@ -49,6 +49,11 @@ the serving endpoint and its maintenance loop have not been assembled yet.
 Consequently automatic deployed-node recovery is still unproven. No new
 background goroutine or implicit cleanup is hidden inside observer dialing.
 
+The subsequent [maintenance increment](runtime-image-maintenance-evidence-2026-09-07.md)
+assembles a dedicated command and independent systemd unit, and tests the actual
+command against this crash fixture. The deployment and startup-authorization
+limits above still apply; the library-only statement describes this checkpoint.
+
 ## Real crash experiment
 
 `TestRuntimeImageCrashRecovery` starts the pinned private containerd and imports

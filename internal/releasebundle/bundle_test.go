@@ -26,7 +26,7 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build release bundle: %v", err)
 	}
-	if bundle.SchemaVersion != 2 || bundle.ConfigurationManifest.SchemaVersion != 2 ||
+	if bundle.SchemaVersion != 3 || bundle.ConfigurationManifest.SchemaVersion != 3 ||
 		bundle.ConfigurationManifest.SourceRevision != sourceRevision ||
 		!validDigest(bundle.ReleaseDigest) ||
 		!validDigest(bundle.ConfigurationRevision) ||
@@ -465,10 +465,10 @@ func TestBuildPlanStrictJSON(t *testing.T) {
 		mutate func([]byte) []byte
 	}{
 		{name: "duplicate key", mutate: func(encoded []byte) []byte {
-			return []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "schema_version": 2,`, 1))
+			return []byte(strings.Replace(string(encoded), `"schema_version": 3,`, `"schema_version": 3, "schema_version": 3,`, 1))
 		}},
 		{name: "unknown field", mutate: func(encoded []byte) []byte {
-			return []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "unknown": true,`, 1))
+			return []byte(strings.Replace(string(encoded), `"schema_version": 3,`, `"schema_version": 3, "unknown": true,`, 1))
 		}},
 		{name: "trailing data", mutate: func(encoded []byte) []byte {
 			return append(encoded, []byte(` {}`)...)
@@ -1011,7 +1011,7 @@ func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		encoded = []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "unknown": true,`, 1))
+		encoded = []byte(strings.Replace(string(encoded), `"schema_version": 3,`, `"schema_version": 3, "unknown": true,`, 1))
 		path := filepath.Join(fixture.directory, "bundle.json")
 		writeTestFile(t, path, encoded)
 		if _, err := Load(path); !errors.Is(err, ErrInvalidBundle) {
@@ -1181,6 +1181,7 @@ UMask=0077
 RuntimeDirectory=vela-node-agent
 RuntimeDirectoryMode=0755
 StateDirectory=vela-node-agent
+StateDirectoryMode=0750
 ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
@@ -1192,6 +1193,8 @@ LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
 `))
+	writeTestFile(t, filepath.Join(directory, "runtime-image-maintenance.service"),
+		readTestFile(t, "../../deploy/node-agent/vela-runtime-image-maintenance.service"))
 	artifactContent := []byte("production package for node-agent")
 	writeTestFile(t, filepath.Join(directory, "node-agent.tar"), artifactContent)
 	writeTestJSON(t, filepath.Join(directory, "node-agent-contract.json"), PackageContract{
@@ -1202,8 +1205,9 @@ WantedBy=multi-user.target
 
 	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
 	plan := BuildPlan{
-		SchemaVersion: SchemaVersion,
-		NodeAgentUnit: ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		SchemaVersion:               SchemaVersion,
+		NodeAgentUnit:               ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		RuntimeImageMaintenanceUnit: ArtifactInput{Name: "runtime-image-maintenance-systemd-unit", Ref: "runtime-image-maintenance.service"},
 		Packages: []PackageInput{{
 			Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: "node-agent.tar",
 		}},

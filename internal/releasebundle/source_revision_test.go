@@ -39,11 +39,11 @@ func TestBuildFromSourceRequiresExactCleanGitToplevel(t *testing.T) {
 	}
 }
 
-func TestSchemaV2RejectsLegacyWorkerMaterializationFields(t *testing.T) {
+func TestSchemaV3RejectsLegacyWorkerMaterializationFields(t *testing.T) {
 	t.Run("build plan", func(t *testing.T) {
 		directory := t.TempDir()
 		planPath := filepath.Join(directory, "plan.json")
-		writeTestFile(t, planPath, []byte(`{"schema_version":2,"worker_materializations":[]}`))
+		writeTestFile(t, planPath, []byte(`{"schema_version":3,"worker_materializations":[]}`))
 		_, _, err := buildTestBundle(planPath)
 		if err == nil || !strings.Contains(err.Error(), `unknown field "worker_materializations"`) {
 			t.Fatalf("build legacy plan error = %v", err)
@@ -54,7 +54,7 @@ func TestSchemaV2RejectsLegacyWorkerMaterializationFields(t *testing.T) {
 		directory := t.TempDir()
 		bundlePath := filepath.Join(directory, "bundle.json")
 		writeTestFile(t, bundlePath, []byte(`{
-			"schema_version":2,
+			"schema_version":3,
 			"configuration_manifest":{"worker_materializations":[]}
 		}`))
 		_, err := Load(bundlePath)

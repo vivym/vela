@@ -23,6 +23,7 @@ func TestRunBuildRejectsProtectedOutput(t *testing.T) {
 	plan := filepath.Join(directory, "plan.json")
 	render := filepath.Join(directory, "render.yaml")
 	packageArtifact := filepath.Join(directory, "node-agent.tar")
+	maintenanceUnit := filepath.Join(directory, "runtime-image-maintenance.service")
 	if err := os.WriteFile(plan, []byte("plan"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -32,14 +33,18 @@ func TestRunBuildRejectsProtectedOutput(t *testing.T) {
 	if err := os.WriteFile(packageArtifact, []byte("package"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(maintenanceUnit, []byte("maintenance"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	bundle := releasebundle.Bundle{ConfigurationManifest: releasebundle.ConfigurationManifest{
 		FinalRenders: []releasebundle.NamedArtifact{{
 			Name: "control-storage", Artifact: releasebundle.Artifact{Ref: "render.yaml"},
 		}},
-		Packages: []releasebundle.Package{{Name: "node-agent", Artifact: releasebundle.Artifact{Ref: "node-agent.tar"}}},
+		Packages:                    []releasebundle.Package{{Name: "node-agent", Artifact: releasebundle.Artifact{Ref: "node-agent.tar"}}},
+		RuntimeImageMaintenanceUnit: releasebundle.NamedArtifact{Artifact: releasebundle.Artifact{Ref: "runtime-image-maintenance.service"}},
 	}}
 	stubReleaseBundle(t, bundle, []byte("bundle"), nil)
-	for _, output := range []string{plan, render, packageArtifact} {
+	for _, output := range []string{plan, render, packageArtifact, maintenanceUnit} {
 		var stdout, stderr bytes.Buffer
 		if code := run([]string{"build", plan, output}, &stdout, &stderr); code != 1 ||
 			stdout.Len() != 0 || !strings.Contains(stderr.String(), "must not overwrite") {
@@ -54,6 +59,9 @@ func TestRunBuildRejectsProtectedOutput(t *testing.T) {
 	}
 	if content, err := os.ReadFile(packageArtifact); err != nil || string(content) != "package" {
 		t.Fatalf("package was overwritten: %q error=%v", content, err)
+	}
+	if content, err := os.ReadFile(maintenanceUnit); err != nil || string(content) != "maintenance" {
+		t.Fatalf("maintenance unit was overwritten: %q error=%v", content, err)
 	}
 }
 

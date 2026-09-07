@@ -28,14 +28,17 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	if len(arguments) == 0 {
 		return run()
 	}
-	if arguments[0] != "bootstrap" && arguments[0] != "inspect-runtime-container" {
-		return errors.New("expected no arguments to serve, bootstrap with an explicit action, or inspect-runtime-container")
+	if arguments[0] != "bootstrap" && arguments[0] != "inspect-runtime-container" && arguments[0] != "runtime-image-maintenance" {
+		return errors.New("expected no arguments to serve, bootstrap with an explicit action, inspect-runtime-container, or runtime-image-maintenance")
 	}
 	if ctx == nil || stdout == nil || stderr == nil {
 		return errors.New("worker bootstrap context and output writers are required")
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if arguments[0] == "runtime-image-maintenance" {
+		return runRuntimeImageMaintenance(ctx, arguments[1:], stdout, stderr, dialRuntimeImageMaintenance)
+	}
 	if arguments[0] == "inspect-runtime-container" {
 		return runRuntimeContainerInspection(ctx, arguments[1:], stdout, stderr)
 	}

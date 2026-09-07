@@ -3,11 +3,11 @@ package releasebundle
 import "errors"
 
 const (
-	SchemaVersion = 2
+	SchemaVersion = 3
 
-	ConfigurationMediaType     = "application/vnd.vela.release.configuration.v2+json"
-	ReleaseArtifactType        = "application/vnd.vela.release.bundle.v2+json"
-	ReleaseDescriptorMediaType = "application/vnd.vela.release.descriptor.v2+json"
+	ConfigurationMediaType     = "application/vnd.vela.release.configuration.v3+json"
+	ReleaseArtifactType        = "application/vnd.vela.release.bundle.v3+json"
+	ReleaseDescriptorMediaType = "application/vnd.vela.release.descriptor.v3+json"
 	OCIManifestMediaType       = "application/vnd.oci.image.manifest.v1+json"
 	OCIImageConfigMediaType    = "application/vnd.oci.image.config.v1+json"
 
@@ -61,12 +61,13 @@ type OCIManifestInput struct {
 }
 
 type BuildPlan struct {
-	SchemaVersion     int                `json:"schema_version"`
-	FinalRenders      []ArtifactInput    `json:"final_renders"`
-	NodeAgentUnit     ArtifactInput      `json:"node_agent_unit"`
-	Packages          []PackageInput     `json:"packages"`
-	ExternalResources []ExternalResource `json:"external_resources"`
-	OCIManifests      []OCIManifestInput `json:"oci_manifests"`
+	SchemaVersion               int                `json:"schema_version"`
+	FinalRenders                []ArtifactInput    `json:"final_renders"`
+	NodeAgentUnit               ArtifactInput      `json:"node_agent_unit"`
+	RuntimeImageMaintenanceUnit ArtifactInput      `json:"runtime_image_maintenance_unit"`
+	Packages                    []PackageInput     `json:"packages"`
+	ExternalResources           []ExternalResource `json:"external_resources"`
+	OCIManifests                []OCIManifestInput `json:"oci_manifests"`
 }
 
 type Artifact struct {
@@ -95,13 +96,14 @@ type OCIImage struct {
 }
 
 type ConfigurationManifest struct {
-	SchemaVersion     int                `json:"schema_version"`
-	MediaType         string             `json:"media_type"`
-	SourceRevision    string             `json:"source_revision"`
-	FinalRenders      []NamedArtifact    `json:"final_renders"`
-	NodeAgentUnit     NamedArtifact      `json:"node_agent_unit"`
-	Packages          []Package          `json:"packages"`
-	ExternalResources []ExternalResource `json:"external_resources"`
+	SchemaVersion               int                `json:"schema_version"`
+	MediaType                   string             `json:"media_type"`
+	SourceRevision              string             `json:"source_revision"`
+	FinalRenders                []NamedArtifact    `json:"final_renders"`
+	NodeAgentUnit               NamedArtifact      `json:"node_agent_unit"`
+	RuntimeImageMaintenanceUnit NamedArtifact      `json:"runtime_image_maintenance_unit"`
+	Packages                    []Package          `json:"packages"`
+	ExternalResources           []ExternalResource `json:"external_resources"`
 }
 
 type Descriptor struct {

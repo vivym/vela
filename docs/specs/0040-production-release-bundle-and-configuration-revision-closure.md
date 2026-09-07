@@ -14,13 +14,13 @@ or change the current `0/9 PASS` result.
 
 ## Canonical identity
 
-1. A strict `schema_version: 2` build plan names every input beneath one rooted
+1. A strict `schema_version: 3` build plan names every input beneath one rooted
    directory. References must be canonical local paths to regular files and may
    not escape through an absolute path, `..`, backslash, or symbolic link.
-2. The configuration manifest contains the exact six final Kubernetes renders
+2. The configuration manifest contains the exact five final Kubernetes renders
    (`control-storage`, `fleet-controller`, `observability`, `stage-worker`,
-   `vela-control`, and `worker-agent`), the exact `h3-runner` and `node-agent`
-   packages, the Node Agent systemd unit, the selected Fleet authority input,
+   and `vela-control`), the exact `node-agent` package, the remediation Node
+   Agent and runtime image maintenance systemd units, the selected Fleet authority input,
    and the declared external Secret/ConfigMap canonical content digests.
 3. Every OCI image is canonical, lowercase, tag-free, and pinned by a non-zero
    `sha256` digest. Its manifest and referenced OCI config blob are read from
@@ -28,13 +28,19 @@ or change the current `0/9 PASS` result.
    the production platform `linux/amd64`.
 4. Canonical JSON of the configuration manifest derives the configuration
    revision. A Vela release descriptor with media type
-   `application/vnd.vela.release.descriptor.v2+json` binds that configuration
+   `application/vnd.vela.release.descriptor.v3+json` binds that configuration
    descriptor to the ordered OCI manifest descriptors and derives the release
    digest. The Vela descriptor is an internal identity contract, not a claim of
    OCI Index interoperability.
 5. Re-loading a bundle rebuilds the complete graph from its rooted references
    and requires the reconstructed bundle, configuration revision, release
    descriptor, and release digest to match exactly.
+
+Schema 3 adds the required `runtime_image_maintenance_unit` input and named
+artifact, using `runtime-image-maintenance-systemd-unit`. Configuration and
+bundle media types also use `v3+json`. Schema 2 inputs are rejected and must be
+rebuilt from the complete graph. This is not a change to OCI image manifests or
+the release descriptor's OCI-style `schemaVersion: 2` field.
 
 ## Exact deployment graph
 
@@ -60,17 +66,20 @@ ModelRuntime image digest transitively binds an OCI config with an absolute
 `ENTRYPOINT`; Fleet does not override that entrypoint. Target mode rejects
 legacy desired revisions and Worker materializations.
 
-The legacy desired-revision plus Worker-materialization graph remains accepted
-only for rollback before S49.12 contraction. It is absent from the default Fleet
-render and must not be combined with target mode. In that compatibility graph,
-every desired placement still requires exactly one materialization and all
-Node, Worker, placement, TLS, ConfigMap, material-digest, and GPU identities
-remain non-aliasing.
+The legacy desired-revision plus Worker-materialization graph was removed by
+S49.12 contraction. Legacy materialization fields are rejected by the strict
+build plan and configuration manifest parsers.
 
-The two host packages use strict contracts that bind `linux/amd64`, revision,
-absolute entrypoint, artifact digest, and artifact size. The privileged Node
-Agent systemd unit is parsed as an exact allowlist: one expected `ExecStart`, no
-additional start hooks, and no unknown or conflicting service directives.
+The host package uses a strict contract that binds `linux/amd64`, revision,
+absolute entrypoint, artifact digest, and artifact size. Both Node Agent systemd
+units are parsed as separate exact allowlists: one package-bound `ExecStart`, no
+additional start hooks, and no unknown or conflicting service directives. The
+remediation unit requires its deployed `StateDirectoryMode=0750`. The independent
+maintenance unit invokes `runtime-image-maintenance` with a fixed private config
+path, retries failures without start rate limiting, and requires an empty
+capability bounding set. Dependencies on remediation or a containerd unit are
+not accepted. Host configuration values, effective drop-ins and enablement
+still require external deployment evidence.
 
 ## Resource and write safety
 

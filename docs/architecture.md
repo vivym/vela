@@ -265,6 +265,8 @@ Node Agent 必须：
 - 记录每一步动作、退出码、设备身份和健康验证结果。
 - 失败时升级恢复等级，达到阈值后隔离节点。
 
+Runtime 镜像观察产生的临时 lease、snapshot view 和 mount 由独立的 `vela-runtime-image-maintenance.service` 回收。它使用同一个 Node Agent 二进制的专用子命令，启动时及之后每分钟通过已认证的本机 containerd socket 检查一次过期资源。该服务与宿主机修复服务独立启停、独立重试，避免容器运行时故障阻塞宿主机修复。发布包 schema 3 必须绑定两个 unit；回收记录不构成 Runtime 启动、执行或退役授权。
+
 ### 6.7 Artifact Store
 
 Artifact Store 封装对象存储的 multipart upload、校验、短期访问凭据、逻辑提交和生命周期策略。生产环境使用同地域 S3-compatible adapter，测试使用本地 adapter。

@@ -224,7 +224,7 @@ func preflightArtifactGraph(root *rootedFS, plan BuildPlan) (*artifactReader, er
 
 func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	references := make([]artifactReference, 0,
-		len(plan.FinalRenders)+1+2*len(plan.Packages)+2*len(plan.OCIManifests),
+		len(plan.FinalRenders)+2+2*len(plan.Packages)+2*len(plan.OCIManifests),
 	)
 	for _, render := range plan.FinalRenders {
 		references = append(references, artifactReference{
@@ -233,6 +233,8 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	}
 	references = append(references, artifactReference{
 		role: "node-agent-unit", reference: plan.NodeAgentUnit.Ref, maximum: maxMetadataBytes,
+	}, artifactReference{
+		role: "runtime-image-maintenance-unit", reference: plan.RuntimeImageMaintenanceUnit.Ref, maximum: maxMetadataBytes,
 	})
 	for _, item := range plan.Packages {
 		references = append(references,
