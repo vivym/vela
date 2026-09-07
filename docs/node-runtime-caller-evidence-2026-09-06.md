@@ -150,6 +150,32 @@ The static linker warns about glibc NSS lookup functions; the tested Unix-socket
 paths do not validate DNS/user-database lookup behavior. This is a CPU test
 binary, not a production static-linking or release-image claim.
 
+## Descriptor exhaustion follow-up, 2026-09-07
+
+A real file-descriptor exhaustion experiment after `79030f6` exposed a cleanup
+bug in `ReceiveRuntimeCaller`. When `SO_PEERPIDFD` returned `EMFILE`, assigning
+the syscall wrapper's zero result to the retained descriptor variable replaced
+its `-1` sentinel. Deferred cleanup then closed descriptor 0. The pre-fix test
+failed with `failed pidfd acquisition closed or replaced stdin: bad file descriptor`.
+
+The receiver now takes ownership of the returned descriptor only after the
+syscall succeeds. The isolated test establishes a real non-root caller first,
+lowers only its verifier subprocess's descriptor limit to 128, fills the table,
+and confirms that the actual kernel pidfd acquisition returns `EMFILE`. Rejection
+must preserve the original stdin inode. After restoring descriptor capacity,
+the same connection authenticates the original expected payload and exits
+normally. No syscall mock, weakened authentication or production resource-limit
+change is involved.
+
+The complete CPU wrapper passed in **153.129 seconds**, with all **40 mandatory
+main tests** and both volatile-state-reset scenarios passing without skips.
+The final static Linux/arm64 race binary also passed all 13 selected caller,
+CRI/task correlation, executable-observation and planned-caller tests without
+skips or race reports; the new exhaustion test took 2.11s under race. It used
+the same pinned builder and sandbox images documented above. Linux/arm64
+integration-tag Node library/command vet and pinned lint passed with zero
+issues. This follow-up changes neither startup authority nor retirement rules.
+
 ## Remaining binding
 
 The next layer must correlate the authenticated live process with the trusted

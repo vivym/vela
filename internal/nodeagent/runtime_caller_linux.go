@@ -109,8 +109,10 @@ func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expecte
 			setupErr = errors.Join(ErrRuntimeCallerIdentity, setupErr)
 			return
 		}
-		peerFD, setupErr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD)
+		acquired, err := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PEERPIDFD)
+		setupErr = err
 		if setupErr == nil {
+			peerFD = acquired
 			flags, err := unix.FcntlInt(uintptr(peerFD), unix.F_GETFD, 0)
 			if err != nil || flags&unix.FD_CLOEXEC == 0 {
 				setupErr = errors.Join(ErrRuntimeCallerIdentity, err)

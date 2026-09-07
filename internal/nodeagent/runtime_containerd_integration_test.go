@@ -49,6 +49,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 	testNames := []string{
 		"TestRuntimeContainerdProcessEvidence", "TestRuntimeCallerAuthenticatedMessage", "TestRuntimeCallerRejectsInvalidMessages",
 		"TestRuntimeCallerDeadline", "TestRuntimeCallerProcessParser", "TestRuntimeCallerContainerCRI",
+		"TestRuntimeCallerPIDFDExhaustion",
 		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
 		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",
