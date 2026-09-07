@@ -75,6 +75,8 @@ type operationState struct {
 	operationBytes []byte
 	pairInfo       os.FileInfo
 	pairBytes      []byte
+	originInfo     os.FileInfo
+	originBytes    []byte
 	fresh          bool
 }
 
@@ -241,6 +243,16 @@ func (state *operationState) validate() error {
 		}
 		if !bytes.Equal(encoded, state.pairBytes) {
 			return errors.New("worker bootstrap recorded pair changed")
+		}
+	}
+	if state.originInfo != nil {
+		origin, err := state.readOrigin()
+		if err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(origin)
+		if err != nil || !bytes.Equal(encoded, state.originBytes) {
+			return errors.New("original journal storage record changed")
 		}
 	}
 	return nil

@@ -73,7 +73,7 @@ func TestPrepareRetainsBothJournalLocksThroughReceipt(t *testing.T) {
 }
 
 func TestPrepareRejectsJournalReplacementDuringReceipt(t *testing.T) {
-	for _, journal := range []string{"worker-admission/assignment-admission.json", "runtime-admission/execution-admission.json"} {
+	for _, journal := range []string{"worker-admission/assignment-admission.json", "runtime-admission/execution-admission.json", "bootstrap/" + originName} {
 		for _, phase := range []string{"record-call", "receipt-committed"} {
 			t.Run(journal+"/"+phase, func(t *testing.T) {
 				config, registry := bootstrapFixture(t)

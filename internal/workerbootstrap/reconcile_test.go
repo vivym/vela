@@ -92,7 +92,7 @@ func TestReconcileRecordedPairRestoresOnlyRegistryMetadataWithBothLocksHeld(t *t
 }
 
 func TestReconcileCannotCreateAuthorityOrCompleteUnrecordedInitialization(t *testing.T) {
-	for _, stop := range []string{"absent", "operation-durable", "claim-committed", "worker-prepared", "runtime-prepared", "pair-durable"} {
+	for _, stop := range []string{"absent", "operation-durable", "claim-committed", "worker-prepared", "runtime-prepared", "origin-durable", "pair-durable"} {
 		t.Run(stop, func(t *testing.T) {
 			config, registry := bootstrapFixture(t)
 			if stop != "absent" {

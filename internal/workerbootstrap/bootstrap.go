@@ -142,6 +142,12 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 		}
 		pair = journalPair{RequestID: p.request.RequestID, WorkerID: worker.JournalID, WorkerScope: worker.Scope,
 			RuntimeID: runtime.JournalID, RuntimeScope: runtime.Scope}
+		if err := local.writeOrigin(journalOrigin{SchemaVersion: 1, Pair: pair, Worker: worker.Storage, Runtime: runtime.Storage}); err != nil {
+			return Result{}, err
+		}
+		if err := checkpoint("origin-durable"); err != nil {
+			return Result{}, err
+		}
 		if err := local.writePair(pair); err != nil {
 			return Result{}, err
 		}
@@ -153,6 +159,13 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 	if err != nil {
 		return Result{}, fmt.Errorf("%w: %w", ErrIncomplete, err)
 	}
+	origin, err := local.readOrigin()
+	if err != nil {
+		return Result{}, err
+	}
+	if origin.Pair != pair {
+		return Result{}, errors.New("worker bootstrap pair differs from original journal storage record")
+	}
 	if err := local.validate(); err != nil {
 		return Result{}, err
 	}
@@ -161,7 +174,8 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 		return modelruntime.WithPreparedExecutionJournal(ctx, p.launch, config.Validator,
 			modelruntime.ExecutionFloorStateConfig{Directory: local.paths[runtimeRoot]}, func(runtime modelruntime.ExecutionJournalStatus) error {
 				if worker.JournalID != pair.WorkerID || worker.Scope != pair.WorkerScope ||
-					runtime.JournalID != pair.RuntimeID || runtime.Scope != pair.RuntimeScope {
+					runtime.JournalID != pair.RuntimeID || runtime.Scope != pair.RuntimeScope ||
+					worker.Storage != origin.Worker || runtime.Storage != origin.Runtime {
 					return errors.New("worker bootstrap journal pair was replaced")
 				}
 				if err := checkpoint("pair-recovered"); err != nil {

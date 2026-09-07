@@ -6,20 +6,22 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageauthority"
 )
 
 // ExecutionJournalStatus describes one completed offline preparation. It grants
 // no execution or retirement authority and does not retain the lifetime lock.
 type ExecutionJournalStatus struct {
-	JournalID          uuid.UUID              `json:"journal_id"`
-	SchemaVersion      int                    `json:"schema_version"`
-	Scope              [sha256.Size]byte      `json:"scope"`
-	Highest            int64                  `json:"highest"`
-	Floor              int64                  `json:"floor"`
-	RetainedExecutions int                    `json:"retained_executions"`
-	PendingExecutions  int                    `json:"pending_executions"`
-	BackendLifecycle   BackendLifecycleStatus `json:"backend_lifecycle"`
+	Storage            journalbinding.StorageIdentity `json:"storage"`
+	JournalID          uuid.UUID                      `json:"journal_id"`
+	SchemaVersion      int                            `json:"schema_version"`
+	Scope              [sha256.Size]byte              `json:"scope"`
+	Highest            int64                          `json:"highest"`
+	Floor              int64                          `json:"floor"`
+	RetainedExecutions int                            `json:"retained_executions"`
+	PendingExecutions  int                            `json:"pending_executions"`
+	BackendLifecycle   BackendLifecycleStatus         `json:"backend_lifecycle"`
 }
 
 // PrepareExecutionJournal validates trusted launch ownership and opens the
@@ -67,6 +69,8 @@ func WithPreparedExecutionJournal(ctx context.Context, manifest LaunchManifest, 
 	}
 	defer func() { err = errors.Join(err, store.check(), store.close(), context.Cause(ctx)) }()
 	result := ExecutionJournalStatus{
+		Storage: journalbinding.StorageIdentity{Root: journalbinding.FileIdentity(executionIdentity(store.rootInfo)),
+			Lock: journalbinding.FileIdentity(executionIdentity(store.lockInfo))},
 		JournalID: store.state.ID, SchemaVersion: store.state.SchemaVersion, Scope: store.state.Scope,
 		Highest: store.state.Highest, Floor: store.state.Floor, RetainedExecutions: len(store.state.Executions),
 		BackendLifecycle: *store.state.BackendLifecycle,

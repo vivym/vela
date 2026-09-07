@@ -22,6 +22,18 @@ Receipt recording/replay recovers and holds both journals while reporting their
 IDs/scopes. Serving separately verifies the Control-signed historical binding
 against its actual lifetime-locked journal before startup.
 
+Fresh paired initialization also writes a private schema-1
+`bootstrap/journal-origin.json` before publishing the pair. It captures the actual
+held directory/lock device and inode from both preparation APIs and binds those
+observations to the request, UUIDs/scopes and retained operation directories.
+Receipt replay and `reconcile-pair` require the recovered storage to match this
+record. A replaced lock plus rewritten journal metadata cannot supply its own
+original identity. Missing origin records, including older local state, cannot
+be adopted or reconstructed from Registry history. The record remains within
+the preparer's trusted-owner storage; independent Node protection, inode-reuse
+and administrative-rollback defenses are separate. See the
+[journal-origin repair](../worker-bootstrap-journal-origin-evidence-2026-09-07.md).
+
 Durable Worker assembly also requires live Runtime discovery to return that
 Registry binding after checking the held execution journal under its admission
 mutex. The Worker independently verifies the signature and member scope; local

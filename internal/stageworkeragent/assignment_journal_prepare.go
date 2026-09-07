@@ -6,21 +6,23 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/journalbinding"
 )
 
 // AssignmentJournalStatus reports validated local history, not readiness or
 // writer completion. Preparation releases the lifetime lock before returning.
 type AssignmentJournalStatus struct {
-	JournalID          uuid.UUID         `json:"journal_id"`
-	SchemaVersion      int               `json:"schema_version"`
-	Scope              [sha256.Size]byte `json:"scope"`
-	Watermark          int64             `json:"watermark"`
-	Floor              int64             `json:"floor"`
-	RetainedExecutions int               `json:"retained_executions"`
-	UnprovenInputs     int               `json:"unproven_inputs"`
-	RetirementIntents  int               `json:"retirement_intents"`
-	RetirementsReady   int               `json:"retirements_ready"`
-	RetirementsRetired int               `json:"retirements_retired"`
+	Storage            journalbinding.StorageIdentity `json:"storage"`
+	JournalID          uuid.UUID                      `json:"journal_id"`
+	SchemaVersion      int                            `json:"schema_version"`
+	Scope              [sha256.Size]byte              `json:"scope"`
+	Watermark          int64                          `json:"watermark"`
+	Floor              int64                          `json:"floor"`
+	RetainedExecutions int                            `json:"retained_executions"`
+	UnprovenInputs     int                            `json:"unproven_inputs"`
+	RetirementIntents  int                            `json:"retirement_intents"`
+	RetirementsReady   int                            `json:"retirements_ready"`
+	RetirementsRetired int                            `json:"retirements_retired"`
 }
 
 // PrepareAssignmentJournal uses the same exclusive ownership and durability
@@ -54,6 +56,8 @@ func WithPreparedAssignmentJournal(ctx context.Context, config AssignmentAdmissi
 	}
 	defer func() { err = errors.Join(err, gate.files.validateBinding(), gate.Close(), context.Cause(ctx)) }()
 	result := AssignmentJournalStatus{
+		Storage: journalbinding.StorageIdentity{Root: journalbinding.FileIdentity(admissionFileIdentity(gate.files.infos[0])),
+			Lock: journalbinding.FileIdentity(admissionFileIdentity(gate.files.lockInfo))},
 		JournalID: gate.state.ID, SchemaVersion: gate.state.SchemaVersion, Scope: gate.scopeDigest,
 		Watermark: gate.state.Watermark, Floor: gate.state.Floor,
 	}

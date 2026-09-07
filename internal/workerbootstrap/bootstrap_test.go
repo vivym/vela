@@ -51,7 +51,7 @@ func TestPrepareRecordsActualPairAndRecoversReceiptResponseLoss(t *testing.T) {
 }
 
 func TestPrepareInterruptedBoundariesNeverReinitialize(t *testing.T) {
-	for _, stop := range []string{"operation-durable", "claim-committed", "worker-prepared", "runtime-prepared", "pair-durable", "pair-recovered", "receipt-committed"} {
+	for _, stop := range []string{"operation-durable", "claim-committed", "worker-prepared", "runtime-prepared", "origin-durable", "pair-durable", "pair-recovered", "receipt-committed"} {
 		t.Run(stop, func(t *testing.T) {
 			config, registry := bootstrapFixture(t)
 			injected := errors.New("interrupted at " + stop)
@@ -82,7 +82,7 @@ func TestPrepareInterruptedBoundariesNeverReinitialize(t *testing.T) {
 }
 
 func TestPrepareRecoversAfterProcessExit(t *testing.T) {
-	for _, stop := range []string{"worker-prepared", "runtime-prepared", "pair-durable"} {
+	for _, stop := range []string{"worker-prepared", "runtime-prepared", "origin-durable", "pair-durable"} {
 		t.Run(stop, func(t *testing.T) {
 			config, registry := bootstrapFixture(t)
 			wireConfig := config

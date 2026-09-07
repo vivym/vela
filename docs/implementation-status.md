@@ -846,6 +846,13 @@ independent opens, shared/POSIX/OFD locks, permission changes and original-owner
 exit reject. The actual startup CPU fixture matches its known original lock
 before any mock decision. Original journal provenance, uninterrupted ownership,
 effective launch and current activation remain separate authorization gaps.
+The [bootstrap journal-origin repair](worker-bootstrap-journal-origin-evidence-2026-09-07.md)
+closes eight reproduced Worker/Runtime lock-rebinding cases during initialization,
+replay and pair recovery. A fresh local origin record retains actual directory
+and lock identities independently of mutable journal metadata. Missing origin
+records cannot be recreated from UUID/scope history, including older local state.
+Owner-controlled storage remains trusted; independent Node provenance and Fleet
+mount/ownership isolation are still required before production authorization.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

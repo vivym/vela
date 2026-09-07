@@ -19,7 +19,8 @@ type HistoryReader interface {
 }
 
 // ReconcileRecordedPair can recreate missing local pair metadata only from an
-// existing Registry receipt and the original independently recovered journals.
+// existing Registry receipt, retained initialization storage record and the
+// matching independently recovered journals.
 // It holds both journal lifetime locks through lookup, comparison and publication.
 // It never creates an operation, initializes a journal or repairs malformed data.
 func ReconcileRecordedPair(ctx context.Context, config Config, reader HistoryReader) (Result, error) {
@@ -62,6 +63,10 @@ func reconcileRecordedPair(ctx context.Context, config Config, reader HistoryRea
 	if err != nil && !missing {
 		return Result{}, fmt.Errorf("inspect retained Worker bootstrap pair: %w", err)
 	}
+	origin, err := local.readOrigin()
+	if err != nil {
+		return Result{}, err
+	}
 	if err := local.validate(); err != nil {
 		return Result{}, err
 	}
@@ -80,7 +85,8 @@ func reconcileRecordedPair(ctx context.Context, config Config, reader HistoryRea
 					return err
 				}
 				if worker.JournalID != expected.WorkerID || worker.Scope != expected.WorkerScope ||
-					runtime.JournalID != expected.RuntimeID || runtime.Scope != expected.RuntimeScope || !missing && pair != expected {
+					runtime.JournalID != expected.RuntimeID || runtime.Scope != expected.RuntimeScope || !missing && pair != expected ||
+					origin.Pair != expected || worker.Storage != origin.Worker || runtime.Storage != origin.Runtime {
 					return errors.New("worker bootstrap journals or local pair differ from Registry history")
 				}
 				if err := checkpoint("history-validated"); err != nil {
