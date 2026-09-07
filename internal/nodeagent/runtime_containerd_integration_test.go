@@ -64,27 +64,32 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeContainerObserverCommandAgainstCRI", "TestRuntimeContainerObserverPinsSocketLifetime",
 		"TestRuntimeImageRecoveryOwnership", "TestRuntimeImageRecoveryBatch", "TestRuntimeImageRecoveryFailures",
 	}
-	container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
-		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
-		"--env", "VELA_TEST_NODE_AGENT_BINARY=/vela-node-agent",
-		"--mount", "type=bind,src="+maintenanceBinary+",dst=/vela-node-agent,readonly",
-		"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
-		"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=180s")))
-	if !runtimeContainerIDPattern.MatchString(container) {
-		t.Fatalf("Docker returned an invalid fixture container ID: %q", container)
-	}
-	t.Cleanup(func() { containerdDocker(t, "rm", "--force", "--volumes", container) })
-	output := containerdDocker(t, "start", "--attach", container)
-	t.Log(string(output))
-	for _, name := range testNames {
-		if !strings.Contains(string(output), "--- PASS: "+name+" ") {
-			t.Fatalf("selected CPU test did not pass: %s", name)
+	t.Run("runtime-contracts", func(t *testing.T) {
+		container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
+			"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
+			"--env", "VELA_TEST_NODE_AGENT_BINARY=/vela-node-agent",
+			"--mount", "type=bind,src="+maintenanceBinary+",dst=/vela-node-agent,readonly",
+			"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
+			"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=180s")))
+		if !runtimeContainerIDPattern.MatchString(container) {
+			t.Fatalf("Docker returned an invalid fixture container ID: %q", container)
 		}
-	}
-	if strings.Contains(string(output), "--- SKIP:") ||
-		strings.TrimSpace(string(containerdDocker(t, "inspect", "--format", "{{.State.ExitCode}}", container))) != "0" {
-		t.Fatal("real containerd experiment did not complete without skips")
-	}
+		t.Cleanup(func() { containerdDocker(t, "rm", "--force", "--volumes", container) })
+		output := containerdDocker(t, "start", "--attach", container)
+		t.Log(string(output))
+		for _, name := range testNames {
+			if !strings.Contains(string(output), "--- PASS: "+name+" ") {
+				t.Fatalf("selected CPU test did not pass: %s", name)
+			}
+		}
+		if strings.Contains(string(output), "--- SKIP:") ||
+			strings.TrimSpace(string(containerdDocker(t, "inspect", "--format", "{{.State.ExitCode}}", container))) != "0" {
+			t.Fatal("real containerd experiment did not complete without skips")
+		}
+	})
+	t.Run("volatile-state-reset", func(t *testing.T) {
+		runRuntimeImageStateResetSandbox(t, image, binary, maintenanceBinary)
+	})
 }
 
 func containerdDocker(t *testing.T, arguments ...string) []byte {

@@ -150,3 +150,8 @@ Effective configuration/message binding, durable incarnation ownership and
 independent retirement remain open. `UNRESOLVED` and `LEGACY_UNKNOWN` remain
 recovery-only. PostgreSQL 94, Worker journal 5, Runtime journal 6, Registry
 binding 1, release bundle schema 3 and Production Gates **0/9** are unchanged.
+
+The subsequent [volatile state reset experiment](runtime-image-state-reset-evidence-2026-09-07.md)
+destroys the entire seed sandbox and attaches its persistent root to a fresh
+sandbox. It covers loss of state and the old mount context; physical host reboot
+and mount-metadata loss with surviving mounts remain separate requirements.

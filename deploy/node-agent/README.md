@@ -77,6 +77,8 @@ for the tested process path and the remaining deployment boundary.
 The subsequent [daemon restart evidence](../../docs/runtime-image-daemon-restart-evidence-2026-09-07.md)
 covers both graceful daemon exit and `SIGKILL` with the original root/state
 directories retained. It does not establish host reboot or systemd recovery.
+The [volatile state reset evidence](../../docs/runtime-image-state-reset-evidence-2026-09-07.md)
+also checks a fresh CPU sandbox with only containerd's persistent root retained.
 
 ## Remediation and quota service
 

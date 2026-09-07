@@ -38,6 +38,7 @@ type containerdProcessFixture struct {
 	containers containersapi.ContainersClient
 	tasks      tasksapi.TasksClient
 	root       string
+	dataRoot   string
 	binary     string
 	socket     string
 	connection *grpc.ClientConn
@@ -150,6 +151,10 @@ func startProcessContainerd(t *testing.T) *containerdProcessFixture {
 }
 
 func startConfiguredProcessContainerd(t *testing.T, configuration string) *containerdProcessFixture {
+	return startPersistentProcessContainerd(t, configuration, "")
+}
+
+func startPersistentProcessContainerd(t *testing.T, configuration, dataRoot string) *containerdProcessFixture {
 	t.Helper()
 	version, err := exec.CommandContext(t.Context(), "containerd", "--version").CombinedOutput()
 	if err != nil || strings.TrimSpace(string(version)) != "containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a" {
@@ -183,7 +188,10 @@ func startConfiguredProcessContainerd(t *testing.T, configuration string) *conta
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 90*time.Second)
 	t.Cleanup(cancel)
 	socket := filepath.Join(root, "containerd.sock")
-	fixture := &containerdProcessFixture{ctx: ctx, root: root, socket: socket, daemonLog: log}
+	if dataRoot == "" {
+		dataRoot = filepath.Join(root, "data")
+	}
+	fixture := &containerdProcessFixture{ctx: ctx, root: root, dataRoot: dataRoot, socket: socket, daemonLog: log}
 	t.Cleanup(func() {
 		fixture.stopDaemon(t, unix.SIGTERM, false)
 		_ = log.Close()
@@ -214,7 +222,7 @@ func (fixture *containerdProcessFixture) startDaemon(t *testing.T) {
 		t.Fatal("private containerd is already running")
 	}
 	daemon := exec.CommandContext(fixture.ctx, "containerd", "--config", filepath.Join(fixture.root, "containerd.toml"),
-		"--root", filepath.Join(fixture.root, "data"), "--state", filepath.Join(fixture.root, "state"), "--address", fixture.socket)
+		"--root", fixture.dataRoot, "--state", filepath.Join(fixture.root, "state"), "--address", fixture.socket)
 	daemon.Stdout, daemon.Stderr = fixture.daemonLog, fixture.daemonLog
 	if err := daemon.Start(); err != nil {
 		t.Fatal(err)
