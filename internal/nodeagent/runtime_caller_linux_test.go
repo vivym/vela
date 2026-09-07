@@ -339,6 +339,9 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	}
 	var response [4]byte
 	_, _ = io.ReadFull(connection, response[:])
+	if mode == "hold-after-disconnect" {
+		time.Sleep(30 * time.Second)
+	}
 	if mode == "exec-after-challenge" && string(response[:]) == "exec" {
 		if err := unix.Exec(os.Args[0], os.Args, []string{runtimeCallerTestMode + "=exec-target"}); err != nil {
 			t.Fatal(err)

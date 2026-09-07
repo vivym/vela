@@ -128,6 +128,12 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			if result, err := observer.ObserveCaller(t.Context(), wrongPod, caller); err == nil || result != (RuntimeContainerCallerObservation{}) {
 				t.Fatal("caller overrode the actual CRI Pod identity")
 			}
+			owner, err := observer.RetainNamespaceOwner(t.Context(), target, caller)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close() })
+			assertNamespaceOwnerLive(t, owner)
 			if err := connection.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 				t.Fatal(err)
 			}
@@ -165,6 +171,14 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			if _, err := client.RemoveContainer(t.Context(), &runtimev1.RemoveContainerRequest{ContainerId: target.ContainerID}); err != nil {
 				t.Fatal(err)
 			}
+			if err := caller.Close(); err != nil {
+				t.Fatal(err)
+			}
+			exit := waitNamespaceOwnerExit(t, owner)
+			if exit.Owner.Process.HostPID != observation.Process.HostPID || exit.Owner.Container.Target != target {
+				t.Fatalf("real CRI removal changed retained process identity: %+v", exit)
+			}
+			t.Log("retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure")
 			if result, err := observer.Inspect(t.Context(), target); err == nil || result != (RuntimeContainerObservation{}) {
 				t.Fatal("removed CRI metadata yielded a container observation")
 			}

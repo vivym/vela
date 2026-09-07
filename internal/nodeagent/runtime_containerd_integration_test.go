@@ -52,6 +52,8 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeCallerPIDFDExhaustion",
 		"TestRuntimeChannelRoundTrip", "TestRuntimeChannelRejectsUntrustedExchange", "TestRuntimeChannelReplyRejectsLostLifetime",
 		"TestRuntimeChannelPIDNamespaceIdentity",
+		"TestRuntimeNamespaceOwnerIndependentLifetime", "TestRuntimeNamespaceOwnerRejectsUnprovenOwner",
+		"TestRuntimeNamespaceOwnerKeepsGenerationsDistinct",
 		"TestRuntimeContainerCallerCorrelation", "TestRuntimeContainerCallerRejectsNonInit",
 		"TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration", "TestRuntimeLaunchPlanRejectsUnboundHistory",
 		"TestRuntimeLaunchPlanPreservesMemberAndAUXTopology", "TestRuntimePlannedCallerCorrelatesTrustedPod",

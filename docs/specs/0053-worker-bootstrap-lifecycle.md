@@ -231,6 +231,17 @@ configuration authentication, trusted endpoint/command assembly, durable journal
 and startup-nonce binding before factory dispatch, and independent exact-owner
 retirement remain required. No observation clears unresolved backend ownership.
 
+`RetainNamespaceOwner` now retains an independent close-on-exec copy of the
+authenticated pidfd after that live CRI/task/PID-1 correlation. The opaque handle
+survives closure of the request connection, caller and CRI observer. Only a
+kernel exit event on that original retained descriptor can produce its stable
+exit observation. Paused/live processes, absent metadata, replacement processes
+and closing the handle do not qualify. Real CRI tests preserve the observation
+after original process exit and container removal. This remains process-lifetime
+evidence: durable journal/startup binding, Node restart recovery and device
+quiescence are still required before any replacement grant. See the
+[namespace-owner evidence](../node-runtime-namespace-owner-evidence-2026-09-07.md).
+
 `VerifyRuntimeLaunchPlan` now checks the canonical bundle preimage against the
 Registry-signed digest and derives the exact member manifest and Pod through
 the existing Fleet schema-v2 mapping. Its opaque plan checks complete manifest
