@@ -42,6 +42,16 @@ type RuntimePlannedCallerObservation struct {
 // CRI. The authenticated payload must be the exact canonical launch manifest;
 // it is a declaration, not proof of the file or configuration actually loaded.
 func (observer *RuntimeContainerObserver) ObservePlannedCaller(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, caller *RuntimeCaller) (RuntimePlannedCallerObservation, error) {
+	var declaration []byte
+	if plan != nil {
+		declaration = plan.manifest
+	}
+	return observer.observePlannedCaller(ctx, plan, pods, caller, declaration)
+}
+
+// A startup request carries the matching manifest digest rather than its bytes.
+// The caller must verify that domain request before selecting this declaration.
+func (observer *RuntimeContainerObserver) observePlannedCaller(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, caller *RuntimeCaller, declaration []byte) (RuntimePlannedCallerObservation, error) {
 	if err := contextError(ctx); err != nil {
 		return RuntimePlannedCallerObservation{}, err
 	}
@@ -52,7 +62,7 @@ func (observer *RuntimeContainerObserver) ObservePlannedCaller(ctx context.Conte
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	from := observer.clock().UTC()
-	if !bytes.Equal(caller.Payload(), plan.manifest) {
+	if len(declaration) == 0 || !bytes.Equal(caller.Payload(), declaration) {
 		return RuntimePlannedCallerObservation{}, ErrRuntimeLaunchPlan
 	}
 	key := fleetcontroller.ResourceKey{Namespace: plan.pod.Namespace, Name: plan.pod.Name}

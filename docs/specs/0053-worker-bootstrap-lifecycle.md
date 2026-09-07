@@ -242,6 +242,18 @@ evidence: durable journal/startup binding, Node restart recovery and device
 quiescence are still required before any replacement grant. See the
 [namespace-owner evidence](../node-runtime-namespace-owner-evidence-2026-09-07.md).
 
+`RuntimeStartupLedger` now persists an authenticated startup declaration and its
+original retained owner under a root-owned, lifetime-locked Node journal. The
+declaration must match an opaque verified launch plan and trusted Pod/caller
+observation. Append and fsync precede a returned registration; duplicate journal
+registrations reject permanently. Only the original retained pidfd can record
+owner exit. A durable exit survives reopen, while an unresolved record whose
+handle was lost cannot infer exit or register a replacement. Missing or visibly
+changed state fails closed. This association library neither issues permission
+nor independently authenticates the held Runtime journal, effective launch or
+current activation. Root-owned storage remains trusted against administrative
+rollback. See the [startup ledger evidence](../node-runtime-startup-ledger-evidence-2026-09-07.md).
+
 `VerifyRuntimeLaunchPlan` now checks the canonical bundle preimage against the
 Registry-signed digest and derives the exact member manifest and Pod through
 the existing Fleet schema-v2 mapping. Its opaque plan checks complete manifest

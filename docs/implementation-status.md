@@ -827,6 +827,16 @@ Registry integration and surviving-writer CPU experiments pass. The Node issuer,
 durable authorization transaction, independent held-journal/effective-launch
 binding and exact-owner retirement remain open; mock permits do not authorize
 production. Schema/journal versions and Production Gates `0/9` are unchanged.
+The [Node startup association ledger](node-runtime-startup-ledger-evidence-2026-09-07.md)
+now persists the authenticated declaration, verified historical Registry binding
+and independently retained namespace owner before returning a registration.
+Duplicate registration rejects. Exact-owner kernel exit survives reopening once
+durable; lost live pidfds cannot be reconstructed after Node restart. The actual
+Runtime exchange with an explicit mock permit, 53 mandatory Node CPU tests, both
+volatile-state-reset scenarios and 12 focused race tests pass without skips.
+This is an association library, not an authorization issuer: independent actual
+journal/launch/current-activation checks and the production endpoint remain open.
+No Runtime retirement/reset, DeviceSet release or Production Gate is added.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
