@@ -20,14 +20,10 @@ import (
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
-type RuntimeContainerObserverConfig struct {
-	SocketPath   string
-	NodeIdentity string
-}
-
 // DialRuntimeContainerObserver connects only to a root-owned local CRI socket
 // under trusted directories and authenticates its kernel-reported peer UID.
-// It reads the host boot ID directly; no container-supplied identity is used.
+// Linux O_PATH pins the filesystem inode until Close, preventing inode reuse
+// from disguising a replaced socket. It reads the host boot ID directly.
 func DialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig) (*RuntimeContainerObserver, error) {
 	return dialRuntimeContainerObserver(ctx, config, 0, func() (string, error) {
 		return readBootID("/proc/sys/kernel/random/boot_id")
@@ -53,8 +49,12 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 		return nil, err
 	}
 	success := false
+	var socketFile *os.File
 	defer func() {
 		if !success {
+			if socketFile != nil {
+				_ = socketFile.Close()
+			}
 			_ = root.Close()
 		}
 	}()
@@ -84,6 +84,16 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 	original, err := validateSocket()
 	if err != nil {
 		return nil, err
+	}
+	// Keep the filesystem inode alive. An unlinked socket's inode can be
+	// reused immediately after daemon restart, defeating a saved FileInfo.
+	socketFile, err = openRuntimeContainerSocket(path)
+	if err != nil {
+		return nil, fmt.Errorf("pin CRI socket inode: %w", err)
+	}
+	pinned, err := socketFile.Stat()
+	if err != nil || !os.SameFile(original, pinned) {
+		return nil, errors.New("CRI socket changed while its inode was pinned")
 	}
 	var closed atomic.Bool
 	check := func() error {
@@ -124,7 +134,7 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 			if closed.Swap(true) {
 				return nil
 			}
-			return errors.Join(connection.Close(), root.Close())
+			return errors.Join(connection.Close(), socketFile.Close(), root.Close())
 		}}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

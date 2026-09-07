@@ -122,3 +122,8 @@ grant no startup, execution, readiness, scratch reset or retirement authority.
 `UNRESOLVED` and `LEGACY_UNKNOWN` remain recovery-only. PostgreSQL 94, Worker
 journal 5, Runtime journal 6, Registry binding 1 and Production Gates **0/9** are
 unchanged. No GPU test, production deployment, push or Launch Receipt was made.
+
+The following [daemon restart increment](runtime-image-daemon-restart-evidence-2026-09-07.md)
+tests real containerd replacement, fixes socket inode reuse, and expands the
+mandatory Linux selection. The remaining statements above describe this
+maintenance checkpoint; host reboot and actual systemd operation remain open.

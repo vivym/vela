@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/identity"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -45,6 +46,10 @@ func TestRuntimeImageCrashRecovery(t *testing.T) {
 
 func TestRuntimeImageMaintenanceProcess(t *testing.T) {
 	runRuntimeImageCrashCases(t, []string{"activation-service"})
+}
+
+func TestRuntimeImageDaemonRestart(t *testing.T) {
+	runRuntimeImageCrashCases(t, []string{"daemon-term", "daemon-kill"})
 }
 
 func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
@@ -123,12 +128,24 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) {
 			stage := strings.TrimSuffix(strings.TrimSuffix(scenario, "-gc"), "-service")
-			point := crashRuntimeImageObserver(t, fixture, observer.namespace, target, stage)
+			lifetime := 6 * time.Second
+			if strings.HasPrefix(scenario, "daemon-") {
+				stage, lifetime = "activation", 15*time.Second
+			}
+			point := crashRuntimeImageObserver(t, fixture, observer.namespace, target, stage, lifetime)
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
 			if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 0 {
 				t.Fatalf("recovery selected an unexpired crashed observation: %d %v", count, err)
 			}
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
+			if strings.HasPrefix(scenario, "daemon-") {
+				observer = restartRuntimeImageDaemon(t, fixture, observer, point, scenario)
+				control.observer = observer
+				if count, err := observer.RecoverExpired(t.Context()); err != nil || count != 0 {
+					t.Fatalf("restarted daemon lost protection of unexpired resources: %d %v", count, err)
+				}
+				assertRuntimeImageCrashResources(t, fixture, point, stage, true)
+			}
 			forceRuntimeImageGC(t, fixture)
 			if time.Until(point.ExpiresAt) < time.Second {
 				t.Fatal("crash fixture did not leave a pre-expiry verification window")
@@ -147,7 +164,7 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 			switch scenario {
 			case "activation-gc":
 				forceRuntimeImageGC(t, fixture)
-			case "activation-service":
+			case "activation-service", "daemon-term", "daemon-kill":
 				runRuntimeImageMaintenanceProcess(t, fixture, observer.namespace)
 			default:
 				restarted, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{
@@ -192,6 +209,53 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 			t.Logf("SIGKILL %s: protected before expiry, retained while idle after expiry, then fully reclaimed; live view and source image preserved", scenario)
 		})
 	}
+}
+
+func restartRuntimeImageDaemon(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver,
+	point runtimeImageCrashPoint, scenario string) *RuntimeImageObserver {
+	t.Helper()
+	before, err := os.Lstat(fixture.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signal := unix.SIGTERM
+	if scenario == "daemon-kill" {
+		signal = unix.SIGKILL
+	}
+	oldPID := fixture.daemon.Process.Pid
+	fixture.stopDaemon(t, signal, true)
+	if _, err := os.Stat(filepath.Join(point.MountPoint, "probe")); err != nil {
+		t.Fatalf("daemon exit removed the retained kernel mount: %v", err)
+	}
+	offlineCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+	count, recoveryErr := observer.RecoverExpired(offlineCtx)
+	cancel()
+	if recoveryErr == nil || count != 0 {
+		t.Fatalf("offline daemon produced completed recovery: %d %v", count, recoveryErr)
+	}
+	fixture.startDaemon(t)
+	after, err := os.Lstat(fixture.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(before, after) {
+		t.Fatal("restarted daemon reused the prior socket inode")
+	}
+	if count, err := observer.RecoverExpired(t.Context()); err == nil || count != 0 {
+		t.Fatalf("old observer accepted the replacement daemon socket: %d %v", count, err)
+	}
+	if err := observer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{
+		RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-image-crash-node"},
+		Namespace:                      observer.namespace, Snapshotter: "native",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("containerd %s: old_pid=%d new_pid=%d; old observer rejected, new connection authenticated", scenario, oldPID, fixture.daemon.Process.Pid)
+	return restarted
 }
 
 func runRuntimeImageMaintenanceProcess(t *testing.T, fixture *containerdProcessFixture, namespace string) {
@@ -273,7 +337,7 @@ func runRuntimeImageMaintenanceProcess(t *testing.T, fixture *containerdProcessF
 	}
 }
 
-func crashRuntimeImageObserver(t *testing.T, fixture *containerdProcessFixture, namespace string, target RuntimeImageTarget, stage string) runtimeImageCrashPoint {
+func crashRuntimeImageObserver(t *testing.T, fixture *containerdProcessFixture, namespace string, target RuntimeImageTarget, stage string, lifetime time.Duration) runtimeImageCrashPoint {
 	t.Helper()
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -287,6 +351,7 @@ func crashRuntimeImageObserver(t *testing.T, fixture *containerdProcessFixture, 
 	t.Cleanup(func() { _ = log.Close() })
 	command := exec.CommandContext(t.Context(), fixture.binary, "-test.run=^TestRuntimeImageCrashHelper$", "-test.timeout=20s")
 	command.Env = append(os.Environ(), runtimeImageCrashEnvironment+"="+stage, "VELA_TEST_IMAGE_SOCKET="+fixture.socket,
+		"VELA_TEST_IMAGE_LEASE_TTL="+lifetime.String(),
 		"VELA_TEST_IMAGE_NAMESPACE="+namespace, "VELA_TEST_IMAGE_MANIFEST="+target.ManifestDigest, "VELA_TEST_IMAGE_CONFIG="+target.ConfigDigest)
 	command.ExtraFiles = []*os.File{writer}
 	command.Stdout, command.Stderr = log, log
@@ -415,6 +480,10 @@ func TestRuntimeImageCrashHelper(t *testing.T) {
 	}
 	defer func() { _ = observer.Close() }()
 	point := &runtimeImageCrashPoint{}
+	lifetime, err := time.ParseDuration(os.Getenv("VELA_TEST_IMAGE_LEASE_TTL"))
+	if err != nil || (lifetime != 6*time.Second && lifetime != 15*time.Second) {
+		t.Fatal("invalid private image lease TTL")
+	}
 	pause := func() {
 		file := os.NewFile(3, "crash-ready")
 		if err := json.NewEncoder(file).Encode(point); err != nil {
@@ -425,7 +494,7 @@ func TestRuntimeImageCrashHelper(t *testing.T) {
 		// after reading the durable-allocation acknowledgement.
 		select {}
 	}
-	observer.leases = &crashRuntimeImageLeases{LeasesClient: observer.leases, point: point, pause: pause, stage: stage}
+	observer.leases = &crashRuntimeImageLeases{LeasesClient: observer.leases, point: point, pause: pause, stage: stage, lifetime: lifetime}
 	observer.snapshots = &crashRuntimeImageSnapshots{SnapshotsClient: observer.snapshots, pause: pause, stage: stage}
 	observer.mounts = &crashRuntimeImageMounts{MountsClient: observer.mounts, point: point, pause: pause, stage: stage}
 	_, err = observer.InspectExecutable(t.Context(), RuntimeImageTarget{ManifestDigest: os.Getenv("VELA_TEST_IMAGE_MANIFEST"),
@@ -435,9 +504,10 @@ func TestRuntimeImageCrashHelper(t *testing.T) {
 
 type crashRuntimeImageLeases struct {
 	leasesapi.LeasesClient
-	point *runtimeImageCrashPoint
-	pause func()
-	stage string
+	point    *runtimeImageCrashPoint
+	pause    func()
+	stage    string
+	lifetime time.Duration
 }
 
 func (client *crashRuntimeImageLeases) Create(ctx context.Context, request *leasesapi.CreateRequest, options ...grpc.CallOption) (*leasesapi.CreateResponse, error) {
@@ -445,7 +515,7 @@ func (client *crashRuntimeImageLeases) Create(ctx context.Context, request *leas
 	if err != nil || time.Until(expires) < 59*time.Minute || time.Until(expires) > time.Hour {
 		return nil, errors.New("production reader omitted its one-hour lease expiry")
 	}
-	client.point.Key, client.point.ExpiresAt = request.ID, time.Now().Add(6*time.Second).Truncate(time.Second)
+	client.point.Key, client.point.ExpiresAt = request.ID, time.Now().Add(client.lifetime).Truncate(time.Second)
 	request.Labels["containerd.io/gc.expire"] = client.point.ExpiresAt.Format(time.RFC3339)
 	response, err := client.LeasesClient.Create(ctx, request, options...)
 	if err == nil && client.stage == "lease" {

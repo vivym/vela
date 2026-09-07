@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -40,6 +41,8 @@ type containerdProcessFixture struct {
 	binary     string
 	socket     string
 	connection *grpc.ClientConn
+	daemon     *exec.Cmd
+	daemonLog  *os.File
 }
 
 type containerdCaller struct {
@@ -180,23 +183,9 @@ func startConfiguredProcessContainerd(t *testing.T, configuration string) *conta
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 90*time.Second)
 	t.Cleanup(cancel)
 	socket := filepath.Join(root, "containerd.sock")
-	daemon := exec.CommandContext(ctx, "containerd", "--config", config, "--root", filepath.Join(root, "data"),
-		"--state", filepath.Join(root, "state"), "--address", socket)
-	daemon.Stdout, daemon.Stderr = log, log
-	if err := daemon.Start(); err != nil {
-		_ = log.Close()
-		t.Fatal(err)
-	}
+	fixture := &containerdProcessFixture{ctx: ctx, root: root, socket: socket, daemonLog: log}
 	t.Cleanup(func() {
-		_ = daemon.Process.Signal(unix.SIGTERM)
-		done := make(chan error, 1)
-		go func() { done <- daemon.Wait() }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			_ = daemon.Process.Kill()
-			<-done
-		}
+		fixture.stopDaemon(t, unix.SIGTERM, false)
 		_ = log.Close()
 		if t.Failed() {
 			data, _ := os.ReadFile(log.Name())
@@ -209,15 +198,31 @@ func startConfiguredProcessContainerd(t *testing.T, configuration string) *conta
 	}
 	t.Cleanup(func() { _ = connection.Close() })
 	ctx = metadata.AppendToOutgoingContext(ctx, "containerd-namespace", "vela-cpu-"+uuid.NewString())
-	fixture := &containerdProcessFixture{ctx: ctx, root: root, socket: socket, connection: connection, containers: containersapi.NewContainersClient(connection),
-		tasks: tasksapi.NewTasksClient(connection)}
+	fixture.ctx, fixture.connection = ctx, connection
+	fixture.containers, fixture.tasks = containersapi.NewContainersClient(connection), tasksapi.NewTasksClient(connection)
 	fixture.binary, err = os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
+	fixture.startDaemon(t)
+	return fixture
+}
+
+func (fixture *containerdProcessFixture) startDaemon(t *testing.T) {
+	t.Helper()
+	if fixture.daemon != nil {
+		t.Fatal("private containerd is already running")
+	}
+	daemon := exec.CommandContext(fixture.ctx, "containerd", "--config", filepath.Join(fixture.root, "containerd.toml"),
+		"--root", filepath.Join(fixture.root, "data"), "--state", filepath.Join(fixture.root, "state"), "--address", fixture.socket)
+	daemon.Stdout, daemon.Stderr = fixture.daemonLog, fixture.daemonLog
+	if err := daemon.Start(); err != nil {
+		t.Fatal(err)
+	}
+	fixture.daemon = daemon
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, err := fixture.containers.List(ctx, &containersapi.ListContainersRequest{}); err == nil {
+		if _, err := fixture.containers.List(fixture.ctx, &containersapi.ListContainersRequest{}); err == nil {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -225,7 +230,40 @@ func startConfiguredProcessContainerd(t *testing.T, configuration string) *conta
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	return fixture
+}
+
+func (fixture *containerdProcessFixture) stopDaemon(t *testing.T, signal unix.Signal, verify bool) {
+	t.Helper()
+	if fixture.daemon == nil {
+		return
+	}
+	daemon := fixture.daemon
+	signalErr := daemon.Process.Signal(signal)
+	done := make(chan error, 1)
+	go func() { done <- daemon.Wait() }()
+	var exitErr error
+	timedOut := false
+	select {
+	case exitErr = <-done:
+	case <-time.After(5 * time.Second):
+		timedOut = true
+		_ = daemon.Process.Kill()
+		<-done
+	}
+	fixture.daemon = nil
+	if verify {
+		if signalErr != nil || timedOut {
+			t.Fatalf("private containerd stop failed: signal=%v timeout=%v", signalErr, timedOut)
+		}
+		status, ok := daemon.ProcessState.Sys().(syscall.WaitStatus)
+		if signal == unix.SIGKILL {
+			if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+				t.Fatalf("private containerd did not die by SIGKILL: %v", exitErr)
+			}
+		} else if exitErr != nil {
+			t.Fatalf("private containerd did not stop gracefully: %v", exitErr)
+		}
+	}
 }
 
 func (fixture *containerdProcessFixture) create(t *testing.T, mode, pidNamespace string) (*containersapi.Container, *net.UnixListener) {

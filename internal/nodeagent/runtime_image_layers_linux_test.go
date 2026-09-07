@@ -4,7 +4,7 @@ package nodeagent
 
 import (
 	"archive/tar"
-	"compress/gzip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -250,7 +250,21 @@ func runtimeExecutableLayer(t *testing.T, directory, label string, entries []exe
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	layer, err := tarball.LayerFromFile(path, tarball.WithCompressionLevel(gzip.BestSpeed), tarball.WithCompressedCaching)
+	// Keep fixture compression outside race instrumentation; the large test
+	// executable is payload, not the implementation of the image compressor.
+	compressed, err := os.Create(path + ".gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	command := exec.CommandContext(t.Context(), "gzip", "-1", "--stdout", path)
+	command.Stdout, command.Stderr = compressed, &stderr
+	compressErr := command.Run()
+	closeErr := compressed.Close()
+	if compressErr != nil || closeErr != nil {
+		t.Fatalf("compress CPU fixture layer: %v %v %s", compressErr, closeErr, stderr.Bytes())
+	}
+	layer, err := tarball.LayerFromFile(compressed.Name())
 	if err != nil {
 		t.Fatal(err)
 	}

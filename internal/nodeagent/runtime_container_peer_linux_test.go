@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,111 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestRuntimeContainerObserverPinsSocketLifetime(t *testing.T) {
+	t.Run("unlink-and-replace", func(t *testing.T) {
+		fixture := newContainerCRIServer()
+		path := serveContainerCRI(t, fixture)
+		original, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observer := dialContainerCRI(t, path)
+		assertRuntimeContainerSocketPins(t, original, 1)
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		for range 8 {
+			replacement, err := net.Listen("unix", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o600); err != nil {
+				_ = replacement.Close()
+				t.Fatal(err)
+			}
+			current, err := os.Lstat(path)
+			if err != nil || os.SameFile(original, current) {
+				_ = replacement.Close()
+				t.Fatalf("pinned socket inode reused: %v", err)
+			}
+			if result, err := observer.Inspect(t.Context(), fixture.target); err == nil || result != (RuntimeContainerObservation{}) {
+				_ = replacement.Close()
+				t.Fatalf("replacement produced evidence: %+v %v", result, err)
+			}
+			assertRuntimeContainerSocketPins(t, original, 1)
+			if err := replacement.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := observer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := observer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		assertRuntimeContainerSocketPins(t, original, 0)
+	})
+	t.Run("failed-boot-validation", func(t *testing.T) {
+		path := serveContainerCRI(t, newContainerCRIServer())
+		original, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 8 {
+			observer, err := dialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: path, NodeIdentity: "node-1"},
+				uint32(os.Geteuid()), func() (string, error) { return "invalid", nil })
+			if err == nil || observer != nil {
+				t.Fatal("invalid boot produced an observer")
+			}
+			assertRuntimeContainerSocketPins(t, original, 0)
+		}
+	})
+	t.Run("failed-connection", func(t *testing.T) {
+		path := serveContainerCRI(t, newContainerCRIServer()) + ".offline"
+		listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		listener.SetUnlinkOnClose(false)
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		original, err := os.Lstat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		observer, err := dialRuntimeContainerObserver(ctx, RuntimeContainerObserverConfig{SocketPath: path, NodeIdentity: "node-1"},
+			uint32(os.Geteuid()), func() (string, error) { return uuid.NewString(), nil })
+		if err == nil || observer != nil {
+			t.Fatal("offline socket produced an observer")
+		}
+		assertRuntimeContainerSocketPins(t, original, 0)
+	})
+}
+
+func assertRuntimeContainerSocketPins(t *testing.T, original os.FileInfo, expected int) {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, entry := range entries {
+		info, err := os.Stat(filepath.Join("/proc/self/fd", entry.Name()))
+		if err == nil && os.SameFile(original, info) {
+			count++
+		}
+	}
+	if count != expected {
+		t.Fatalf("socket inode descriptor count=%d, want=%d", count, expected)
+	}
+}
 
 func TestRuntimeContainerObserverUsesHostBootAndRootPeer(t *testing.T) {
 	if os.Geteuid() != 0 {

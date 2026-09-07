@@ -43,7 +43,10 @@ with the exact five fields:
 The Node identity and namespace must match those used by image observations.
 The only currently qualified snapshotter is `native`. The socket must be
 root-owned mode `0600` or root-group `0660`, with a root kernel peer and trusted
-ancestors. Unknown, duplicate, case-aliased, missing or null JSON fields, insecure
+ancestors. Linux holds an `O_PATH` descriptor to that socket inode throughout
+each observer connection; a restarted daemon cannot reuse the held inode and
+inherit the old observer's identity. CRI/image observation requires Linux.
+Unknown, duplicate, case-aliased, missing or null JSON fields, insecure
 files and unsupported snapshotters fail before dialing. Configuration is loaded
 once per process; an operator must restart the service to apply a change.
 
@@ -71,6 +74,9 @@ drop-ins, or enable the services. Image maintenance grants no startup, readiness
 incarnation retirement, scratch reset or execution permission. See the
 [CPU maintenance evidence](../../docs/runtime-image-maintenance-evidence-2026-09-07.md)
 for the tested process path and the remaining deployment boundary.
+The subsequent [daemon restart evidence](../../docs/runtime-image-daemon-restart-evidence-2026-09-07.md)
+covers both graceful daemon exit and `SIGKILL` with the original root/state
+directories retained. It does not establish host reboot or systemd recovery.
 
 ## Remediation and quota service
 

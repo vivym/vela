@@ -57,10 +57,16 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeImageTargetBounds", "TestRuntimeImageContentBounds", "TestRuntimeImageFileResolution",
 		"TestRuntimeImageCrashRecovery",
 		"TestRuntimeImageMaintenanceProcess",
+		"TestRuntimeImageDaemonRestart",
+		"TestRuntimeContainerObservationKeepsCRIStatesDistinct", "TestRuntimeContainerObservationRejectsIncompleteAndMismatchedEvidence",
+		"TestRuntimeContainerObservationRejectsLostObserverIdentity", "TestRuntimeContainerObserverRejectsUntrustedSocket",
+		"TestRuntimeContainerObserverUsesHostBootAndRootPeer", "TestRuntimeContainerObserverRejectsSocketOwnerDifferentFromKernelPeer",
+		"TestRuntimeContainerObserverCommandAgainstCRI", "TestRuntimeContainerObserverPinsSocketLifetime",
 		"TestRuntimeImageRecoveryOwnership", "TestRuntimeImageRecoveryBatch", "TestRuntimeImageRecoveryFailures",
 	}
 	container := strings.TrimSpace(string(containerdDocker(t, "create", "--pull", "never", "--network", "none", "--privileged", "--cgroupns", "private",
 		"--pids-limit", "256", "--memory", "1g", "--cpus", "2", "--env", "VELA_TEST_CONTAINERD_SANDBOX=1",
+		"--env", "VELA_TEST_NODE_AGENT_BINARY=/vela-node-agent",
 		"--mount", "type=bind,src="+maintenanceBinary+",dst=/vela-node-agent,readonly",
 		"--mount", "type=bind,src="+binary+",dst=/nodeagent.test,readonly", "--entrypoint", "/nodeagent.test", image,
 		"-test.run=^("+strings.Join(testNames, "|")+")$", "-test.v", "-test.timeout=180s")))
