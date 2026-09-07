@@ -59,6 +59,15 @@ observations. A busy mount retains its view and lease across retries; a missing
 activation alone is not proof of successful cleanup. Marked `v1` leases fail
 closed for operator reconciliation instead of being silently migrated.
 
+Kernel completion is read from the authenticated containerd process's mount
+table, even when this service has a private mount view. The image observer
+requires Linux `SO_PEERPIDFD`, retains the original root socket creator's process
+handle, and rejects a dead or replaced peer. The qualified daemon owns its
+listener and performs mounts in that process's mount view; socket activation,
+listener delegation and daemon mount-namespace replacement are not qualified.
+This adds no capability to the maintenance service. Image byte inspection still
+requires the observer to see the daemon's image mount paths.
+
 The command immediately attempts one recovery pass, closes its connection, then
 waits one minute before the next pass. Every pass re-authenticates the socket,
 with a 10-second dial deadline and separate 30-second recovery deadline. At most
@@ -91,6 +100,9 @@ also checks a fresh CPU sandbox with only containerd's persistent root retained.
 The subsequent [cleanup journal evidence](../../docs/runtime-image-cleanup-journal-evidence-2026-09-07.md)
 documents the real `EBUSY` counterexample, lease protocol change, and the
 unresolved boundary when allocation state is lost before a mount path is recorded.
+The [daemon mount-table evidence](../../docs/runtime-image-daemon-mount-evidence-2026-09-07.md)
+adds busy/released recovery through an independent mount view with all
+capabilities removed, plus original-peer death and descriptor-lifetime checks.
 
 ## Remediation and quota service
 

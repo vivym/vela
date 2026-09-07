@@ -52,6 +52,9 @@ func runtimeImageActivationPath(key string, info *types.ActivationInfo) (string,
 }
 
 func (observer *RuntimeImageObserver) closeImageActivation(ctx context.Context, key string) error {
+	if err := observer.local.check(); err != nil {
+		return err
+	}
 	view, viewErr := observer.snapshots.Stat(ctx, &snapshotsapi.StatSnapshotRequest{Snapshotter: observer.snapshotter, Key: key})
 	activation, activationErr := observer.mounts.Info(ctx, &mountsapi.InfoRequest{Name: key})
 	if status.Code(viewErr) == codes.NotFound && status.Code(activationErr) == codes.NotFound {
@@ -109,7 +112,7 @@ func (observer *RuntimeImageObserver) closeImageActivation(ctx context.Context, 
 			return err
 		}
 	}
-	mounted, err := runtimeImagePathMounted(mountPath)
+	mounted, err := observer.mounted(mountPath)
 	if err != nil {
 		return err
 	}
@@ -135,13 +138,17 @@ func runtimeImagePathMounted(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	return runtimeImageMountListed(path, mounts), nil
+}
+
+func runtimeImageMountListed(path string, mounts []*procfs.MountInfo) bool {
 	// procfs exposes the kernel's escaped mountpoint field. Encode the exact
 	// expected path so whitespace and backslashes cannot hide a live mount.
 	expected := strings.NewReplacer("\\", "\\134", " ", "\\040", "\t", "\\011", "\n", "\\012").Replace(path)
 	for _, mount := range mounts {
 		if mount.MountPoint == expected {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }

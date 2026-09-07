@@ -78,6 +78,11 @@ func TestRuntimeImageBusyRecovery(t *testing.T) {
 	runRuntimeImageCrashCases(t, []string{"activation-busy"})
 }
 
+func TestRuntimeImageRecoveryMountNamespace(t *testing.T) {
+	runRuntimeImageCrashCases(t, []string{"activation-private"})
+	t.Run("dead-peer", testRuntimeImageMountReaderDeadPeer)
+}
+
 func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	t.Helper()
 	if os.Getenv("VELA_TEST_CONTAINERD_SANDBOX") != "1" {
@@ -154,6 +159,7 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	for _, scenario := range scenarios {
 		t.Run(scenario, func(t *testing.T) {
 			stage := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(scenario, "-gc"), "-service"), "-busy")
+			stage = strings.TrimSuffix(stage, "-private")
 			lifetime := 6 * time.Second
 			if strings.HasPrefix(scenario, "daemon-") {
 				stage, lifetime = "activation", 15*time.Second
@@ -188,8 +194,8 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 			}
 			assertRuntimeImageCrashResources(t, fixture, point, stage, true)
 			switch scenario {
-			case "activation-busy":
-				testRuntimeImageBusyRecovery(t, fixture, observer, point)
+			case "activation-busy", "activation-private":
+				testRuntimeImageBusyRecovery(t, fixture, observer, point, scenario == "activation-private")
 			case "activation-gc":
 				forceRuntimeImageGC(t, fixture)
 				assertRuntimeImageCrashResources(t, fixture, point, stage, true)
@@ -243,7 +249,7 @@ func runRuntimeImageCrashCases(t *testing.T, scenarios []string) {
 	}
 }
 
-func testRuntimeImageBusyRecovery(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, point runtimeImageCrashPoint) {
+func testRuntimeImageBusyRecovery(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, point runtimeImageCrashPoint, privateNamespace bool) {
 	t.Helper()
 	holder, err := os.Open(filepath.Join(point.MountPoint, "probe"))
 	if err != nil {
@@ -260,6 +266,13 @@ func testRuntimeImageBusyRecovery(t *testing.T, fixture *containerdProcessFixtur
 	if _, err := os.Stat(filepath.Join(point.MountPoint, "probe")); err != nil {
 		t.Fatalf("failed unmount lost the retained file: %v", err)
 	}
+	if privateNamespace {
+		testRuntimeImagePrivateRecovery(t, fixture, observer, point, false)
+		assertRuntimeImageCrashResources(t, fixture, point, "view", true)
+		if mounted, err := runtimeImagePathMounted(point.MountPoint); err != nil || !mounted {
+			t.Fatalf("private observer changed the daemon's retained mount: %v %v", mounted, err)
+		}
+	}
 	count, err = observer.RecoverExpired(t.Context())
 	if count != 0 || err == nil {
 		t.Fatalf("retry reported recovery despite a still-busy kernel mount: %d %v", count, err)
@@ -268,8 +281,13 @@ func testRuntimeImageBusyRecovery(t *testing.T, fixture *containerdProcessFixtur
 	if err := holder.Close(); err != nil {
 		t.Fatal(err)
 	}
+	expectedCount := 1
+	if privateNamespace {
+		testRuntimeImagePrivateRecovery(t, fixture, observer, point, true)
+		expectedCount = 0
+	}
 	count, err = observer.RecoverExpired(t.Context())
-	if count != 1 || err != nil {
+	if count != expectedCount || err != nil {
 		t.Fatalf("released mount did not complete recovery: %d %v", count, err)
 	}
 }

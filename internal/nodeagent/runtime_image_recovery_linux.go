@@ -44,7 +44,7 @@ func (observer *RuntimeImageObserver) RecoverExpired(ctx context.Context) (int, 
 		return 0, err
 	}
 	if observer == nil || observer.local == nil || observer.local.check == nil || observer.local.bootID == nil ||
-		observer.leases == nil || observer.snapshots == nil || observer.mounts == nil ||
+		observer.leases == nil || observer.snapshots == nil || observer.mounts == nil || observer.mounted == nil ||
 		observer.snapshotter != "native" || len(validation.IsDNS1123Subdomain(observer.namespace)) != 0 ||
 		!validText(observer.local.nodeIdentity, maxIdentityText) {
 		return 0, ErrRuntimeImage

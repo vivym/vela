@@ -31,6 +31,11 @@ func DialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 }
 
 func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig, owner uint32, boot func() (string, error)) (*RuntimeContainerObserver, error) {
+	return dialRuntimeContainerObserverWithPeerCheck(ctx, config, owner, boot, nil)
+}
+
+func dialRuntimeContainerObserverWithPeerCheck(ctx context.Context, config RuntimeContainerObserverConfig, owner uint32,
+	boot func() (string, error), authenticate func(net.Conn) error) (*RuntimeContainerObserver, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -121,6 +126,12 @@ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerOb
 		if err := errors.Join(peerErr, check()); err != nil || peerUID != owner {
 			_ = connection.Close()
 			return nil, errors.Join(errors.New("CRI socket peer or identity is untrusted"), err)
+		}
+		if authenticate != nil {
+			if err := authenticate(connection); err != nil {
+				_ = connection.Close()
+				return nil, err
+			}
 		}
 		return connection, nil
 	}

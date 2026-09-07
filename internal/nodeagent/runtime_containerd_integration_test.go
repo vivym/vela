@@ -59,6 +59,7 @@ func TestRuntimeContainerdSandbox(t *testing.T) {
 		"TestRuntimeImageMaintenanceProcess",
 		"TestRuntimeImageDaemonRestart",
 		"TestRuntimeImageBusyRecovery",
+		"TestRuntimeImageRecoveryMountNamespace", "TestRuntimeImageMountReaderLifetime",
 		"TestRuntimeContainerObservationKeepsCRIStatesDistinct", "TestRuntimeContainerObservationRejectsIncompleteAndMismatchedEvidence",
 		"TestRuntimeContainerObservationRejectsLostObserverIdentity", "TestRuntimeContainerObserverRejectsUntrustedSocket",
 		"TestRuntimeContainerObserverUsesHostBootAndRootPeer", "TestRuntimeContainerObserverRejectsSocketOwnerDifferentFromKernelPeer",

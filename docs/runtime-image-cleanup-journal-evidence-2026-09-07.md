@@ -157,3 +157,9 @@ Effective Runtime configuration/message binding, durable incarnation ownership
 and independent retirement remain open. `UNRESOLVED` and `LEGACY_UNKNOWN` remain
 recovery-only. PostgreSQL 94, Worker journal 5, Runtime journal 6, Registry
 binding 1, release bundle schema 3 and Production Gates **0/9** remain unchanged.
+
+The subsequent [daemon mount-table increment](runtime-image-daemon-mount-evidence-2026-09-07.md)
+reproduces a false completion when the maintenance process hides the mount in
+its own namespace. It replaces the caller-local mount-table check with a read
+from the live, kernel-pinned containerd peer and adds a capability-free private
+namespace experiment. This document's original caller-local check is superseded.

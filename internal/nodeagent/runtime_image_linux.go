@@ -82,19 +82,30 @@ type RuntimeImageObserver struct {
 	leases      leasesapi.LeasesClient
 	snapshots   snapshotsapi.SnapshotsClient
 	mounts      mountsapi.MountsClient
+	mounted     func(string) (bool, error)
 }
 
 func DialRuntimeImageObserver(ctx context.Context, config RuntimeImageObserverConfig) (*RuntimeImageObserver, error) {
 	if len(validation.IsDNS1123Subdomain(config.Namespace)) != 0 || config.Snapshotter != "native" {
 		return nil, errors.New("image observer requires an explicit namespace and qualified native snapshotter")
 	}
-	local, err := DialRuntimeContainerObserver(ctx, config.RuntimeContainerObserverConfig)
+	reader := &runtimeImageMountReader{}
+	local, err := dialRuntimeContainerObserverWithPeerCheck(ctx, config.RuntimeContainerObserverConfig, 0,
+		func() (string, error) { return readBootID("/proc/sys/kernel/random/boot_id") }, reader.authenticate)
 	if err != nil {
+		_ = reader.close()
+		return nil, err
+	}
+	check, closeLocal := local.check, local.close
+	local.check = func() error { return errors.Join(check(), reader.check()) }
+	local.close = func() error { return errors.Join(closeLocal(), reader.close()) }
+	if err := local.check(); err != nil {
+		_ = local.Close()
 		return nil, err
 	}
 	return &RuntimeImageObserver{local: local, namespace: config.Namespace, snapshotter: config.Snapshotter,
 		content: contentapi.NewContentClient(local.connection), leases: leasesapi.NewLeasesClient(local.connection),
-		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection)}, nil
+		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection), mounted: reader.mounted}, nil
 }
 
 func (observer *RuntimeImageObserver) Close() error {
@@ -125,7 +136,7 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 		return result, err
 	}
 	if observer == nil || observer.local == nil || observer.local.check == nil || observer.local.bootID == nil ||
-		observer.content == nil || observer.leases == nil || observer.snapshots == nil || observer.mounts == nil ||
+		observer.content == nil || observer.leases == nil || observer.snapshots == nil || observer.mounts == nil || observer.mounted == nil ||
 		observer.snapshotter != "native" || len(validation.IsDNS1123Subdomain(observer.namespace)) != 0 {
 		return result, ErrRuntimeImage
 	}

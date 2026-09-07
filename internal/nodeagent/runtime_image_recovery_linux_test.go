@@ -43,6 +43,7 @@ func newRuntimeImageRecoveryFixture(t *testing.T) (*RuntimeImageObserver, *runti
 	observer.leases = &runtimeImageRecoveryLeases{fixture: fixture}
 	observer.snapshots = &runtimeImageRecoverySnapshots{fixture: fixture}
 	observer.mounts = &runtimeImageRecoveryMounts{fixture: fixture}
+	observer.mounted = runtimeImagePathMounted
 	return observer, fixture
 }
 
