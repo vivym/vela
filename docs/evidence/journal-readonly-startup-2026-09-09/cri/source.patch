@@ -1,0 +1,409 @@
+diff --git a/hack/run-remote-runtime-cli-native.sh b/hack/run-remote-runtime-cli-native.sh
+index c6060ea..fab97e5 100644
+--- a/hack/run-remote-runtime-cli-native.sh
++++ b/hack/run-remote-runtime-cli-native.sh
+@@ -43,9 +43,9 @@ shasum -a 256 "$remote_evidence/image/rootfs/"*.test "$remote_evidence/image/roo
+ # Runtime, Worker and the actual backend execute as non-root.
+ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+   --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
+-  -test.run '^(TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
++  -test.run '^(TestJournalReadOnlyEndpoint|TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
+   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
+-for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
++for remote_test in TestJournalReadOnlyEndpoint TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
+   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
+ done
+ for remote_case in permit changed-after-read alias-path; do
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index 3ca8740..9ba3ca5 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -97,7 +97,7 @@ if [[ "$launch_scope" == startup-publication ]]; then
+   done
+ fi
+ if [[ "$launch_scope" == remote-cli || "$launch_scope" == full ]]; then
+-  for launch_case in valid extra-env wrong-path-env wrong-hostname duplicate-argument hidden-env hidden-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
++  for launch_case in valid pregrant-floor extra-env wrong-path-env wrong-hostname duplicate-argument hidden-env hidden-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
+     rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/$launch_case " "$launch_evidence/native.log" || exit 1
+   done
+ fi
+diff --git a/internal/nodeagent/journal_endpoint_linux.go b/internal/nodeagent/journal_endpoint_linux.go
+index 31d21d8..a317603 100644
+--- a/internal/nodeagent/journal_endpoint_linux.go
++++ b/internal/nodeagent/journal_endpoint_linux.go
+@@ -18,20 +18,36 @@ import (
+ // Namespace-owner correlation alone is not Registry/Fleet startup approval;
+ // trusted Node orchestration must establish that authority before construction.
+ type JournalEndpoint struct {
+-	mu      sync.Mutex
+-	owner   *modelruntime.ExecutionJournalOwner
+-	runtime *os.File
+-	worker  *os.File
++	mu       sync.Mutex
++	owner    *modelruntime.ExecutionJournalOwner
++	runtime  *os.File
++	worker   *os.File
++	readOnly bool
+ }
+ 
+ // NewJournalEndpoint retains independent pidfds. Closing the observations after
+ // construction does not lose the originals; closing this endpoint revokes both
+ // routes. It does not close the caller-owned journal.
++// This writable constructor requires independently established authority; use
++// NewReadOnlyJournalEndpoint for startup snapshot reads before a grant.
+ func NewJournalEndpoint(ctx context.Context, owner *modelruntime.ExecutionJournalOwner, runtimeOwner, workerOwner *RuntimeNamespaceOwner) (*JournalEndpoint, error) {
++	return newJournalEndpoint(ctx, owner, runtimeOwner, workerOwner, false)
++}
++
++// NewReadOnlyJournalEndpoint enrolls original processes for snapshot reads only.
++// Every mutation, including restrictive Worker floors, is rejected before Apply.
++// Its access mode is immutable: a Fleet receipt, caller reply or restart cannot
++// upgrade it. Trusted Node orchestration must separately establish the eventual
++// grant and writable route; this constructor does not provide that transition.
++func NewReadOnlyJournalEndpoint(ctx context.Context, owner *modelruntime.ExecutionJournalOwner, runtimeOwner, workerOwner *RuntimeNamespaceOwner) (*JournalEndpoint, error) {
++	return newJournalEndpoint(ctx, owner, runtimeOwner, workerOwner, true)
++}
++
++func newJournalEndpoint(ctx context.Context, owner *modelruntime.ExecutionJournalOwner, runtimeOwner, workerOwner *RuntimeNamespaceOwner, readOnly bool) (*JournalEndpoint, error) {
+ 	if err := owner.RequireRootCustody(ctx); err != nil {
+ 		return nil, err
+ 	}
+-	endpoint := &JournalEndpoint{owner: owner}
++	endpoint := &JournalEndpoint{owner: owner, readOnly: readOnly}
+ 	var err error
+ 	endpoint.runtime, err = retainJournalProcess(ctx, runtimeOwner)
+ 	if err != nil {
+@@ -120,6 +136,9 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
+ 		}
+ 		return json.Marshal(response)
+ 	}
++	if endpoint.readOnly {
++		return json.Marshal(modelruntime.JournalEndpointResponse{SchemaVersion: 1, RequestDigest: sha256.Sum256(payload), Error: "REJECTED"})
++	}
+ 	if role == modelruntime.JournalWorkerRole {
+ 		// A signed floor only restricts future admission. New non-admission
+ 		// evidence requires the originally approved Runtime to remain live;
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index b2a990c..ee9f00e 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -327,7 +327,7 @@ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) j
+ 	return newJournalEndpointConfiguredFixture(t, epochOffset, nil)
+ }
+ 
+-func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string)) journalEndpointFixture {
++func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string), readOnly ...bool) journalEndpointFixture {
+ 	t.Helper()
+ 	if os.Geteuid() != 0 {
+ 		t.Skip("requires root Node and independent non-root PID namespaces")
+@@ -393,10 +393,14 @@ func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, config
+ 	runtime := journalEndpointStart(t, listener, state)
+ 	worker := journalEndpointStart(t, listener, state)
+ 	sibling := journalEndpointStart(t, listener, state)
+-	if endpoint, err := NewJournalEndpoint(t.Context(), owner, runtime.owner, runtime.owner); err == nil || endpoint != nil {
++	construct := NewJournalEndpoint
++	if len(readOnly) == 1 && readOnly[0] {
++		construct = NewReadOnlyJournalEndpoint
++	}
++	if endpoint, err := construct(t.Context(), owner, runtime.owner, runtime.owner); err == nil || endpoint != nil {
+ 		t.Fatal("same original process acquired both roles")
+ 	}
+-	endpoint, err := NewJournalEndpoint(t.Context(), owner, runtime.owner, worker.owner)
++	endpoint, err := construct(t.Context(), owner, runtime.owner, worker.owner)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -468,8 +472,12 @@ func TestJournalEndpoint(t *testing.T) {
+ 	t.Log("real root owner / non-root PID-1 roles; direct filesystem access denied; sibling rejected; lost reply replayed; exit and endpoint closure fenced")
+ }
+ 
+-func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest, binding stageauthority.RuntimeBinding, signer *stageauthority.Signer, now time.Time) ([]byte, []byte) {
++func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest, binding stageauthority.RuntimeBinding, signer *stageauthority.Signer, now time.Time, signingKey ...string) ([]byte, []byte) {
+ 	t.Helper()
++	key := "journal-test"
++	if len(signingKey) == 1 {
++		key = signingKey[0]
++	}
+ 	identity, err := hex.DecodeString(manifest.Members[0].IdentityDigest)
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -485,7 +493,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
+ 		MembershipDigest: binding.MembershipDigest, ModelResidencyId: binding.ModelResidencyID, ModelRuntimeIdentity: binding.ModelRuntimeIdentity,
+ 		StageProfileRevisionId: binding.StageProfileRevisionID, ModelRuntimeBarrierGeneration: 1, CapacityObservationSequence: 1,
+ 		LeaseToken: digest, ExecutionNonce: digest, ExecutionSequence: 1,
+-		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: "journal-test", IssuedAt: timestamppb.New(now),
++		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: key, IssuedAt: timestamppb.New(now),
+ 		ExpiresAt: timestamppb.New(now.Add(time.Minute)), MonotonicValidFor: durationpb.New(time.Minute),
+ 		Members: []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch,
+ 			ModelRuntimeEpoch: binding.ModelRuntimeEpoch, IdentityDigest: identity}}}
+@@ -511,7 +519,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
+ 		TerminalState: velav1.StageTerminalState_STAGE_TERMINAL_STATE_FAILED, StageFence: 2, StageVersion: 2, WorkerInstanceId: a.WorkerInstanceId,
+ 		WorkerInstanceEpoch: a.WorkerInstanceEpoch, WorkerMemberId: binding.WorkerMemberID, ControlSessionEpoch: 1,
+ 		DeviceSetDigest: a.DeviceSetDigest, MembershipDigest: a.MembershipDigest, Devices: a.Devices, Cutoff: 1,
+-		ObservedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(time.Minute)), SigningKeyId: "journal-test",
++		ObservedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(time.Minute)), SigningKeyId: key,
+ 		Allocations: []*velav1.StageTerminalAllocation{{StageAttemptId: a.StageAttemptId, StageAllocationId: a.StageAllocationId, StageLeaseId: a.StageLeaseId,
+ 			ExecutionSequence: 1, ExecutionNonce: a.ExecutionNonce, ModelResidencyId: a.ModelResidencyId, ModelRuntimeIdentity: a.ModelRuntimeIdentity,
+ 			StageProfileRevisionId: a.StageProfileRevisionId, BarrierGeneration: 1, Members: []*velav1.StageTerminalMember{{
+diff --git a/internal/nodeagent/journal_remote_cli_linux_test.go b/internal/nodeagent/journal_remote_cli_linux_test.go
+index 7966010..9883d4b 100644
+--- a/internal/nodeagent/journal_remote_cli_linux_test.go
++++ b/internal/nodeagent/journal_remote_cli_linux_test.go
+@@ -50,7 +50,7 @@ func TestJournalServerActualRemoteCLI(t *testing.T) {
+ 				// five-second driver budgets instead of the fake backend defaults.
+ 				manifest.Runtimes[0].InitializationTimeout, manifest.Runtimes[0].ShutdownTimeout = "5s", "5s"
+ 				manifest.Runtimes[0].ScratchRoot, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot = directory, filepath.Join(directory, "inputs"), filepath.Join(directory, "outputs")
+-			})
++			}, true)
+ 			server, done := startJournalTestServer(t, f, 30*time.Second)
+ 			root := filepath.Dir(f.listener.Addr().String())
+ 			startupPath := filepath.Join(root, "startup.sock")
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+index 361e191..0a31333 100644
+--- a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+@@ -543,7 +543,7 @@ func verifyRuntimeBootstrapPublicationActualCLI(t *testing.T, mode string) {
+ 	state := filepath.Join(filepath.Dir(config.Directory), "state")
+ 	runtime := journalEndpointStartCredentials(t, listener, state, credentials)
+ 	worker := journalEndpointStartCredentials(t, listener, state, credentials)
+-	endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtime.owner, worker.owner)
++	endpoint, err := NewReadOnlyJournalEndpoint(t.Context(), config.Journal, runtime.owner, worker.owner)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/nodeagent/runtime_remote_cli_integration_linux_test.go b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+index cf2ed36..bb84e4e 100644
+--- a/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
++++ b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+@@ -30,6 +30,7 @@ import (
+ 	"github.com/vivym/vela/internal/fleet"
+ 	"github.com/vivym/vela/internal/fleetcontroller"
+ 	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
+ 	"google.golang.org/grpc/metadata"
+ 	corev1 "k8s.io/api/core/v1"
+ 	"k8s.io/apimachinery/pkg/types"
+@@ -106,8 +107,9 @@ func (fixture *containerdProcessFixture) importRemoteCLIImage(t *testing.T) stri
+ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver) {
+ 	t.Helper()
+ 	image := fixture.importRemoteCLIImage(t)
+-	for _, scenario := range []string{"valid", "extra-env", "wrong-path-env", "wrong-hostname", "duplicate-argument", "hidden-env", "hidden-argument", "before-fleet-env-change", "after-fleet-env-change", "fleet-loss"} {
++	for _, scenario := range []string{"valid", "pregrant-floor", "extra-env", "wrong-path-env", "wrong-hostname", "duplicate-argument", "hidden-env", "hidden-argument", "before-fleet-env-change", "after-fleet-env-change", "fleet-loss"} {
+ 		t.Run(scenario, func(t *testing.T) {
++			successful := scenario == "valid" || scenario == "pregrant-floor"
+ 			config := publicationFixture(t, true, image)
+ 			var manifest modelruntime.LaunchManifest
+ 			if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
+@@ -161,7 +163,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				t.Fatal(err)
+ 			}
+ 			defer func() { _ = runtimeOwner.Close() }()
+-			endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtimeOwner, worker.owner)
++			endpoint, err := NewReadOnlyJournalEndpoint(t.Context(), config.Journal, runtimeOwner, worker.owner)
+ 			if err != nil {
+ 				t.Fatal(err)
+ 			}
+@@ -195,6 +197,33 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 			if err != nil || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != "/runtime-config/bootstrap.json" {
+ 				t.Fatalf("actual CLI consumption: %v", err)
+ 			}
++			var floorCommand modelruntime.JournalCommand
++			assertReadOnly := func() {
++				t.Helper()
++				before, err := config.Journal.Status(t.Context())
++				if err != nil {
++					t.Fatal(err)
++				}
++				identity := modelruntime.ExecutionJournalIdentity{JournalID: before.JournalID, Scope: before.Scope, Storage: before.Storage}
++				report := journalServerRequest(t, worker, journalEndpointControl{Identity: identity, Command: floorCommand})
++				after, err := config.Journal.Status(t.Context())
++				if report.Error != modelruntime.ErrJournalRejected.Error() || report.Receipt != (modelruntime.JournalMutationReceipt{}) || err != nil || before != after {
++					t.Fatalf("startup read-only boundary changed journal: %+v %v", report, err)
++				}
++			}
++			if scenario == "pregrant-floor" {
++				signer, err := stageauthority.NewSigner(map[string][]byte{"authority": make([]byte, 32)})
++				if err != nil {
++					t.Fatal(err)
++				}
++				routes, err := modelruntime.RemoteStartupBindings(manifest)
++				if err != nil {
++					t.Fatal(err)
++				}
++				_, floor := journalEndpointCommands(t, manifest, routes[0], signer, time.Now().UTC(), "authority")
++				floorCommand = modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: floor}}
++				assertReadOnly()
++			}
+ 			pod := config.Plan.ExpectedPod()
+ 			pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
+ 			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: target.ContainerName, RestartCount: int32(target.ContainerAttempt), ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+@@ -259,13 +288,13 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 			}
+ 			result, reserveErr := reserve()
+ 			wantCalls, wantIntents := 0, 0
+-			if scenario == "valid" || scenario == "after-fleet-env-change" || scenario == "fleet-loss" {
++			if successful || scenario == "after-fleet-env-change" || scenario == "fleet-loss" {
+ 				wantCalls, wantIntents = 1, 1
+ 			}
+ 			if scenario == "before-fleet-env-change" {
+ 				wantIntents = 1
+ 			}
+-			if registry.calls != wantCalls || len(ledger.starts) != wantIntents || (reserveErr == nil) != (scenario == "valid") {
++			if registry.calls != wantCalls || len(ledger.starts) != wantIntents || (reserveErr == nil) != successful {
+ 				// Only this fixture's generated vectors are logged; production
+ 				// observation persists digests and never emits environment values.
+ 				wire, _ := os.ReadFile(filepath.Join(fixture.root, "state", "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json"))
+@@ -279,7 +308,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				}
+ 				t.Fatalf("CLI reservation scenario=%s calls=%d intents=%d result=%+v err=%v", scenario, registry.calls, len(ledger.starts), result, reserveErr)
+ 			}
+-			if scenario == "valid" {
++			if successful {
+ 				record, err := ledger.Inspect(t.Context(), request.JournalID)
+ 				if err != nil || record.Remote.RemoteCLI == nil || record.Remote.RemoteCLI.ArgumentsDigest == ([sha256.Size]byte{}) {
+ 					t.Fatalf("CLI vectors missing from durable intent: %v", err)
+@@ -300,7 +329,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				t.Fatal("backend initialized before explicit test decision")
+ 			}
+ 			// Explicit test decision only: a Fleet reservation is not a grant.
+-			permit := scenario == "valid"
++			permit := successful
+ 			decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: permit})
+ 			if err != nil {
+ 				t.Fatal(err)
+@@ -310,6 +339,9 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 			}
+ 			if permit {
+ 				awaitRemoteCLIBackend(t, scratch, "initialize\n")
++				if scenario == "pregrant-floor" {
++					assertReadOnly()
++				}
+ 				if _, err := client.StopContainer(t.Context(), &runtimev1.StopContainerRequest{ContainerId: target.ContainerID, Timeout: 5}); err != nil {
+ 					t.Fatal(err)
+ 				}
+@@ -336,7 +368,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				if _, err := reserve(); err == nil || registry.calls != wantCalls {
+ 					t.Fatal("restart retried original CLI reservation")
+ 				}
+-				if scenario == "valid" {
++				if successful {
+ 					history, err := recovered.InspectReservation(t.Context(), request.JournalID)
+ 					if err != nil || history != result {
+ 						t.Fatalf("lost recovered CLI receipt: %v", err)
+@@ -347,6 +379,17 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				t.Fatal(err)
+ 			}
+ 			assertJournalServerJoined(t, server, done)
++			if scenario == "pregrant-floor" {
++				wire, err := modelruntime.EncodeJournalCommand(floorCommand)
++				if err != nil {
++					t.Fatal(err)
++				}
++				receipt, err := config.Journal.Apply(t.Context(), modelruntime.JournalWorkerRole, wire)
++				if err != nil || receipt.Floor != 1 || receipt.Replayed {
++					t.Fatalf("blocked floor was not independently valid: %+v %v", receipt, err)
++				}
++				t.Log("valid Worker floor rejected before reservation and after fixture Permit; same command accepted only by subsequent independent Node owner call")
++			}
+ 			criFixture := *fixture
+ 			criFixture.ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
+ 			assertRuntimeImageResourcesReleased(t, &criFixture)
+diff --git a/internal/nodeagent/journal_readonly_linux_test.go b/internal/nodeagent/journal_readonly_linux_test.go
+new file mode 100644
+index 0000000..7592628
+--- /dev/null
++++ b/internal/nodeagent/journal_readonly_linux_test.go
+@@ -0,0 +1,93 @@
++package nodeagent
++
++import (
++	"bytes"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++)
++
++func TestJournalReadOnlyEndpoint(t *testing.T) {
++	for _, role := range []string{"runtime", "worker"} {
++		t.Run(role, func(t *testing.T) {
++			f := newJournalEndpointConfiguredFixture(t, 0, nil, true)
++			server, done := startJournalTestServer(t, f, 30*time.Second)
++			child, ownerRole := f.runtime, modelruntime.JournalRuntimeRole
++			valid := modelruntime.JournalCommand{SchemaVersion: 1, Admit: &modelruntime.JournalAuthorityCommand{Authority: f.authority}}
++			if role == "worker" {
++				child, ownerRole = f.worker, modelruntime.JournalWorkerRole
++				valid = modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: f.floor}}
++			}
++			before, err := modelruntime.ReadJournalDocument(t.Context(), f.identity, f.owner.Read)
++			if err != nil {
++				t.Fatal(err)
++			}
++			// Same-UID siblings cannot read even though the endpoint is read-only.
++			if report := journalServerRequest(t, f.sibling, journalEndpointControl{Identity: f.identity, Read: true}); report.Error == "" || report.ReadCompleted {
++				t.Fatal("read-only mode bypassed original-process authentication")
++			}
++			for _, reader := range []*journalEndpointChild{f.runtime, f.worker} {
++				if report := journalServerRequest(t, reader, journalEndpointControl{Identity: f.identity, Read: true}); report.Error != "" || !report.ReadCompleted {
++					t.Fatalf("enrolled startup read failed: %+v", report)
++				}
++			}
++			// This command is independently shown valid against the same owner
++			// below. Rejection cannot be attributed to invalid authority or role.
++			for range 2 {
++				report := journalServerRequest(t, child, journalEndpointControl{Identity: f.identity, Command: valid})
++				if report.Error != modelruntime.ErrJournalRejected.Error() || report.Receipt != (modelruntime.JournalMutationReceipt{}) {
++					t.Fatalf("read-only valid mutation acknowledged: %+v", report)
++				}
++			}
++			families := []struct {
++				name    string
++				command modelruntime.JournalCommand
++			}{
++				{"admit", modelruntime.JournalCommand{Admit: &modelruntime.JournalAuthorityCommand{Authority: f.authority}}},
++				{"candidates", modelruntime.JournalCommand{Candidates: &modelruntime.JournalCandidatesCommand{Authority: f.authority}}},
++				{"seal", modelruntime.JournalCommand{Seal: &modelruntime.JournalSealCommand{Authority: f.authority}}},
++				{"drain", modelruntime.JournalCommand{Drain: &modelruntime.JournalDrainCommand{Authority: f.authority}}},
++				{"health", modelruntime.JournalCommand{Health: &modelruntime.JournalHealthCommand{Authority: f.authority}}},
++				{"floor", modelruntime.JournalCommand{Floor: &modelruntime.JournalFloorCommand{Disposition: f.floor}}},
++				{"non-admission", modelruntime.JournalCommand{NonAdmission: &modelruntime.JournalAuthorityCommand{Authority: f.authority}}},
++				{"terminal-non-admission", modelruntime.JournalCommand{TerminalNonAdmission: &modelruntime.JournalTerminalNonAdmissionCommand{Disposition: f.floor}}},
++			}
++			for _, family := range families {
++				t.Run(family.name, func(t *testing.T) {
++					family.command.SchemaVersion = 1
++					report := journalServerRequest(t, child, journalEndpointControl{Identity: f.identity, Command: family.command})
++					if report.Error != modelruntime.ErrJournalRejected.Error() || report.Receipt != (modelruntime.JournalMutationReceipt{}) {
++						t.Fatalf("mutation family crossed read-only endpoint: %+v", report)
++					}
++				})
++			}
++			after, err := modelruntime.ReadJournalDocument(t.Context(), f.identity, f.owner.Read)
++			if err != nil || !bytes.Equal(before.Document, after.Document) || !bytes.Equal(before.LockDocument, after.LockDocument) {
++				t.Fatalf("read-only requests mutated or poisoned original journal: %v", err)
++			}
++			if report := journalServerRequest(t, child, journalEndpointControl{Identity: f.identity, Read: true}); report.Error != "" || !report.ReadCompleted {
++				t.Fatalf("rejected writes poisoned later reads: %+v", report)
++			}
++			if err := f.endpoint.Close(); err != nil {
++				t.Fatal(err)
++			}
++			if report := journalServerRequest(t, child, journalEndpointControl{Identity: f.identity, Read: true}); report.Error == "" || report.ReadCompleted {
++				t.Fatal("closed read-only endpoint retained route")
++			}
++			if err := server.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, server, done)
++			wire, err := modelruntime.EncodeJournalCommand(valid)
++			if err != nil {
++				t.Fatal(err)
++			}
++			receipt, err := f.owner.Apply(t.Context(), ownerRole, wire)
++			if err != nil || receipt.Replayed || role == "runtime" && receipt.Highest != 1 || role == "worker" && receipt.Floor != 1 {
++				t.Fatalf("blocked command was not independently valid: %+v %v", receipt, err)
++			}
++			t.Log("original peers read; all eight mutation selectors rejected; exact valid command succeeds only through independent trusted owner call after endpoint close")
++		})
++	}
++}

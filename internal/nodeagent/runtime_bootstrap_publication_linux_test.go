@@ -543,7 +543,7 @@ func verifyRuntimeBootstrapPublicationActualCLI(t *testing.T, mode string) {
 	state := filepath.Join(filepath.Dir(config.Directory), "state")
 	runtime := journalEndpointStartCredentials(t, listener, state, credentials)
 	worker := journalEndpointStartCredentials(t, listener, state, credentials)
-	endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtime.owner, worker.owner)
+	endpoint, err := NewReadOnlyJournalEndpoint(t.Context(), config.Journal, runtime.owner, worker.owner)
 	if err != nil {
 		t.Fatal(err)
 	}

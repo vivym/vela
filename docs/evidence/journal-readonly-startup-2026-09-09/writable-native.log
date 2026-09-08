@@ -1,0 +1,20 @@
+=== RUN   TestJournalEndpoint
+    journal_endpoint_linux_test.go:422: actual Supervisor prepare/start/seal/drain across 33 authenticated Node exchanges; Runtime opened no journal files
+    journal_endpoint_linux_test.go:472: real root owner / non-root PID-1 roles; direct filesystem access denied; sibling rejected; lost reply replayed; exit and endpoint closure fenced
+--- PASS: TestJournalEndpoint (0.37s)
+=== RUN   TestJournalServer
+    journal_server_linux_test.go:150: joined Node journal server: {Accepted:73 Overloaded:32 Authenticated:37 Replied:36 Failed:5 InFlight:0 PeakInFlight:2}
+--- PASS: TestJournalServer (0.35s)
+=== RUN   TestJournalServerLiveSupervisorRecoversAfterOverload
+    journal_server_linux_test.go:207: joined Node journal server: {Accepted:36 Overloaded:1 Authenticated:33 Replied:33 Failed:2 InFlight:0 PeakInFlight:2}
+    journal_server_linux_test.go:208: same non-root PID-1 Supervisor prepared before overload, refused Start without backend entry, then started once and sealed/drained after capacity returned
+--- PASS: TestJournalServerLiveSupervisorRecoversAfterOverload (0.31s)
+=== RUN   TestJournalServerTimeoutAndJoin
+    journal_server_linux_test.go:247: joined Node journal server: {Accepted:3 Overloaded:0 Authenticated:2 Replied:1 Failed:2 InFlight:0 PeakInFlight:1}
+--- PASS: TestJournalServerTimeoutAndJoin (0.61s)
+=== RUN   TestJournalServerListenerFailure
+    journal_server_linux_test.go:260: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:0 Replied:0 Failed:2 InFlight:0 PeakInFlight:2}
+--- PASS: TestJournalServerListenerFailure (0.07s)
+=== RUN   TestJournalServerConfiguration
+--- PASS: TestJournalServerConfiguration (0.06s)
+PASS

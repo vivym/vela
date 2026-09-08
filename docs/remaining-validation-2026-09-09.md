@@ -120,6 +120,15 @@ task 隐藏真实参数/环境、预留前后修改及丢回包。关闭 procfs 
 配置历史或代码执行连续性的证明。生产 journal enrollment 还必须落实
 grant 前只读、grant 后才能进行相应角色写入，避免先注册后无条件开放写权限。
 
+新增 [启动 journal 只读通道](journal-readonly-startup-evidence-2026-09-09.md)
+提供生命周期内不可升级的 `NewReadOnlyJournalEndpoint`，实际 CLI、publication
+CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八类写操作均被
+拦截；正确签名 admission/floor 的独立 owner 对照排除了无效命令假阳性。
+实际 pregrant-floor 在 reservation 前和测试 Permit 后均不能写入；关闭
+只读分支的 overlay 在三处按预期失败。该组件与测试装配已完成，生产 Node
+接线、执行连续性、once-only grant 与 grant 后的写路由转换仍需完成。已有
+可写构造器的独立授权前置条件不能靠手工选择该构造器来替代。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

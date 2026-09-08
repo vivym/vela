@@ -1,0 +1,4 @@
+go: writing stat cache: open /go/pkg/mod/cache/download/github.com/vivym/vela/@v/v0.0.0-20260908223514-8f4db39f199b.info747704860.tmp: read-only file system
+# github.com/vivym/vela/cmd/vela-model-runtime
+/usr/bin/ld: /tmp/go-link-4258314895/000004.o: in function `_cgo_77133bf98b3a_C2func_getaddrinfo':
+/tmp/go-build/cgo-gcc-prolog:60:(.text+0x30): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking

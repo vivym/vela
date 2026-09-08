@@ -97,7 +97,7 @@ if [[ "$launch_scope" == startup-publication ]]; then
   done
 fi
 if [[ "$launch_scope" == remote-cli || "$launch_scope" == full ]]; then
-  for launch_case in valid extra-env wrong-path-env wrong-hostname duplicate-argument hidden-env hidden-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
+  for launch_case in valid pregrant-floor extra-env wrong-path-env wrong-hostname duplicate-argument hidden-env hidden-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
     rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/$launch_case " "$launch_evidence/native.log" || exit 1
   done
 fi

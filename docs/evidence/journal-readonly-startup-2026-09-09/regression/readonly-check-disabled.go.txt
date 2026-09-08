@@ -136,7 +136,7 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
 		}
 		return json.Marshal(response)
 	}
-	if endpoint.readOnly {
+	if false && endpoint.readOnly {
 		return json.Marshal(modelruntime.JournalEndpointResponse{SchemaVersion: 1, RequestDigest: sha256.Sum256(payload), Error: "REJECTED"})
 	}
 	if role == modelruntime.JournalWorkerRole {

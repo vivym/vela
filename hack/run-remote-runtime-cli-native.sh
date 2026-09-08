@@ -43,9 +43,9 @@ shasum -a 256 "$remote_evidence/image/rootfs/"*.test "$remote_evidence/image/roo
 # Runtime, Worker and the actual backend execute as non-root.
 docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
   --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
-  -test.run '^(TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
+  -test.run '^(TestJournalReadOnlyEndpoint|TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
-for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
+for remote_test in TestJournalReadOnlyEndpoint TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
 done
 for remote_case in permit changed-after-read alias-path; do

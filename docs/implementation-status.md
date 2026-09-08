@@ -617,6 +617,16 @@ two concealed-vector cases incorrectly reserve. Production Pod-to-CRI rendering,
 real Fleet/TLS/PostgreSQL, executable continuity, once-only grant and pre-grant
 read-only journal enrollment remain open. The explicit test Permit and procfs
 samples do not establish historical consumption or production launch authority.
+The [read-only startup journal endpoint](journal-readonly-startup-evidence-2026-09-09.md)
+now supports initial snapshot reads without granting mutation roles. Its mode is
+immutable and rejects all eight mutation selectors before owner Apply. Actual
+CLI/publication/CRI startup fixtures use it; a correctly signed Worker floor is
+rejected both before reservation and after an explicit test Permit. Independent
+owner controls accept the exact blocked admission/floor commands, and disabling
+the guard reproduces three expected failures. Production enrollment, execution
+continuity, once-only grant and the post-grant writable route remain unassembled;
+the existing writable constructor's independent-authorization precondition still
+applies and is not itself a grant validator.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation

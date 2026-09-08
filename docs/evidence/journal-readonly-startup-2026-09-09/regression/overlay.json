@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/workspace/internal/nodeagent/journal_endpoint_linux.go": "/evidence/readonly-check-disabled.go.txt"
+  }
+}

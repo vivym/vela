@@ -1,0 +1,7 @@
+5d10af6b0e8d31aa23cfc829239ca534c7e0a336760a80573c7d009371630c50  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/nodeagent.test
+3163bf3741ccddcc91319b1a83e82da9d42405fa82f314c15b633381d7932ec5  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/runtime-command.test
+4bb0758505b56cc062f5a9308a12fb6548add164725f7f48b9c53deaa4dc956e  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/vela-model-runtime
+4359a8f94eb307b7903de403e96f943f3fb4e8141dd68e88d15b5146d5cb1d3c  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/usr/local/bin/containerd
+25054b5f00335361017c0d1e86671058a73d1445dfc2f1fabc3e19f2bd9fd98b  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/usr/local/bin/containerd-shim-runc-v2
+a1d0c0fd017b1290dd0613a83733d5a87b8affb133749040a2358fede5de32a6  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/usr/local/bin/ctr
+ea54032310588e115633aa2f4bba8bf9500257f657e1deca88df5778775138db  /tmp/vela-startup-validation.syiSMk/journal-readonly/cri-native/image/rootfs/usr/local/bin/runc

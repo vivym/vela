@@ -1,0 +1,361 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "8f4db39f199b96193a8d9969eb80ad6131e31bd1",
+  "source_tree_sha256": "c92b62698a9fa822bb824449877f7dddee91a3ea87c08b81b4372dda03c70ad9",
+  "source_file_count": 1013,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": {
+    "hack/run-remote-runtime-cli-native.sh": "b6d6fb9132cfa7bc11ef8e61cebde3688f04a7a0d058dfc2cfcfdcc8b4c1fb7c",
+    "hack/run-task-launch-native.sh": "9d1adecd3df5c06ab9fc4c921b967c7ea867f0b21e9d9bc5d9c850ae79703c6c"
+  },
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "production_gates": "0/9",
+  "cli_main_tests": {
+    "TestJournalReadOnlyEndpoint": "0.21s",
+    "TestJournalServerActualRemoteCLI": "3.33s",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution": "0.41s",
+    "TestRuntimeBootstrapPublication": "1.05s",
+    "TestRuntimeBootstrapPublicationPreflight": "0.11s",
+    "TestRuntimeBootstrapPublicationBoundaries": "0.09s",
+    "TestRuntimeBootstrapPublicationConcurrent": "0.02s",
+    "TestRuntimeBootstrapPublicationProcessCrash": "0.25s",
+    "TestRuntimeBootstrapPublicationChanged": "0.36s",
+    "TestRuntimeBootstrapPublicationCustodyLoss": "0.09s",
+    "TestRuntimeBootstrapPublicationActualCLI": "2.33s"
+  },
+  "cri_cases": {
+    "valid": "2.70s",
+    "pregrant-floor": "2.73s",
+    "extra-env": "0.51s",
+    "wrong-path-env": "0.30s",
+    "wrong-hostname": "0.34s",
+    "duplicate-argument": "0.33s",
+    "hidden-env": "0.29s",
+    "hidden-argument": "0.30s",
+    "before-fleet-env-change": "0.48s",
+    "after-fleet-env-change": "0.58s",
+    "fleet-loss": "0.53s"
+  },
+  "readonly_selector_cases": {
+    "runtime/admit": "0.00s",
+    "runtime/candidates": "0.00s",
+    "runtime/seal": "0.00s",
+    "runtime/drain": "0.00s",
+    "runtime/health": "0.00s",
+    "runtime/floor": "0.00s",
+    "runtime/non-admission": "0.00s",
+    "runtime/terminal-non-admission": "0.00s",
+    "worker/admit": "0.00s",
+    "worker/candidates": "0.00s",
+    "worker/seal": "0.00s",
+    "worker/drain": "0.00s",
+    "worker/health": "0.00s",
+    "worker/floor": "0.00s",
+    "worker/non-admission": "0.00s",
+    "worker/terminal-non-admission": "0.00s"
+  },
+  "writable_main_tests": {
+    "TestJournalEndpoint": "0.37s",
+    "TestJournalServer": "0.35s",
+    "TestJournalServerLiveSupervisorRecoversAfterOverload": "0.31s",
+    "TestJournalServerTimeoutAndJoin": "0.61s",
+    "TestJournalServerListenerFailure": "0.07s",
+    "TestJournalServerConfiguration": "0.06s"
+  },
+  "checks": [
+    {
+      "command": "bash hack/run-remote-runtime-cli-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/cli/runner.log"
+    },
+    {
+      "command": "VELA_TASK_LAUNCH_SCOPE=remote-cli bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/cri/runner.log"
+    },
+    {
+      "command": "Final CRI image, no network, SYS_ADMIN/SYS_PTRACE: TestJournalEndpoint, TestJournalServer, TestJournalServerLiveSupervisorRecoversAfterOverload, TestJournalServerTimeoutAndJoin, TestJournalServerListenerFailure, TestJournalServerConfiguration; -test.count=1 -test.v -test.timeout=2m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/writable-native.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -tags=integration -exec=true ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-readonly-startup-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "positive_controls": "Exact correctly signed admission and floor rejected through read-only RPC are accepted by the independent trusted owner after endpoint/server close. Eight selector coverage is not a claim that all eight business-state preconditions were satisfied.",
+  "regression": {
+    "change": "Disable immutable endpoint read-only mutation guard",
+    "endpoint_exit_code": 1,
+    "cri_exit_code": 1,
+    "runner_exit_code": 0,
+    "expected_failures": [
+      "TestJournalReadOnlyEndpoint/runtime",
+      "TestJournalReadOnlyEndpoint/worker",
+      "TestRuntimeCallerContainerCRI/remote-cli-reservation/pregrant-floor"
+    ],
+    "passing_control": "TestRuntimeCallerContainerCRI/remote-cli-reservation/valid"
+  },
+  "claim_boundary": "Immutable read-only endpoint and actual CLI/publication/CRI startup fixtures. Correctly signed writes rejected before reservation and after explicit test Permit. No automatic upgrade or production grant transition. Existing writable constructor still requires independent prior authority and does not verify a grant. No production Node enrollment, same-operation real TLS/PostgreSQL/Fleet, executable continuity, once-only grant, protected full Job, Worker business journal, descendants/device containment, sustained capacity, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/binaries.sha256",
+      "bytes": 484,
+      "sha256": "ce4f3eeaffe5087159a0268a66f1bcc8f72a2ed154d13aa8d8ff861ac15d0869"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "4d16e1da16e25be502e6138913a8f48fb33220b4a364cd36794714bf7ef2b2b4"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "eab4e613a718e9d4254a5bae19622c3a4587e5a191373ae8714e550c8eb57a7e"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "4ce2493733dc6e473e9d733c6ad9ba237bdfb7342449c8cf3b2592b02a94384a"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/image.txt",
+      "bytes": 72,
+      "sha256": "0185ea726197898b3575085d959a3cf01fe1548e920922924caa56757a346175"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/native.log",
+      "bytes": 22237,
+      "sha256": "bcc2aeb6d7f14923bf8c9a983d1046d2e2fa2ad6f7fe3f7067c05fc980159f0c"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/runner.log",
+      "bytes": 105,
+      "sha256": "8838c1f44efd5663f6e3f0cda963293f16cda9f88a44a1d7862c9432ba5c0b14"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "b9133d829f6f89e3af867f5511d79246093a0f021815bf3df3c0d58f2198c967"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/source.patch",
+      "bytes": 25708,
+      "sha256": "16c9344d6c430d2904642b3823411d4b8a8c03a7d37e59fbb7032493588926ce"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cli/source.txt",
+      "bytes": 458,
+      "sha256": "e1c00fe0c88d1653cdb4bcea28dbbd1a8a476224a394c3fafd2414b48bfb1630"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/binaries.sha256",
+      "bytes": 1156,
+      "sha256": "9d0c5aa51efc4542f036652ae03434545ef0f1b7c63e538bcd61623b8a3d27b6"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "a87627833727ac1729b1831f1689bc690e1847dc68e25f22c0b46e3d79f3e524"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "1e61ffaa035229f55e2fd9db3b0d0b1886b933081ed31e7793b9180aa5c9be4f"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/build.log",
+      "bytes": 1721,
+      "sha256": "c115817e69d4e8d3ad25849d1a0e24ff8718dd27361cf3368de3d4b39089217e"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/image.txt",
+      "bytes": 72,
+      "sha256": "bb96caaeac9901194183921b1d96bb5fe9424044744fcbe154e6650534e0b282"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/native.log",
+      "bytes": 6504,
+      "sha256": "87e413a7013d8e81b86494f69a5aed154c3f80abebed9297b158df7f0321971a"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/runner.log",
+      "bytes": 98,
+      "sha256": "71695ffc7f7cfdb2cf4f9906c70bb1b95492a67724d3ae6840b16cbc845cdb19"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "b9133d829f6f89e3af867f5511d79246093a0f021815bf3df3c0d58f2198c967"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/source.patch",
+      "bytes": 25708,
+      "sha256": "16c9344d6c430d2904642b3823411d4b8a8c03a7d37e59fbb7032493588926ce"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/cri/source.txt",
+      "bytes": 458,
+      "sha256": "e1c00fe0c88d1653cdb4bcea28dbbd1a8a476224a394c3fafd2414b48bfb1630"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/package-evidence.py",
+      "bytes": 8237,
+      "sha256": "49f3d5522c01ae4ecd522128d0f21a454820a0cfd64abe6c53a37bf1baaf0eff"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/Dockerfile",
+      "bytes": 82,
+      "sha256": "308158ff625ad2a63ac526414292571cd8e5facdd5cfd737fe08e358360adfbd"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/binaries.sha256",
+      "bytes": 145,
+      "sha256": "e89110cd23b13f5b89613f2d1223200f73311bb296629910560ea121244b6161"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/build.log",
+      "bytes": 1709,
+      "sha256": "daf2dab420ab1cad33fd9e588cea11e57154bc77bfde5e426fb0f472145603ab"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/cri-exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/cri.log",
+      "bytes": 33652,
+      "sha256": "c70c3c069e703f59ea9e2c3b9088b6e02d546560c6732fbbcb3d50f67b1c3ed3"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/endpoint-exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/endpoint.log",
+      "bytes": 2123,
+      "sha256": "01c73758e252eb348343e3e6c7f43c207d8ba552b8b7331c525b0ddd85a0b2d0"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/image.txt",
+      "bytes": 72,
+      "sha256": "c4bc1bc92e3b2effecf59006cfe314f7fe1e171d1cdc9daf6811ce66ced7d0f7"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/overlay.json",
+      "bytes": 129,
+      "sha256": "93655c09afe21899779ca42ae691f72648639a6dfee93221c6170a53c0de5462"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/prepare_regression.py",
+      "bytes": 626,
+      "sha256": "9bee9c0196f6774efefed88e200bafc512d078c7509f5836c99d32cbf6de5d6c"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/readonly-check-disabled.go.txt",
+      "bytes": 6581,
+      "sha256": "d5b09aa1100588abd5c141a377196b6603c2b08d3aa98e6a90c9429c94a3c926"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression/run-regression.sh",
+      "bytes": 2989,
+      "sha256": "489f1025e9b59a8aab0963d2aed0ccb3e0d5dd3930c7830681d067bfb9387ac2"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/regression-runner.log",
+      "bytes": 110,
+      "sha256": "740cf9f2e0d8af7cb08701dc133afd4dac99d01b02046cc579444bc246019a7e"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/source-files.json",
+      "bytes": 160508,
+      "sha256": "acfe4901428e4f9e46d07607dfc145363b084a5e73c1f6bacb4e1fbeb31cff72"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-readonly-startup-2026-09-09/writable-native.log",
+      "bytes": 1699,
+      "sha256": "311b50a30b6e089b8fef9525cd3361df3a3c0e7311d891bbad4bf77fd5ebf44d"
+    }
+  ]
+}

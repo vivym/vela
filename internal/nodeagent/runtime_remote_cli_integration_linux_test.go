@@ -30,6 +30,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/stageauthority"
 	"google.golang.org/grpc/metadata"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -106,8 +107,9 @@ func (fixture *containerdProcessFixture) importRemoteCLIImage(t *testing.T) stri
 func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver) {
 	t.Helper()
 	image := fixture.importRemoteCLIImage(t)
-	for _, scenario := range []string{"valid", "extra-env", "wrong-path-env", "wrong-hostname", "duplicate-argument", "hidden-env", "hidden-argument", "before-fleet-env-change", "after-fleet-env-change", "fleet-loss"} {
+	for _, scenario := range []string{"valid", "pregrant-floor", "extra-env", "wrong-path-env", "wrong-hostname", "duplicate-argument", "hidden-env", "hidden-argument", "before-fleet-env-change", "after-fleet-env-change", "fleet-loss"} {
 		t.Run(scenario, func(t *testing.T) {
+			successful := scenario == "valid" || scenario == "pregrant-floor"
 			config := publicationFixture(t, true, image)
 			var manifest modelruntime.LaunchManifest
 			if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
@@ -161,7 +163,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				t.Fatal(err)
 			}
 			defer func() { _ = runtimeOwner.Close() }()
-			endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtimeOwner, worker.owner)
+			endpoint, err := NewReadOnlyJournalEndpoint(t.Context(), config.Journal, runtimeOwner, worker.owner)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -194,6 +196,33 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 			request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
 			if err != nil || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != "/runtime-config/bootstrap.json" {
 				t.Fatalf("actual CLI consumption: %v", err)
+			}
+			var floorCommand modelruntime.JournalCommand
+			assertReadOnly := func() {
+				t.Helper()
+				before, err := config.Journal.Status(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				identity := modelruntime.ExecutionJournalIdentity{JournalID: before.JournalID, Scope: before.Scope, Storage: before.Storage}
+				report := journalServerRequest(t, worker, journalEndpointControl{Identity: identity, Command: floorCommand})
+				after, err := config.Journal.Status(t.Context())
+				if report.Error != modelruntime.ErrJournalRejected.Error() || report.Receipt != (modelruntime.JournalMutationReceipt{}) || err != nil || before != after {
+					t.Fatalf("startup read-only boundary changed journal: %+v %v", report, err)
+				}
+			}
+			if scenario == "pregrant-floor" {
+				signer, err := stageauthority.NewSigner(map[string][]byte{"authority": make([]byte, 32)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				routes, err := modelruntime.RemoteStartupBindings(manifest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, floor := journalEndpointCommands(t, manifest, routes[0], signer, time.Now().UTC(), "authority")
+				floorCommand = modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: floor}}
+				assertReadOnly()
 			}
 			pod := config.Plan.ExpectedPod()
 			pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
@@ -259,13 +288,13 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 			}
 			result, reserveErr := reserve()
 			wantCalls, wantIntents := 0, 0
-			if scenario == "valid" || scenario == "after-fleet-env-change" || scenario == "fleet-loss" {
+			if successful || scenario == "after-fleet-env-change" || scenario == "fleet-loss" {
 				wantCalls, wantIntents = 1, 1
 			}
 			if scenario == "before-fleet-env-change" {
 				wantIntents = 1
 			}
-			if registry.calls != wantCalls || len(ledger.starts) != wantIntents || (reserveErr == nil) != (scenario == "valid") {
+			if registry.calls != wantCalls || len(ledger.starts) != wantIntents || (reserveErr == nil) != successful {
 				// Only this fixture's generated vectors are logged; production
 				// observation persists digests and never emits environment values.
 				wire, _ := os.ReadFile(filepath.Join(fixture.root, "state", "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json"))
@@ -279,7 +308,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				}
 				t.Fatalf("CLI reservation scenario=%s calls=%d intents=%d result=%+v err=%v", scenario, registry.calls, len(ledger.starts), result, reserveErr)
 			}
-			if scenario == "valid" {
+			if successful {
 				record, err := ledger.Inspect(t.Context(), request.JournalID)
 				if err != nil || record.Remote.RemoteCLI == nil || record.Remote.RemoteCLI.ArgumentsDigest == ([sha256.Size]byte{}) {
 					t.Fatalf("CLI vectors missing from durable intent: %v", err)
@@ -300,7 +329,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				t.Fatal("backend initialized before explicit test decision")
 			}
 			// Explicit test decision only: a Fleet reservation is not a grant.
-			permit := scenario == "valid"
+			permit := successful
 			decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: permit})
 			if err != nil {
 				t.Fatal(err)
@@ -310,6 +339,9 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 			}
 			if permit {
 				awaitRemoteCLIBackend(t, scratch, "initialize\n")
+				if scenario == "pregrant-floor" {
+					assertReadOnly()
+				}
 				if _, err := client.StopContainer(t.Context(), &runtimev1.StopContainerRequest{ContainerId: target.ContainerID, Timeout: 5}); err != nil {
 					t.Fatal(err)
 				}
@@ -336,7 +368,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				if _, err := reserve(); err == nil || registry.calls != wantCalls {
 					t.Fatal("restart retried original CLI reservation")
 				}
-				if scenario == "valid" {
+				if successful {
 					history, err := recovered.InspectReservation(t.Context(), request.JournalID)
 					if err != nil || history != result {
 						t.Fatalf("lost recovered CLI receipt: %v", err)
@@ -347,6 +379,17 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				t.Fatal(err)
 			}
 			assertJournalServerJoined(t, server, done)
+			if scenario == "pregrant-floor" {
+				wire, err := modelruntime.EncodeJournalCommand(floorCommand)
+				if err != nil {
+					t.Fatal(err)
+				}
+				receipt, err := config.Journal.Apply(t.Context(), modelruntime.JournalWorkerRole, wire)
+				if err != nil || receipt.Floor != 1 || receipt.Replayed {
+					t.Fatalf("blocked floor was not independently valid: %+v %v", receipt, err)
+				}
+				t.Log("valid Worker floor rejected before reservation and after fixture Permit; same command accepted only by subsequent independent Node owner call")
+			}
 			criFixture := *fixture
 			criFixture.ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
 			assertRuntimeImageResourcesReleased(t, &criFixture)

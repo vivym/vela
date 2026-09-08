@@ -50,7 +50,7 @@ func TestJournalServerActualRemoteCLI(t *testing.T) {
 				// five-second driver budgets instead of the fake backend defaults.
 				manifest.Runtimes[0].InitializationTimeout, manifest.Runtimes[0].ShutdownTimeout = "5s", "5s"
 				manifest.Runtimes[0].ScratchRoot, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot = directory, filepath.Join(directory, "inputs"), filepath.Join(directory, "outputs")
-			})
+			}, true)
 			server, done := startJournalTestServer(t, f, 30*time.Second)
 			root := filepath.Dir(f.listener.Addr().String())
 			startupPath := filepath.Join(root, "startup.sock")

@@ -327,7 +327,7 @@ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) j
 	return newJournalEndpointConfiguredFixture(t, epochOffset, nil)
 }
 
-func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string)) journalEndpointFixture {
+func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string), readOnly ...bool) journalEndpointFixture {
 	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
@@ -393,10 +393,14 @@ func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, config
 	runtime := journalEndpointStart(t, listener, state)
 	worker := journalEndpointStart(t, listener, state)
 	sibling := journalEndpointStart(t, listener, state)
-	if endpoint, err := NewJournalEndpoint(t.Context(), owner, runtime.owner, runtime.owner); err == nil || endpoint != nil {
+	construct := NewJournalEndpoint
+	if len(readOnly) == 1 && readOnly[0] {
+		construct = NewReadOnlyJournalEndpoint
+	}
+	if endpoint, err := construct(t.Context(), owner, runtime.owner, runtime.owner); err == nil || endpoint != nil {
 		t.Fatal("same original process acquired both roles")
 	}
-	endpoint, err := NewJournalEndpoint(t.Context(), owner, runtime.owner, worker.owner)
+	endpoint, err := construct(t.Context(), owner, runtime.owner, worker.owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -468,8 +472,12 @@ func TestJournalEndpoint(t *testing.T) {
 	t.Log("real root owner / non-root PID-1 roles; direct filesystem access denied; sibling rejected; lost reply replayed; exit and endpoint closure fenced")
 }
 
-func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest, binding stageauthority.RuntimeBinding, signer *stageauthority.Signer, now time.Time) ([]byte, []byte) {
+func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest, binding stageauthority.RuntimeBinding, signer *stageauthority.Signer, now time.Time, signingKey ...string) ([]byte, []byte) {
 	t.Helper()
+	key := "journal-test"
+	if len(signingKey) == 1 {
+		key = signingKey[0]
+	}
 	identity, err := hex.DecodeString(manifest.Members[0].IdentityDigest)
 	if err != nil {
 		t.Fatal(err)
@@ -485,7 +493,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
 		MembershipDigest: binding.MembershipDigest, ModelResidencyId: binding.ModelResidencyID, ModelRuntimeIdentity: binding.ModelRuntimeIdentity,
 		StageProfileRevisionId: binding.StageProfileRevisionID, ModelRuntimeBarrierGeneration: 1, CapacityObservationSequence: 1,
 		LeaseToken: digest, ExecutionNonce: digest, ExecutionSequence: 1,
-		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: "journal-test", IssuedAt: timestamppb.New(now),
+		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: key, IssuedAt: timestamppb.New(now),
 		ExpiresAt: timestamppb.New(now.Add(time.Minute)), MonotonicValidFor: durationpb.New(time.Minute),
 		Members: []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch,
 			ModelRuntimeEpoch: binding.ModelRuntimeEpoch, IdentityDigest: identity}}}
@@ -511,7 +519,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
 		TerminalState: velav1.StageTerminalState_STAGE_TERMINAL_STATE_FAILED, StageFence: 2, StageVersion: 2, WorkerInstanceId: a.WorkerInstanceId,
 		WorkerInstanceEpoch: a.WorkerInstanceEpoch, WorkerMemberId: binding.WorkerMemberID, ControlSessionEpoch: 1,
 		DeviceSetDigest: a.DeviceSetDigest, MembershipDigest: a.MembershipDigest, Devices: a.Devices, Cutoff: 1,
-		ObservedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(time.Minute)), SigningKeyId: "journal-test",
+		ObservedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(time.Minute)), SigningKeyId: key,
 		Allocations: []*velav1.StageTerminalAllocation{{StageAttemptId: a.StageAttemptId, StageAllocationId: a.StageAllocationId, StageLeaseId: a.StageLeaseId,
 			ExecutionSequence: 1, ExecutionNonce: a.ExecutionNonce, ModelResidencyId: a.ModelResidencyId, ModelRuntimeIdentity: a.ModelRuntimeIdentity,
 			StageProfileRevisionId: a.StageProfileRevisionId, BarrierGeneration: 1, Members: []*velav1.StageTerminalMember{{
