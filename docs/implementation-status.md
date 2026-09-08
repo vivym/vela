@@ -881,6 +881,11 @@ drain, non-admission and lifecycle checks. Actual startup tests verify supplied
 bytes while Runtime retains its lock, and the Node exchange fixture checks the
 complete snapshot before mock decisions. Snapshot validity is not storage
 provenance, continuous ownership, current activation or production permission.
+The [journal custody design](node-journal-custody-design-2026-09-08.md) identifies
+the remaining workload-writer trust boundary and proposes a Node-private typed
+journal authority for a measured CPU prototype. It is a candidate, not an
+accepted replacement ADR or a deployed ownership contract. Positive execution,
+restart, retirement and sustained-load evidence remain required.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
