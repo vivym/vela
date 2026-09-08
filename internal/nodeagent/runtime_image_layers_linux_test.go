@@ -119,8 +119,14 @@ func TestRuntimeImageLayerExecutableIdentity(t *testing.T) {
 				t.Fatalf("production image reader differs from independently expected bytes: %+v %v", imageObservation, err)
 			}
 			assertRuntimeImageResourcesReleased(t, fixture)
+			launch, err := observer.InspectLaunch(t.Context(), target.ManifestDigest)
+			if err != nil || launch.Executable().Target != target || launch.Executable().Digest != expected || launch.Executable().SizeBytes != expectedSize {
+				t.Fatalf("manifest-derived entrypoint differs from independent image bytes: %v", err)
+			}
+			assertRuntimeImageResourcesReleased(t, fixture)
 			if scenario == "regular-overlay" {
 				testRuntimeImageObserverFailures(t, fixture, observer, target)
+				testRuntimeImageLaunchFailures(t, fixture, observer, target)
 				t.Run("concurrent-observations", func(t *testing.T) {
 					results := make(chan error, 2)
 					for range 2 {

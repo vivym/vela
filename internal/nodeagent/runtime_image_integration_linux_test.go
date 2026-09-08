@@ -64,6 +64,46 @@ func assertRuntimeImageResourcesReleased(t *testing.T, fixture *containerdProces
 	}
 }
 
+func testRuntimeImageLaunchFailures(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, target RuntimeImageTarget) {
+	t.Helper()
+	for _, failure := range []string{"corrupt-content", "lost-activation", "canceled-cleanup", "failed-cleanup"} {
+		t.Run("derived-entrypoint-"+failure, func(t *testing.T) {
+			candidate := *observer
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			mounts := &faultRuntimeImageMounts{MountsClient: observer.mounts}
+			switch failure {
+			case "corrupt-content":
+				candidate.content = &faultRuntimeImageContent{ContentClient: observer.content}
+			case "lost-activation":
+				mounts.failActivation = true
+			case "canceled-cleanup":
+				mounts.cancelCleanup = cancel
+			case "failed-cleanup":
+				mounts.failCleanup = true
+			}
+			candidate.mounts = mounts
+			launch, err := candidate.InspectLaunch(ctx, target.ManifestDigest)
+			if err == nil || launch != nil {
+				t.Fatal("failed image observation returned a derived entrypoint")
+			}
+			if failure == "canceled-cleanup" && !errors.Is(err, context.Canceled) {
+				t.Fatal("derived entrypoint lost cancellation")
+			}
+			if failure == "failed-cleanup" {
+				if mounts.key == "" || !strings.Contains(err.Error(), "lease retained") {
+					t.Fatal("failed cleanup omitted retained authority")
+				}
+				cleanup := runtimeImageResources{observer: observer, key: mounts.key, lease: true, view: true, activation: true}
+				if err := cleanup.close(fixture.ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			assertRuntimeImageResourcesReleased(t, fixture)
+		})
+	}
+}
+
 func testRuntimeImageObserverFailures(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, target RuntimeImageTarget) {
 	t.Helper()
 	for _, failure := range []string{"missing-file", "wrong-config", "corrupt-json", "lost-lease-response", "lost-view-response",

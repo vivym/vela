@@ -1,0 +1,7 @@
+{
+  "module": "github.com/containerd/containerd/v2@v2.3.1",
+  "revision": "64b425cf570b3b8dd1d4cc46da7c1fce65c6651a",
+  "files": {
+    "core/images/archive/importer.go": "090f972987c93c28a8b8e496660cacd1aca681b0239ba88498cf0b99c342ae74"
+  }
+}

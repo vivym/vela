@@ -61,8 +61,11 @@ pidfd、CRI Status 和 daemon 的文件系统视图验证 state 目录来源；�
 新增 [task runtime options/hook 内容检查](node-task-mechanism-evidence-2026-09-09.md)
 从实际 task/sandbox bundle 关联读取 runtime options 与 shim 路径。显式路径与
 state root 可匹配，隐式 binary、未批准选项、hook 声明及矛盾关联被拒绝。
-这仍是内容策略前置条件；批准策略的生产来源、executable/config/有效挂载批准、
-CLI 装配及一次性 grant 仍需完成。
+新增 [批准镜像入口与 caller 关联](node-planned-image-evidence-2026-09-09.md)
+已从签名 fixture 绑定的镜像 manifest/config 推导并测量默认入口，与同 daemon
+的实际 OCI argv、CRI image ID 和活进程 executable 对照；声明镜像不变但通过
+bind mount 替换入口的反例被拒绝。这些仍是启动批准的前置条件：生产批准策略、
+有效 env/config 文件/挂载和执行连续性、CLI 装配及一次性 grant 仍需完成。
 
 ## 依赖顺序与通过标准
 

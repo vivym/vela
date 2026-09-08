@@ -1,0 +1,736 @@
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index d3cc820..e0be31d 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -58,9 +58,9 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
+ # paths/sockets, host PID namespace, network, model weights or GPU are used.
+ docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
+   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
+-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding)$' -test.count=1 -test.v -test.timeout=3m \
++  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding|TestRuntimeImageDefaultEntrypoint|TestRuntimeImageLayerExecutableIdentity)$' -test.count=1 -test.v -test.timeout=3m \
+   > "$launch_evidence/native.log" 2>&1
+-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding; do
++for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding TestRuntimeImageDefaultEntrypoint TestRuntimeImageLayerExecutableIdentity; do
+   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
+ done
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index ae92384..dfc0ba5 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -19,14 +19,17 @@ import (
+ 	"testing"
+ 	"time"
+ 
++	imagesapi "github.com/containerd/containerd/api/services/images/v1"
+ 	"github.com/google/go-containerregistry/pkg/name"
+ 	v1 "github.com/google/go-containerregistry/pkg/v1"
+ 	"github.com/google/go-containerregistry/pkg/v1/empty"
++	"github.com/google/go-containerregistry/pkg/v1/layout"
+ 	"github.com/google/go-containerregistry/pkg/v1/mutate"
+ 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+ 	"github.com/google/uuid"
+ 	"github.com/vivym/vela/internal/fleetcontroller"
+ 	"golang.org/x/sys/unix"
++	"google.golang.org/grpc/metadata"
+ 	corev1 "k8s.io/api/core/v1"
+ 	"k8s.io/apimachinery/pkg/types"
+ 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
+@@ -55,7 +58,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+     BinaryName = "/usr/local/bin/runc"
+     Root = "/run/vela-approved-runc"
+ `)
+-	fixture.importCRIImages(t)
++	runtimeImage := fixture.importCRIImages(t)
+ 	client := runtimev1.NewRuntimeServiceClient(fixture.connection)
+ 	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-node"})
+ 	if err != nil {
+@@ -69,6 +72,8 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 			expectedPayload := []byte("containerd-cpu-caller")
+ 			if mode == "planned-owner" {
+ 				approved := runtimeLaunchFixture(t)
++				approved.bundle.RuntimeImage = "docker.io/vela/caller-runtime@" + runtimeImage.ManifestDigest
++				approved.bind(t, 0, 0)
+ 				var err error
+ 				plan, err = VerifyRuntimeLaunchPlan("cpu-node", approved.verifier, approved.binding, approved.wire)
+ 				if err != nil {
+@@ -130,6 +135,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 					t.Fatalf("correlate planned caller through actual CRI: %+v %v", planned, err)
+ 				}
+ 				t.Log("Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested")
++				verifyRuntimePlannedImageCaller(t, fixture, observer, plan, pods, caller)
+ 			}
+ 			wrongPod := target
+ 			wrongPod.PodUID = uuid.New()
+@@ -279,7 +285,7 @@ func prepareCRICgroupDelegation(t *testing.T) {
+ 	}
+ }
+ 
+-func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
++func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) RuntimeImageTarget {
+ 	t.Helper()
+ 	binary, err := os.ReadFile(fixture.binary)
+ 	if err != nil {
+@@ -307,6 +313,7 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	images := make(map[name.Tag]v1.Image)
++	var runtimeImage RuntimeImageTarget
+ 	for reference, testName := range map[string]string{callerCRISandboxImage: "TestRuntimeCRISandboxHelper", callerCRIRuntimeImage: "TestContainerdRuntimeCallerHelper"} {
+ 		tag, err := name.NewTag(reference)
+ 		if err != nil {
+@@ -323,9 +330,32 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
+ 			t.Fatal(err)
+ 		}
+ 		images[tag] = image
++		if reference == callerCRIRuntimeImage {
++			manifest, err := image.Digest()
++			if err != nil {
++				t.Fatal(err)
++			}
++			config, err := image.ConfigName()
++			if err != nil {
++				t.Fatal(err)
++			}
++			runtimeImage = RuntimeImageTarget{ManifestDigest: manifest.String(), ConfigDigest: config.String(), ExecutablePath: "/probe"}
++		}
+ 	}
+ 	archive := filepath.Join(fixture.root, "cpu-images.tar")
+-	if err := tarball.MultiWriteToFile(archive, images); err != nil {
++	oci, err := layout.Write(filepath.Join(fixture.root, "oci-images"), empty.Index)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for tag, image := range images {
++		if err := oci.AppendImage(image, layout.WithAnnotations(map[string]string{"io.containerd.image.name": tag.String()})); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if output, err := exec.CommandContext(t.Context(), "tar", "--create", "--file", archive, "--directory", string(oci), ".").CombinedOutput(); err != nil {
++		t.Fatalf("archive exact CRI OCI layout: %s %v", output, err)
++	}
++	if err := runtimeImage.Validate(); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	command := exec.CommandContext(fixture.ctx, "ctr", "--address", fixture.socket, "--namespace", "k8s.io",
+@@ -333,12 +363,23 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
+ 	if output, err := command.CombinedOutput(); err != nil {
+ 		t.Fatalf("import local CPU-only CRI images: %s %v", output, err)
+ 	}
++	imageCtx := metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
++	for tag, image := range images {
++		expected, err := image.Digest()
++		if err != nil {
++			t.Fatal(err)
++		}
++		actual, err := imagesapi.NewImagesClient(fixture.connection).Get(imageCtx, &imagesapi.GetImageRequest{Name: tag.String()})
++		if err != nil || actual.GetImage().GetTarget().GetDigest() != expected.String() {
++			t.Fatalf("CRI import changed pinned manifest: %v", err)
++		}
++	}
+ 	client := runtimev1.NewImageServiceClient(fixture.connection)
+ 	deadline := time.Now().Add(5 * time.Second)
+ 	for {
+ 		response, err := client.ImageStatus(t.Context(), &runtimev1.ImageStatusRequest{Image: &runtimev1.ImageSpec{Image: callerCRISandboxImage}})
+ 		if err == nil && response.GetImage().GetId() != "" {
+-			return
++			return runtimeImage
+ 		}
+ 		if time.Now().After(deadline) {
+ 			t.Fatalf("CRI did not discover its imported CPU sandbox image: %v", err)
+@@ -391,7 +432,7 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
+ 		_, _ = client.RemovePodSandbox(ctx, &runtimev1.RemovePodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
+ 	})
+ 	callerMode := mode
+-	if mode == "shared-pid" || mode == "planned-owner" {
++	if mode == "shared-pid" || plan != nil {
+ 		callerMode = "owner"
+ 	}
+ 	environment := []*runtimev1.KeyValue{{Key: containerdCallerMode, Value: callerMode}}
+@@ -400,11 +441,23 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
+ 		runtimeUID, runtimeGID = int64(plan.uid), int64(plan.gid)
+ 		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(plan.manifest)})
+ 	}
++	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
++	if mode == "substituted-executable" {
++		data, err := os.ReadFile(fixture.binary)
++		if err != nil {
++			t.Fatal(err)
++		}
++		override := filepath.Join(root, "alternate-probe")
++		if err := os.WriteFile(override, append(data, []byte("unapproved executable trailer")...), 0o755); err != nil {
++			t.Fatal(err)
++		}
++		mounts = append(mounts, &runtimev1.Mount{ContainerPath: "/probe", HostPath: override, Readonly: true})
++	}
+ 	container, err := client.CreateContainer(t.Context(), &runtimev1.CreateContainerRequest{PodSandboxId: sandbox.PodSandboxId, SandboxConfig: config,
+ 		Config: &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "model-runtime", Attempt: 3},
+ 			Image: &runtimev1.ImageSpec{Image: callerCRIRuntimeImage}, LogPath: "runtime.log",
+ 			Envs:   environment,
+-			Mounts: []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}},
++			Mounts: mounts,
+ 			Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{
+ 				NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: runtimeUID}, RunAsGroup: &runtimev1.Int64Value{Value: runtimeGID},
+ 				ReadonlyRootfs: true, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}},
+diff --git a/internal/nodeagent/runtime_image_integration_linux_test.go b/internal/nodeagent/runtime_image_integration_linux_test.go
+index e007b04..4269324 100644
+--- a/internal/nodeagent/runtime_image_integration_linux_test.go
++++ b/internal/nodeagent/runtime_image_integration_linux_test.go
+@@ -64,6 +64,46 @@ func assertRuntimeImageResourcesReleased(t *testing.T, fixture *containerdProces
+ 	}
+ }
+ 
++func testRuntimeImageLaunchFailures(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, target RuntimeImageTarget) {
++	t.Helper()
++	for _, failure := range []string{"corrupt-content", "lost-activation", "canceled-cleanup", "failed-cleanup"} {
++		t.Run("derived-entrypoint-"+failure, func(t *testing.T) {
++			candidate := *observer
++			ctx, cancel := context.WithCancel(t.Context())
++			defer cancel()
++			mounts := &faultRuntimeImageMounts{MountsClient: observer.mounts}
++			switch failure {
++			case "corrupt-content":
++				candidate.content = &faultRuntimeImageContent{ContentClient: observer.content}
++			case "lost-activation":
++				mounts.failActivation = true
++			case "canceled-cleanup":
++				mounts.cancelCleanup = cancel
++			case "failed-cleanup":
++				mounts.failCleanup = true
++			}
++			candidate.mounts = mounts
++			launch, err := candidate.InspectLaunch(ctx, target.ManifestDigest)
++			if err == nil || launch != nil {
++				t.Fatal("failed image observation returned a derived entrypoint")
++			}
++			if failure == "canceled-cleanup" && !errors.Is(err, context.Canceled) {
++				t.Fatal("derived entrypoint lost cancellation")
++			}
++			if failure == "failed-cleanup" {
++				if mounts.key == "" || !strings.Contains(err.Error(), "lease retained") {
++					t.Fatal("failed cleanup omitted retained authority")
++				}
++				cleanup := runtimeImageResources{observer: observer, key: mounts.key, lease: true, view: true, activation: true}
++				if err := cleanup.close(fixture.ctx); err != nil {
++					t.Fatal(err)
++				}
++			}
++			assertRuntimeImageResourcesReleased(t, fixture)
++		})
++	}
++}
++
+ func testRuntimeImageObserverFailures(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeImageObserver, target RuntimeImageTarget) {
+ 	t.Helper()
+ 	for _, failure := range []string{"missing-file", "wrong-config", "corrupt-json", "lost-lease-response", "lost-view-response",
+diff --git a/internal/nodeagent/runtime_image_layers_linux_test.go b/internal/nodeagent/runtime_image_layers_linux_test.go
+index 43d629f..5de8ad4 100644
+--- a/internal/nodeagent/runtime_image_layers_linux_test.go
++++ b/internal/nodeagent/runtime_image_layers_linux_test.go
+@@ -119,8 +119,14 @@ func TestRuntimeImageLayerExecutableIdentity(t *testing.T) {
+ 				t.Fatalf("production image reader differs from independently expected bytes: %+v %v", imageObservation, err)
+ 			}
+ 			assertRuntimeImageResourcesReleased(t, fixture)
++			launch, err := observer.InspectLaunch(t.Context(), target.ManifestDigest)
++			if err != nil || launch.Executable().Target != target || launch.Executable().Digest != expected || launch.Executable().SizeBytes != expectedSize {
++				t.Fatalf("manifest-derived entrypoint differs from independent image bytes: %v", err)
++			}
++			assertRuntimeImageResourcesReleased(t, fixture)
+ 			if scenario == "regular-overlay" {
+ 				testRuntimeImageObserverFailures(t, fixture, observer, target)
++				testRuntimeImageLaunchFailures(t, fixture, observer, target)
+ 				t.Run("concurrent-observations", func(t *testing.T) {
+ 					results := make(chan error, 2)
+ 					for range 2 {
+diff --git a/internal/nodeagent/runtime_image_linux.go b/internal/nodeagent/runtime_image_linux.go
+index 6cec9ea..919dc6c 100644
+--- a/internal/nodeagent/runtime_image_linux.go
++++ b/internal/nodeagent/runtime_image_linux.go
+@@ -1,6 +1,7 @@
+ package nodeagent
+ 
+ import (
++	"bytes"
+ 	"context"
+ 	"crypto/sha256"
+ 	"encoding/json"
+@@ -83,6 +84,7 @@ type RuntimeImageObserver struct {
+ 	snapshots   snapshotsapi.SnapshotsClient
+ 	mounts      mountsapi.MountsClient
+ 	mounted     func(string) (bool, error)
++	mountReader *runtimeImageMountReader
+ }
+ 
+ func DialRuntimeImageObserver(ctx context.Context, config RuntimeImageObserverConfig) (*RuntimeImageObserver, error) {
+@@ -105,7 +107,7 @@ func DialRuntimeImageObserver(ctx context.Context, config RuntimeImageObserverCo
+ 	}
+ 	return &RuntimeImageObserver{local: local, namespace: config.Namespace, snapshotter: config.Snapshotter,
+ 		content: contentapi.NewContentClient(local.connection), leases: leasesapi.NewLeasesClient(local.connection),
+-		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection), mounted: reader.mounted}, nil
++		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection), mounted: reader.mounted, mountReader: reader}, nil
+ }
+ 
+ func (observer *RuntimeImageObserver) Close() error {
+@@ -132,6 +134,10 @@ func validRuntimeImagePath(value string) bool {
+ }
+ 
+ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, target RuntimeImageTarget) (result RuntimeImageExecutableObservation, retErr error) {
++	return observer.inspectExecutable(ctx, target, nil)
++}
++
++func (observer *RuntimeImageObserver) inspectExecutable(ctx context.Context, target RuntimeImageTarget, launch *RuntimeImageLaunch) (result RuntimeImageExecutableObservation, retErr error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return result, err
+ 	}
+@@ -140,8 +146,12 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
+ 		observer.snapshotter != "native" || len(validation.IsDNS1123Subdomain(observer.namespace)) != 0 {
+ 		return result, ErrRuntimeImage
+ 	}
+-	if err := target.Validate(); err != nil {
+-		return result, err
++	if launch == nil {
++		if err := target.Validate(); err != nil {
++			return result, err
++		}
++	} else if !validRuntimeImageDigest(target.ManifestDigest) || target.ConfigDigest != "" || target.ExecutablePath != "" {
++		return result, ErrRuntimeImage
+ 	}
+ 	ctx, cancel := context.WithTimeout(ctx, runtimeImageTimeout)
+ 	defer cancel()
+@@ -184,11 +194,14 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
+ 		return result, err
+ 	}
+ 	if manifest.SchemaVersion != 2 || (manifest.MediaType != ocispec.MediaTypeImageManifest && manifest.MediaType != "application/vnd.docker.distribution.manifest.v2+json") ||
+-		manifest.Config.Digest.String() != target.ConfigDigest || manifest.Config.Size <= 0 || manifest.Config.Size > maximumRuntimeImageJSONBytes ||
++		!validRuntimeImageDigest(manifest.Config.Digest.String()) || (launch == nil && manifest.Config.Digest.String() != target.ConfigDigest) || manifest.Config.Size <= 0 || manifest.Config.Size > maximumRuntimeImageJSONBytes ||
+ 		(manifest.Config.MediaType != ocispec.MediaTypeImageConfig && manifest.Config.MediaType != "application/vnd.docker.container.image.v1+json") ||
+ 		manifest.Subject != nil || manifest.ArtifactType != "" || len(manifest.Layers) == 0 || len(manifest.Layers) > maximumRuntimeImageLayers {
+ 		return result, errors.New("image manifest is not a bounded exact runtime image")
+ 	}
++	if launch != nil {
++		target.ConfigDigest = manifest.Config.Digest.String()
++	}
+ 	for _, layer := range manifest.Layers {
+ 		if !validRuntimeImageDigest(layer.Digest.String()) || layer.Size <= 0 || len(layer.URLs) != 0 || len(layer.Data) != 0 ||
+ 			(layer.MediaType != ocispec.MediaTypeImageLayer && layer.MediaType != ocispec.MediaTypeImageLayerGzip && layer.MediaType != ocispec.MediaTypeImageLayerZstd &&
+@@ -208,6 +221,14 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
+ 		config.RootFS.Type != "layers" || len(config.RootFS.DiffIDs) != len(manifest.Layers) {
+ 		return result, errors.New("image configuration platform or rootfs is unsupported")
+ 	}
++	if launch != nil {
++		arguments, err := runtimeImageDefaultArguments(config.Config)
++		if err != nil {
++			return result, err
++		}
++		target.ExecutablePath = arguments[0]
++		launch.encoded = bytes.Clone(configBytes)
++	}
+ 	for _, diffID := range config.RootFS.DiffIDs {
+ 		if !validRuntimeImageDigest(diffID.String()) {
+ 			return result, errors.New("image configuration has an invalid DiffID")
+diff --git a/internal/nodeagent/runtime_image_launch_linux.go b/internal/nodeagent/runtime_image_launch_linux.go
+new file mode 100644
+index 0000000..8d735f4
+--- /dev/null
++++ b/internal/nodeagent/runtime_image_launch_linux.go
+@@ -0,0 +1,78 @@
++package nodeagent
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"slices"
++	"strings"
++
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++	"github.com/vivym/vela/internal/runtimechannel"
++)
++
++// RuntimeImageLaunch retains the manifest-bound image configuration and its
++// measured default entrypoint. It is an observation, not a release signature,
++// live process approval, effective mount check or startup permission.
++type RuntimeImageLaunch struct {
++	executable RuntimeImageExecutableObservation
++	encoded    []byte
++}
++
++// InspectLaunch derives the config digest and executable path from the exact
++// trusted single-platform image manifest. A caller cannot nominate another
++// executable that happens to be present in that image. No image is pulled.
++func (observer *RuntimeImageObserver) InspectLaunch(ctx context.Context, manifestDigest string) (*RuntimeImageLaunch, error) {
++	launch := &RuntimeImageLaunch{}
++	observation, err := observer.inspectExecutable(ctx, RuntimeImageTarget{ManifestDigest: manifestDigest}, launch)
++	if err != nil {
++		return nil, err
++	}
++	launch.executable = observation
++	return launch, nil
++}
++
++func (launch *RuntimeImageLaunch) Executable() RuntimeImageExecutableObservation {
++	if launch == nil {
++		return RuntimeImageExecutableObservation{}
++	}
++	return launch.executable
++}
++
++func (launch *RuntimeImageLaunch) Configuration() (ocispec.Image, error) {
++	if launch == nil || len(launch.encoded) == 0 {
++		return ocispec.Image{}, ErrRuntimeImage
++	}
++	var configuration ocispec.Image
++	err := json.Unmarshal(launch.encoded, &configuration)
++	return configuration, err
++}
++
++func runtimeImageDefaultArguments(configuration ocispec.ImageConfig) ([]string, error) {
++	arguments := append(slices.Clone(configuration.Entrypoint), configuration.Cmd...)
++	if len(arguments) == 0 || len(arguments) > 256 || !validRuntimeImagePath(arguments[0]) || arguments[0] == "/" {
++		return nil, ErrRuntimeImage
++	}
++	for _, argument := range arguments {
++		if len(argument) > 64<<10 || strings.ContainsRune(argument, '\x00') {
++			return nil, ErrRuntimeImage
++		}
++	}
++	return arguments, nil
++}
++
++func (observer *RuntimeImageObserver) sameDaemon(container *RuntimeContainerObserver) error {
++	if observer == nil || observer.local == nil || observer.mountReader == nil || container == nil || container.daemon == nil ||
++		observer.local.nodeIdentity != container.nodeIdentity {
++		return ErrRuntimeImage
++	}
++	daemon, reader := container.daemon, observer.mountReader
++	daemon.mu.Lock()
++	defer daemon.mu.Unlock()
++	reader.mu.Lock()
++	defer reader.mu.Unlock()
++	if err := errors.Join(daemon.checkLocked(), reader.checkLocked()); err != nil {
++		return err
++	}
++	return runtimechannel.SameLiveProcess(int(daemon.pidfd.Fd()), int(reader.pidfd.Fd()))
++}
+diff --git a/internal/nodeagent/runtime_image_launch_linux_test.go b/internal/nodeagent/runtime_image_launch_linux_test.go
+new file mode 100644
+index 0000000..e78b71e
+--- /dev/null
++++ b/internal/nodeagent/runtime_image_launch_linux_test.go
+@@ -0,0 +1,56 @@
++package nodeagent
++
++import (
++	"encoding/json"
++	"reflect"
++	"strings"
++	"testing"
++
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++)
++
++func TestRuntimeImageDefaultEntrypoint(t *testing.T) {
++	for _, configuration := range []ocispec.ImageConfig{
++		{Entrypoint: []string{"/runtime"}, Cmd: []string{"serve", ""}},
++		{Cmd: []string{"/runtime", "serve"}},
++	} {
++		expected := append(append([]string{}, configuration.Entrypoint...), configuration.Cmd...)
++		arguments, err := runtimeImageDefaultArguments(configuration)
++		if err != nil || !reflect.DeepEqual(arguments, expected) {
++			t.Fatalf("image defaults changed: %v", err)
++		}
++		arguments[0] = "/mutated"
++		fresh, err := runtimeImageDefaultArguments(configuration)
++		if err != nil || !reflect.DeepEqual(fresh, expected) {
++			t.Fatal("returned argv changed image defaults")
++		}
++	}
++	for _, configuration := range []ocispec.ImageConfig{
++		{}, {Entrypoint: []string{""}, Cmd: []string{"/fallback"}}, {Entrypoint: []string{"relative"}}, {Cmd: []string{"/"}},
++		{Entrypoint: []string{"/bin/../runtime"}}, {Entrypoint: []string{"/runtime"}, Cmd: []string{"bad\x00arg"}},
++		{Entrypoint: []string{"/runtime"}, Cmd: make([]string, 256)}, {Entrypoint: []string{"/runtime"}, Cmd: []string{strings.Repeat("x", (64<<10)+1)}},
++	} {
++		if arguments, err := runtimeImageDefaultArguments(configuration); err == nil || arguments != nil {
++			t.Fatal("unsupported image entrypoint accepted")
++		}
++	}
++	encoded, err := json.Marshal(ocispec.Image{Config: ocispec.ImageConfig{Entrypoint: []string{"/runtime"}, Env: []string{"KEY=original"}}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	launch := &RuntimeImageLaunch{encoded: encoded}
++	configuration, err := launch.Configuration()
++	if err != nil {
++		t.Fatal(err)
++	}
++	configuration.Config.Entrypoint[0], configuration.Config.Env[0] = "/changed", "KEY=changed"
++	configuration, err = launch.Configuration()
++	if err != nil || configuration.Config.Entrypoint[0] != "/runtime" || configuration.Config.Env[0] != "KEY=original" {
++		t.Fatal("image launch exposed mutable configuration")
++	}
++	for _, empty := range []*RuntimeImageLaunch{nil, {}} {
++		if _, err := empty.Configuration(); err == nil {
++			t.Fatal("unobserved image yielded configuration")
++		}
++	}
++}
+diff --git a/internal/nodeagent/runtime_planned_image_integration_linux_test.go b/internal/nodeagent/runtime_planned_image_integration_linux_test.go
+new file mode 100644
+index 0000000..127fd1f
+--- /dev/null
++++ b/internal/nodeagent/runtime_planned_image_integration_linux_test.go
+@@ -0,0 +1,119 @@
++//go:build integration && linux
++
++package nodeagent
++
++import (
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/fleetcontroller"
++	"google.golang.org/grpc/metadata"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/types"
++	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
++)
++
++func verifyRuntimePlannedImageCaller(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, plan *RuntimeLaunchPlan, pods *runtimeLaunchPodFixture, caller *RuntimeCaller) {
++	t.Helper()
++	images, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-node"}, Namespace: "k8s.io", Snapshotter: "native"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = images.Close() }()
++	config := RuntimePlannedImageCallerConfig{Plan: plan, Pods: pods, Caller: caller, Images: images, StateDirectory: filepath.Join(fixture.root, "state"), RuntimePolicy: runtimeTaskPolicyFixture()}
++	result, err := observer.ObservePlannedImageCaller(t.Context(), config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if result.Image.Digest != result.Planned.Executable.Digest || result.Image.Target.ConfigDigest != result.Planned.Caller.Container.ImageRef || result.Image.Target.ExecutablePath != "/probe" {
++		t.Fatal("image-derived entrypoint did not bind to the actual caller")
++	}
++	criFixture := *fixture
++	criFixture.ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
++	assertRuntimeImageResourcesReleased(t, &criFixture)
++	t.Logf("Registry-bound image manifest=%s config=%s entrypoint=/probe sha256=%x matched actual caller and task argv", result.Image.Target.ManifestDigest, result.Image.Target.ConfigDigest, result.Image.Digest)
++	t.Run("planned-image-other-daemon", func(t *testing.T) {
++		other := startProcessContainerd(t)
++		foreign, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: other.socket, NodeIdentity: "cpu-node"}, Namespace: "k8s.io", Snapshotter: "native"})
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = foreign.Close() }()
++		changed := config
++		changed.Images = foreign
++		if observed, err := observer.ObservePlannedImageCaller(t.Context(), changed); err == nil || observed != nil {
++			t.Fatal("another root daemon supplied the image observation")
++		}
++		assertRuntimeImageResourcesReleased(t, &criFixture)
++	})
++	t.Run("planned-image-wrong-argv", func(t *testing.T) {
++		path := filepath.Join(config.StateDirectory, "io.containerd.runtime.v2.task", "k8s.io", result.Planned.Caller.Container.Target.ContainerID, "config.json")
++		original, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() {
++			if err := os.WriteFile(path, original, 0o644); err != nil {
++				t.Error(err)
++			}
++		}()
++		configuration, err := result.Task.Configuration()
++		if err != nil {
++			t.Fatal(err)
++		}
++		configuration.Process.Args = append(configuration.Process.Args, "unapproved-argument")
++		wire, err := json.Marshal(configuration)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := os.WriteFile(path, wire, 0o644); err != nil {
++			t.Fatal(err)
++		}
++		if observed, err := observer.ObservePlannedImageCaller(t.Context(), config); !errors.Is(err, ErrRuntimePlannedImage) || observed != nil {
++			t.Fatalf("unapproved task argv accepted: %v", err)
++		}
++		assertRuntimeImageResourcesReleased(t, &criFixture)
++	})
++	t.Run("planned-image-substituted-executable", func(t *testing.T) {
++		client := runtimev1.NewRuntimeServiceClient(fixture.connection)
++		target, listener := fixture.createCRICaller(t, client, "substituted-executable", plan)
++		if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err != nil {
++			t.Fatal(err)
++		}
++		if err := listener.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
++			t.Fatal(err)
++		}
++		connection, err := listener.AcceptUnix()
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = connection.Close() }()
++		other, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid})
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = other.Close() }()
++		pod := plan.ExpectedPod()
++		pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
++		pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: target.ContainerName, RestartCount: int32(target.ContainerAttempt), ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
++		otherPods := &runtimeLaunchPodFixture{pod: *pod, key: fleetcontroller.ResourceKey{Namespace: pod.Namespace, Name: pod.Name}}
++		declared, err := observer.ObservePlannedCaller(t.Context(), plan, otherPods, other)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if declared.Caller.Container.ImageRef != result.Image.Target.ConfigDigest || declared.Executable.Digest == result.Image.Digest {
++			t.Fatal("substitution did not retain the image identity while replacing executable bytes")
++		}
++		changed := config
++		changed.Pods, changed.Caller = otherPods, other
++		if observed, err := observer.ObservePlannedImageCaller(t.Context(), changed); !errors.Is(err, ErrRuntimePlannedImage) || observed != nil {
++			t.Fatalf("bind-mounted executable substituted for approved image entrypoint: %v", err)
++		}
++		assertRuntimeImageResourcesReleased(t, &criFixture)
++		t.Log("same declared CRI image and signed manifest, different live executable bytes: rejected")
++	})
++}
+diff --git a/internal/nodeagent/runtime_planned_image_linux.go b/internal/nodeagent/runtime_planned_image_linux.go
+new file mode 100644
+index 0000000..5e890a2
+--- /dev/null
++++ b/internal/nodeagent/runtime_planned_image_linux.go
+@@ -0,0 +1,129 @@
++package nodeagent
++
++import (
++	"context"
++	"errors"
++	"reflect"
++	"slices"
++	"strings"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++var ErrRuntimePlannedImage = errors.New("runtime executable or task arguments do not match the Registry-bound image entrypoint")
++
++type RuntimePlannedImageCallerConfig struct {
++	Plan           *RuntimeLaunchPlan
++	Pods           RuntimeLaunchPodReader
++	Caller         *RuntimeCaller
++	Images         *RuntimeImageObserver
++	StateDirectory string
++	RuntimePolicy  RuntimeTaskRuntimePolicy
++}
++
++// RuntimePlannedImageCallerObservation binds a sampled live executable and
++// task-created argv to the approved image's default entrypoint. Registry/Pod,
++// actual CRI/task, image content and original process are independently read.
++// It does not approve env/config files, effective mounts, loaded memory,
++// descendants, current Fleet activation or a startup grant.
++type RuntimePlannedImageCallerObservation struct {
++	Planned RuntimePlannedCallerObservation
++	Image   RuntimeImageExecutableObservation
++	Task    *RuntimeTaskLaunch
++}
++
++func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
++	if err := contextError(ctx); err != nil {
++		return nil, err
++	}
++	plan := config.Plan
++	if plan == nil || plan.binding == nil || config.Images == nil || config.Images.namespace != "k8s.io" {
++		return nil, ErrRuntimePlannedImage
++	}
++	var manifest string
++	for _, container := range plan.pod.Spec.Containers {
++		if container.Name != "model-runtime" {
++			continue
++		}
++		// Current Fleet assembly uses image defaults. Explicit Pod command/args
++		// need their own composition rule before this adapter can support them.
++		if manifest != "" || len(container.Command) != 0 || len(container.Args) != 0 {
++			return nil, ErrRuntimePlannedImage
++		}
++		_, digest, ok := strings.Cut(container.Image, "@")
++		if !ok || !validRuntimeImageDigest(digest) {
++			return nil, ErrRuntimePlannedImage
++		}
++		manifest = digest
++	}
++	if manifest == "" {
++		return nil, ErrRuntimePlannedImage
++	}
++	ctx, cancel := context.WithTimeout(ctx, runtimeImageTimeout)
++	defer cancel()
++	if err := config.Images.sameDaemon(observer); err != nil {
++		return nil, err
++	}
++	first, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
++	if err != nil {
++		return nil, err
++	}
++	task, err := observer.ObserveTaskLaunch(ctx, config.StateDirectory, first.Caller.Container.Target, config.Caller)
++	if err != nil {
++		return nil, err
++	}
++	if err := task.CheckRuntimeMechanism(config.RuntimePolicy); err != nil {
++		return nil, err
++	}
++	image, err := config.Images.InspectLaunch(ctx, manifest)
++	if err != nil {
++		return nil, err
++	}
++	imageConfiguration, err := image.Configuration()
++	if err != nil {
++		return nil, err
++	}
++	arguments, err := runtimeImageDefaultArguments(imageConfiguration.Config)
++	if err != nil {
++		return nil, err
++	}
++	configuration, err := task.Configuration()
++	if err != nil {
++		return nil, err
++	}
++	if !slices.Equal(configuration.Process.Args, arguments) || first.Caller.Container.ImageRef != image.executable.Target.ConfigDigest ||
++		first.Executable.Digest != image.executable.Digest || first.Executable.SizeBytes != image.executable.SizeBytes ||
++		first.Executable.FileUID != 0 || first.Executable.FileGID != 0 || first.Executable.FileLinks != 1 ||
++		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
++		return nil, ErrRuntimePlannedImage
++	}
++	last, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
++	if err != nil {
++		return nil, err
++	}
++	if !samePlannedImageCaller(first, last) {
++		return nil, ErrRuntimePlannedImage
++	}
++	taskProcess := task.Caller.Process
++	taskProcess.ObservedAt = last.Caller.Process.ObservedAt
++	if taskProcess != last.Caller.Process || image.executable.BootID != last.Caller.Container.BootID {
++		return nil, ErrRuntimePlannedImage
++	}
++	if err := errors.Join(config.Images.sameDaemon(observer), observer.check(), config.Images.local.check(), ctx.Err()); err != nil {
++		return nil, err
++	}
++	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task}, nil
++}
++
++func samePlannedImageCaller(first, last RuntimePlannedCallerObservation) bool {
++	for _, value := range []*RuntimePlannedCallerObservation{&first, &last} {
++		value.ObservedFrom, value.ObservedThrough = time.Time{}, time.Time{}
++		value.Caller.ObservedFrom, value.Caller.ObservedThrough = time.Time{}, time.Time{}
++		value.Caller.Container.ObservedFrom, value.Caller.Container.ObservedThrough = time.Time{}, time.Time{}
++		value.Caller.Process.ObservedAt = time.Time{}
++		value.Executable.ObservedFrom, value.Executable.ObservedThrough = time.Time{}, time.Time{}
++		value.Executable.Process.ObservedAt = time.Time{}
++	}
++	return reflect.DeepEqual(first, last)
++}

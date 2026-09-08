@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -83,6 +84,7 @@ type RuntimeImageObserver struct {
 	snapshots   snapshotsapi.SnapshotsClient
 	mounts      mountsapi.MountsClient
 	mounted     func(string) (bool, error)
+	mountReader *runtimeImageMountReader
 }
 
 func DialRuntimeImageObserver(ctx context.Context, config RuntimeImageObserverConfig) (*RuntimeImageObserver, error) {
@@ -105,7 +107,7 @@ func DialRuntimeImageObserver(ctx context.Context, config RuntimeImageObserverCo
 	}
 	return &RuntimeImageObserver{local: local, namespace: config.Namespace, snapshotter: config.Snapshotter,
 		content: contentapi.NewContentClient(local.connection), leases: leasesapi.NewLeasesClient(local.connection),
-		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection), mounted: reader.mounted}, nil
+		snapshots: snapshotsapi.NewSnapshotsClient(local.connection), mounts: mountsapi.NewMountsClient(local.connection), mounted: reader.mounted, mountReader: reader}, nil
 }
 
 func (observer *RuntimeImageObserver) Close() error {
@@ -132,6 +134,10 @@ func validRuntimeImagePath(value string) bool {
 }
 
 func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, target RuntimeImageTarget) (result RuntimeImageExecutableObservation, retErr error) {
+	return observer.inspectExecutable(ctx, target, nil)
+}
+
+func (observer *RuntimeImageObserver) inspectExecutable(ctx context.Context, target RuntimeImageTarget, launch *RuntimeImageLaunch) (result RuntimeImageExecutableObservation, retErr error) {
 	if err := contextError(ctx); err != nil {
 		return result, err
 	}
@@ -140,8 +146,12 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 		observer.snapshotter != "native" || len(validation.IsDNS1123Subdomain(observer.namespace)) != 0 {
 		return result, ErrRuntimeImage
 	}
-	if err := target.Validate(); err != nil {
-		return result, err
+	if launch == nil {
+		if err := target.Validate(); err != nil {
+			return result, err
+		}
+	} else if !validRuntimeImageDigest(target.ManifestDigest) || target.ConfigDigest != "" || target.ExecutablePath != "" {
+		return result, ErrRuntimeImage
 	}
 	ctx, cancel := context.WithTimeout(ctx, runtimeImageTimeout)
 	defer cancel()
@@ -184,10 +194,13 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 		return result, err
 	}
 	if manifest.SchemaVersion != 2 || (manifest.MediaType != ocispec.MediaTypeImageManifest && manifest.MediaType != "application/vnd.docker.distribution.manifest.v2+json") ||
-		manifest.Config.Digest.String() != target.ConfigDigest || manifest.Config.Size <= 0 || manifest.Config.Size > maximumRuntimeImageJSONBytes ||
+		!validRuntimeImageDigest(manifest.Config.Digest.String()) || (launch == nil && manifest.Config.Digest.String() != target.ConfigDigest) || manifest.Config.Size <= 0 || manifest.Config.Size > maximumRuntimeImageJSONBytes ||
 		(manifest.Config.MediaType != ocispec.MediaTypeImageConfig && manifest.Config.MediaType != "application/vnd.docker.container.image.v1+json") ||
 		manifest.Subject != nil || manifest.ArtifactType != "" || len(manifest.Layers) == 0 || len(manifest.Layers) > maximumRuntimeImageLayers {
 		return result, errors.New("image manifest is not a bounded exact runtime image")
+	}
+	if launch != nil {
+		target.ConfigDigest = manifest.Config.Digest.String()
 	}
 	for _, layer := range manifest.Layers {
 		if !validRuntimeImageDigest(layer.Digest.String()) || layer.Size <= 0 || len(layer.URLs) != 0 || len(layer.Data) != 0 ||
@@ -207,6 +220,14 @@ func (observer *RuntimeImageObserver) InspectExecutable(ctx context.Context, tar
 	if config.OS != "linux" || config.Architecture != runtime.GOARCH || config.Variant != "" || config.OSVersion != "" || len(config.OSFeatures) != 0 ||
 		config.RootFS.Type != "layers" || len(config.RootFS.DiffIDs) != len(manifest.Layers) {
 		return result, errors.New("image configuration platform or rootfs is unsupported")
+	}
+	if launch != nil {
+		arguments, err := runtimeImageDefaultArguments(config.Config)
+		if err != nil {
+			return result, err
+		}
+		target.ExecutablePath = arguments[0]
+		launch.encoded = bytes.Clone(configBytes)
 	}
 	for _, diffID := range config.RootFS.DiffIDs {
 		if !validRuntimeImageDigest(diffID.String()) {

@@ -19,14 +19,17 @@ import (
 	"testing"
 	"time"
 
+	imagesapi "github.com/containerd/containerd/api/services/images/v1"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/empty"
+	"github.com/google/go-containerregistry/pkg/v1/layout"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"golang.org/x/sys/unix"
+	"google.golang.org/grpc/metadata"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -55,7 +58,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
     BinaryName = "/usr/local/bin/runc"
     Root = "/run/vela-approved-runc"
 `)
-	fixture.importCRIImages(t)
+	runtimeImage := fixture.importCRIImages(t)
 	client := runtimev1.NewRuntimeServiceClient(fixture.connection)
 	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-node"})
 	if err != nil {
@@ -69,6 +72,8 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			expectedPayload := []byte("containerd-cpu-caller")
 			if mode == "planned-owner" {
 				approved := runtimeLaunchFixture(t)
+				approved.bundle.RuntimeImage = "docker.io/vela/caller-runtime@" + runtimeImage.ManifestDigest
+				approved.bind(t, 0, 0)
 				var err error
 				plan, err = VerifyRuntimeLaunchPlan("cpu-node", approved.verifier, approved.binding, approved.wire)
 				if err != nil {
@@ -130,6 +135,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 					t.Fatalf("correlate planned caller through actual CRI: %+v %v", planned, err)
 				}
 				t.Log("Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested")
+				verifyRuntimePlannedImageCaller(t, fixture, observer, plan, pods, caller)
 			}
 			wrongPod := target
 			wrongPod.PodUID = uuid.New()
@@ -279,7 +285,7 @@ func prepareCRICgroupDelegation(t *testing.T) {
 	}
 }
 
-func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
+func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) RuntimeImageTarget {
 	t.Helper()
 	binary, err := os.ReadFile(fixture.binary)
 	if err != nil {
@@ -307,6 +313,7 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	images := make(map[name.Tag]v1.Image)
+	var runtimeImage RuntimeImageTarget
 	for reference, testName := range map[string]string{callerCRISandboxImage: "TestRuntimeCRISandboxHelper", callerCRIRuntimeImage: "TestContainerdRuntimeCallerHelper"} {
 		tag, err := name.NewTag(reference)
 		if err != nil {
@@ -323,9 +330,32 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
 			t.Fatal(err)
 		}
 		images[tag] = image
+		if reference == callerCRIRuntimeImage {
+			manifest, err := image.Digest()
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, err := image.ConfigName()
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtimeImage = RuntimeImageTarget{ManifestDigest: manifest.String(), ConfigDigest: config.String(), ExecutablePath: "/probe"}
+		}
 	}
 	archive := filepath.Join(fixture.root, "cpu-images.tar")
-	if err := tarball.MultiWriteToFile(archive, images); err != nil {
+	oci, err := layout.Write(filepath.Join(fixture.root, "oci-images"), empty.Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for tag, image := range images {
+		if err := oci.AppendImage(image, layout.WithAnnotations(map[string]string{"io.containerd.image.name": tag.String()})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output, err := exec.CommandContext(t.Context(), "tar", "--create", "--file", archive, "--directory", string(oci), ".").CombinedOutput(); err != nil {
+		t.Fatalf("archive exact CRI OCI layout: %s %v", output, err)
+	}
+	if err := runtimeImage.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.CommandContext(fixture.ctx, "ctr", "--address", fixture.socket, "--namespace", "k8s.io",
@@ -333,12 +363,23 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("import local CPU-only CRI images: %s %v", output, err)
 	}
+	imageCtx := metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
+	for tag, image := range images {
+		expected, err := image.Digest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := imagesapi.NewImagesClient(fixture.connection).Get(imageCtx, &imagesapi.GetImageRequest{Name: tag.String()})
+		if err != nil || actual.GetImage().GetTarget().GetDigest() != expected.String() {
+			t.Fatalf("CRI import changed pinned manifest: %v", err)
+		}
+	}
 	client := runtimev1.NewImageServiceClient(fixture.connection)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		response, err := client.ImageStatus(t.Context(), &runtimev1.ImageStatusRequest{Image: &runtimev1.ImageSpec{Image: callerCRISandboxImage}})
 		if err == nil && response.GetImage().GetId() != "" {
-			return
+			return runtimeImage
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("CRI did not discover its imported CPU sandbox image: %v", err)
@@ -391,7 +432,7 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 		_, _ = client.RemovePodSandbox(ctx, &runtimev1.RemovePodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
 	})
 	callerMode := mode
-	if mode == "shared-pid" || mode == "planned-owner" {
+	if mode == "shared-pid" || plan != nil {
 		callerMode = "owner"
 	}
 	environment := []*runtimev1.KeyValue{{Key: containerdCallerMode, Value: callerMode}}
@@ -400,11 +441,23 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 		runtimeUID, runtimeGID = int64(plan.uid), int64(plan.gid)
 		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(plan.manifest)})
 	}
+	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
+	if mode == "substituted-executable" {
+		data, err := os.ReadFile(fixture.binary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		override := filepath.Join(root, "alternate-probe")
+		if err := os.WriteFile(override, append(data, []byte("unapproved executable trailer")...), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mounts = append(mounts, &runtimev1.Mount{ContainerPath: "/probe", HostPath: override, Readonly: true})
+	}
 	container, err := client.CreateContainer(t.Context(), &runtimev1.CreateContainerRequest{PodSandboxId: sandbox.PodSandboxId, SandboxConfig: config,
 		Config: &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "model-runtime", Attempt: 3},
 			Image: &runtimev1.ImageSpec{Image: callerCRIRuntimeImage}, LogPath: "runtime.log",
 			Envs:   environment,
-			Mounts: []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}},
+			Mounts: mounts,
 			Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{
 				NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: runtimeUID}, RunAsGroup: &runtimev1.Int64Value{Value: runtimeGID},
 				ReadonlyRootfs: true, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}},

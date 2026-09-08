@@ -89,6 +89,12 @@ task/sandbox bootstrap records before reading the sandbox's shim path. Only an
 explicit binary/state policy with default ancillary options and no OCI hooks
 matches. This does not prove which executable bytes ran at those paths or supply
 the production policy/approval/grant assembly.
+The [planned image/caller association](node-planned-image-evidence-2026-09-09.md)
+now compares the original caller's executable and task argv with the measured
+default entrypoint derived from a Registry-bound image manifest. It requires
+both observers to retain the same daemon process. This closes the sampled
+image/file association, not send-time executable continuity, loaded memory,
+effective environment/configuration or mount/writer approval.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

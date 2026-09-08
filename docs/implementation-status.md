@@ -575,6 +575,14 @@ binary/state paths and matching cgroup mode, otherwise default options and no
 OCI hooks. Native CRI covers an implicit handler rejection and an explicit
 handler match plus 84 invalid-file cases. The policy is test-assembled; executable,
 effective mount and production grant approval are still separate prerequisites.
+The [planned image/caller association](node-planned-image-evidence-2026-09-09.md)
+derives the config digest and default entrypoint from the Registry-bound image
+manifest, measures the unpacked native snapshot and compares actual task argv,
+CRI image ID and the original live executable through the same daemon. Real CRI
+rejects a bind-mounted executable substitution while its image declaration and
+signed manifest remain unchanged. Five image-layer cases and four derived-image
+failure paths preserve existing cleanup semantics. Registry/Pod/policy are still
+fixtures; effective env/config/mount and grant/CLI assembly remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).
