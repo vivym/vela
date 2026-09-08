@@ -127,8 +127,8 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		}
 		// A backend failure cannot reopen an allocation, including on another profile.
 		if admission.store != nil {
-			if err := admission.store.saveHighest(verified.Authority); err != nil {
-				if errors.Is(err, ErrExecutionHistoryFull) {
+			if err := admission.store.saveHighest(verified.Authority, service.maxClockSkew); err != nil {
+				if errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
 					return false, nil, err
 				}
 				return false, nil, admission.failStateLocked(err)

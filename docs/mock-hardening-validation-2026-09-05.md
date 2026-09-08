@@ -6,7 +6,16 @@ Work branch: `feature/vela-mock-hardening`
 Current local migration: `94`
 Status: In progress
 
-Latest local checkpoint (2026-09-08): the
+Latest production-code checkpoint (2026-09-08):
+[journal transition validation](journal-transition-evidence-2026-09-08.md)
+independently checks six typed mutations and validates the complete candidate
+before every file publication. New regressions cover forged inputs, rejected
+draft isolation and pre-write expiry without poisoning subsequent admission.
+Whole-repository ordinary tests/vet/lint, Linux cross compilation, ModelRuntime
+race and current-source production-loop/exact-cache campaigns pass. This prepares
+the Node custody contract; it does not implement the protected owner or startup issuer.
+
+The
 [ProductionAgent.Run CPU campaign](cpu-production-loop-evidence-2026-09-08.md)
 completes 32 Jobs/128 Stage executions under race detection, including production
 readiness/capacity/heartbeat, automatic session advance and lost commit replay.
@@ -15,8 +24,8 @@ also covers exact-cache source/target and explicit StreamAgent reconstruction.
 Both match PostgreSQL/Worker/Runtime history with zero final payload scratch.
 The 32-record Runtime bound, trusted custody/startup, full process recovery,
 history reclamation and open-loop operation remain open. Runtime schema-8
-[health durability](worker-health-durability-evidence-2026-09-08.md) remains the
-preceding production-code checkpoint. Earlier measurements below remain bound
+[health durability](worker-health-durability-evidence-2026-09-08.md) is also retained.
+Earlier measurements below remain bound
 to their original revisions.
 
 ## Objective and evidence boundary

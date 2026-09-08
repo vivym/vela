@@ -101,6 +101,17 @@ func (journal *executionJournal) workerHealthError() error {
 // Called under the admission mutex after exact backend authority confirmation,
 // before a successful Status response or live health clearance becomes visible.
 func (store *executionStateFile) saveHealth(verified stageauthority.Verified, evidence *FailureEvidence) error {
+	return store.transition(func(draft *executionJournalDraft) error { return draft.recordHealth(verified, evidence) })
+}
+
+func (store *executionJournalDraft) recordHealth(verified stageauthority.Verified, evidence *FailureEvidence) error {
+	if evidence == nil {
+		return errors.New("worker health mutation requires explicit failure evidence")
+	}
+	verified, err := store.verifyMutationAuthority(verified)
+	if err != nil {
+		return err
+	}
 	index, err := store.retainedExecutionIndex(verified)
 	if err != nil {
 		return err
@@ -127,5 +138,5 @@ func (store *executionStateFile) saveHealth(verified stageauthority.Verified, ev
 	next := store.state
 	next.Executions = slices.Clone(next.Executions)
 	next.Executions[index] = record
-	return store.persist(next)
+	return store.replace(next)
 }

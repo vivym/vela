@@ -287,7 +287,7 @@ func (store *executionJournal) validateRetainedExecutions() error {
 	return nil
 }
 
-func (store *executionStateFile) retainedExecutionIndex(verified stageauthority.Verified) (int, error) {
+func (store *executionJournal) retainedExecutionIndex(verified stageauthority.Verified) (int, error) {
 	for index, record := range store.state.Executions {
 		original, err := store.retainedAuthority(record.Authority)
 		if err != nil {
@@ -304,6 +304,14 @@ func (store *executionStateFile) retainedExecutionIndex(verified stageauthority.
 }
 
 func (store *executionStateFile) saveDrain(verified stageauthority.Verified, result BackendDrain, observed time.Time) error {
+	return store.transition(func(draft *executionJournalDraft) error { return draft.recordDrain(verified, result, observed) })
+}
+
+func (store *executionJournalDraft) recordDrain(verified stageauthority.Verified, result BackendDrain, observed time.Time) error {
+	verified, err := store.verifyMutationAuthority(verified)
+	if err != nil {
+		return err
+	}
 	index, err := store.retainedExecutionIndex(verified)
 	if err != nil {
 		return err
@@ -328,7 +336,7 @@ func (store *executionStateFile) saveDrain(verified stageauthority.Verified, res
 	if err := store.validateSeal(state.Executions[index]); err != nil {
 		return err
 	}
-	return store.persist(state)
+	return store.replace(state)
 }
 
 func (runtime *FakeRuntime) DrainExecution(ctx context.Context, verified stageauthority.Verified) (BackendDrain, error) {

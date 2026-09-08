@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -266,37 +265,6 @@ func (store *executionJournal) validateProofs() error {
 	return store.validateTerminalNonAdmissions()
 }
 
-func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority) error {
-	state := store.state
-	if len(state.Executions) >= maxRetainedExecutions {
-		return ErrExecutionHistoryFull
-	}
-	if authority.GetExecutionSequence() <= state.Highest {
-		return errors.New("ModelRuntime execution watermark cannot regress")
-	}
-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(authority)
-	if err != nil || len(wire) > maxExecutionWireBytes {
-		return errors.New("ModelRuntime execution authority exceeds its persistence bound")
-	}
-	state.Highest, state.Authority = authority.GetExecutionSequence(), wire
-	state.Executions = append(slices.Clone(state.Executions), retainedExecution{Authority: bytes.Clone(wire),
-		Candidates: &executionDiskCandidates{Accepted: bytes.Clone(wire)}})
-	return store.persist(state)
-}
-
-func (store *executionStateFile) saveFloor(disposition *velav1.StageTerminalDisposition) error {
-	state := store.state
-	if disposition.GetCutoff() <= state.Floor {
-		return errors.New("ModelRuntime execution floor cannot regress")
-	}
-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(disposition)
-	if err != nil {
-		return err
-	}
-	state.Floor, state.Disposition = disposition.GetCutoff(), wire
-	return store.persist(state)
-}
-
 func (store *executionStateFile) check() error {
 	if store.root == nil || store.lock == nil {
 		return errors.New("ModelRuntime execution state is closed")
@@ -324,6 +292,20 @@ func (store *executionStateFile) check() error {
 
 func (store *executionStateFile) persist(state executionDiskState) error {
 	if err := store.check(); err != nil {
+		return err
+	}
+	// Every publication, including initialization, upgrades and non-admission
+	// checkpoints, must be recoverable by the same complete semantic verifier.
+	scope, err := store.scope.digest()
+	if err != nil {
+		return err
+	}
+	if state.SchemaVersion != 8 || state.ID == uuid.Nil || state.ID != store.lockID || state.Scope != scope ||
+		state.Root != executionIdentity(store.rootInfo) || state.Lock != executionIdentity(store.lockInfo) {
+		return errors.New("ModelRuntime execution candidate ownership or schema changed")
+	}
+	candidate := executionJournal{scope: store.scope, state: state}
+	if err := candidate.validateProofs(); err != nil {
 		return err
 	}
 	document, err := json.Marshal(state)

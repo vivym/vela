@@ -66,6 +66,14 @@ func (journal *executionJournal) validateSeal(record retainedExecution) error {
 }
 
 func (store *executionStateFile) saveSeal(verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+	return store.transition(func(draft *executionJournalDraft) error { return draft.recordSeal(verified, receipt) })
+}
+
+func (store *executionJournalDraft) recordSeal(verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+	verified, err := store.verifyMutationAuthority(verified)
+	if err != nil {
+		return err
+	}
 	index, err := store.retainedExecutionIndex(verified)
 	if err != nil {
 		return err
@@ -94,7 +102,7 @@ func (store *executionStateFile) saveSeal(verified stageauthority.Verified, rece
 	if err := store.validateSeal(next.Executions[index]); err != nil {
 		return err
 	}
-	return store.persist(next)
+	return store.replace(next)
 }
 
 func (service *Service) checkpointSealedReceipt(verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {

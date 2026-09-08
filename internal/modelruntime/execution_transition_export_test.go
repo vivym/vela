@@ -1,0 +1,94 @@
+package modelruntime
+
+import (
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/vivym/vela/internal/stageauthority"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+)
+
+// These test-only controls bypass Service validation to exercise the durable
+// owner's boundary using the signed fixtures in the external test package.
+type ExecutionMutationForTest struct {
+	Kind        string
+	Authority   stageauthority.Verified
+	Confirmed   *stageauthority.Verified
+	Disposition *velav1.StageTerminalDisposition
+	Receipt     *velav1.LocalMaterializationReceipt
+	Health      *FailureEvidence
+	Drain       BackendDrain
+	Observed    time.Time
+}
+
+func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMutationForTest) error {
+	admission := supervisor.admission
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	store := admission.store
+	switch mutation.Kind {
+	case "admit":
+		return store.saveHighest(mutation.Authority.Authority, supervisor.services[0].maxClockSkew)
+	case "floor":
+		return store.saveFloor(mutation.Disposition)
+	case "candidates":
+		return store.saveCandidates(mutation.Authority, mutation.Confirmed)
+	case "seal":
+		return store.saveSeal(mutation.Authority, mutation.Receipt)
+	case "health":
+		return store.saveHealth(mutation.Authority, mutation.Health)
+	case "drain":
+		return store.saveDrain(mutation.Authority, mutation.Drain, mutation.Observed)
+	case "invalid-history", "abort-candidates":
+		return store.transition(func(draft *executionJournalDraft) error {
+			if err := draft.recordCandidates(mutation.Authority, mutation.Confirmed); err != nil {
+				return err
+			}
+			if mutation.Kind == "abort-candidates" {
+				return errors.New("injected abort after candidate construction")
+			}
+			draft.state.Highest++ // Invalid witness discovered only by full validation.
+			return nil
+		})
+	case "invalid-schema", "invalid-id", "invalid-scope", "invalid-root", "invalid-lock", "invalid-proof":
+		next := store.state
+		switch mutation.Kind {
+		case "invalid-schema":
+			next.SchemaVersion--
+		case "invalid-id":
+			next.ID[0] ^= 1
+		case "invalid-scope":
+			next.Scope[0] ^= 1
+		case "invalid-root":
+			next.Root.Inode++
+		case "invalid-lock":
+			next.Lock.Inode++
+		case "invalid-proof":
+			next.Highest++
+		}
+		return store.persist(next)
+	default:
+		return errors.New("unknown test mutation")
+	}
+}
+
+func ExecutionJournalDocumentForTest(supervisor *Supervisor) ([]byte, error) {
+	admission := supervisor.admission
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	return json.Marshal(admission.store.state)
+}
+
+func SetExecutionJournalValidatorForTest(supervisor *Supervisor, validator *stageauthority.Validator) func() {
+	admission := supervisor.admission
+	admission.mu.Lock()
+	previous := admission.store.scope.floor.validator
+	admission.store.scope.floor.validator = validator
+	admission.mu.Unlock()
+	return func() {
+		admission.mu.Lock()
+		defer admission.mu.Unlock()
+		admission.store.scope.floor.validator = previous
+	}
+}

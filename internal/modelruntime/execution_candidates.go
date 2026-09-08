@@ -98,6 +98,22 @@ func (store *executionJournal) validateCandidates(original stageauthority.Verifi
 // The admission mutex owns the journal. A new candidate pair is persisted before
 // dispatch; backend acknowledgement is persisted before returning success.
 func (store *executionStateFile) saveCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+	return store.transition(func(draft *executionJournalDraft) error { return draft.recordCandidates(accepted, confirmed) })
+}
+
+func (store *executionJournalDraft) recordCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+	var err error
+	accepted, err = store.verifyMutationAuthority(accepted)
+	if err != nil {
+		return err
+	}
+	if confirmed != nil {
+		checked, err := store.verifyMutationAuthority(*confirmed)
+		if err != nil {
+			return err
+		}
+		confirmed = &checked
+	}
 	index, err := store.retainedExecutionIndex(accepted)
 	if err != nil {
 		return err
@@ -147,5 +163,5 @@ func (store *executionStateFile) saveCandidates(accepted stageauthority.Verified
 	state := store.state
 	state.Executions = slices.Clone(state.Executions)
 	state.Executions[index].Candidates = candidates
-	return store.persist(state)
+	return store.replace(state)
 }

@@ -152,6 +152,9 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
 	}
 	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {
 		if err := admission.store.saveFloor(verified.Disposition); err != nil {
+			if errors.Is(err, stageauthority.ErrStale) {
+				return nil, err
+			}
 			return nil, admission.failStateLocked(err)
 		}
 	}
