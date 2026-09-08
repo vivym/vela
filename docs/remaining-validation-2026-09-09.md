@@ -28,7 +28,9 @@ PostgreSQL/TLS 回包丢失不会重新发放 Fresh。新增的
 [Node 持久关联](node-runtime-reservation-evidence-2026-09-09.md) 在 root journal
 和原始 pidfd 检查后先 fsync intent，再单次预留并持久记录回执；重启只恢复
 历史，不重建原 pidfd。Node 侧 native 使用 Fleet fixture，尚未与真实
-PostgreSQL/mTLS 在同一装配验证。有效 OCI/executable/config 批准、一次性
+PostgreSQL/mTLS 在同一装配验证。Node helper 已由外层 parent 在 7 个精确
+持久化/回包边界实际 SIGKILL 并重开检查；这不证明掉电恢复或生产后代隔离。
+有效 OCI/executable/config 批准、一次性
 Node grant、Node 端命令和 Fleet 挂载仍未完成；`NewJournalWorkerClient`、
 `NewJournalServer` 也尚无生产入口装配。
 CPU Job campaign 在

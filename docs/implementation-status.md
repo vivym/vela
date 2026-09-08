@@ -523,6 +523,15 @@ permission on retry. This closes the Fleet transport prerequisite; Node grant
 custody, effective process/configuration approval and protected Job assembly
 remain open. Schema 95 and Production Gates `0/9` are unchanged.
 
+The [Node startup association](node-runtime-reservation-evidence-2026-09-09.md)
+binds the original retained Runtime pidfd and held root journal to a durable
+intent before a single Fleet reservation call, then checks them again before
+persisting a history-only receipt. Native race tests cover seven actual Node
+SIGKILL boundaries and twelve error-return boundaries. Schema 2 association
+ledgers support reservations; schema 1 retains local history without implicit
+upgrade. Fleet/Pod/CRI remain fixtures in this native assembly; production
+approval, once-only grants and a complete remote-owner CPU Job remain open.
+
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).
 The original authenticated Node Agent can permanently reject an unrecorded claim

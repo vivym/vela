@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,7 +31,7 @@ type startupReservationRegistryFixture struct {
 
 // A private PID namespace makes the killed Node helper's descendants die with
 // it. This is fixture cleanup, not proof of production Runtime containment.
-func TestRuntimeStartupReservationProcessCrashRecovery_DISABLED(t *testing.T) {
+func TestRuntimeStartupReservationProcessCrashRecovery(t *testing.T) {
 	const modeKey = "VELA_STARTUP_RESERVATION_CRASH"
 	if fault := os.Getenv(modeKey); fault != "" {
 		// The observer must read procfs in this Node's PID namespace. Keep
@@ -46,8 +47,12 @@ func TestRuntimeStartupReservationProcessCrashRecovery_DISABLED(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		control := os.NewFile(3, "crash-boundary")
+		defer func() { _ = control.Close() }()
 		kill := func() {
-			if err := unix.Kill(os.Getpid(), unix.SIGKILL); err != nil {
+			// PID namespace init cannot self-deliver this SIGKILL. The ancestor
+			// must kill the exact child after receiving its boundary report.
+			if _, err := control.WriteString(fault + "\n"); err != nil {
 				t.Fatal(err)
 			}
 			select {}
@@ -107,14 +112,49 @@ func TestRuntimeStartupReservationProcessCrashRecovery_DISABLED(t *testing.T) {
 			command.Env = []string{modeKey + "=" + fault, "VELA_STARTUP_RESERVATION_LEDGER=" + directory,
 				"VELA_STARTUP_RESERVATION_CALL=" + marker, "TMPDIR=" + root}
 			command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID | unix.CLONE_NEWNS}
-			output, err := command.CombinedOutput()
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+			command.ExtraFiles = []*os.File{writer}
+			var output bytes.Buffer
+			command.Stdout, command.Stderr = &output, &output
+			if err := command.Start(); err != nil {
+				t.Fatal(err)
+			}
+			waited := false
+			t.Cleanup(func() {
+				if !waited {
+					_ = command.Process.Kill()
+					_ = command.Wait()
+				}
+				if t.Failed() {
+					t.Logf("Node crash helper: %s", output.String())
+				}
+			})
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := reader.SetReadDeadline(time.Now().Add(8 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			point := make([]byte, len(fault)+1)
+			if _, err := io.ReadFull(reader, point); err != nil || string(point) != fault+"\n" {
+				t.Fatalf("Node did not reach exact crash boundary: %q %v", point, err)
+			}
+			if err := command.Process.Kill(); err != nil {
+				t.Fatal(err)
+			}
+			err = command.Wait()
+			waited = true
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) || ctx.Err() != nil {
-				t.Fatalf("Node did not die at boundary: %v %s", err, output)
+				t.Fatalf("Node did not die at boundary: %v %s", err, output.String())
 			}
 			status, ok := exit.Sys().(syscall.WaitStatus)
 			if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
-				t.Fatalf("Node did not receive SIGKILL: %v %s", status, output)
+				t.Fatalf("Node did not receive SIGKILL: %v %s", status, output.String())
 			}
 			recovered, err := OpenRuntimeStartupLedger(t.Context(), directory, "cpu-node", false)
 			if err != nil {

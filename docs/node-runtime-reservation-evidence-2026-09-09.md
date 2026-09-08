@@ -1,6 +1,7 @@
 # Node 原始 Runtime 与首次启动预留的持久关联
 
-更新：2026-09-09。基线：`a89e98f`。本增量为 CPU/mock 组件验证，
+更新：2026-09-09。实现基线：`a89e98f`；崩溃验证修复基线：`1fe814f`。
+本增量为 CPU/mock 组件验证，
 不发放 backend 启动许可，不构成完整 remote-owner Job 或 Production Gate。
 
 ## 问题与实现
@@ -57,12 +58,20 @@ Node 重启不会从序列化 PID 重新打开或推断原 pidfd；即使测试�
   仅用于测试后代清理，不是生产 containment 证据。
 - `InspectStartup` 独立验证：合法首次状态、变更 manifest、journal/scope、
   incarnation、launch digest、实际 route epoch、文件变化、关闭与取消。
-- 同源回归包含现有 journal owner、Node server/channel 和 startup ledger；
-  普通 repository tests/vet/lint、相关 host race、Linux lint 与交叉编译另行记录。
+- 同源 native race 回归包含现有 journal owner、Node server/channel 和 startup
+  ledger；普通 repository tests/vet/lint、Linux lint 与交叉编译另行记录。
+  macOS 上 Linux 专属测试不会运行；`[no tests to run]` 不算行为验证。
 
 初轮新 fixture 的目录权限及旧 route epoch 构造不满足已有前置条件，已修正；
-SIGKILL fixture 初轮继承了外层 procfs，身份检查按预期拒绝，改为私有 namespace
-内挂载对应 procfs 后重新验证。未放宽运行时代码中的任何身份或目录检查。
+SIGKILL fixture 初轮继承了外层 procfs，身份检查按预期拒绝，随后修正私有
+namespace 内的 procfs 与过长的临时 socket 路径。PID namespace init 自发
+SIGKILL 没有使进程在注入点退出，现改为 child 通过独立 pipe 报告精确边界，
+外层 parent 杀死该 child 并核验 `WaitStatus.Signal()==SIGKILL`。
+
+`1fe814f` 将测试名加 `_DISABLED` 的做法并未禁用 Go 测试，且使 helper 的
+精确选择名失配；该提交不构成完整 native runner 已通过的证据。当前已恢复
+精确测试名，并实际通过完整 runner。该提交曾引用但未创建的 JSON receipt
+和 evidence 目录在本次补齐。未放宽运行时代码中的任何身份或目录检查。
 
 ## 尚未覆盖
 

@@ -1,0 +1,535 @@
+=== RUN   TestJournalResponseBindsDurableAcknowledgement
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/none
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/request
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/journal
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/scope
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/schema
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/state
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/floor
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/ambiguous
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/uncertain
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/rejected
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/unknown
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/duplicate
+=== RUN   TestJournalResponseBindsDurableAcknowledgement/trailing
+--- PASS: TestJournalResponseBindsDurableAcknowledgement (0.01s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/none (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/request (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/journal (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/scope (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/schema (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/state (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/floor (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/ambiguous (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/uncertain (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/rejected (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/unknown (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/duplicate (0.00s)
+    --- PASS: TestJournalResponseBindsDurableAcknowledgement/trailing (0.00s)
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/uncertain
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/rejected
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/unknown
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/changed
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/wrong-request
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/ambiguous
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/mutation
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/trailing
+=== RUN   TestJournalResponseReadFailuresAreNotTransportUnavailable/duplicate
+--- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/uncertain (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/rejected (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/unknown (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/changed (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/wrong-request (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/ambiguous (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/mutation (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/trailing (0.00s)
+    --- PASS: TestJournalResponseReadFailuresAreNotTransportUnavailable/duplicate (0.00s)
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/signature
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/scope
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/wrong-route
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/old-epoch
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/missing-floor
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/admitted-intent
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/bad-time
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/conflicting-proof
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/abort
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/signature
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/scope
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/wrong-route
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/old-epoch
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/missing-floor
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/admitted-intent
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/bad-time
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/conflicting-proof
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/abort
+--- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing (0.33s)
+    --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission (0.18s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/signature (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/scope (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/wrong-route (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/old-epoch (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/missing-floor (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/admitted-intent (0.03s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/bad-time (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/conflicting-proof (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/abort (0.02s)
+    --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission (0.15s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/signature (0.01s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/scope (0.01s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/wrong-route (0.01s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/old-epoch (0.01s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/missing-floor (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/admitted-intent (0.03s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/bad-time (0.01s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/conflicting-proof (0.02s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/abort (0.01s)
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/non-admission
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/terminal-non-admission
+--- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof (0.03s)
+    --- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/non-admission (0.02s)
+    --- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/terminal-non-admission (0.01s)
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/scope
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/incarnation
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/time
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/abort
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/none
+--- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent (0.03s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/scope (0.01s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/incarnation (0.01s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/time (0.01s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/abort (0.01s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/none (0.01s)
+=== RUN   TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint
+--- PASS: TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint (0.01s)
+=== RUN   TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent
+--- PASS: TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent (0.06s)
+=== RUN   TestExecutionNonAdmissionDoesNotInferHistoricalCoverageAfterRestart
+--- PASS: TestExecutionNonAdmissionDoesNotInferHistoricalCoverageAfterRestart (0.01s)
+=== RUN   TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover
+=== RUN   TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover/sync
+=== RUN   TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover/reply
+--- PASS: TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover (0.04s)
+    --- PASS: TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover/sync (0.02s)
+    --- PASS: TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover/reply (0.02s)
+=== RUN   TestExecutionNonAdmissionRejectsConcurrentAcceptedPrepare
+--- PASS: TestExecutionNonAdmissionRejectsConcurrentAcceptedPrepare (0.02s)
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/signature
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/digest
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/sequence
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/floor
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/contract
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/timestamp
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/duplicate
+=== RUN   TestExecutionNonAdmissionHistoryRejectsCorruption/admitted
+--- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption (0.29s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/signature (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/digest (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/sequence (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/floor (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/contract (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/timestamp (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/duplicate (0.04s)
+    --- PASS: TestExecutionNonAdmissionHistoryRejectsCorruption/admitted (0.04s)
+=== RUN   TestExecutionNonAdmissionHistoryBoundsWithoutEvictingProof
+--- PASS: TestExecutionNonAdmissionHistoryBoundsWithoutEvictingProof (0.55s)
+=== RUN   TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource
+=== RUN   TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/schema-1
+=== RUN   TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/signature
+=== RUN   TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/new-proof-in-v2
+=== RUN   TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/initialize
+--- PASS: TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource (0.04s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/schema-1 (0.01s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/signature (0.01s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/new-proof-in-v2 (0.01s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource/initialize (0.01s)
+=== RUN   TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn
+=== RUN   TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn/pending
+=== RUN   TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn/drained
+--- PASS: TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn (0.11s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn/pending (0.04s)
+    --- PASS: TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn/drained (0.06s)
+=== RUN   TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait
+--- PASS: TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait (1.60s)
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/cancel
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/watchdog
+--- PASS: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads (0.29s)
+    --- PASS: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/cancel (0.16s)
+    --- PASS: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/watchdog (0.13s)
+=== RUN   TestJournalOwnerAPIWorkflowAndLostReplyReplay
+--- PASS: TestJournalOwnerAPIWorkflowAndLostReplyReplay (0.06s)
+=== RUN   TestJournalOwnerAPIWorkerCheckpoints
+--- PASS: TestJournalOwnerAPIWorkerCheckpoints (0.03s)
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/role
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/signature
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/scope
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/epoch
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/expired
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/protobuf
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/no-startup
+=== RUN   TestJournalOwnerAPIRejectsWithoutPoisoning/cancel
+--- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning (0.11s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/role (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/signature (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/scope (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/epoch (0.02s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/expired (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/protobuf (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/no-startup (0.01s)
+    --- PASS: TestJournalOwnerAPIRejectsWithoutPoisoning/cancel (0.01s)
+=== RUN   TestJournalCommandRejectsWireAuthorityInjection
+--- PASS: TestJournalCommandRejectsWireAuthorityInjection (0.02s)
+=== RUN   TestJournalOwnerAPIStorageUncertaintyAndCancellation
+=== RUN   TestJournalOwnerAPIStorageUncertaintyAndCancellation/directory-sync
+=== RUN   TestJournalOwnerAPIStorageUncertaintyAndCancellation/canceled-after-sync
+=== RUN   TestJournalOwnerAPIStorageUncertaintyAndCancellation/changed-state
+--- PASS: TestJournalOwnerAPIStorageUncertaintyAndCancellation (0.03s)
+    --- PASS: TestJournalOwnerAPIStorageUncertaintyAndCancellation/directory-sync (0.01s)
+    --- PASS: TestJournalOwnerAPIStorageUncertaintyAndCancellation/canceled-after-sync (0.01s)
+    --- PASS: TestJournalOwnerAPIStorageUncertaintyAndCancellation/changed-state (0.01s)
+=== RUN   TestJournalOwnerAPIHistoryBoundAndHealth
+=== RUN   TestJournalOwnerAPIHistoryBoundAndHealth/history
+=== RUN   TestJournalOwnerAPIHistoryBoundAndHealth/health
+--- PASS: TestJournalOwnerAPIHistoryBoundAndHealth (0.54s)
+    --- PASS: TestJournalOwnerAPIHistoryBoundAndHealth/history (0.51s)
+    --- PASS: TestJournalOwnerAPIHistoryBoundAndHealth/health (0.03s)
+=== RUN   TestJournalOwnerAPITrustedRouteAndClose
+--- PASS: TestJournalOwnerAPITrustedRouteAndClose (0.01s)
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/valid
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/manifest
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/journal
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/scope
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/incarnation
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/launch
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/wrong-route-epoch
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/changed-state
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/closed
+=== RUN   TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/canceled
+--- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse (0.05s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/valid (0.01s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/manifest (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/journal (0.01s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/scope (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/incarnation (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/launch (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/wrong-route-epoch (0.01s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/changed-state (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/closed (0.00s)
+    --- PASS: TestJournalOwnerInspectStartupRequiresHeldExactFirstUse/canceled (0.00s)
+=== RUN   TestJournalRemoteReadContentionDoesNotPoisonAdmission
+=== RUN   TestJournalRemoteReadContentionDoesNotPoisonAdmission/2
+=== RUN   TestJournalRemoteReadContentionDoesNotPoisonAdmission/3
+--- PASS: TestJournalRemoteReadContentionDoesNotPoisonAdmission (0.09s)
+    --- PASS: TestJournalRemoteReadContentionDoesNotPoisonAdmission/2 (0.04s)
+    --- PASS: TestJournalRemoteReadContentionDoesNotPoisonAdmission/3 (0.05s)
+=== RUN   TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence
+=== RUN   TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/read
+=== RUN   TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/write-reply
+=== RUN   TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/readback
+--- PASS: TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence (0.08s)
+    --- PASS: TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/read (0.04s)
+    --- PASS: TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/write-reply (0.02s)
+    --- PASS: TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence/readback (0.02s)
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/invalid
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/invalid-and-canceled
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/uncertain
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/uncertain-and-canceled
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/unavailable-and-invalid
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/unavailable-and-uncertain
+=== RUN   TestJournalRemoteReadIntegrityFailuresRemainFenced/changed-and-uncertain
+--- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced (0.07s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/invalid (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/invalid-and-canceled (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/uncertain (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/uncertain-and-canceled (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/unavailable-and-invalid (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/unavailable-and-uncertain (0.01s)
+    --- PASS: TestJournalRemoteReadIntegrityFailuresRemainFenced/changed-and-uncertain (0.01s)
+=== RUN   TestJournalRemoteReadRetryObservesNewWorkerFloor
+--- PASS: TestJournalRemoteReadRetryObservesNewWorkerFloor (0.06s)
+=== RUN   TestJournalRemoteCancellationBoundsAdmission
+=== RUN   TestJournalRemoteCancellationBoundsAdmission/read
+=== RUN   TestJournalRemoteCancellationBoundsAdmission/write-reply
+=== RUN   TestJournalRemoteCancellationBoundsAdmission/readback
+=== RUN   TestJournalRemoteCancellationBoundsAdmission/lifetime
+--- PASS: TestJournalRemoteCancellationBoundsAdmission (0.10s)
+    --- PASS: TestJournalRemoteCancellationBoundsAdmission/read (0.05s)
+    --- PASS: TestJournalRemoteCancellationBoundsAdmission/write-reply (0.02s)
+    --- PASS: TestJournalRemoteCancellationBoundsAdmission/readback (0.02s)
+    --- PASS: TestJournalRemoteCancellationBoundsAdmission/lifetime (0.01s)
+=== RUN   TestJournalRemoteWriteReadbackSharesDeadline
+--- PASS: TestJournalRemoteWriteReadbackSharesDeadline (0.04s)
+=== RUN   TestJournalRemoteReadTimeoutCanRetry
+--- PASS: TestJournalRemoteReadTimeoutCanRetry (1.08s)
+=== RUN   TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory
+--- PASS: TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory (0.15s)
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend/unavailable
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend/lost-reply
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend/replayed
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend/foreign-receipt
+=== RUN   TestJournalRemoteUncertainAdmissionNeverEntersBackend/stale-read
+--- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend (0.08s)
+    --- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend/unavailable (0.01s)
+    --- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend/lost-reply (0.02s)
+    --- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend/replayed (0.02s)
+    --- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend/foreign-receipt (0.02s)
+    --- PASS: TestJournalRemoteUncertainAdmissionNeverEntersBackend/stale-read (0.02s)
+=== RUN   TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation
+--- PASS: TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation (0.09s)
+=== RUN   TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole
+--- PASS: TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole (0.08s)
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/offset
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/digest
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/size
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/lock
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/journal
+=== RUN   TestJournalReadRejectsMixedPagesAndPreservesSnapshot/bytes
+--- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot (0.09s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/offset (0.00s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/digest (0.00s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/size (0.00s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/lock (0.00s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/journal (0.00s)
+    --- PASS: TestJournalReadRejectsMixedPagesAndPreservesSnapshot/bytes (0.00s)
+=== RUN   TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup
+=== RUN   TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/first-factory-fails
+=== RUN   TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/second-factory-fails
+=== RUN   TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/idle-close
+--- PASS: TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup (0.11s)
+    --- PASS: TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/first-factory-fails (0.04s)
+    --- PASS: TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/second-factory-fails (0.04s)
+    --- PASS: TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup/idle-close (0.04s)
+=== RUN   TestRuntimeServerFreezesLaunchBeforeBackendCallbacks
+=== RUN   TestRuntimeServerFreezesLaunchBeforeBackendCallbacks/caller-manifest
+=== RUN   TestRuntimeServerFreezesLaunchBeforeBackendCallbacks/shared-runtime-slices
+--- PASS: TestRuntimeServerFreezesLaunchBeforeBackendCallbacks (0.02s)
+    --- PASS: TestRuntimeServerFreezesLaunchBeforeBackendCallbacks/caller-manifest (0.01s)
+    --- PASS: TestRuntimeServerFreezesLaunchBeforeBackendCallbacks/shared-runtime-slices (0.01s)
+=== RUN   TestRuntimeServerDrainDoesNotRetireBackendIncarnation
+--- PASS: TestRuntimeServerDrainDoesNotRetireBackendIncarnation (0.06s)
+=== RUN   TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch
+=== RUN   TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/renamed-not-synced
+=== RUN   TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/synced-error
+=== RUN   TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/synced-canceled
+--- PASS: TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch (0.02s)
+    --- PASS: TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/renamed-not-synced (0.01s)
+    --- PASS: TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/synced-error (0.01s)
+    --- PASS: TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch/synced-canceled (0.01s)
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/missing
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/unknown-state
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-id
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/wrong-id-version
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-digest
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-time
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/unstarted-with-history
+=== RUN   TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/legacy-with-history
+--- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories (0.05s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/missing (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/unknown-state (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-id (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/wrong-id-version (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-digest (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/zero-time (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/unstarted-with-history (0.01s)
+    --- PASS: TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories/legacy-with-history (0.01s)
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/deny
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/cancel-after-permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/changed-after-permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/changed-after-first-factory
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/gate-alias-mutation
+--- PASS: TestRuntimeServerRemoteStartupBeforeFactories (0.07s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/permit (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/deny (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/cancel-after-permit (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/changed-after-permit (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/changed-after-first-factory (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/gate-alias-mutation (0.01s)
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-epoch
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-state
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-gate
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-gate
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-registry
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/signature
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/manifest
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/verifier
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/incarnation
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/journal
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/overflow
+--- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody (0.06s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-epoch (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-state (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-gate (0.00s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-gate (0.00s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-registry (0.00s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/signature (0.00s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/manifest (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/verifier (0.00s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/incarnation (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/journal (0.01s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/overflow (0.01s)
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/nil_scope
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/schema
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/unknown
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/identity_unknown
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/missing_history
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/signature
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/future
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/size
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/allocation
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/target_member
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/target_epoch
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/member_identity
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/subset
+=== RUN   TestTerminalNonAdmissionRPCRejectsInvalidScopes/non-durable
+--- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes (0.11s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/nil_scope (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/schema (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/unknown (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/identity_unknown (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/missing_history (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/signature (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/future (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/size (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/allocation (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/target_member (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/target_epoch (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/member_identity (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/subset (0.01s)
+    --- PASS: TestTerminalNonAdmissionRPCRejectsInvalidScopes/non-durable (0.01s)
+=== RUN   TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency
+--- PASS: TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency (0.03s)
+=== RUN   TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend
+--- PASS: TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend (0.06s)
+=== RUN   TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof
+=== RUN   TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof/unknown
+=== RUN   TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof/checkpointed
+--- PASS: TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof (0.04s)
+    --- PASS: TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof/unknown (0.01s)
+    --- PASS: TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof/checkpointed (0.02s)
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/project
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/stage_run
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/fence
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/stage_attempt
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/lease
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/nonce
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/job
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/attempt
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/terminal_state
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/version
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/allocation
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/barrier
+=== RUN   TestTerminalNonAdmissionReplayBindsExactHistoricalScope/organization
+--- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope (0.07s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/project (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/stage_run (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/fence (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/stage_attempt (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/lease (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/nonce (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/job (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/attempt (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/terminal_state (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/version (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/allocation (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/barrier (0.00s)
+    --- PASS: TestTerminalNonAdmissionReplayBindsExactHistoricalScope/organization (0.00s)
+=== RUN   TestTerminalNonAdmissionSerializesWithAcceptedPrepare
+--- PASS: TestTerminalNonAdmissionSerializesWithAcceptedPrepare (0.03s)
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/device_set
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/membership
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/subset
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/runtime
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/worker
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/member_epoch
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/identity
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/runtime_epoch
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/residency
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/profile
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/future
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/worker_epoch
+=== RUN   TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/device
+--- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence (0.03s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/device_set (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/membership (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/subset (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/runtime (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/worker (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/member_epoch (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/identity (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/runtime_epoch (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/residency (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/profile (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/future (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/worker_epoch (0.00s)
+    --- PASS: TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence/device (0.00s)
+=== RUN   TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover
+=== RUN   TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover/sync
+=== RUN   TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover/reply
+--- PASS: TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover (0.04s)
+    --- PASS: TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover/sync (0.02s)
+    --- PASS: TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover/reply (0.02s)
+=== RUN   TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders
+=== RUN   TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders/execution_first
+=== RUN   TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders/terminal_first
+--- PASS: TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders (0.06s)
+    --- PASS: TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders/execution_first (0.03s)
+    --- PASS: TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders/terminal_first (0.03s)
+=== RUN   TestTerminalNonAdmissionBoundNeverEvictsOldProof
+--- PASS: TestTerminalNonAdmissionBoundNeverEvictsOldProof (1.01s)
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/digest
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/signature
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/allocation
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/sequence
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/floor_low
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/floor_high
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/contract
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/time
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/duplicate
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/schema3
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/scope
+=== RUN   TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/execution_collision
+--- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs (0.20s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/digest (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/signature (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/allocation (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/sequence (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/floor_low (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/floor_high (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/contract (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/time (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/duplicate (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/schema3 (0.01s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/scope (0.02s)
+    --- PASS: TestTerminalNonAdmissionRecoveryRejectsCorruptProofs/execution_collision (0.02s)
+=== RUN   TestTerminalNonAdmissionSchema3UpgradePreservesEvidence
+=== RUN   TestTerminalNonAdmissionSchema3UpgradePreservesEvidence/pending
+=== RUN   TestTerminalNonAdmissionSchema3UpgradePreservesEvidence/drained
+--- PASS: TestTerminalNonAdmissionSchema3UpgradePreservesEvidence (0.14s)
+    --- PASS: TestTerminalNonAdmissionSchema3UpgradePreservesEvidence/pending (0.06s)
+    --- PASS: TestTerminalNonAdmissionSchema3UpgradePreservesEvidence/drained (0.08s)
+=== RUN   TestTerminalNonAdmissionSurvivesAbruptProcessExit
+--- PASS: TestTerminalNonAdmissionSurvivesAbruptProcessExit (1.06s)
+=== RUN   TestTerminalNonAdmissionProcessHelper
+--- PASS: TestTerminalNonAdmissionProcessHelper (0.00s)
+PASS
