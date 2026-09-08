@@ -45,8 +45,8 @@ func (service *Service) confirmBackendAuthority(ctx context.Context, verified st
 	return ctx.Err()
 }
 
-// Cleanup can observe STOPPED without a health assertion. Preserve explicit
-// non-reusability across cancellation until a validated Status clears it.
+// STOPPED proves only that execution stopped. Preserve explicit non-reusability
+// until a validated status contains a new explicit health assertion.
 func (service *Service) confirmBackendStatus(ctx context.Context, verified stageauthority.Verified, status BackendStatus) error {
 	if err := service.confirmBackendAuthority(ctx, verified); err != nil {
 		return err
@@ -59,8 +59,6 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
 	switch status.State {
 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
 		service.active.workerReuseDenied = !status.FailureEvidence.WorkerReusable
-	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED:
-		service.active.workerReuseDenied = false
 	}
 	return nil
 }

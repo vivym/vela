@@ -71,8 +71,12 @@ func (service *Service) checkReadinessAdmission() error {
 	for _, resident := range admission.services {
 		resident.mu.Lock()
 		active := resident.active
+		unhealthy := active != nil && active.workerReuseDenied
 		blocked := active != nil && active.verified.Authority.GetExecutionSequence() <= admission.floor && !reusableExecution(active)
 		resident.mu.Unlock()
+		if unhealthy {
+			return errors.New("backend explicitly denied Worker reuse")
+		}
 		if blocked {
 			return errors.New("terminal execution still holds the shared Runtime slot")
 		}
