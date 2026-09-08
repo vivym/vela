@@ -87,7 +87,11 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 	if os.Getenv("VELA_JOURNAL_ENDPOINT_HELPER") != "client" {
 		t.Skip("journal endpoint subprocess helper")
 	}
-	if os.Geteuid() != 65532 || os.Getegid() != 65532 || os.Getpid() != 1 {
+	expected := 65532
+	if os.Getenv("VELA_JOURNAL_ENDPOINT_PLANNED") == "1" {
+		expected = 10001
+	}
+	if os.Geteuid() != expected || os.Getegid() != expected || os.Getpid() != 1 {
 		t.Fatal("expected independent non-root namespace PID 1")
 	}
 	root := os.Getenv("VELA_JOURNAL_ENDPOINT_ROOT")
@@ -191,6 +195,11 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 
 func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string) *journalEndpointChild {
 	t.Helper()
+	return journalEndpointStartCredentials(t, listener, root, RuntimeCallerCredentials{UID: 65532, GID: 65532})
+}
+
+func journalEndpointStartCredentials(t *testing.T, listener *net.UnixListener, root string, credentials RuntimeCallerCredentials) *journalEndpointChild {
+	t.Helper()
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +207,10 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
 	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestJournalEndpointProcessHelper$", "-test.timeout=45s")
 	command.Env = []string{"VELA_JOURNAL_ENDPOINT_HELPER=client", "VELA_JOURNAL_ENDPOINT_ROOT=" + root,
 		"VELA_JOURNAL_ENDPOINT_SOCKET=" + listener.Addr().String()}
-	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID, Credential: &syscall.Credential{Uid: 65532, Gid: 65532}}
+	if credentials.UID == 10001 && credentials.GID == 10001 {
+		command.Env = append(command.Env, "VELA_JOURNAL_ENDPOINT_PLANNED=1")
+	}
+	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID, Credential: &syscall.Credential{Uid: credentials.UID, Gid: credentials.GID}}
 	input, err := command.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +239,7 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
 	})
 	connection := journalEndpointAccept(t, listener)
 	defer func() { _ = connection.Close() }()
-	caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
+	caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
 	if err != nil {
 		t.Fatal(err)
 	}

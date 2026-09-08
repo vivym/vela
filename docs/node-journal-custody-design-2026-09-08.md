@@ -95,6 +95,15 @@ and startup transports. This removes local epoch/journal ownership in that
 explicit CLI mode. Actual process initialization, Worker discovery and shutdown
 are tested; publication, effective mounts, production Fleet/Node and one-shot
 permission remain fixture boundaries, and the default Fleet path is unchanged.
+The [Node bootstrap publication](node-bootstrap-publication-evidence-2026-09-09.md)
+now derives the manifest/binding from a verified plan and identity/incarnation and
+public authority keys from the held journal. It records inode identities and
+content digests privately before exposing the read-only bootstrap to the planned
+GID. Partial state cannot be republished; complete history can be inspected after
+response loss or owner exit without restoring a process handle or grant. Actual
+CLI consumption and six process-kill boundaries are tested. Publication is not
+unique per incarnation and does not authenticate its production mount/writer;
+these still belong to the pending launch approval and one-shot grant assembly.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) connects
 the canonical original-caller request to the held Runtime journal and repeated
 image/task observations before and after the single Fleet call. The storage and

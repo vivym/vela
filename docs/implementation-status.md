@@ -582,6 +582,14 @@ ownership. Eighteen native CLI scenarios include an actual process backend's
 initialize/shutdown and Worker discovery of epoch 2. Node permission, Registry
 and CRI are fixtures; production publication, Fleet wiring, image association,
 once-only grant and a full CLI Job remain open.
+The [Node bootstrap publisher](node-bootstrap-publication-evidence-2026-09-09.md)
+now derives configuration from a verified plan, held journal and its actual public
+verifier keys. A private durable record precedes exposure of the root-owned 0440
+file to the planned Runtime GID. Native tests exercise the published artifact in
+the actual CLI, non-root access, concurrency, substitution and six Node SIGKILL
+boundaries. Reopening yields history only; the per-directory create-once rule is
+not an incarnation grant. Production mounts, Fleet/Node entry wiring, image
+association and a complete Job still require the same-assembly closure.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation

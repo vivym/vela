@@ -73,6 +73,19 @@ type Validator struct {
 	now  func() time.Time
 }
 
+// VerifierKeyring returns an independent public-only snapshot. It cannot mint
+// authority and mutating the result cannot change this validator.
+func (validator *Validator) VerifierKeyring() map[string][]byte {
+	if validator == nil {
+		return nil
+	}
+	keys := make(map[string][]byte, len(validator.keys))
+	for id, key := range validator.keys {
+		keys[id] = slices.Clone(key)
+	}
+	return keys
+}
+
 func NewSigner(keys map[string][]byte) (*Signer, error) {
 	validated, err := validateKeyring(keys)
 	if err != nil {

@@ -1,0 +1,13 @@
+d9687d5b3bed8fb4ffe5878af2476b4e8d63b1db
+ M docs/implementation-status.md
+ M docs/node-journal-custody-design-2026-09-08.md
+ M docs/remaining-validation-2026-09-09.md
+ M hack/run-remote-runtime-cli-native.sh
+ M internal/modelruntime/journal_owner.go
+ M internal/modelruntime/journal_owner_startup_test.go
+ M internal/nodeagent/journal_endpoint_linux_test.go
+ M internal/nodeagent/journal_worker_barrier_linux_test.go
+ M internal/stageauthority/authority.go
+?? docs/node-bootstrap-publication-evidence-2026-09-09.md
+?? internal/nodeagent/runtime_bootstrap_publication_linux.go
+?? internal/nodeagent/runtime_bootstrap_publication_linux_test.go

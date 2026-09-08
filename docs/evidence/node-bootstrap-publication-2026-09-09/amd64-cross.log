@@ -1,0 +1,4 @@
+ok  	github.com/vivym/vela/internal/nodeagent	0.003s
+ok  	github.com/vivym/vela/cmd/vela-model-runtime	0.003s
+ok  	github.com/vivym/vela/internal/modelruntime	0.003s
+ok  	github.com/vivym/vela/internal/stageauthority	0.003s

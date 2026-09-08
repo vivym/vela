@@ -83,6 +83,14 @@ Worker 发现 epoch=2、旧环境变量不能覆盖配置及文件/编码/绑定
 Node Permit、Registry/CRI 仍为 fixture；配置发布、生产 Node/Fleet 接线、
 镜像关联与一次性 grant、同一装配下完整 Job 尚未完成。
 
+后续 [Node 配置发布](node-bootstrap-publication-evidence-2026-09-09.md) 已从
+verified plan、当前持锁 Runtime journal 及其实际公钥生成配置，在私有记录
+持久化并核对文件身份后开放给计划中的 Runtime GID。真实 CLI 已使用这个
+发布产物完成初始化、Worker 发现和关闭；发布异常、并发、内容/身份替换以及
+六个 Node SIGKILL 边界有独立证据。此处的“创建一次”仅针对一个发布目录，
+不是每个 incarnation 的唯一授权。生产挂载/发布者来源、镜像检查和 Fleet
+预留仍未与这个 CLI 调用合并，一次性 grant 与完整 Job 仍未完成。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

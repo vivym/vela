@@ -99,7 +99,7 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	connection, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: request.WorkerSocket, ExpectedUID: 65532})
+	connection, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: request.WorkerSocket, ExpectedUID: uint32(os.Geteuid())})
 	if err != nil {
 		t.Fatal(err)
 	}

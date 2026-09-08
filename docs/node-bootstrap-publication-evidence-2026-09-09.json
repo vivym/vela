@@ -1,0 +1,235 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "d9687d5b3bed8fb4ffe5878af2476b4e8d63b1db",
+  "source_tree_sha256": "ce3bc5b719b9d893c4b59291b92120042351c1a64fe27b7477afc540cc53d70f",
+  "source_file_count": 1006,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "8e006aacbb7036a56aff03ff2b5ebbe01401eff9cb0cb332e45a18dc0fdaa664",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "production_gates": "0/9",
+  "native_main_tests": {
+    "TestJournalServerActualRemoteCLI": "3.36s",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution": "0.41s",
+    "TestRuntimeBootstrapPublication": "1.06s",
+    "TestRuntimeBootstrapPublicationPreflight": "0.11s",
+    "TestRuntimeBootstrapPublicationBoundaries": "0.09s",
+    "TestRuntimeBootstrapPublicationConcurrent": "0.02s",
+    "TestRuntimeBootstrapPublicationProcessCrash": "0.25s",
+    "TestRuntimeBootstrapPublicationChanged": "0.27s",
+    "TestRuntimeBootstrapPublicationCustodyLoss": "0.09s",
+    "TestRuntimeBootstrapPublicationActualCLI": "2.12s"
+  },
+  "publication_nested_cases": 43,
+  "checks": [
+    {
+      "command": "bash hack/run-remote-runtime-cli-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run ./internal/nodeagent/... ./internal/modelruntime/... ./internal/stageauthority/...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet ./internal/nodeagent ./internal/modelruntime ./internal/stageauthority",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./internal/nodeagent ./cmd/vela-model-runtime ./internal/modelruntime ./internal/stageauthority",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-publication-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "initial_failures": [
+    {
+      "artifact": "initial-native.log",
+      "cause": "Separate StageAuthority keyring could differ from held journal verifier. Removed duplicate input and derive public keys from the actual owner."
+    },
+    {
+      "artifact": "initial-native.log",
+      "cause": "Worker helper expected UID 65532 for actual planned UID 10001; product socket ownership correctly rejected. Test helper now uses its actual expected shared Runtime UID."
+    },
+    {
+      "artifact": "custody-red-native.log",
+      "cause": "Journal closure after rename left complete exposed history before final refusal. Recheck held journal after filesystem validation and before exposing directory."
+    }
+  ],
+  "claim_boundary": "Per-directory publication and history inspection; actual UID/GID 10001 CLI with real held journal and process backend initialize/shutdown, Worker discovery epoch=2. Registry/CRI and Node Permit are fixtures. Publication is not unique per incarnation and is not a grant. No production Node/Fleet mounts, image/env/writer association in this invocation, once-only grant, full CLI Job, Worker business custody, power-loss recovery, descendant containment, sustained load, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/amd64-cross.log",
+      "bytes": 224,
+      "sha256": "76d6d6154ec69a0088eb4b6071f9d854b079cd69f79ce8bb639eb16fa37496b7"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/binaries.sha256",
+      "bytes": 475,
+      "sha256": "0623479403c9e6c6a96d9e6b025959fac80f8128a8dc113ee8079d957a7e2413"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/build-nodeagent.log",
+      "bytes": 1715,
+      "sha256": "cbae61e74f7cabefe2e19066883da61b2a8a41538d5fa39c2655c44c49a1ecf8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "627c080a3f1532b0168998105638e7e4fd568106b943c0edbb702b93da67f189"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/build-vela-model-runtime.log",
+      "bytes": 491,
+      "sha256": "4f4b3b4637cfd5d7fbbbffb85a2d0216a1887d40fc862a406fbc42ccd1c18cee"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-binaries.sha256",
+      "bytes": 493,
+      "sha256": "50f53ca3bbc0b0e7f8fac2478d968f053e06ac6d068d3202453b6bcc90a37982"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-image.txt",
+      "bytes": 72,
+      "sha256": "8eb207e1e2140b1664457ec1dea5244ee902c1ec23fea1f0d488caef0c48d121"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-native.log",
+      "bytes": 18169,
+      "sha256": "844bd1cf84819d8000d9507ab81996e8ac51806025fbbebeff8460293b6e8f3b"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-source.patch",
+      "bytes": 53140,
+      "sha256": "623556dbf8b52dea8ffe4f448d63fb62f310afe4e3498c49ed9ffab807b83219"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/custody-red-source.txt",
+      "bytes": 458,
+      "sha256": "b92be0fa5481c931e8c2519e64f003f6a7ea9c6afc41acbf2ae72871eb4c0d94"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "57be4c94ebaf19e06e84a875f22bd1f682402aeb8894258c25a3c9ec89332ed0"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-binaries.sha256",
+      "bytes": 475,
+      "sha256": "ff36d0f6b4798e47a86b8e103a0cce7c57869611fe0c17ea90744462be9fff36"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-image.txt",
+      "bytes": 72,
+      "sha256": "d58683befbf2fc7e2cfb0174cef815ff5a0a65ed9814feebd2fd65060f704e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-native.log",
+      "bytes": 16136,
+      "sha256": "bf91f66ff9f871fc717ab6472058524f609f5282d9a1a1d7f2a277f7916c9498"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-source.patch",
+      "bytes": 43470,
+      "sha256": "9ee80dc5fb50b72c0d9fe67ea5965ee6f8535c7aa01b333a4ae124542530037a"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/initial-source.txt",
+      "bytes": 262,
+      "sha256": "55cac0d788107e6dadbe19694f5190bf96dadec022175a9ef7c4bce03f2bd105"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/native-runner.log",
+      "bytes": 102,
+      "sha256": "973abe1e1cc708a658a418e877df98861cd59c5e3500c63b6ecd08d6aff3df2f"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/native.log",
+      "bytes": 18074,
+      "sha256": "2d59119e63691e4f6880c2e656776742a39dd79e885faf62c1a10ba9a722c095"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/package-evidence.py",
+      "bytes": 5685,
+      "sha256": "d73ae5025c32c86dc493d17963ea7fa323062f43986d4d9e6a6053399ba5e1c0"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/source-files.json",
+      "bytes": 159317,
+      "sha256": "97c544de8c3e479ef118cd9e36ba3ca1ba6bf48eb05300126410e50408be56cd"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "459ab880718626a290f5443a0f0639abb4c24f7cc841a10808ad0a36466ae3e8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/source.patch",
+      "bytes": 53465,
+      "sha256": "3213041c467ed69346188a8e87bfcf9257ba20bd12bb57b176b1b17b600188c4"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/source.txt",
+      "bytes": 642,
+      "sha256": "481711ec95da85cd0433c71275e3ecf554c3b5929b66a7d081063dd348936555"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-publication-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

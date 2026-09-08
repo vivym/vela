@@ -1,0 +1,1324 @@
+diff --git a/hack/run-remote-runtime-cli-native.sh b/hack/run-remote-runtime-cli-native.sh
+index fef9fa7..51bdb48 100644
+--- a/hack/run-remote-runtime-cli-native.sh
++++ b/hack/run-remote-runtime-cli-native.sh
+@@ -11,12 +11,12 @@ mkdir -p "$remote_evidence/image/rootfs/run" "$remote_evidence/image/rootfs/tmp"
+ chmod 1777 "$remote_evidence/image/rootfs/tmp"
+ git -C "$remote_repo" rev-parse HEAD > "$remote_evidence/source.txt"
+ git -C "$remote_repo" status --short >> "$remote_evidence/source.txt"
+-git -C "$remote_repo" diff HEAD --binary -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent hack/run-remote-runtime-cli-native.sh > "$remote_evidence/source.patch"
++git -C "$remote_repo" diff HEAD --binary -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh > "$remote_evidence/source.patch"
+ while IFS= read -r -d '' remote_file; do
+   remote_diff_status=0
+   git -C "$remote_repo" diff --no-index --binary /dev/null "$remote_file" >> "$remote_evidence/source.patch" || remote_diff_status=$?
+   [[ "$remote_diff_status" = 0 || "$remote_diff_status" = 1 ]] || exit "$remote_diff_status"
+-done < <(git -C "$remote_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent hack/run-remote-runtime-cli-native.sh)
++done < <(git -C "$remote_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh)
+ shasum -a 256 "$remote_evidence/source.patch" > "$remote_evidence/source-patch.sha256"
+ docker version > "$remote_evidence/docker-version.txt"
+ for remote_target in nodeagent runtime-command vela-model-runtime; do
+@@ -43,9 +43,9 @@ shasum -a 256 "$remote_evidence/image/rootfs/"*.test "$remote_evidence/image/roo
+ # Runtime, Worker and the actual backend execute as non-root.
+ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
+   --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
+-  -test.run '^(TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution)$' \
++  -test.run '^(TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
+   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
+-for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution; do
++for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
+   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
+ done
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$remote_evidence/native.log"; then exit 1; fi
+diff --git a/internal/modelruntime/journal_owner.go b/internal/modelruntime/journal_owner.go
+index c5d75fa..57ea439 100644
+--- a/internal/modelruntime/journal_owner.go
++++ b/internal/modelruntime/journal_owner.go
+@@ -126,6 +126,20 @@ func (owner *ExecutionJournalOwner) Status(ctx context.Context) (ExecutionJourna
+ 	return owner.store.status(), nil
+ }
+ 
++// AuthorityVerifierKeys derives publication keys from the live journal's actual
++// verifier. A second deployment keyring must not silently diverge from it.
++func (owner *ExecutionJournalOwner) AuthorityVerifierKeys(ctx context.Context) (map[string][]byte, error) {
++	if owner == nil || ctx == nil {
++		return nil, ErrJournalCommand
++	}
++	owner.mu.Lock()
++	defer owner.mu.Unlock()
++	if err := owner.check(ctx); err != nil {
++		return nil, err
++	}
++	return owner.store.scope.floor.validator.VerifierKeyring(), nil
++}
++
+ // InspectStartup compares the held journal and its actual routes with an
+ // independently approved manifest and first-startup declaration. It grants no
+ // startup permission and does not authenticate the process or filesystem owner.
+diff --git a/internal/modelruntime/journal_owner_startup_test.go b/internal/modelruntime/journal_owner_startup_test.go
+index 3160ae2..df1a108 100644
+--- a/internal/modelruntime/journal_owner_startup_test.go
++++ b/internal/modelruntime/journal_owner_startup_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"crypto/sha256"
+ 	"os"
+ 	"path/filepath"
++	"reflect"
+ 	"testing"
+ 	"time"
+ 
+@@ -13,6 +14,37 @@ import (
+ 	"google.golang.org/protobuf/proto"
+ )
+ 
++func TestJournalOwnerPublicationKeysRemainBoundToHeldVerifier(t *testing.T) {
++	config, owner, _ := remoteRuntimeServerFixture(t)
++	want := config.Validator.VerifierKeyring()
++	keys, err := owner.AuthorityVerifierKeys(t.Context())
++	if err != nil || len(keys) == 0 || !reflect.DeepEqual(keys, want) {
++		t.Fatalf("publication keys differ from journal verifier: %v", err)
++	}
++	for id := range keys {
++		keys[id][0] ^= 1
++		delete(keys, id)
++	}
++	for id := range want {
++		want[id][0] ^= 1
++	}
++	current, err := owner.AuthorityVerifierKeys(t.Context())
++	if err != nil || !reflect.DeepEqual(current, config.Validator.VerifierKeyring()) || reflect.DeepEqual(current, want) {
++		t.Fatalf("public snapshot mutation changed journal verifier: %v", err)
++	}
++	ctx, cancel := context.WithCancel(t.Context())
++	cancel()
++	if keys, err := owner.AuthorityVerifierKeys(ctx); err == nil || keys != nil {
++		t.Fatal("canceled publication returned keys")
++	}
++	if err := owner.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if keys, err := owner.AuthorityVerifierKeys(t.Context()); err == nil || keys != nil {
++		t.Fatal("lost journal custody returned publication keys")
++	}
++}
++
+ func TestJournalOwnerInspectStartupRequiresHeldExactFirstUse(t *testing.T) {
+ 	for _, fault := range []string{"valid", "manifest", "journal", "scope", "incarnation", "launch", "wrong-route-epoch", "changed-state", "closed", "canceled"} {
+ 		t.Run(fault, func(t *testing.T) {
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index db623b8..b2a990c 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -87,7 +87,11 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 	if os.Getenv("VELA_JOURNAL_ENDPOINT_HELPER") != "client" {
+ 		t.Skip("journal endpoint subprocess helper")
+ 	}
+-	if os.Geteuid() != 65532 || os.Getegid() != 65532 || os.Getpid() != 1 {
++	expected := 65532
++	if os.Getenv("VELA_JOURNAL_ENDPOINT_PLANNED") == "1" {
++		expected = 10001
++	}
++	if os.Geteuid() != expected || os.Getegid() != expected || os.Getpid() != 1 {
+ 		t.Fatal("expected independent non-root namespace PID 1")
+ 	}
+ 	root := os.Getenv("VELA_JOURNAL_ENDPOINT_ROOT")
+@@ -190,6 +194,11 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ }
+ 
+ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string) *journalEndpointChild {
++	t.Helper()
++	return journalEndpointStartCredentials(t, listener, root, RuntimeCallerCredentials{UID: 65532, GID: 65532})
++}
++
++func journalEndpointStartCredentials(t *testing.T, listener *net.UnixListener, root string, credentials RuntimeCallerCredentials) *journalEndpointChild {
+ 	t.Helper()
+ 	binary, err := os.Executable()
+ 	if err != nil {
+@@ -198,7 +207,10 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
+ 	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestJournalEndpointProcessHelper$", "-test.timeout=45s")
+ 	command.Env = []string{"VELA_JOURNAL_ENDPOINT_HELPER=client", "VELA_JOURNAL_ENDPOINT_ROOT=" + root,
+ 		"VELA_JOURNAL_ENDPOINT_SOCKET=" + listener.Addr().String()}
+-	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID, Credential: &syscall.Credential{Uid: 65532, Gid: 65532}}
++	if credentials.UID == 10001 && credentials.GID == 10001 {
++		command.Env = append(command.Env, "VELA_JOURNAL_ENDPOINT_PLANNED=1")
++	}
++	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID, Credential: &syscall.Credential{Uid: credentials.UID, Gid: credentials.GID}}
+ 	input, err := command.StdinPipe()
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -227,7 +239,7 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
+ 	})
+ 	connection := journalEndpointAccept(t, listener)
+ 	defer func() { _ = connection.Close() }()
+-	caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
++	caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/nodeagent/journal_worker_barrier_linux_test.go b/internal/nodeagent/journal_worker_barrier_linux_test.go
+index ec43bd4..05943fd 100644
+--- a/internal/nodeagent/journal_worker_barrier_linux_test.go
++++ b/internal/nodeagent/journal_worker_barrier_linux_test.go
+@@ -99,7 +99,7 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
+ 	t.Helper()
+ 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+ 	defer cancel()
+-	connection, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: request.WorkerSocket, ExpectedUID: 65532})
++	connection, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: request.WorkerSocket, ExpectedUID: uint32(os.Geteuid())})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/stageauthority/authority.go b/internal/stageauthority/authority.go
+index 263360e..2ef7374 100644
+--- a/internal/stageauthority/authority.go
++++ b/internal/stageauthority/authority.go
+@@ -73,6 +73,19 @@ type Validator struct {
+ 	now  func() time.Time
+ }
+ 
++// VerifierKeyring returns an independent public-only snapshot. It cannot mint
++// authority and mutating the result cannot change this validator.
++func (validator *Validator) VerifierKeyring() map[string][]byte {
++	if validator == nil {
++		return nil
++	}
++	keys := make(map[string][]byte, len(validator.keys))
++	for id, key := range validator.keys {
++		keys[id] = slices.Clone(key)
++	}
++	return keys
++}
++
+ func NewSigner(keys map[string][]byte) (*Signer, error) {
+ 	validated, err := validateKeyring(keys)
+ 	if err != nil {
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux.go b/internal/nodeagent/runtime_bootstrap_publication_linux.go
+new file mode 100644
+index 0000000..cd1b5b5
+--- /dev/null
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux.go
+@@ -0,0 +1,484 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"io"
++	"os"
++	"path/filepath"
++	"slices"
++	"strconv"
++	"strings"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/modelruntime"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"golang.org/x/sys/unix"
++	"google.golang.org/protobuf/proto"
++)
++
++const (
++	runtimeBootstrapFilename   = "bootstrap.json"
++	runtimeBootstrapPending    = "bootstrap.pending"
++	runtimeBootstrapRecordName = "publication.json"
++)
++
++var ErrRuntimeBootstrapPublication = errors.New("runtime bootstrap publication is missing, changed, busy or incomplete")
++
++// Settings are trusted Node deployment inputs, not Runtime request fields.
++// The manifest, signed binding, identity and incarnation cannot be supplied here.
++type RuntimeBootstrapPublicationConfig struct {
++	Directory                                      string
++	Plan                                           *RuntimeLaunchPlan
++	Journal                                        *modelruntime.ExecutionJournalOwner
++	RegistryKeys                                   map[string][]byte
++	JournalSocket, StartupSocket, RuntimeSocket    string
++	JournalTimeout, CancelTimeout, ShutdownTimeout time.Duration
++}
++
++type RuntimeBootstrapPublicationRecord struct {
++	SchemaVersion   int                        `json:"schema_version"`
++	ID              uuid.UUID                  `json:"publication_id"`
++	NodeIdentity    string                     `json:"node_identity"`
++	Directory       runtimeStartupFileIdentity `json:"directory"`
++	RecordFile      runtimeStartupFileIdentity `json:"record_file"`
++	BootstrapFile   runtimeStartupFileIdentity `json:"bootstrap_file"`
++	BootstrapBytes  int64                      `json:"bootstrap_bytes"`
++	BootstrapDigest [sha256.Size]byte          `json:"bootstrap_digest"`
++	BindingDigest   [sha256.Size]byte          `json:"binding_digest"`
++	RuntimeGID      uint32                     `json:"runtime_gid"`
++	RecordedAt      time.Time                  `json:"recorded_at"`
++}
++
++// RuntimeBootstrapPublication is a historical file observation, never a permit
++// or original process handle. Reopening does not authorize another incarnation.
++type RuntimeBootstrapPublication struct {
++	record  RuntimeBootstrapPublicationRecord
++	encoded []byte
++}
++
++func (publication *RuntimeBootstrapPublication) Record() RuntimeBootstrapPublicationRecord {
++	if publication == nil {
++		return RuntimeBootstrapPublicationRecord{}
++	}
++	return publication.record
++}
++func (publication *RuntimeBootstrapPublication) Bootstrap() (modelruntime.RemoteRuntimeBootstrap, error) {
++	if publication == nil {
++		return modelruntime.RemoteRuntimeBootstrap{}, ErrRuntimeBootstrapPublication
++	}
++	return modelruntime.ParseRemoteRuntimeBootstrap(publication.encoded)
++}
++
++// PublishRuntimeBootstrap only uses an empty root:root 0700 directory. A private
++// intent and fixed pending inode precede publication. There is no replace, retry,
++// repair or journal-initialization path. Errors retain any partial artifacts.
++func PublishRuntimeBootstrap(ctx context.Context, config RuntimeBootstrapPublicationConfig) (*RuntimeBootstrapPublication, error) {
++	return publishRuntimeBootstrap(ctx, config, nil)
++}
++
++func publishRuntimeBootstrap(ctx context.Context, config RuntimeBootstrapPublicationConfig, boundary func(string) error) (result *RuntimeBootstrapPublication, resultErr error) {
++	checkpoint := func(name string) error {
++		if err := contextError(ctx); err != nil {
++			return err
++		}
++		if boundary != nil {
++			return boundary(name)
++		}
++		return nil
++	}
++	if err := checkpoint("preflight"); err != nil {
++		return nil, err
++	}
++	wire, err := buildRuntimeBootstrap(ctx, config)
++	if err != nil {
++		return nil, err
++	}
++	directory, err := openRuntimePublicationDirectory(config.Directory)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		resultErr = errors.Join(resultErr, directory.Close())
++		if resultErr != nil {
++			result = nil
++		}
++	}()
++	info, err := directory.Stat()
++	if err != nil || !runtimeStartupPrivate(info, true) {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	if err := runtimePublicationNames(directory, nil); err != nil {
++		return nil, err
++	}
++	create := func(name string) (*os.File, error) {
++		fd, err := unix.Openat(int(directory.Fd()), name, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
++		if err != nil {
++			return nil, err
++		}
++		return os.NewFile(uintptr(fd), name), nil
++	}
++	marker, err := create(runtimeBootstrapRecordName)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		resultErr = errors.Join(resultErr, marker.Close())
++		if resultErr != nil {
++			result = nil
++		}
++	}()
++	if err := unix.Flock(int(marker.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
++		return nil, err
++	}
++	if err := checkpoint("intent-created"); err != nil {
++		return nil, err
++	}
++	file, err := create(runtimeBootstrapPending)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		resultErr = errors.Join(resultErr, file.Close())
++		if resultErr != nil {
++			result = nil
++		}
++	}()
++	if _, err := file.Write(wire); err != nil {
++		return nil, err
++	}
++	if err := file.Chown(0, int(config.Plan.gid)); err != nil {
++		return nil, err
++	}
++	if err := file.Chmod(0o440); err != nil {
++		return nil, err
++	}
++	if err := file.Sync(); err != nil {
++		return nil, err
++	}
++	if err := checkpoint("bootstrap-synced"); err != nil {
++		return nil, err
++	}
++	markerInfo, err := marker.Stat()
++	if err != nil {
++		return nil, err
++	}
++	fileInfo, err := file.Stat()
++	if err != nil {
++		return nil, err
++	}
++	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(config.Plan.binding)
++	if err != nil {
++		return nil, err
++	}
++	record := RuntimeBootstrapPublicationRecord{SchemaVersion: 1, ID: uuid.New(), NodeIdentity: config.Plan.binding.Claim.NodeIdentity,
++		Directory: runtimeStartupIdentity(info), RecordFile: runtimeStartupIdentity(markerInfo), BootstrapFile: runtimeStartupIdentity(fileInfo),
++		BootstrapBytes: int64(len(wire)), BootstrapDigest: sha256.Sum256(wire), BindingDigest: sha256.Sum256(binding), RuntimeGID: config.Plan.gid, RecordedAt: time.Now().UTC()}
++	encoded, err := json.Marshal(record)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := marker.Write(encoded); err != nil {
++		return nil, err
++	}
++	if err := errors.Join(marker.Sync(), directory.Sync()); err != nil {
++		return nil, err
++	}
++	if err := checkpoint("intent-synced"); err != nil {
++		return nil, err
++	}
++	current, err := buildRuntimeBootstrap(ctx, config)
++	if err != nil || !bytes.Equal(current, wire) {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	if err := unix.Renameat2(int(directory.Fd()), runtimeBootstrapPending, int(directory.Fd()), runtimeBootstrapFilename, unix.RENAME_NOREPLACE); err != nil {
++		return nil, err
++	}
++	if err := directory.Sync(); err != nil {
++		return nil, err
++	}
++	if err := checkpoint("renamed"); err != nil {
++		return nil, err
++	}
++	// Validate the durable files while the Runtime still cannot traverse the
++	// directory. A corrupt pending inode must never be exposed as configuration.
++	if _, err := inspectRuntimeBootstrapFiles(ctx, directory, marker, false); err != nil {
++		return nil, err
++	}
++	if err := runtimePublicationDirectoryBound(config.Directory, directory); err != nil {
++		return nil, err
++	}
++	if err := directory.Chown(0, int(config.Plan.gid)); err != nil {
++		return nil, err
++	}
++	if err := directory.Chmod(0o750); err != nil {
++		return nil, err
++	}
++	if err := directory.Sync(); err != nil {
++		return nil, err
++	}
++	if err := checkpoint("exposed"); err != nil {
++		return nil, err
++	}
++	result, err = inspectRuntimeBootstrapFiles(ctx, directory, marker, true)
++	if err != nil {
++		return nil, err
++	}
++	current, err = buildRuntimeBootstrap(ctx, config)
++	if err != nil || !bytes.Equal(current, wire) {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	if err := checkpoint("verified"); err != nil {
++		return nil, err
++	}
++	if err := runtimePublicationDirectoryBound(config.Directory, directory); err != nil {
++		return nil, err
++	}
++	return result, nil
++}
++
++func buildRuntimeBootstrap(ctx context.Context, config RuntimeBootstrapPublicationConfig) ([]byte, error) {
++	if err := contextError(ctx); err != nil {
++		return nil, err
++	}
++	if os.Geteuid() != 0 || os.Getegid() != 0 || config.Plan == nil || config.Plan.binding == nil {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	if err := config.Journal.RequireRootCustody(ctx); err != nil {
++		return nil, err
++	}
++	status, err := config.Journal.Status(ctx)
++	if err != nil {
++		return nil, err
++	}
++	keys, err := config.Journal.AuthorityVerifierKeys(ctx)
++	if err != nil {
++		return nil, err
++	}
++	var manifest modelruntime.LaunchManifest
++	if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
++		return nil, err
++	}
++	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(config.Plan.binding)
++	if err != nil {
++		return nil, err
++	}
++	bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: manifest, AuthorityKeys: keys, RegistryKeys: config.RegistryKeys, RegistryBinding: binding,
++		Identity: modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}, Startup: status.BackendLifecycle,
++		JournalSocket: config.JournalSocket, StartupSocket: config.StartupSocket, RuntimeSocket: config.RuntimeSocket, JournalTimeout: config.JournalTimeout, CancelTimeout: config.CancelTimeout, ShutdownTimeout: config.ShutdownTimeout}
++	wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
++	if err != nil {
++		return nil, err
++	}
++	request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: config.Plan.binding.Claim.NodeIdentity, RegistryBindingDigest: sha256.Sum256(binding),
++		JournalID: status.JournalID, JournalScope: status.Scope, IncarnationID: status.BackendLifecycle.IncarnationID, LaunchDigest: status.BackendLifecycle.LaunchDigest}
++	if _, err := config.Journal.InspectStartup(ctx, manifest, request); err != nil {
++		return nil, err
++	}
++	return wire, config.Journal.RequireRootCustody(ctx)
++}
++
++// InspectRuntimeBootstrapPublication reopens only complete publication history.
++// It does not finish partial publication or consult/restore a live owner/grant.
++func InspectRuntimeBootstrapPublication(ctx context.Context, path string) (result *RuntimeBootstrapPublication, resultErr error) {
++	if err := contextError(ctx); err != nil {
++		return nil, err
++	}
++	directory, err := openRuntimePublicationDirectory(path)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		resultErr = errors.Join(resultErr, directory.Close())
++		if resultErr != nil {
++			result = nil
++		}
++	}()
++	marker, err := openRuntimePublicationFile(directory, runtimeBootstrapRecordName)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		resultErr = errors.Join(resultErr, marker.Close())
++		if resultErr != nil {
++			result = nil
++		}
++	}()
++	if err := unix.Flock(int(marker.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
++		return nil, err
++	}
++	return inspectRuntimeBootstrapFiles(ctx, directory, marker, true)
++}
++
++func openRuntimePublicationDirectory(path string) (*os.File, error) {
++	if os.Geteuid() != 0 || os.Getegid() != 0 || !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" || len(path) > 4096 {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	// Match the CLI reader: even root-owned sticky writable ancestors are
++	// rejected. Each next component is opened relative to the retained parent.
++	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, err
++	}
++	for _, component := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
++		var info unix.Stat_t
++		if err := unix.Fstat(fd, &info); err != nil || info.Uid != 0 || info.Mode&0o022 != 0 {
++			_ = unix.Close(fd)
++			return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++		}
++		next, err := unix.Openat(fd, component, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++		_ = unix.Close(fd)
++		if err != nil {
++			return nil, err
++		}
++		fd = next
++	}
++	return os.NewFile(uintptr(fd), path), nil
++}
++
++func runtimePublicationDirectoryBound(path string, directory *os.File) error {
++	current, err := openRuntimePublicationDirectory(path)
++	if err != nil {
++		return err
++	}
++	defer func() { _ = current.Close() }()
++	want, wantErr := directory.Stat()
++	got, gotErr := current.Stat()
++	if wantErr != nil || gotErr != nil || !os.SameFile(want, got) {
++		return errors.Join(ErrRuntimeBootstrapPublication, wantErr, gotErr)
++	}
++	return nil
++}
++
++func openRuntimePublicationFile(directory *os.File, name string) (*os.File, error) {
++	fd, err := unix.Openat(int(directory.Fd()), name, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, err
++	}
++	defer func() { _ = unix.Close(fd) }()
++	var info unix.Stat_t
++	if err := unix.Fstat(fd, &info); err != nil || info.Mode&unix.S_IFMT != unix.S_IFREG {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	descriptors, err := os.Open("/proc/self/fd")
++	if err != nil {
++		return nil, err
++	}
++	defer func() { _ = descriptors.Close() }()
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(int(descriptors.Fd()), &filesystem); err != nil || filesystem.Type != unix.PROC_SUPER_MAGIC {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	opened, err := unix.Openat(int(descriptors.Fd()), strconv.Itoa(fd), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK|unix.O_NOCTTY, 0)
++	if err != nil {
++		return nil, err
++	}
++	return os.NewFile(uintptr(opened), name), nil
++}
++
++func runtimePublicationNames(directory *os.File, expected []string) error {
++	fd, err := unix.Openat(int(directory.Fd()), ".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return err
++	}
++	copyDir := os.NewFile(uintptr(fd), "publication-names")
++	defer func() { _ = copyDir.Close() }()
++	names, err := copyDir.Readdirnames(4)
++	if err != nil && !errors.Is(err, io.EOF) {
++		return err
++	}
++	slices.Sort(names)
++	expected = slices.Clone(expected)
++	slices.Sort(expected)
++	if !slices.Equal(names, expected) {
++		return ErrRuntimeBootstrapPublication
++	}
++	return nil
++}
++
++func readRuntimePublicationFile(ctx context.Context, file *os.File, gid, mode uint32, maximum int64) ([]byte, unix.Stat_t, error) {
++	var first unix.Stat_t
++	if err := unix.Fstat(int(file.Fd()), &first); err != nil {
++		return nil, first, err
++	}
++	if first.Uid != 0 || first.Gid != gid || first.Mode != unix.S_IFREG|mode || first.Nlink != 1 || first.Size <= 0 || first.Size > maximum {
++		return nil, first, ErrRuntimeBootstrapPublication
++	}
++	if err := contextError(ctx); err != nil {
++		return nil, first, err
++	}
++	wire, err := io.ReadAll(io.NewSectionReader(file, 0, first.Size+1))
++	if err != nil {
++		return nil, first, err
++	}
++	var last unix.Stat_t
++	if err := unix.Fstat(int(file.Fd()), &last); err != nil {
++		return nil, first, err
++	}
++	last.Atim = first.Atim
++	if first != last || int64(len(wire)) != first.Size {
++		return nil, first, ErrRuntimeBootstrapPublication
++	}
++	return wire, first, contextError(ctx)
++}
++
++func inspectRuntimeBootstrapFiles(ctx context.Context, directory, marker *os.File, exposed bool) (*RuntimeBootstrapPublication, error) {
++	if err := runtimePublicationNames(directory, []string{runtimeBootstrapRecordName, runtimeBootstrapFilename}); err != nil {
++		return nil, err
++	}
++	wire, markerInfo, err := readRuntimePublicationFile(ctx, marker, 0, 0o600, 64<<10)
++	if err != nil {
++		return nil, err
++	}
++	var record RuntimeBootstrapPublicationRecord
++	if err := decodeRuntimeStartupLine(wire, &record); err != nil {
++		return nil, err
++	}
++	var root unix.Stat_t
++	if err := unix.Fstat(int(directory.Fd()), &root); err != nil {
++		return nil, err
++	}
++	gid, mode := uint32(0), uint32(0o700)
++	if exposed {
++		gid, mode = record.RuntimeGID, 0o750
++	}
++	var namedMarker unix.Stat_t
++	if err := unix.Fstatat(int(directory.Fd()), runtimeBootstrapRecordName, &namedMarker, unix.AT_SYMLINK_NOFOLLOW); err != nil || namedMarker.Dev != markerInfo.Dev || namedMarker.Ino != markerInfo.Ino {
++		return nil, errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	if record.SchemaVersion != 1 || record.ID == uuid.Nil || record.RuntimeGID == 0 || record.RuntimeGID == ^uint32(0) || record.RecordedAt.IsZero() || record.RecordedAt.Location() != time.UTC ||
++		root.Uid != 0 || root.Gid != gid || root.Mode != unix.S_IFDIR|mode || record.Directory != (runtimeStartupFileIdentity{Device: root.Dev, Inode: root.Ino}) || record.RecordFile != (runtimeStartupFileIdentity{Device: markerInfo.Dev, Inode: markerInfo.Ino}) {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	file, err := openRuntimePublicationFile(directory, runtimeBootstrapFilename)
++	if err != nil {
++		return nil, err
++	}
++	defer func() { _ = file.Close() }()
++	content, fileInfo, err := readRuntimePublicationFile(ctx, file, record.RuntimeGID, 0o440, modelruntime.MaximumRemoteBootstrapBytes)
++	if err != nil {
++		return nil, err
++	}
++	if record.BootstrapFile != (runtimeStartupFileIdentity{Device: fileInfo.Dev, Inode: fileInfo.Ino}) || record.BootstrapBytes != int64(len(content)) || record.BootstrapDigest != sha256.Sum256(content) {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	bootstrap, err := modelruntime.ParseRemoteRuntimeBootstrap(content)
++	if err != nil {
++		return nil, err
++	}
++	if record.BindingDigest != sha256.Sum256(bootstrap.RegistryBinding) {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	var binding velav1.WorkerBootstrapBinding
++	if err := proto.Unmarshal(bootstrap.RegistryBinding, &binding); err != nil {
++		return nil, err
++	}
++	if binding.GetClaim().GetNodeIdentity() != record.NodeIdentity {
++		return nil, ErrRuntimeBootstrapPublication
++	}
++	return &RuntimeBootstrapPublication{record: record, encoded: content}, nil
++}
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+new file mode 100644
+index 0000000..e066c11
+--- /dev/null
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+@@ -0,0 +1,635 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
++	"golang.org/x/sys/unix"
++)
++
++func publicationFixture(t *testing.T, actualCLI bool) RuntimeBootstrapPublicationConfig {
++	t.Helper()
++	if os.Geteuid() != 0 {
++		t.Skip("requires root Node in native Linux sandbox")
++	}
++	root, err := os.MkdirTemp("/run", "vela-publication-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(root) })
++	if err := os.Chmod(root, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	launch := runtimeLaunchFixture(t)
++	if actualCLI {
++		backend := &launch.bundle.WorkerInstances[0].ModelRuntimes[0]
++		backend.Command = []string{"/runtime-command.test", "-test.run=^TestModelRuntimeCommandDriverHelper$"}
++		backend.Environment = []string{"GO_WANT_VELA_MODEL_RUNTIME_DRIVER=1", "TEST_VELA_MODEL_RUNTIME_DRIVER_EVENTS=/var/lib/vela/stage-worker/scratch/events.log"}
++		backend.InitializationTimeout, backend.ShutdownTimeout = "5s", "5s"
++		launch.bind(t, 0, 0)
++	}
++	for _, name := range []string{"state", "publication"} {
++		if err := os.Mkdir(filepath.Join(root, name), 0o700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	validator, err := stageauthority.NewValidator(map[string][]byte{"authority": make([]byte, 32)}, time.Now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	routes, err := modelruntime.RemoteStartupBindings(launch.launch)
++	if err != nil {
++		t.Fatal(err)
++	}
++	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: launch.launch, Validator: validator, Routes: routes,
++		State: modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(root, "state"), Initialize: true}, Now: time.Now})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = owner.Close() })
++	if _, err := owner.RecordBackendStartupIntent(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	status, err := owner.Status(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	launch.binding.Pair.RuntimeJournalId, launch.binding.Pair.RuntimeScope = status.JournalID.String(), status.Scope[:]
++	launch.binding.Signature, launch.binding.SigningKeyId = nil, ""
++	launch.binding, err = launch.signer.Sign(launch.binding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := VerifyRuntimeLaunchPlan("cpu-node", launch.verifier, launch.binding, launch.wire)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return RuntimeBootstrapPublicationConfig{Directory: filepath.Join(root, "publication"), Plan: plan, Journal: owner,
++		RegistryKeys:  map[string][]byte{"registry-launch-test": ed25519.NewKeyFromSeed(bytes.Repeat([]byte{71}, 32)).Public().(ed25519.PublicKey)},
++		JournalSocket: filepath.Join(root, "node.sock"), StartupSocket: filepath.Join(root, "startup.sock"), RuntimeSocket: filepath.Join(root, "runtime.sock"),
++		JournalTimeout: 5 * time.Second, CancelTimeout: time.Second, ShutdownTimeout: 5 * time.Second}
++}
++
++func TestRuntimeBootstrapPublicationAccessHelper(t *testing.T) {
++	directory := os.Getenv("VELA_PUBLICATION_ACCESS")
++	if directory == "" {
++		t.Skip("non-root publication helper")
++	}
++	if os.Geteuid() != 10001 || os.Getegid() != 10001 {
++		t.Fatal("wrong workload credentials")
++	}
++	wire, err := modelruntime.ReadRemoteRuntimeBootstrapFile(t.Context(), filepath.Join(directory, runtimeBootstrapFilename))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := modelruntime.RemoteRuntimeServerConfig(wire); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.ReadFile(filepath.Join(directory, runtimeBootstrapRecordName)); !errors.Is(err, os.ErrPermission) {
++		t.Fatalf("private record accessible: %v", err)
++	}
++	for _, name := range []string{runtimeBootstrapFilename, runtimeBootstrapRecordName, "forged"} {
++		file, err := os.OpenFile(filepath.Join(directory, name), os.O_RDWR|os.O_CREATE, 0o600)
++		if file != nil {
++			_ = file.Close()
++		}
++		if !errors.Is(err, os.ErrPermission) {
++			t.Fatalf("workload can write %s: %v", name, err)
++		}
++	}
++	if err := os.Remove(filepath.Join(directory, runtimeBootstrapFilename)); !errors.Is(err, os.ErrPermission) {
++		t.Fatalf("workload can unlink bootstrap: %v", err)
++	}
++}
++
++func TestRuntimeBootstrapPublication(t *testing.T) {
++	config := publicationFixture(t, false)
++	publication, err := PublishRuntimeBootstrap(t.Context(), config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bootstrap, err := publication.Bootstrap()
++	if err != nil {
++		t.Fatal(err)
++	}
++	status, err := config.Journal.Status(t.Context())
++	if err != nil || bootstrap.Identity.JournalID != status.JournalID || bootstrap.Identity.Storage != status.Storage || bootstrap.Startup != status.BackendLifecycle || config.Plan.MatchManifest(bootstrap.Manifest) != nil {
++		t.Fatalf("publication is not derived from held journal and verified plan: %v", err)
++	}
++	bootstrap.RegistryBinding[0] ^= 1
++	bootstrap.AuthorityKeys["authority"][0] ^= 1
++	copyBootstrap, err := publication.Bootstrap()
++	if err != nil || bytes.Equal(copyBootstrap.RegistryBinding, bootstrap.RegistryBinding) {
++		t.Fatal("caller mutated publication snapshot")
++	}
++	reopened, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory)
++	if err != nil || reopened.Record() != publication.Record() {
++		t.Fatalf("history mismatch: %v", err)
++	}
++	binary, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeBootstrapPublicationAccessHelper$")
++	command.Env = []string{"VELA_PUBLICATION_ACCESS=" + config.Directory}
++	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 10001, Gid: 10001}}
++	if output, err := command.CombinedOutput(); err != nil {
++		t.Fatalf("non-root read/write boundary: %v %s", err, output)
++	}
++	if retry, err := PublishRuntimeBootstrap(t.Context(), config); err == nil || retry != nil {
++		t.Fatal("publication overwritten")
++	}
++	if err := config.Journal.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if history, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err != nil || history.Record() != publication.Record() {
++		t.Fatalf("closed owner destroyed history: %v", err)
++	}
++	t.Log("verified plan and held journal -> immutable snapshot; actual UID/GID 10001 can read only bootstrap; reopening returns history after owner closure")
++}
++
++func TestRuntimeBootstrapPublicationPreflight(t *testing.T) {
++	for _, mode := range []string{"nil-plan", "nil-journal", "closed-journal", "wrong-plan", "wrong-registry", "socket-alias", "writable-directory", "workload-directory", "nonempty", "sticky-parent", "cancelled"} {
++		t.Run(mode, func(t *testing.T) {
++			config := publicationFixture(t, false)
++			ctx := t.Context()
++			switch mode {
++			case "nil-plan":
++				config.Plan = nil
++			case "nil-journal":
++				config.Journal = nil
++			case "closed-journal":
++				if err := config.Journal.Close(); err != nil {
++					t.Fatal(err)
++				}
++			case "wrong-plan":
++				config.Plan = publicationFixture(t, false).Plan
++			case "wrong-registry":
++				config.RegistryKeys["registry-launch-test"][0] ^= 1
++			case "socket-alias":
++				config.StartupSocket = config.JournalSocket
++			case "writable-directory":
++				if err := os.Chmod(config.Directory, 0o770); err != nil {
++					t.Fatal(err)
++				}
++			case "workload-directory":
++				if err := os.Chown(config.Directory, 10001, 10001); err != nil {
++					t.Fatal(err)
++				}
++			case "nonempty":
++				if err := os.WriteFile(filepath.Join(config.Directory, "unexpected"), []byte("x"), 0o600); err != nil {
++					t.Fatal(err)
++				}
++			case "sticky-parent":
++				config.Directory = t.TempDir()
++			case "cancelled":
++				var cancel context.CancelFunc
++				ctx, cancel = context.WithCancel(ctx)
++				cancel()
++			}
++			if result, err := PublishRuntimeBootstrap(ctx, config); err == nil || result != nil {
++				t.Fatal("invalid publication accepted")
++			}
++			if _, err := os.Lstat(filepath.Join(config.Directory, runtimeBootstrapRecordName)); !errors.Is(err, os.ErrNotExist) {
++				t.Fatalf("preflight wrote intent: %v", err)
++			}
++		})
++	}
++}
++
++func TestRuntimeBootstrapPublicationBoundaries(t *testing.T) {
++	for _, phase := range []string{"intent-created", "bootstrap-synced", "intent-synced", "renamed", "exposed", "verified"} {
++		t.Run(phase, func(t *testing.T) {
++			config := publicationFixture(t, false)
++			fault := errors.New("lost publication response")
++			result, err := publishRuntimeBootstrap(t.Context(), config, func(point string) error {
++				if point == phase {
++					if observed, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err == nil || observed != nil {
++						t.Fatal("active publisher inspection succeeded")
++					}
++					return fault
++				}
++				return nil
++			})
++			if !errors.Is(err, fault) || result != nil {
++				t.Fatalf("boundary did not fail: %v", err)
++			}
++			if retry, err := PublishRuntimeBootstrap(t.Context(), config); err == nil || retry != nil {
++				t.Fatal("partial publication was retried")
++			}
++			history, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory)
++			complete := phase == "exposed" || phase == "verified"
++			if complete != (err == nil && history != nil) {
++				t.Fatalf("wrong recovery at %s: %v", phase, err)
++			}
++		})
++	}
++}
++
++func TestRuntimeBootstrapPublicationConcurrent(t *testing.T) {
++	config := publicationFixture(t, false)
++	start := make(chan struct{})
++	results := make(chan error, 8)
++	for range 8 {
++		go func() { <-start; _, err := PublishRuntimeBootstrap(t.Context(), config); results <- err }()
++	}
++	close(start)
++	successes := 0
++	for range 8 {
++		if <-results == nil {
++			successes++
++		}
++	}
++	if successes != 1 {
++		t.Fatalf("got %d successful publishers", successes)
++	}
++	if _, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestRuntimeBootstrapPublicationProcessCrash(t *testing.T) {
++	const modeKey = "VELA_PUBLICATION_CRASH"
++	if phase := os.Getenv(modeKey); phase != "" {
++		config := publicationFixture(t, false)
++		config.Directory = os.Getenv("VELA_PUBLICATION_CRASH_DIRECTORY")
++		control := os.NewFile(3, "publication-crash-boundary")
++		defer func() { _ = control.Close() }()
++		_, err := publishRuntimeBootstrap(t.Context(), config, func(point string) error {
++			if point == phase {
++				if _, err := control.WriteString(phase + "\n"); err != nil {
++					return err
++				}
++				select {}
++			}
++			return nil
++		})
++		t.Fatalf("Node did not stop at requested publication boundary: %v", err)
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("requires root Node")
++	}
++	binary, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, phase := range []string{"intent-created", "bootstrap-synced", "intent-synced", "renamed", "exposed", "verified"} {
++		t.Run(phase, func(t *testing.T) {
++			root, err := os.MkdirTemp("/run", "vela-publication-crash-")
++			if err != nil {
++				t.Fatal(err)
++			}
++			t.Cleanup(func() { _ = os.RemoveAll(root) })
++			directory := filepath.Join(root, "publication")
++			if err := os.Mkdir(directory, 0o700); err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
++			defer cancel()
++			command := exec.CommandContext(ctx, binary, "-test.run=^TestRuntimeBootstrapPublicationProcessCrash$", "-test.timeout=12s")
++			command.Env = []string{modeKey + "=" + phase, "VELA_PUBLICATION_CRASH_DIRECTORY=" + directory}
++			reader, writer, err := os.Pipe()
++			if err != nil {
++				t.Fatal(err)
++			}
++			t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
++			command.ExtraFiles = []*os.File{writer}
++			var output bytes.Buffer
++			command.Stdout, command.Stderr = &output, &output
++			if err := command.Start(); err != nil {
++				t.Fatal(err)
++			}
++			waited := false
++			t.Cleanup(func() {
++				if !waited {
++					_ = command.Process.Kill()
++					_ = command.Wait()
++				}
++				if t.Failed() {
++					t.Log(output.String())
++				}
++			})
++			if err := writer.Close(); err != nil {
++				t.Fatal(err)
++			}
++			if err := reader.SetReadDeadline(time.Now().Add(8 * time.Second)); err != nil {
++				t.Fatal(err)
++			}
++			point := make([]byte, len(phase)+1)
++			if _, err := io.ReadFull(reader, point); err != nil || string(point) != phase+"\n" {
++				t.Fatalf("wrong boundary: %q %v", point, err)
++			}
++			if err := command.Process.Kill(); err != nil {
++				t.Fatal(err)
++			}
++			err = command.Wait()
++			waited = true
++			var exit *exec.ExitError
++			if !errors.As(err, &exit) || ctx.Err() != nil {
++				t.Fatalf("Node not killed at boundary: %v", err)
++			}
++			status, ok := exit.Sys().(syscall.WaitStatus)
++			if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
++				t.Fatalf("unexpected exit: %v", status)
++			}
++			history, err := InspectRuntimeBootstrapPublication(t.Context(), directory)
++			complete := phase == "exposed" || phase == "verified"
++			if complete != (err == nil && history != nil) {
++				t.Fatalf("wrong SIGKILL recovery history at %s: %v", phase, err)
++			}
++			// Even a new valid owner/plan cannot consume the old directory again.
++			retry := publicationFixture(t, false)
++			retry.Directory = directory
++			if result, err := PublishRuntimeBootstrap(t.Context(), retry); err == nil || result != nil {
++				t.Fatal("SIGKILL history overwritten by new startup")
++			}
++			t.Logf("actual Node SIGKILL at %s: history_complete=%t, no publication retry or grant restoration", phase, complete)
++		})
++	}
++}
++
++func TestRuntimeBootstrapPublicationChanged(t *testing.T) {
++	for _, mode := range []string{"content", "file-copy", "file-link", "file-symlink", "file-fifo", "file-writable", "file-owner", "record-copy", "record-missing", "record-writable", "record-content", "directory-copy", "directory-writable", "extra"} {
++		t.Run(mode, func(t *testing.T) {
++			config := publicationFixture(t, false)
++			if _, err := PublishRuntimeBootstrap(t.Context(), config); err != nil {
++				t.Fatal(err)
++			}
++			path := filepath.Join(config.Directory, runtimeBootstrapFilename)
++			if strings.HasPrefix(mode, "record-") {
++				path = filepath.Join(config.Directory, runtimeBootstrapRecordName)
++			}
++			must := func(err error) {
++				t.Helper()
++				if err != nil {
++					t.Fatal(err)
++				}
++			}
++			switch mode {
++			case "content", "record-content":
++				must(os.WriteFile(path, []byte("{}"), 0o600))
++			case "file-copy", "record-copy":
++				wire, err := os.ReadFile(path)
++				must(err)
++				must(os.Rename(path, path+".old"))
++				must(os.WriteFile(path, wire, 0o600))
++				if mode == "file-copy" {
++					must(os.Chown(path, 0, 10001))
++					must(os.Chmod(path, 0o440))
++				}
++				must(os.Remove(path + ".old"))
++			case "file-link":
++				must(os.Link(path, filepath.Join(filepath.Dir(config.Directory), "linked")))
++			case "file-symlink":
++				must(os.Rename(path, path+".old"))
++				must(os.Symlink(path+".old", path))
++			case "file-fifo":
++				must(os.Remove(path))
++				must(unix.Mkfifo(path, 0o440))
++			case "file-writable":
++				must(os.Chmod(path, 0o640))
++			case "file-owner":
++				must(os.Chown(path, 10001, 10001))
++			case "record-missing":
++				must(os.Remove(path))
++			case "record-writable":
++				must(os.Chmod(path, 0o660))
++			case "directory-copy":
++				must(os.Rename(config.Directory, config.Directory+".old"))
++				must(os.Mkdir(config.Directory, 0o750))
++				must(os.Chown(config.Directory, 0, 10001))
++				for _, name := range []string{runtimeBootstrapFilename, runtimeBootstrapRecordName} {
++					must(os.Rename(filepath.Join(config.Directory+".old", name), filepath.Join(config.Directory, name)))
++				}
++			case "directory-writable":
++				must(os.Chmod(config.Directory, 0o770))
++			case "extra":
++				must(os.WriteFile(filepath.Join(config.Directory, "extra"), []byte("x"), 0o600))
++			}
++			if result, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err == nil || result != nil {
++				t.Fatal("changed publication accepted")
++			}
++		})
++	}
++}
++
++func TestRuntimeBootstrapPublicationCustodyLoss(t *testing.T) {
++	for _, phase := range []string{"intent-synced", "renamed", "exposed"} {
++		t.Run(phase, func(t *testing.T) {
++			config := publicationFixture(t, false)
++			result, err := publishRuntimeBootstrap(t.Context(), config, func(point string) error {
++				if point == phase {
++					return config.Journal.Close()
++				}
++				return nil
++			})
++			if err == nil || result != nil {
++				t.Fatal("publication returned success after custody loss")
++			}
++			_, historyErr := InspectRuntimeBootstrapPublication(t.Context(), config.Directory)
++			if (phase == "exposed") != (historyErr == nil) {
++				t.Fatalf("custody loss misclassified history: %v", historyErr)
++			}
++		})
++	}
++	for _, mode := range []string{"pending-corrupt", "directory-replaced", "record-replaced"} {
++		t.Run(mode, func(t *testing.T) {
++			config := publicationFixture(t, false)
++			result, err := publishRuntimeBootstrap(t.Context(), config, func(point string) error {
++				if point != "intent-synced" {
++					return nil
++				}
++				switch mode {
++				case "pending-corrupt":
++					return os.WriteFile(filepath.Join(config.Directory, runtimeBootstrapPending), []byte("{}"), 0o440)
++				case "directory-replaced":
++					if err := os.Rename(config.Directory, config.Directory+".old"); err != nil {
++						return err
++					}
++					return os.Mkdir(config.Directory, 0o700)
++				default:
++					path := filepath.Join(config.Directory, runtimeBootstrapRecordName)
++					wire, err := os.ReadFile(path)
++					if err != nil {
++						return err
++					}
++					if err := os.Rename(path, path+".old"); err != nil {
++						return err
++					}
++					if err := os.WriteFile(path, wire, 0o600); err != nil {
++						return err
++					}
++					return os.Remove(path + ".old")
++				}
++			})
++			if err == nil || result != nil {
++				t.Fatal("changed pending publication returned success")
++			}
++			info, err := os.Stat(config.Directory)
++			if err != nil || info.Mode().Perm() != 0o700 {
++				t.Fatalf("invalid publication exposed: %v", err)
++			}
++		})
++	}
++}
++
++func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
++	if _, err := os.Stat("/vela-model-runtime"); err != nil {
++		t.Skip("requires actual native CLI sandbox")
++	}
++	config := publicationFixture(t, true)
++	var manifest modelruntime.LaunchManifest
++	if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
++		t.Fatal(err)
++	}
++	scratch := manifest.Runtimes[0].ScratchRoot
++	for _, path := range []string{scratch, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot} {
++		if err := os.MkdirAll(path, 0o755); err != nil {
++			t.Fatal(err)
++		}
++		if err := errors.Join(os.Chown(path, 10001, 10001), os.Chmod(path, 0o700)); err != nil {
++			t.Fatal(err)
++		}
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(scratch) })
++	config.RuntimeSocket = filepath.Join(scratch, "runtime.sock")
++	publication, err := PublishRuntimeBootstrap(t.Context(), config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bootstrap, err := publication.Bootstrap()
++	if err != nil {
++		t.Fatal(err)
++	}
++	listen := func(path string) *net.UnixListener {
++		t.Helper()
++		listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
++		if err != nil {
++			t.Fatal(err)
++		}
++		t.Cleanup(func() { _ = listener.Close() })
++		if err := errors.Join(os.Chown(path, 0, 10001), os.Chmod(path, 0o660)); err != nil {
++			t.Fatal(err)
++		}
++		return listener
++	}
++	listener := listen(config.JournalSocket)
++	credentials := RuntimeCallerCredentials{UID: 10001, GID: 10001}
++	state := filepath.Join(filepath.Dir(config.Directory), "state")
++	runtime := journalEndpointStartCredentials(t, listener, state, credentials)
++	worker := journalEndpointStartCredentials(t, listener, state, credentials)
++	endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtime.owner, worker.owner)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = endpoint.Close() })
++	server, err := NewJournalServer(endpoint, JournalServerConfig{Credentials: []RuntimeCallerCredentials{credentials}, MaxConcurrent: 2, ExchangeTimeout: 30 * time.Second})
++	if err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan error, 1)
++	go func() { done <- server.Serve(t.Context(), listener) }()
++	t.Cleanup(func() {
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		_ = server.Shutdown(ctx)
++	})
++	startupListener := listen(config.StartupSocket)
++	if err := runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: filepath.Join(config.Directory, runtimeBootstrapFilename)}); err != nil {
++		t.Fatal(err)
++	}
++	connection := journalEndpointAccept(t, startupListener)
++	defer func() { _ = connection.Close() }()
++	caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = caller.Close() }()
++	request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
++	if err != nil {
++		t.Fatal(err)
++	}
++	observed, err := caller.Inspect(t.Context())
++	if err != nil || observed.HostPID != int32(runtime.process.Pid) || request.RegistryBindingDigest != publication.Record().BindingDigest {
++		t.Fatalf("CLI caller not bound to publication: %v", err)
++	}
++	if _, err := config.Journal.InspectStartup(t.Context(), manifest, request); err != nil {
++		t.Fatal(err)
++	}
++	events := filepath.Join(scratch, "events.log")
++	if _, err := os.Stat(events); !errors.Is(err, os.ErrNotExist) {
++		t.Fatal("backend initialized before Node fixture decision")
++	}
++	// Explicit test Permit only: publishing configuration is never a grant.
++	decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: true})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := caller.Reply(t.Context(), decision); err != nil {
++		t.Fatal(err)
++	}
++	deadline := time.Now().Add(10 * time.Second)
++	for {
++		wire, _ := os.ReadFile(events)
++		_, socketErr := os.Stat(config.RuntimeSocket)
++		if string(wire) == "initialize\n" && socketErr == nil {
++			break
++		}
++		if time.Now().After(deadline) {
++			t.Fatal("published config CLI did not initialize")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++	reply := journalServerRequest(t, worker, journalEndpointControl{WorkerSocket: config.RuntimeSocket, WorkerAction: "discover-only", Manifest: &manifest}).Discovery
++	if len(reply.GetIdentities()) != 1 || reply.Identities[0].GetModelRuntimeEpoch() != 2 {
++		t.Fatalf("actual Worker discovery: %v", reply)
++	}
++	if err := runtime.process.Signal(syscall.SIGTERM); err != nil {
++		t.Fatal(err)
++	}
++	select {
++	case <-runtime.done:
++	case <-time.After(10 * time.Second):
++		t.Fatal("actual CLI did not exit")
++	}
++	if !runtime.command.ProcessState.Success() {
++		t.Fatal(runtime.command.ProcessState)
++	}
++	wire, err := os.ReadFile(events)
++	if err != nil || string(wire) != "initialize\nshutdown\n" {
++		t.Fatalf("actual backend lifecycle: %q %v", wire, err)
++	}
++	status, err := config.Journal.Status(t.Context())
++	if err != nil || status.BackendLifecycle != bootstrap.Startup || status.Highest != 0 {
++		t.Fatalf("CLI changed publication incarnation: %v", err)
++	}
++	entries, err := os.ReadDir(scratch)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, entry := range entries {
++		if entry.Name() != "inputs" && entry.Name() != "outputs" && entry.Name() != "events.log" {
++			t.Fatalf("unexpected local Runtime state: %s", entry.Name())
++		}
++	}
++	if err := server.Shutdown(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	assertJournalServerJoined(t, server, done)
++	t.Log("Node verified plan + held journal publication -> actual UID/GID 10001 CLI -> explicit fixture Permit -> real CPU backend initialize/shutdown, actual Worker epoch=2, no local epoch/journal")
++}

@@ -126,6 +126,20 @@ func (owner *ExecutionJournalOwner) Status(ctx context.Context) (ExecutionJourna
 	return owner.store.status(), nil
 }
 
+// AuthorityVerifierKeys derives publication keys from the live journal's actual
+// verifier. A second deployment keyring must not silently diverge from it.
+func (owner *ExecutionJournalOwner) AuthorityVerifierKeys(ctx context.Context) (map[string][]byte, error) {
+	if owner == nil || ctx == nil {
+		return nil, ErrJournalCommand
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if err := owner.check(ctx); err != nil {
+		return nil, err
+	}
+	return owner.store.scope.floor.validator.VerifierKeyring(), nil
+}
+
 // InspectStartup compares the held journal and its actual routes with an
 // independently approved manifest and first-startup declaration. It grants no
 // startup permission and does not authenticate the process or filesystem owner.

@@ -1,0 +1,9 @@
+d9687d5b3bed8fb4ffe5878af2476b4e8d63b1db
+ M hack/run-remote-runtime-cli-native.sh
+ M internal/modelruntime/journal_owner.go
+ M internal/modelruntime/journal_owner_startup_test.go
+ M internal/nodeagent/journal_endpoint_linux_test.go
+ M internal/nodeagent/journal_worker_barrier_linux_test.go
+ M internal/stageauthority/authority.go
+?? internal/nodeagent/runtime_bootstrap_publication_linux.go
+?? internal/nodeagent/runtime_bootstrap_publication_linux_test.go

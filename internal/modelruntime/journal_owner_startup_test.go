@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -12,6 +13,37 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestJournalOwnerPublicationKeysRemainBoundToHeldVerifier(t *testing.T) {
+	config, owner, _ := remoteRuntimeServerFixture(t)
+	want := config.Validator.VerifierKeyring()
+	keys, err := owner.AuthorityVerifierKeys(t.Context())
+	if err != nil || len(keys) == 0 || !reflect.DeepEqual(keys, want) {
+		t.Fatalf("publication keys differ from journal verifier: %v", err)
+	}
+	for id := range keys {
+		keys[id][0] ^= 1
+		delete(keys, id)
+	}
+	for id := range want {
+		want[id][0] ^= 1
+	}
+	current, err := owner.AuthorityVerifierKeys(t.Context())
+	if err != nil || !reflect.DeepEqual(current, config.Validator.VerifierKeyring()) || reflect.DeepEqual(current, want) {
+		t.Fatalf("public snapshot mutation changed journal verifier: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if keys, err := owner.AuthorityVerifierKeys(ctx); err == nil || keys != nil {
+		t.Fatal("canceled publication returned keys")
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := owner.AuthorityVerifierKeys(t.Context()); err == nil || keys != nil {
+		t.Fatal("lost journal custody returned publication keys")
+	}
+}
 
 func TestJournalOwnerInspectStartupRequiresHeldExactFirstUse(t *testing.T) {
 	for _, fault := range []string{"valid", "manifest", "journal", "scope", "incarnation", "launch", "wrong-route-epoch", "changed-state", "closed", "canceled"} {
