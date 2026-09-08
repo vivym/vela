@@ -30,22 +30,23 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 		return nil, nil, err
 	}
 	service.mu.Lock()
-	if err := service.executionCallAllowedLocked(verified); err != nil {
-		service.mu.Unlock()
-		return nil, nil, err
+	defer service.mu.Unlock()
+	if service.active == nil || service.active.verified.Digest != verified.Digest {
+		return nil, nil, errActiveAuthorityMismatch
 	}
-	active, generation := service.active, service.generation
-	var confirmed *stageauthority.Verified
-	if active.backendAuthority != nil {
-		copy := copyVerified(*active.backendAuthority)
-		confirmed = &copy
+	if service.active.deadlineExpired {
+		return nil, nil, errExecutionDeadline
 	}
-	service.mu.Unlock()
-	// operationMu and admission.mu retain execution/candidate serialization.
-	// Do not hold service.mu during durable I/O: the watchdog and Shutdown
-	// need it to fence this generation while the owner reply is outstanding.
+	if service.active.pendingCancellations != 0 {
+		return nil, nil, errExecutionCancellation
+	}
+	select {
+	case <-service.closed:
+		return nil, nil, errors.New("ModelRuntime service is closed")
+	default:
+	}
 	if admission.store != nil {
-		if err := admission.store.saveCandidatesContext(ctx, verified, confirmed); err != nil {
+		if err := admission.store.saveCandidatesContext(ctx, verified, service.active.backendAuthority); err != nil {
 			return nil, nil, admission.failStateLocked(err)
 		}
 		// Persistence must not permit dispatch after the signed grant expires.
@@ -55,14 +56,6 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-	}
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.active != active || service.generation != generation {
-		return nil, nil, errActiveAuthorityMismatch
-	}
-	if err := service.executionCallAllowedLocked(verified); err != nil {
-		return nil, nil, err
 	}
 	callCtx, cancel := context.WithCancelCause(ctx)
 	call := &backendExecutionCall{generation: service.generation, cancel: cancel}
@@ -75,24 +68,6 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 		service.mu.Unlock()
 		cancel(nil)
 	}, nil
-}
-
-func (service *Service) executionCallAllowedLocked(verified stageauthority.Verified) error {
-	if service.active == nil || service.active.verified.Digest != verified.Digest {
-		return errActiveAuthorityMismatch
-	}
-	if service.active.deadlineExpired {
-		return errExecutionDeadline
-	}
-	if service.active.pendingCancellations != 0 {
-		return errExecutionCancellation
-	}
-	select {
-	case <-service.closed:
-		return errors.New("ModelRuntime service is closed")
-	default:
-		return nil
-	}
 }
 
 func executionCallError(ctx context.Context, err error) error {

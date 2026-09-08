@@ -1,0 +1,12 @@
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/reply
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/reply
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/directory-sync
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/directory-sync
+--- PASS: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence (0.36s)
+    --- PASS: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/reply (0.10s)
+    --- PASS: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/reply (0.07s)
+    --- PASS: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/directory-sync (0.09s)
+    --- PASS: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/directory-sync (0.09s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	2.052s

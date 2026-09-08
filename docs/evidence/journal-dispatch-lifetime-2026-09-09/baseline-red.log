@@ -1,0 +1,17 @@
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/reply
+    journal_dispatch_lifetime_test.go:103: candidate persistence blocked the execution lifetime signal
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/reply
+    journal_dispatch_lifetime_test.go:103: candidate persistence blocked the execution lifetime signal
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/directory-sync
+    journal_dispatch_lifetime_test.go:103: candidate persistence blocked the execution lifetime signal
+=== RUN   TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/directory-sync
+    journal_dispatch_lifetime_test.go:103: candidate persistence blocked the execution lifetime signal
+--- FAIL: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence (8.73s)
+    --- FAIL: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/reply (2.16s)
+    --- FAIL: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/reply (2.16s)
+    --- FAIL: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/watchdog/directory-sync (2.22s)
+    --- FAIL: TestJournalRemoteCandidatePersistenceRetainsLifetimeFence/shutdown/directory-sync (2.19s)
+FAIL
+FAIL	github.com/vivym/vela/internal/modelruntime	11.017s
+FAIL

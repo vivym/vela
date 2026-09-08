@@ -47,6 +47,11 @@ CPU Job campaign 在
 `NewSupervisorWithExecutionFloor` 使用本地 `runtime-admission` 目录。
 因此，真实 RPC 组件证据与完整 Job 证据目前仍来自两种不同装配。
 
+新增 [candidate 持久化期间的生命周期保护](journal-dispatch-lifetime-evidence-2026-09-09.md)
+修复调用前与 backend 确认时的 Service 锁阻塞：watchdog/Shutdown 能在这两处
+I/O 未返回时处理当前执行，调用前还会重新核对 generation 与生命周期。
+共享 admission、其他持久化和不合作 backend 的停止时限仍需独立验证。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "9646404497b2de82fda9dac187de96dcc363cd2a",
+  "source_tree_sha256": "0aecc1e2bed14c076b635209660fbfddf33717f6bd65ad6bf15d15328bb5485c",
+  "source_file_count": 982,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "cpu_source_tree_sha256": "bbd8af44085d96466103fe7c3d1cda658d59931e198aa29970428d053b27eaad",
+  "cpu_source_digest_method": "SHA256 of compact sorted JSON map of Go/SQL/module/media source paths to hex file SHA256, matching cpuLoadSourceDigest",
+  "postgres_schema": 95,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "native_suites": {
+    "modelruntime": {
+      "main_tests": [
+        "TestJournalResponseBindsDurableAcknowledgement",
+        "TestJournalResponseReadFailuresAreNotTransportUnavailable",
+        "TestJournalOwnerNonAdmissionRejectsWithoutPublishing",
+        "TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof",
+        "TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent",
+        "TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint",
+        "TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent",
+        "TestExecutionNonAdmissionDoesNotInferHistoricalCoverageAfterRestart",
+        "TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover",
+        "TestExecutionNonAdmissionRejectsConcurrentAcceptedPrepare",
+        "TestExecutionNonAdmissionHistoryRejectsCorruption",
+        "TestExecutionNonAdmissionHistoryBoundsWithoutEvictingProof",
+        "TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource",
+        "TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn",
+        "TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait",
+        "TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads",
+        "TestJournalRemoteCandidatePersistenceRetainsLifetimeFence",
+        "TestJournalOwnerAPIWorkflowAndLostReplyReplay",
+        "TestJournalOwnerAPIWorkerCheckpoints",
+        "TestJournalOwnerAPIRejectsWithoutPoisoning",
+        "TestJournalCommandRejectsWireAuthorityInjection",
+        "TestJournalOwnerAPIStorageUncertaintyAndCancellation",
+        "TestJournalOwnerAPIHistoryBoundAndHealth",
+        "TestJournalOwnerAPITrustedRouteAndClose",
+        "TestJournalOwnerInspectStartupRequiresHeldExactFirstUse",
+        "TestJournalRemoteReadContentionDoesNotPoisonAdmission",
+        "TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence",
+        "TestJournalRemoteReadIntegrityFailuresRemainFenced",
+        "TestJournalRemoteReadRetryObservesNewWorkerFloor",
+        "TestJournalRemoteCancellationBoundsAdmission",
+        "TestJournalRemoteWriteReadbackSharesDeadline",
+        "TestJournalRemoteReadTimeoutCanRetry",
+        "TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory",
+        "TestJournalRemoteUncertainAdmissionNeverEntersBackend",
+        "TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation",
+        "TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole",
+        "TestJournalReadRejectsMixedPagesAndPreservesSnapshot",
+        "TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup",
+        "TestRuntimeServerFreezesLaunchBeforeBackendCallbacks",
+        "TestRuntimeServerDrainDoesNotRetireBackendIncarnation",
+        "TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch",
+        "TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories",
+        "TestRuntimeServerRemoteStartupBeforeFactories",
+        "TestRuntimeServerRemoteStartupRejectsMixedCustody",
+        "TestTerminalNonAdmissionRPCRejectsInvalidScopes",
+        "TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency",
+        "TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend",
+        "TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof",
+        "TestTerminalNonAdmissionReplayBindsExactHistoricalScope",
+        "TestTerminalNonAdmissionSerializesWithAcceptedPrepare",
+        "TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence",
+        "TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover",
+        "TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders",
+        "TestTerminalNonAdmissionBoundNeverEvictsOldProof",
+        "TestTerminalNonAdmissionRecoveryRejectsCorruptProofs",
+        "TestTerminalNonAdmissionSchema3UpgradePreservesEvidence",
+        "TestTerminalNonAdmissionSurvivesAbruptProcessExit",
+        "TestTerminalNonAdmissionProcessHelper"
+      ],
+      "skips": 0,
+      "races": 0
+    },
+    "node-startup": {
+      "main_tests": [
+        "TestJournalServerCancellationSurvivesUnresponsiveNode",
+        "TestJournalEndpoint",
+        "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+        "TestJournalServer",
+        "TestJournalServerLiveSupervisorRecoversAfterOverload",
+        "TestJournalServerTimeoutAndJoin",
+        "TestJournalServerListenerFailure",
+        "TestJournalServerConfiguration",
+        "TestJournalServerWorkerBarrierRecoversAfterOverload",
+        "TestRuntimeCallerRejectsInvalidMessages",
+        "TestRuntimeChannelRoundTrip",
+        "TestRuntimeChannelLargeRequestBounds",
+        "TestRuntimeChannelRejectsUntrustedExchange",
+        "TestRuntimeChannelReplyRejectsLostLifetime",
+        "TestRuntimeStartupLedgerBeforeActualFactory",
+        "TestRuntimeStartupLedgerRetainsExactOwnerExit",
+        "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner",
+        "TestRuntimeStartupLedgerReservesExitCapacity",
+        "TestRuntimeStartupLedgerRejectsUnboundRequests",
+        "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed",
+        "TestRuntimeStartupLedgerRejectsMissingAndChangedState",
+        "TestRuntimeStartupReservationProcessCrashRecovery",
+        "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal",
+        "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter",
+        "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent"
+      ],
+      "skips": 0,
+      "races": 0
+    }
+  },
+  "runtime_race_seconds": 104.236,
+  "cpu_integration_seconds": 45.441,
+  "cpu_campaigns": 3,
+  "baseline_expected_failures": 4,
+  "intermediate_failure": "Only pre-dispatch candidate I/O fixed: 2 confirmation fsync cases still blocked lifecycle signaling. Both paths are fixed in final source. Intermediate source patch and raw native failure are preserved.",
+  "checks": [
+    {
+      "command": "go test -race ./internal/modelruntime -count=1 -timeout=6m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/runtime-race.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 golangci-lint v2.13.1 run ./internal/modelruntime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./internal/modelruntime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/linux-cross.log"
+    },
+    {
+      "command": "bash hack/run-journal-owner-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=2 VELA_CPU_MOCK_WIDTH=3 VELA_CPU_MOCK_TIMEOUT=5m go test -race -tags=integration ./internal/integration -run '^TestCPUMock(ProductionLoopJob|DurableStreamExactCache|ExactCacheSourceTarget)Campaign$' -count=1 -v -timeout=8m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/cpu-campaigns.log"
+    },
+    {
+      "command": "go test -race ./internal/modelruntime -run '^TestJournalRemoteCandidatePersistenceRetainsLifetimeFence$' -count=1 -v -timeout=45s",
+      "exit_code": 0,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/focused.log"
+    },
+    {
+      "command": "go test -overlay <two recorded baseline files mapped to their original paths> -race ./internal/modelruntime -run '^TestJournalRemoteCandidatePersistenceRetainsLifetimeFence$' -count=1 -v -timeout=45s",
+      "exit_code": 1,
+      "artifact": "docs/evidence/journal-dispatch-lifetime-2026-09-09/baseline-red.log"
+    }
+  ],
+  "claim_boundary": "Four controlled watchdog/shutdown persistence cases; native test owner and transport run in one process. Existing CPU ProductionAgent loop and exact-cache campaigns retain local Runtime journals. No fixed stop bound, independent-process crash, protected full Job, grant issuance, descendant containment, GPU or production evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/baseline-backend_authority.go.txt",
+      "bytes": 5910,
+      "sha256": "2316ead0183b6b678f6b65b1c1f8e64ace44e4b3c2e35c2b387d56e1ba897b32"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/baseline-execution_call.go.txt",
+      "bytes": 2288,
+      "sha256": "832ab6e0ac70c26af8b5f19981391b6c334dd3c0c261f248a50c0b822448d270"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/baseline-red.log",
+      "bytes": 1371,
+      "sha256": "3e96d4b49bf00fed710bcc39e183e8d8e4117f4761f752b5f7c97c9f8a241939"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/binaries.sha256",
+      "bytes": 325,
+      "sha256": "20432716102cf6cf31b733c70b745d672eebc6616b5d80cb8d4b1af23cf9565e"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "ac3e10bd5b8f14a3483ceed9df420d34c1a86459433b069c546705cc00a3cfce"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "7aabdb29236e76c5129b9d884d5ed159e2111d2123e7bb26fe9713f11c7ff5b4"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/cpu-campaigns.log",
+      "bytes": 56019,
+      "sha256": "396d7f6eb7c1641287895f1e882483050e2772e183b764f2864ed489871772fc"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/cpu-receipts.json",
+      "bytes": 39779,
+      "sha256": "24615d1a5cdbb954ff227253116dc101e0ec7accb765aa6e6c56c347e7246174"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/cpu-source-files.json",
+      "bytes": 114650,
+      "sha256": "69481d4bf49a04f861d433d4e981d79bfd5d001718171e25368bde6930afacd0"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/focused.log",
+      "bytes": 953,
+      "sha256": "ccf3a8444032b74a242cb3ec1fc61c85473ab773000e5d852e535f87f4d7c093"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "077b18f308f92a85e5d69a1ee277ea1feee5f15b3e500a1b14b58067d7130ede"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/intermediate-native-failure.log",
+      "bytes": 43773,
+      "sha256": "ebb4735815756144eb552fc1ebfc28733aec3e416b29738689c9073a0baa6b40"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/intermediate-source.patch",
+      "bytes": 8025,
+      "sha256": "e4a7c347570395a60bc4efe52fca86ff9f5b3e0be91835c3f788680cfc4f35a7"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/linux-cross.log",
+      "bytes": 56,
+      "sha256": "d2af728c2e7a45e55314c4ca234288f67c0f5276ee992b14ab17319f37bbaf3a"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/modelruntime.log",
+      "bytes": 43569,
+      "sha256": "2fd46e66422b234de5c60e7c9772ff855f835e7b23fd668c6058aaabf394ee37"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/native-runner.log",
+      "bytes": 103,
+      "sha256": "c0ba6acb17565c7566e18b0a084ba2ab760ae914ba590f30e2ccfb8f803ac048"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/node-startup.log",
+      "bytes": 36675,
+      "sha256": "7777c9262f5eaaac39c700ae558b107be45aae7a0987ac7c100c3efb43c85489"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/repository-test.log",
+      "bytes": 6838,
+      "sha256": "eab4f7ee5a61779ef2f3448afcb11ac8bcaa69d355316c11152b96240bf22613"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/runtime-race.log",
+      "bytes": 58,
+      "sha256": "9bb75831673e256274fad55f33b76ed0e9f5eb72e8cc7d54a379613a885da4ae"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/source-files.json",
+      "bytes": 115934,
+      "sha256": "00cda6476619dd498a5d68a42b03b07b6cc76790d16bb2ac0337063db1e6b536"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "b3b9ef32dd3118dd3909c16586eedbd05443b7b27e76cbc29a1d3cae95b19424"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/source.patch",
+      "bytes": 9755,
+      "sha256": "9aa364c873cd0f4103228556a24b3ff42e14a93e69f17d6df4bfafc06e4b7e83"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/source.txt",
+      "bytes": 245,
+      "sha256": "9cfee508be24e6f1572c42782847ecfa4682da003f2e6e3c3cb07aab874dc8e2"
+    },
+    {
+      "path": "docs/evidence/journal-dispatch-lifetime-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

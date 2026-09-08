@@ -1,0 +1,266 @@
+diff --git a/internal/modelruntime/backend_authority.go b/internal/modelruntime/backend_authority.go
+index 0c31dd0..066c5be 100644
+--- a/internal/modelruntime/backend_authority.go
++++ b/internal/modelruntime/backend_authority.go
+@@ -32,15 +32,25 @@ func (service *Service) confirmBackendAuthority(ctx context.Context, verified st
+ 		return err
+ 	}
+ 	service.mu.Lock()
+-	defer service.mu.Unlock()
+-	if service.active != nil && service.active.verified.Digest == verified.Digest {
+-		if admission.store != nil {
+-			if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
+-				return admission.failStateLocked(err)
+-			}
++	active := service.active
++	matched := active != nil && active.verified.Digest == verified.Digest
++	service.mu.Unlock()
++	if !matched {
++		return ctx.Err()
++	}
++	// Preserve the backend's observed envelope without blocking expiry or
++	// Shutdown behind journal I/O. operationMu and admission.mu still exclude
++	// another command or replacement of this execution.
++	if admission.store != nil {
++		if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
++			return admission.failStateLocked(err)
+ 		}
++	}
++	service.mu.Lock()
++	defer service.mu.Unlock()
++	if service.active == active {
+ 		confirmed := copyVerified(verified)
+-		service.active.backendAuthority = &confirmed
++		active.backendAuthority = &confirmed
+ 	}
+ 	return ctx.Err()
+ }
+diff --git a/internal/modelruntime/execution_call.go b/internal/modelruntime/execution_call.go
+index b92c248..170d90c 100644
+--- a/internal/modelruntime/execution_call.go
++++ b/internal/modelruntime/execution_call.go
+@@ -30,23 +30,22 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
+ 		return nil, nil, err
+ 	}
+ 	service.mu.Lock()
+-	defer service.mu.Unlock()
+-	if service.active == nil || service.active.verified.Digest != verified.Digest {
+-		return nil, nil, errActiveAuthorityMismatch
+-	}
+-	if service.active.deadlineExpired {
+-		return nil, nil, errExecutionDeadline
+-	}
+-	if service.active.pendingCancellations != 0 {
+-		return nil, nil, errExecutionCancellation
++	if err := service.executionCallAllowedLocked(verified); err != nil {
++		service.mu.Unlock()
++		return nil, nil, err
+ 	}
+-	select {
+-	case <-service.closed:
+-		return nil, nil, errors.New("ModelRuntime service is closed")
+-	default:
++	active, generation := service.active, service.generation
++	var confirmed *stageauthority.Verified
++	if active.backendAuthority != nil {
++		copy := copyVerified(*active.backendAuthority)
++		confirmed = &copy
+ 	}
++	service.mu.Unlock()
++	// operationMu and admission.mu retain execution/candidate serialization.
++	// Do not hold service.mu during durable I/O: the watchdog and Shutdown
++	// need it to fence this generation while the owner reply is outstanding.
+ 	if admission.store != nil {
+-		if err := admission.store.saveCandidatesContext(ctx, verified, service.active.backendAuthority); err != nil {
++		if err := admission.store.saveCandidatesContext(ctx, verified, confirmed); err != nil {
+ 			return nil, nil, admission.failStateLocked(err)
+ 		}
+ 		// Persistence must not permit dispatch after the signed grant expires.
+@@ -57,6 +56,14 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
+ 			return nil, nil, err
+ 		}
+ 	}
++	service.mu.Lock()
++	defer service.mu.Unlock()
++	if service.active != active || service.generation != generation {
++		return nil, nil, errActiveAuthorityMismatch
++	}
++	if err := service.executionCallAllowedLocked(verified); err != nil {
++		return nil, nil, err
++	}
+ 	callCtx, cancel := context.WithCancelCause(ctx)
+ 	call := &backendExecutionCall{generation: service.generation, cancel: cancel}
+ 	service.backendCall = call
+@@ -70,6 +77,24 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
+ 	}, nil
+ }
+ 
++func (service *Service) executionCallAllowedLocked(verified stageauthority.Verified) error {
++	if service.active == nil || service.active.verified.Digest != verified.Digest {
++		return errActiveAuthorityMismatch
++	}
++	if service.active.deadlineExpired {
++		return errExecutionDeadline
++	}
++	if service.active.pendingCancellations != 0 {
++		return errExecutionCancellation
++	}
++	select {
++	case <-service.closed:
++		return errors.New("ModelRuntime service is closed")
++	default:
++		return nil
++	}
++}
++
+ func executionCallError(ctx context.Context, err error) error {
+ 	if cause := context.Cause(ctx); cause != nil {
+ 		return errors.Join(err, cause)
+diff --git a/internal/modelruntime/execution_state_export_test.go b/internal/modelruntime/execution_state_export_test.go
+index ef32575..86942d4 100644
+--- a/internal/modelruntime/execution_state_export_test.go
++++ b/internal/modelruntime/execution_state_export_test.go
+@@ -5,6 +5,14 @@ import (
+ 	"os"
+ )
+ 
++// ExecutionDeadlineExpiredForTest observes watchdog delivery without changing
++// its timer or production lock ordering. Tests use it only to join injection.
++func ExecutionDeadlineExpiredForTest(service *Service) bool {
++	service.mu.Lock()
++	defer service.mu.Unlock()
++	return service.active != nil && service.active.deadlineExpired
++}
++
+ func StartRuntimeServerWithStateSyncHookForTest(ctx context.Context, config RuntimeServerConfig, hook func(func() error) error) (*RuntimeServer, error) {
+ 	return startRuntimeServer(ctx, config, func(store *executionStateFile) {
+ 		original := store.syncDirectory
+diff --git a/internal/modelruntime/journal_dispatch_lifetime_test.go b/internal/modelruntime/journal_dispatch_lifetime_test.go
+new file mode 100644
+index 0000000..94761af
+--- /dev/null
++++ b/internal/modelruntime/journal_dispatch_lifetime_test.go
+@@ -0,0 +1,123 @@
++package modelruntime_test
++
++import (
++	"context"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++)
++
++func TestJournalRemoteCandidatePersistenceRetainsLifetimeFence(t *testing.T) {
++	for _, scenario := range []struct{ event, boundary string }{
++		{"watchdog", "reply"}, {"shutdown", "reply"},
++		{"watchdog", "directory-sync"}, {"shutdown", "directory-sync"},
++	} {
++		t.Run(scenario.event+"/"+scenario.boundary, func(t *testing.T) {
++			f, owner, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 10*time.Second)
++			// The marker records even an attempted call with a canceled context.
++			f.backend.blocked = "prepare"
++			f.backend.unblock()
++			entered, release := make(chan struct{}), make(chan struct{})
++			var once sync.Once
++			unblock := func() { once.Do(func() { close(release) }) }
++			defer unblock()
++			wait := func(ctx context.Context) error {
++				close(entered)
++				select {
++				case <-release:
++					return nil
++				case <-ctx.Done():
++					return ctx.Err()
++				}
++			}
++			// Admission is the first mutation. The second RPC records the
++			// pre-dispatch candidate; its unchanged bytes need no new fsync.
++			// The second fsync instead confirms the returned backend envelope.
++			if scenario.boundary == "reply" {
++				transport.afterApply = func(ctx context.Context) error {
++					if transport.mutations == 2 {
++						return wait(ctx)
++					}
++					return nil
++				}
++			} else {
++				syncs := 0
++				restore := modelruntime.SetJournalOwnerSyncHookForTest(owner, func(syncDirectory func() error) error {
++					syncs++
++					if syncs == 2 {
++						if err := wait(t.Context()); err != nil {
++							return err
++						}
++					}
++					return syncDirectory()
++				})
++				// Release the blocked writer before reacquiring the owner's lock.
++				defer func() { unblock(); restore() }()
++			}
++			finished := make(chan *velav1.ModelRuntimeServicePrepareStageResponse, 1)
++			go func() {
++				response, _ := f.services[0].PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{
++					Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec(),
++				})
++				finished <- response
++			}()
++			select {
++			case <-entered:
++			case <-time.After(2 * time.Second):
++				t.Fatal("Prepare did not reach the candidate persistence boundary")
++			}
++			if scenario.boundary == "directory-sync" {
++				select {
++				case <-f.backend.entered:
++				default:
++					t.Fatal("confirmation fsync did not follow the backend call")
++				}
++			}
++			delivered := make(chan struct{})
++			if scenario.event == "shutdown" {
++				go func() { _ = f.services[0].Shutdown(); close(delivered) }()
++			} else {
++				// Deliver the monotonic timer while the wall clock remains
++				// within the signed envelope. Wall-time revalidation alone
++				// cannot catch this deadline.
++				f.clock.mu.Lock()
++				timer := f.clock.timers[len(f.clock.timers)-1]
++				f.clock.mu.Unlock()
++				timer.channel <- timer.deadline
++				go func() {
++					for !modelruntime.ExecutionDeadlineExpiredForTest(f.services[0]) {
++						time.Sleep(time.Millisecond)
++					}
++					close(delivered)
++				}()
++			}
++			select {
++			case <-delivered:
++			case <-time.After(2 * time.Second):
++				unblock()
++				<-finished
++				<-delivered
++				t.Fatal("candidate persistence blocked the execution lifetime signal")
++			}
++			unblock()
++			response := <-finished
++			if response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
++				t.Fatalf("lifetime-ended Prepare was not rejected: %v", response)
++			}
++			if scenario.boundary == "reply" {
++				select {
++				case <-f.backend.entered:
++					t.Fatal("backend Prepare was dispatched after lifetime ended during persistence")
++				default:
++				}
++			}
++			status, err := owner.Status(t.Context())
++			if err != nil || status.Highest != 10 || status.PendingExecutions != 1 {
++				t.Fatalf("rejected dispatch lost durable admission/candidate evidence: %+v %v", status, err)
++			}
++		})
++	}
++}

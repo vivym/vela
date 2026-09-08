@@ -32,25 +32,15 @@ func (service *Service) confirmBackendAuthority(ctx context.Context, verified st
 		return err
 	}
 	service.mu.Lock()
-	active := service.active
-	matched := active != nil && active.verified.Digest == verified.Digest
-	service.mu.Unlock()
-	if !matched {
-		return ctx.Err()
-	}
-	// Preserve the backend's observed envelope without blocking expiry or
-	// Shutdown behind journal I/O. operationMu and admission.mu still exclude
-	// another command or replacement of this execution.
-	if admission.store != nil {
-		if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
-			return admission.failStateLocked(err)
-		}
-	}
-	service.mu.Lock()
 	defer service.mu.Unlock()
-	if service.active == active {
+	if service.active != nil && service.active.verified.Digest == verified.Digest {
+		if admission.store != nil {
+			if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
+				return admission.failStateLocked(err)
+			}
+		}
 		confirmed := copyVerified(verified)
-		active.backendAuthority = &confirmed
+		service.active.backendAuthority = &confirmed
 	}
 	return ctx.Err()
 }

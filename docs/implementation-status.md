@@ -550,6 +550,11 @@ capability and replaces the synthetic Worker journal ID with held root-owned
 Worker storage throughout the Fleet operation. Normal/lost-response cases each
 reserve once; a Node without SYS_PTRACE rejects before reservation. Pod/CRI,
 Worker business mutations and the full Job/grant assembly remain open.
+The [candidate persistence lifetime correction](journal-dispatch-lifetime-evidence-2026-09-09.md)
+releases the Service state lock across pre-dispatch and confirmation candidate
+I/O while retaining operation/admission serialization. Watchdog and Shutdown
+signals can now reach these boundaries; dispatch rechecks the original generation
+and lifetime. Other lock waits and actual backend containment remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

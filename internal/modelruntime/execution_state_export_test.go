@@ -5,6 +5,14 @@ import (
 	"os"
 )
 
+// ExecutionDeadlineExpiredForTest observes watchdog delivery without changing
+// its timer or production lock ordering. Tests use it only to join injection.
+func ExecutionDeadlineExpiredForTest(service *Service) bool {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	return service.active != nil && service.active.deadlineExpired
+}
+
 func StartRuntimeServerWithStateSyncHookForTest(ctx context.Context, config RuntimeServerConfig, hook func(func() error) error) (*RuntimeServer, error) {
 	return startRuntimeServer(ctx, config, func(store *executionStateFile) {
 		original := store.syncDirectory
