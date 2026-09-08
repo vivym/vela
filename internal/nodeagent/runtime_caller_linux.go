@@ -67,10 +67,16 @@ type RuntimeCaller struct {
 // fallback. The caller owns connection and must not use it concurrently here.
 // Its deadlines are changed for this exchange and cleared before returning.
 func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expected RuntimeCallerCredentials) (result *RuntimeCaller, resultErr error) {
+	return ReceiveRuntimeCallerWithRequestLimit(ctx, connection, expected, runtimeCallerMaximum)
+}
+
+// ReceiveRuntimeCallerWithRequestLimit selects a trusted endpoint's request
+// bound. The value must never be selected by the incoming packet.
+func ReceiveRuntimeCallerWithRequestLimit(ctx context.Context, connection *net.UnixConn, expected RuntimeCallerCredentials, maximum int) (result *RuntimeCaller, resultErr error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	if connection == nil || expected.UID == 0 || expected.GID == 0 || expected.UID == ^uint32(0) || expected.GID == ^uint32(0) {
+	if maximum <= 0 || maximum > runtimechannel.MaximumRequestPayload || connection == nil || expected.UID == 0 || expected.GID == 0 || expected.UID == ^uint32(0) || expected.GID == ^uint32(0) {
 		return nil, ErrRuntimeCallerIdentity
 	}
 	deadline := time.Now().Add(runtimeCallerTimeout)
@@ -150,7 +156,7 @@ func ReceiveRuntimeCaller(ctx context.Context, connection *net.UnixConn, expecte
 	if count, err := connection.Write(challenge); err != nil || count != len(challenge) {
 		return nil, errors.Join(errors.New("send Runtime caller challenge"), err)
 	}
-	packet, ancillary := make([]byte, len(challenge)+runtimeCallerMaximum), make([]byte, 1024)
+	packet, ancillary := make([]byte, len(challenge)+maximum), make([]byte, 1024)
 	var count, ancillaryCount, flags int
 	var receiveErr error
 	err = raw.Read(func(fd uintptr) bool {

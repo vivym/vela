@@ -65,6 +65,42 @@ func TestRuntimeChannelRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRuntimeChannelLargeRequestBounds(t *testing.T) {
+	for _, mode := range []string{"large-request", "large-default-receiver", "large-response"} {
+		t.Run(mode, func(t *testing.T) {
+			connection, _, finish := runtimeChannelFixture(t, mode, true)
+			maximum := runtimechannel.MaximumRequestPayload
+			if mode == "large-default-receiver" {
+				maximum = runtimechannel.MaximumPayload
+			}
+			caller, err := ReceiveRuntimeCallerWithRequestLimit(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532}, maximum)
+			if mode == "large-default-receiver" {
+				if err == nil || caller != nil {
+					t.Fatal("default receiver accepted oversized request")
+				}
+				_ = connection.Close()
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = caller.Close() }()
+				if !bytes.Equal(caller.Payload(), bytes.Repeat([]byte{'x'}, runtimechannel.MaximumRequestPayload)) {
+					t.Fatal("large request truncated or changed")
+				}
+				if mode == "large-response" {
+					if err := caller.Reply(t.Context(), make([]byte, runtimechannel.MaximumPayload+1)); err == nil {
+						t.Fatal("larger request widened reply limit")
+					}
+				}
+				if err := caller.Reply(t.Context(), []byte("channel-response")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			finish()
+		})
+	}
+}
+
 func TestRuntimeChannelRejectsUntrustedExchange(t *testing.T) {
 	for _, mode := range []string{"challenge-prefix", "challenge-short", "challenge-long", "challenge-rights", "challenge-delegated",
 		"response-replay", "response-reflected", "response-empty", "response-long", "response-rights", "response-truncated-rights",
@@ -356,8 +392,15 @@ func TestRuntimeChannelProcessHelper(t *testing.T) {
 			}
 		}
 		before := runtimeCallerDescriptorCount(t)
-		response, err := runtimechannel.Exchange(ctx, os.Getenv("VELA_CHANNEL_SOCKET"), []byte("channel-request"))
-		if mode == "normal" {
+		payload, maximum := []byte("channel-request"), runtimechannel.MaximumPayload
+		if strings.HasPrefix(mode, "large-") {
+			payload, maximum = bytes.Repeat([]byte{'x'}, runtimechannel.MaximumRequestPayload), runtimechannel.MaximumRequestPayload
+			if _, err := runtimechannel.Exchange(ctx, os.Getenv("VELA_CHANNEL_SOCKET"), payload); !errors.Is(err, runtimechannel.ErrIdentity) {
+				t.Fatalf("default client accepted large request: %v", err)
+			}
+		}
+		response, err := runtimechannel.ExchangeWithRequestLimit(ctx, os.Getenv("VELA_CHANNEL_SOCKET"), payload, maximum)
+		if mode == "normal" || mode == "large-request" || mode == "large-response" {
 			if err != nil || string(response) != "channel-response" {
 				t.Fatalf("authenticated round trip failed: %q %v", response, err)
 			}

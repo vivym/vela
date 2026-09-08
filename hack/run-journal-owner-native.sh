@@ -12,7 +12,7 @@ mkdir -p "$owner_evidence/image/rootfs/run" "$owner_evidence/image/rootfs/tmp" "
 chmod 1777 "$owner_evidence/image/rootfs/tmp"
 git -C "$owner_repo" rev-parse HEAD > "$owner_evidence/source.txt"
 git -C "$owner_repo" status --short >> "$owner_evidence/source.txt"
-git -C "$owner_repo" diff HEAD --binary -- internal/modelruntime > "$owner_evidence/source.patch"
+git -C "$owner_repo" diff HEAD --binary -- internal/modelruntime internal/nodeagent internal/runtimechannel hack/run-journal-owner-native.sh > "$owner_evidence/source.patch"
 # Include newly added Go files as well as tracked edits in a dirty worktree.
 while IFS= read -r -d '' owner_untracked; do
   owner_diff_status=0
@@ -21,7 +21,7 @@ while IFS= read -r -d '' owner_untracked; do
   if [[ "$owner_diff_status" != 0 && "$owner_diff_status" != 1 ]]; then
     exit "$owner_diff_status"
   fi
-done < <(git -C "$owner_repo" ls-files -z --others --exclude-standard -- internal/modelruntime)
+done < <(git -C "$owner_repo" ls-files -z --others --exclude-standard -- internal/modelruntime internal/nodeagent internal/runtimechannel)
 shasum -a 256 "$owner_evidence/source.patch" > "$owner_evidence/source-patch.sha256"
 docker version > "$owner_evidence/docker-version.txt"
 
@@ -43,7 +43,7 @@ DOCKERFILE
 owner_image="$(docker build --network none -q "$owner_evidence/image")"
 echo "$owner_image" > "$owner_evidence/image.txt"
 shasum -a 256 "$owner_evidence/image/rootfs/"*.test > "$owner_evidence/binaries.sha256"
-owner_selected='^(TestJournalOwner|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
+owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
 docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memory 4g --pids-limit 256 \
   "$owner_image" /modelruntime.test -test.run "$owner_selected" -test.count=1 -test.v -test.timeout=3m \
   > "$owner_evidence/modelruntime.log" 2>&1
@@ -52,7 +52,7 @@ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memo
 # creation and process inspection; its permit is explicitly mocked, not a new issuer.
 docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE \
   --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256 \
-  "$owner_image" /nodeagent.test -test.run '^TestRuntimeStartupLedgerBeforeActualFactory$' \
+  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupLedgerBeforeActualFactory|TestJournalEndpoint|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
   -test.count=1 -test.v -test.timeout=3m > "$owner_evidence/node-startup.log" 2>&1
 if rg -q -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
   echo 'Selected native checks unexpectedly skipped; inspect evidence' >&2

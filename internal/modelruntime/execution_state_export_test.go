@@ -30,3 +30,15 @@ func SetExecutionStateSyncHookForTest(supervisor *Supervisor, hook func(func() e
 		admission.store.syncDirectory = previous
 	}
 }
+
+func SetJournalOwnerSyncHookForTest(owner *ExecutionJournalOwner, hook func(func() error) error) func() {
+	owner.mu.Lock()
+	previous := owner.store.syncDirectory
+	owner.store.syncDirectory = func(root *os.Root) error { return hook(func() error { return previous(root) }) }
+	owner.mu.Unlock()
+	return func() {
+		owner.mu.Lock()
+		defer owner.mu.Unlock()
+		owner.store.syncDirectory = previous
+	}
+}

@@ -16,8 +16,11 @@ const (
 	ResponseProtocol = "vela-runtime-response-v1\x00"
 	ChallengeSize    = len(Protocol) + 32
 	MaximumPayload   = 32 << 10
-	HandshakeTimeout = 5 * time.Second
-	ExchangeTimeout  = 45 * time.Second
+	// Larger requests require explicit opt-in at both endpoints. Replies and
+	// ordinary startup exchanges retain the original 32 KiB limit.
+	MaximumRequestPayload = 192 << 10
+	HandshakeTimeout      = 5 * time.Second
+	ExchangeTimeout       = 45 * time.Second
 )
 
 var ErrIdentity = errors.New("runtime channel kernel identity or frame is untrusted")

@@ -7,13 +7,21 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[authenticated journal endpoint](journal-endpoint-evidence-2026-09-08.md)
+adds a standalone owner and eight typed operations, bound to separate original
+Runtime/Worker pidfds. Real Linux root/non-root IPC, role and filesystem denial,
+lost-response retry, process exit, 192 KiB transport bounds, full host race and
+CPU Job/cache compatibility pass. Live Supervisor/Worker integration, protected
+startup assembly, replacement and history reclamation remain open.
+
+The preceding
 [typed startup/non-admission owner contract](journal-owner-contract-evidence-2026-09-08.md)
 routes the remaining three ordinary Runtime journal mutations through owner
 validation. A deterministic baseline failure proves a terminal disposition could
 expire after ingress yet produce a new checkpoint; final-owner validation now
 rejects without poisoning legal retry. Host/native race, startup exchange,
 PostgreSQL recovery and current-source production-loop/cache checks pass.
-This completes internal mutation discipline, not Node-private custody or startup issuance.
+That checkpoint completes internal mutation discipline, not Node-private custody or startup issuance.
 
 The preceding
 [production clock-policy validation](clock-policy-evidence-2026-09-08.md)

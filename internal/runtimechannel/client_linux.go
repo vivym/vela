@@ -17,12 +17,18 @@ import (
 // non-writable by group/others, with no symlinks. Linux pidfs is mandatory.
 // The reply is authenticated data, not a startup or retirement grant.
 func Exchange(ctx context.Context, socketPath string, payload []byte) (result []byte, resultErr error) {
+	return ExchangeWithRequestLimit(ctx, socketPath, payload, MaximumPayload)
+}
+
+// ExchangeWithRequestLimit opts into a bounded larger request, retaining the
+// default reply limit and all original peer/challenge/socket checks.
+func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []byte, maximum int) (result []byte, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			result = nil
 		}
 	}()
-	if ctx == nil || len(payload) == 0 || len(payload) > MaximumPayload || os.Geteuid() == 0 || os.Getegid() == 0 {
+	if ctx == nil || maximum <= 0 || maximum > MaximumRequestPayload || len(payload) == 0 || len(payload) > maximum || os.Geteuid() == 0 || os.Getegid() == 0 {
 		return nil, ErrIdentity
 	}
 	ctx, cancel := context.WithTimeout(ctx, ExchangeTimeout)

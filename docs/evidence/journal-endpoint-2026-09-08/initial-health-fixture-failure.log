@@ -1,0 +1,6 @@
+--- FAIL: TestJournalOwnerAPIHistoryBoundAndHealth (0.88s)
+    --- FAIL: TestJournalOwnerAPIHistoryBoundAndHealth/health (0.05s)
+        journal_owner_api_test.go:302: command receipt: {SchemaVersion:0 RequestDigest:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] JournalID:00000000-0000-0000-0000-000000000000 JournalScope:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] StateDigest:[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] Highest:0 Floor:0 Replayed:false} worker health update requires exact confirmed backend authority
+FAIL
+FAIL	github.com/vivym/vela/internal/modelruntime	2.818s
+FAIL
