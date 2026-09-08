@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kernel": "6.10.14-linuxkit",
+  "architecture": "aarch64",
+  "fd_delta": 0,
+  "results": [
+    {
+      "case": "normal-exit-with-child",
+      "result": "PASS",
+      "exit_code": 0,
+      "log": "ROOT 9\nEXEC 9\nCHILD 10\nEXEC 10\n"
+    },
+    {
+      "case": "exec",
+      "result": "PASS",
+      "exit_code": 3,
+      "log": "ROOT 12\nEXEC 12\nREJECT root-exec 12\n"
+    },
+    {
+      "case": "execat",
+      "result": "PASS",
+      "exit_code": 3,
+      "log": "ROOT 14\nEXEC 14\nREJECT root-exec 14\n"
+    },
+    {
+      "case": "thread-exec",
+      "result": "PASS",
+      "exit_code": 3,
+      "log": "ROOT 16\nEXEC 16\nDENY clone 16 38\nCHILD 17\nREJECT root-exec 17\n"
+    },
+    {
+      "case": "untraced-exec",
+      "result": "PASS",
+      "exit_code": 0,
+      "log": "ROOT 19\nEXEC 19\nDENY clone 19 1\n"
+    },
+    {
+      "case": "clone3",
+      "result": "PASS",
+      "exit_code": 0,
+      "log": "ROOT 21\nEXEC 21\nDENY clone 21 38\n"
+    },
+    {
+      "case": "observer-crash",
+      "result": "PASS",
+      "exit_code": -9,
+      "log": "ROOT 23\nEXEC 23\nCHILD 24\nEXEC 24\n"
+    },
+    {
+      "case": "observer-crash-without-exitkill",
+      "result": "PASS",
+      "exit_code": -9,
+      "log": "ROOT 26\nEXEC 26\nCHILD 27\nEXEC 27\n"
+    },
+    {
+      "case": "untraced-disabled",
+      "result": "PASS",
+      "exit_code": 137,
+      "log": "ROOT 29\nEXEC 29\n"
+    },
+    {
+      "case": "go-threads-and-backends",
+      "result": "PASS",
+      "exit_code": 0,
+      "elapsed_seconds": 0.07864525000331923,
+      "stdout": "GO_PASS threads=24 subprocesses=10\n",
+      "log": "ROOT 32\nEXEC 32\nCHILD 33\nCHILD 34\nCHILD 35\nCHILD 36\nCHILD 37\nCHILD 38\nCHILD 39\nCHILD 40\nCHILD 41\nCHILD 42\nCHILD 43\nCHILD 44\nCHILD 45\nCHILD 46\nCHILD 47\nCHILD 48\nCHILD 49\nCHILD 50\nCHILD 51\nCHILD 52\nCHILD 53\nCHILD 54\nCHILD 55\nCHILD 56\nCHILD 57\nCHILD 58\nCHILD 59\nCHILD 60\nCHILD 61\nEXEC 61\nCHILD 62\nEXEC 62\nCHILD 63\nEXEC 63\nCHILD 64\nEXEC 64\nCHILD 65\nEXEC 65\nCHILD 66\nEXEC 66\nCHILD 67\nEXEC 67\nCHILD 68\nEXEC 68\nCHILD 69\nEXEC 69\nCHILD 70\nEXEC 70\n"
+    }
+  ],
+  "production_authority": false
+}

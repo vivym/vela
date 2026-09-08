@@ -138,6 +138,16 @@ CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八�
 该机制不接入授权。后续须验证全部线程的 exec 转换约束，或完整可信创建来源链；
 当前仍未关闭第 1 项。具体反例与候选路线的验收条件见该报告。
 
+后续 [创建时 syscall observer 与实际 CLI 实验](runtime-exec-observer-evidence-2026-09-09.md)
+已验证从受控创建时覆盖原线程组 exec，并用 syscall 入口限制处理
+`CLONE_UNTRACED` 逃逸与 clone3 参数采样竞态。独立 10 场景包含关闭 clone
+约束和 EXITKILL 的反例；实际 CLI 四场景覆盖正常启动/关闭、拒绝和 observer
+在 fixture Permit 前后退出，原始 Runtime 与真实 backend 的保留 pidfd
+给出退出证据。CLI runner 共 12 个主测试通过，关闭 EXITKILL 的镜像使两个
+故障场景失败且正常场景仍通过。它仍是创建关系/CRI/Permit fixture，尚缺
+生产 Node 与 containerd 的可信创建交付、observer 挂起处理、同次真实 Fleet、
+once-only grant 和写路由授权，不能将原型直接升级为生产入口。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |

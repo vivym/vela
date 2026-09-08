@@ -1,0 +1,294 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "8ae8673c13e7a702f770e8a3db0757940b6d45b0",
+  "source_file_count": 1022,
+  "source_digest": "5207a4a5c5f1eabed941774820c9c51710cf4123162899a7d5b3171a9839bff6",
+  "source_digest_method": "SHA256 sorted path + NUL + hex file SHA256 + newline; Go/SQL/proto/module files plus prototype sources and both runners",
+  "platform": {
+    "kernel": "6.10.14-linuxkit",
+    "architecture": "aarch64"
+  },
+  "prototype_cases": [
+    "normal-exit-with-child",
+    "exec",
+    "execat",
+    "thread-exec",
+    "untraced-exec",
+    "clone3",
+    "observer-crash",
+    "observer-crash-without-exitkill",
+    "untraced-disabled",
+    "go-threads-and-backends"
+  ],
+  "prototype_fd_delta": 0,
+  "cli_main_tests": [
+    "TestJournalServerExecObservedRemoteCLI",
+    "TestJournalReadOnlyEndpoint",
+    "TestJournalServerActualRemoteCLI",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+    "TestRuntimeBootstrapPublication",
+    "TestRuntimeBootstrapPublicationPreflight",
+    "TestRuntimeBootstrapPublicationBoundaries",
+    "TestRuntimeBootstrapPublicationConcurrent",
+    "TestRuntimeBootstrapPublicationProcessCrash",
+    "TestRuntimeBootstrapPublicationChanged",
+    "TestRuntimeBootstrapPublicationCustodyLoss",
+    "TestRuntimeBootstrapPublicationActualCLI"
+  ],
+  "observed_cli_cases": [
+    "permit",
+    "deny",
+    "observer-lost-before-permit",
+    "observer-lost-after-permit"
+  ],
+  "go_race_instrumented_cli": true,
+  "c_race_detector": false,
+  "cli_skips": 0,
+  "cli_races": 0,
+  "images": {
+    "prototype": "sha256:3fe8b65a4d7c9a0962050f561dab9639c406436df30a4a03024780be9be167c7",
+    "cli": "sha256:78a10a9069f33cd000b5fae8abb0e49f6712257a2f1686409835bcfdd7c7fbd4",
+    "regression": "sha256:9ab07c52f32ec3bfb5345b2c17f525cc65196a3244e937411fa67fd1c16aae15"
+  },
+  "regression": {
+    "change": "PTRACE_O_EXITKILL disabled only",
+    "test_exit_code": 1,
+    "expected_failures": [
+      "observer-lost-before-permit",
+      "observer-lost-after-permit"
+    ],
+    "healthy_control": "permit"
+  },
+  "kernel_source": {
+    "upstream_stable_commit": "47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4",
+    "linuxkit_build_identity_verified": false,
+    "files": [
+      {
+        "url": "https://raw.githubusercontent.com/gregkh/linux/47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4/kernel/fork.c",
+        "sha256": "72d1b478350be0507a6b9f6e7f78485d4755c71dc9753c7e97879e690f12635e"
+      },
+      {
+        "url": "https://raw.githubusercontent.com/gregkh/linux/47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4/kernel/ptrace.c",
+        "sha256": "ddb8bf50294bac786b3f0ed62f94e0753ec6bd3add6800f65f82e4bd31e730bd"
+      }
+    ]
+  },
+  "checks": [
+    "10 standalone kernel scenarios",
+    "12 native CLI main tests including 4 observer cases",
+    "2 expected actual CLI EXITKILL regression failures plus healthy permit control",
+    "go test ./...",
+    "GOOS=linux GOARCH=arm64 go vet ./internal/nodeagent",
+    "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run ./internal/nodeagent"
+  ],
+  "production_gates": "0/9",
+  "production_startup_changed": false,
+  "boundary": "Creation-time syscall observer prototype and actual non-root Runtime CLI compatibility/failure fixture. Original Runtime and backend exit observations use retained pidfds. Pod/CRI creation relationship and Permit remain fixtures. No production observer custody/IPC, hanging-observer recovery, real Fleet/TLS/PostgreSQL same-launch integration, once-only grant, write route, complete Job, universal descendant/device containment, sustained capacity, native amd64 or GPU evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/binaries.sha256",
+      "bytes": 625,
+      "sha256": "53fae1b7cd2116dbf96892198814e63b7abefb03d2f6764714004274c97a293b"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/build-exec-observer.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "04d4038d12f8bda63ddc44480cd2ff7981df507873cc2946a26cfb696445c833"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "5fac09d82f15539defc56f537b245d46b7c96ee33ee8ec80f2ab5e09a9555c69"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "7c3c97d5623d6b360d4e57fe5f793b68b2922019f2e807383d13532656bd7921"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/image.txt",
+      "bytes": 72,
+      "sha256": "c932e57acb267804cc5c6e83dc28abbec9f6069dd6bcabe9d2203b862b583ab2"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/native.log",
+      "bytes": 24452,
+      "sha256": "58b337a2a07dff980339b43a087832764e89771ad79bd8db82475d12afbb7beb"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/run-cli.sh",
+      "bytes": 5497,
+      "sha256": "730e6dd9f46851c3f1f25d0a601ab4110d49745ed2455de56aeb069b888a69de"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/runner.log",
+      "bytes": 101,
+      "sha256": "7a8ceff0f6bd14a6f4cc908635a35e36d8d6845769a1e35d1cea9763f485cddd"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "244c9af19cc48c56ec0c057feb21e25f7367b89c5c0b972299fc973cb5230a79"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/source.patch",
+      "bytes": 38872,
+      "sha256": "5919c9bcde855dc541d0c8056ea2d6cf2e2e93cb3d5a84679aa753ab227b2306"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/cli/source.txt",
+      "bytes": 235,
+      "sha256": "4f3177f34b5535eefe34903f8eb05176ac6963de7047b0ccb6d3743163e94c1d"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/package-evidence.py",
+      "bytes": 9386,
+      "sha256": "1064de5bcb5f837893df0f2fff3ff9f23be6555b18f0654e02bbf98c352fe9b7"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/Dockerfile",
+      "bytes": 637,
+      "sha256": "a70693efd8f8377fc8a1a0d99984371ee34dd08ec9ecd4dd8c201c8b487a4f7b"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/baseline.txt",
+      "bytes": 41,
+      "sha256": "d7a7c87cc58a1ae5002e03fffc6a1229c047cae8eab7dd0bb728f8e00785f363"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/build.log",
+      "bytes": 2184,
+      "sha256": "f6b1ba0f673e0562835b02730aed83690e7b742c148b02609483e284e5714658"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/check.py",
+      "bytes": 5848,
+      "sha256": "6ec338e09c8d1d7221e5b28b2f83b86800d81fb8a9350b958623843fbce94013"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/files.sha256",
+      "bytes": 726,
+      "sha256": "5ae112249c9723b2f79e8eaa2a7f4c966c334207ac9a61335b8e2bea07d01a43"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/go-probe.go.txt",
+      "bytes": 784,
+      "sha256": "bbb1224789ab2391ca85b90d84bb57e4cf0ade2486a8b4eb1219653e76bd9a65"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/image.txt",
+      "bytes": 71,
+      "sha256": "4b6239f7feb6140da13139ed579460d05e78f8d0e3bb9c0706380b65e9505197"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/native.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/observer.c",
+      "bytes": 8006,
+      "sha256": "4a0e5d831c98a98a314d9d7d6ac341d2bb18c726733fab2e5e75ecbf8e173443"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/probe.c",
+      "bytes": 3429,
+      "sha256": "0192835c4d2b1f46aaa2a6d79455b6c5c29f2208ad68e0a700139d2c9323c99f"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/results.json",
+      "bytes": 2170,
+      "sha256": "5137560766af1bc417ae8a3dcd092353253a07b155973594f706d2cf3e4fb949"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/prototype/run-experiment.sh",
+      "bytes": 2369,
+      "sha256": "3b6ef6c578a35d0594650c9cbb3254ed764568f340eb7b0c1a4679a11be1740f"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/Dockerfile",
+      "bytes": 86,
+      "sha256": "b94e8b293c9e4489354d782c6158d9250c9b5f13cf1064a1614279e4580f4acb"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/binaries.sha256",
+      "bytes": 289,
+      "sha256": "41aac10ccd0cef848263934ec756ddd7d4330a2f27a3dd1195454baaaba83613"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/build-disabled.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/build-enabled.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/build-image.log",
+      "bytes": 1611,
+      "sha256": "39226d2e2288b407dfc6d8e510d86dd61b6324ebe6438dde4aea690e63b99705"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/check-cli-exitkill.sh",
+      "bytes": 2622,
+      "sha256": "dd1b1b8935c457a40deda1a212d6bde41f04fa8ba3355ce7c762e759da8370d3"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/image.txt",
+      "bytes": 71,
+      "sha256": "36cefc364158823b8b976638a231477af63b090d80801b6e0f43afac3e7c3920"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression/native.log",
+      "bytes": 2214,
+      "sha256": "88038b1ba29030a8894a7bddaf17a68b0164142929cdf71cea06ed164b56832b"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/regression-runner.log",
+      "bytes": 150,
+      "sha256": "56bee726a6f596b3ad17252b684412659ddaec745728a0225c2c8e34b2e6ace0"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/runtime-exec-observer-2026-09-09/source-files.json",
+      "bytes": 161994,
+      "sha256": "64935ea48231f270e1e0442196efa8ce2ee1437eae09c95078979dde08f359d5"
+    }
+  ]
+}

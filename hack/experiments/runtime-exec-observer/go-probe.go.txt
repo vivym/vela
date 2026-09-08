@@ -1,0 +1,39 @@
+// Standalone native compatibility probe; no Vela APIs or launch authority.
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"sync"
+)
+
+func main() {
+	if os.Getuid() != 65534 || os.Getgid() != 65534 {
+		panic("unexpected identity")
+	}
+	var ready, done sync.WaitGroup
+	release := make(chan struct{})
+	for range 24 {
+		ready.Add(1)
+		done.Add(1)
+		go func() {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			defer done.Done()
+			ready.Done()
+			<-release
+		}()
+	}
+	ready.Wait()
+	close(release)
+	done.Wait()
+	for range 10 {
+		output, err := exec.Command("/exec-probe", "once").CombinedOutput()
+		if err != nil || string(output) != "ONCE\n" {
+			panic(fmt.Sprintf("backend process: %s %v", output, err))
+		}
+	}
+	fmt.Println("GO_PASS threads=24 subprocesses=10")
+}

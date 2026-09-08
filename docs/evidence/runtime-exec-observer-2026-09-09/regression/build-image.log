@@ -1,0 +1,35 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 123B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/vela-exec-observer-cli-control:local-59065
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/2] FROM docker.io/library/vela-exec-observer-cli-control:local-59065@sha256:78a10a9069f33cd000b5fae8abb0e49f6712257a2f1686409835bcfdd7c7fbd4
+#4 resolve docker.io/library/vela-exec-observer-cli-control:local-59065@sha256:78a10a9069f33cd000b5fae8abb0e49f6712257a2f1686409835bcfdd7c7fbd4 done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 853.40kB 0.0s done
+#5 DONE 0.0s
+
+#6 [2/2] COPY observer-disabled /exec-observer
+#6 DONE 0.0s
+
+#7 exporting to image
+#7 exporting layers 0.0s done
+#7 exporting manifest sha256:762eb4f86ef7a58fde87ea688d6736cade5b212a1b2f2fb5063cb5294a2adb87 done
+#7 exporting config sha256:b5e5ba45161243b8c38026136e5c804ad9292640f8adb0f444db368b4d0a6491 done
+#7 exporting attestation manifest sha256:ce08c24a42636eb0ec4f185a5cadad9e4a40993419b1a45cff344000040fe298 done
+#7 exporting manifest list sha256:9ab07c52f32ec3bfb5345b2c17f525cc65196a3244e937411fa67fd1c16aae15 done
+#7 naming to moby-dangling@sha256:9ab07c52f32ec3bfb5345b2c17f525cc65196a3244e937411fa67fd1c16aae15 done
+#7 unpacking to moby-dangling@sha256:9ab07c52f32ec3bfb5345b2c17f525cc65196a3244e937411fa67fd1c16aae15 done
+#7 DONE 0.1s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/ungr9mtqwcbndne5b4i0tmggt

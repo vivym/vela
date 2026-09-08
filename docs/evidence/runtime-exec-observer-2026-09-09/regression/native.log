@@ -1,0 +1,47 @@
+=== RUN   TestJournalServerExecObservedRemoteCLI
+=== RUN   TestJournalServerExecObservedRemoteCLI/permit
+    journal_exec_observed_cli_linux_test.go:32: joined Node journal server: {Accepted:4 Overloaded:0 Authenticated:4 Replied:4 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_exec_observed_cli_linux_test.go:32: creation-time observer retained actual CLI namespace init; scenario=permit; original process/backend exits are kernel observations, Permit and CRI remain fixtures
+=== RUN   TestJournalServerExecObservedRemoteCLI/observer-lost-before-permit
+    journal_exec_observed_cli_linux_test.go:32: original namespace owner did not exit: retained runtime namespace owner has not exited
+    journal_exec_observed_cli_linux_test.go:88: exec observer output: ROOT 48
+        EXEC 48
+        DENY clone 48 38
+        CHILD 49
+        CHILD 50
+        CHILD 51
+        CHILD 52
+        CHILD 53
+        CHILD 54
+        CHILD 55
+        vela-model-runtime stopped: start resident runtime "cpu-runtime": start resident ModelRuntime backend: node did not permit this exact backend startup intent
+        runtime channel kernel identity or frame is untrusted
+        runtime channel kernel identity or frame is untrusted
+        runtime channel kernel identity or frame is untrusted
+=== RUN   TestJournalServerExecObservedRemoteCLI/observer-lost-after-permit
+    journal_exec_observed_cli_linux_test.go:32: original namespace owner did not exit: retained runtime namespace owner has not exited
+    journal_exec_observed_cli_linux_test.go:88: exec observer output: ROOT 63
+        EXEC 63
+        DENY clone 63 38
+        CHILD 64
+        CHILD 65
+        CHILD 66
+        CHILD 67
+        CHILD 68
+        CHILD 69
+        CHILD 70
+        CHILD 71
+        EXEC 71
+        DENY clone 71 38
+        CHILD 72
+        CHILD 73
+        CHILD 74
+        CHILD 75
+        CHILD 76
+        CHILD 77
+        CHILD 78
+--- FAIL: TestJournalServerExecObservedRemoteCLI (12.59s)
+    --- PASS: TestJournalServerExecObservedRemoteCLI/permit (2.29s)
+    --- FAIL: TestJournalServerExecObservedRemoteCLI/observer-lost-before-permit (5.13s)
+    --- FAIL: TestJournalServerExecObservedRemoteCLI/observer-lost-after-permit (5.17s)
+FAIL
