@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/check.py", line 178, in <module>
+    main()
+    ~~~~^^
+  File "/check.py", line 163, in main
+    case("no-exec"),
+    ~~~~^^^^^^^^^^^
+  File "/check.py", line 86, in case
+    initial = snapshot(root)
+  File "/check.py", line 53, in snapshot
+    executable = os.stat("exe", dir_fd=root)
+PermissionError: [Errno 13] Permission denied: 'exe'

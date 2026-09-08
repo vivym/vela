@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "kernel": "6.10.14-linuxkit",
+  "architecture": "aarch64",
+  "results": [
+    {
+      "case": "no-exec",
+      "result": "PASS",
+      "holder": null,
+      "initial": {
+        "start_ticks": 14503382,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "same-executable-exec",
+      "result": "PASS",
+      "holder": null,
+      "initial": {
+        "start_ticks": 14503383,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [
+        {
+          "image": "A",
+          "pidfd_live": true,
+          "same_executable_inode": true,
+          "old_mm_hex": ""
+        }
+      ],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "aba-exec",
+      "result": "PASS",
+      "holder": null,
+      "initial": {
+        "start_ticks": 14503383,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [
+        {
+          "image": "B",
+          "pidfd_live": true,
+          "same_executable_inode": false,
+          "old_mm_hex": ""
+        },
+        {
+          "image": "A",
+          "pidfd_live": true,
+          "same_executable_inode": true,
+          "old_mm_hex": ""
+        }
+      ],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "ordinary-fork-exec",
+      "result": "PASS",
+      "holder": "fork",
+      "initial": {
+        "start_ticks": 14503383,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [
+        {
+          "image": "A",
+          "pidfd_live": true,
+          "same_executable_inode": true,
+          "old_mm_hex": ""
+        }
+      ],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "shared-vm-exec",
+      "result": "PASS",
+      "holder": "share",
+      "initial": {
+        "start_ticks": 14503383,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [
+        {
+          "image": "A",
+          "pidfd_live": true,
+          "same_executable_inode": true,
+          "old_mm_hex": "7f454c46"
+        }
+      ],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "shared-vm-aba",
+      "result": "PASS",
+      "holder": "share",
+      "initial": {
+        "start_ticks": 14503384,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [
+        {
+          "image": "B",
+          "pidfd_live": true,
+          "same_executable_inode": false,
+          "old_mm_hex": "7f454c46"
+        },
+        {
+          "image": "A",
+          "pidfd_live": true,
+          "same_executable_inode": true,
+          "old_mm_hex": "7f454c46"
+        }
+      ],
+      "owner_exited_before_holder": false,
+      "eof_after_last_mm_user": true
+    },
+    {
+      "case": "shared-vm-owner-exit",
+      "result": "PASS",
+      "holder": "share",
+      "initial": {
+        "start_ticks": 14503384,
+        "uid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "gid": [
+          "65534",
+          "65534",
+          "65534",
+          "65534"
+        ],
+        "threads": 1,
+        "no_new_privs": 1,
+        "effective_capabilities": "0000000000000000",
+        "argv_sha256": "057cb3f305ccb720d2849253308d95e65c2fde344b443293b081293c87602a18",
+        "environ_sha256": "5898e7c29f634f96d9486f7ee5d02e55e67aee636c10a241a2fcaaf40c523199",
+        "executable_device": 63,
+        "executable_inode": 51461
+      },
+      "steps": [],
+      "owner_exited_before_holder": true,
+      "eof_after_last_mm_user": true
+    }
+  ],
+  "fd_delta": 0,
+  "retained_mem_is_exec_authority": false
+}

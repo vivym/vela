@@ -131,6 +131,13 @@ CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八�
 
 ## 依赖顺序与通过标准
 
+执行连续性的 [旧 mem 句柄候选实验](runtime-execution-continuity-evidence-2026-09-09.md)
+已否证“保留 `/proc/PID/mem` 且仍可读即可证明未 exec”：`CLONE_VM` 独立进程
+保留旧 mm 后，同文件重执行及 A→B→A 都不使旧句柄失效，原目标 `Threads=1`
+也不能排除该反例。7 个 Linux/arm64 原生场景和缺少 ptrace 权限对照已留证，
+该机制不接入授权。后续须验证全部线程的 exec 转换约束，或完整可信创建来源链；
+当前仍未关闭第 1 项。具体反例与候选路线的验收条件见该报告。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |

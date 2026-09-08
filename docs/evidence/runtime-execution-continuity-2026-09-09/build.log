@@ -1,0 +1,38 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 404B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [1/3] FROM docker.io/library/golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1
+#4 resolve docker.io/library/golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1 done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 10.89kB done
+#5 DONE 0.0s
+
+#6 [2/3] COPY probe.c check.py /
+#6 CACHED
+
+#7 [3/3] RUN cc -std=c11 -O2 -Wall -Wextra -Werror -static -fno-pie -no-pie -DIMAGE_LABEL='"A"' /probe.c -o /probe-a &&     cc -std=c11 -O2 -Wall -Wextra -Werror -static -fno-pie -no-pie -DIMAGE_LABEL='"B"' /probe.c -o /probe-b
+#7 CACHED
+
+#8 exporting to image
+#8 exporting layers done
+#8 exporting manifest sha256:3b9c61165c3f50081330122d80c06346b73c5e9d9518c688999582fba066a0f2 done
+#8 exporting config sha256:ed374a2b0736e0b05fae751a24c63415bef3cc3e88328be2ab5a60357743b12e done
+#8 exporting attestation manifest sha256:4c96784ac353dcde9d8233710a3bdc79e4153f30e1ffa1baca238964d1e674f8 done
+#8 exporting manifest list sha256:5041f4edaa3a101e6967b475912d45db4848728c5017284468ccad0dd1a85fe3 done
+#8 naming to moby-dangling@sha256:5041f4edaa3a101e6967b475912d45db4848728c5017284468ccad0dd1a85fe3 done
+#8 unpacking to moby-dangling@sha256:5041f4edaa3a101e6967b475912d45db4848728c5017284468ccad0dd1a85fe3 done
+#8 DONE 0.0s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/xokj30ltcl0q3h1ipvpmqc0n2

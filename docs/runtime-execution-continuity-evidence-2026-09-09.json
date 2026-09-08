@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "31a8cdb00df5897ac5d8a9a33c2bb533d12ce47d",
+  "production_source_changed": false,
+  "experiment_command": "bash hack/run-runtime-mm-witness-experiment.sh",
+  "platform": {
+    "kernel": "6.10.14-linuxkit",
+    "architecture": "aarch64"
+  },
+  "image": "sha256:5041f4edaa3a101e6967b475912d45db4848728c5017284468ccad0dd1a85fe3",
+  "probe_binaries_sha256": {
+    "/probe-a": "da5d4b60ac0ff2a445f9a05c25e6106b0cc9487088a08d3589095459fcda0b1e",
+    "/probe-b": "f8ad3c1469fa3f4cc7bda1c2039d593fa5254bfd67a360b703d1d195271be0cb"
+  },
+  "cases": [
+    "no-exec",
+    "same-executable-exec",
+    "aba-exec",
+    "ordinary-fork-exec",
+    "shared-vm-exec",
+    "shared-vm-aba",
+    "shared-vm-owner-exit"
+  ],
+  "case_count": 7,
+  "fd_delta": 0,
+  "missing_ptrace_control_exit_code": 1,
+  "kernel_source_reference": {
+    "upstream_stable_commit": "47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4",
+    "tag": "v6.10.14",
+    "files": [
+      {
+        "url": "https://raw.githubusercontent.com/gregkh/linux/47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4/fs/proc/base.c",
+        "sha256": "ffed9b34427d436ff15065cb028ff7ddc22ee0dbbe854f8c1c1b7c8cc9a2876d",
+        "bytes": 97831
+      },
+      {
+        "url": "https://raw.githubusercontent.com/gregkh/linux/47c2f92131c47a37ea0e3d8e1a4e4c82a9b473d4/kernel/fork.c",
+        "sha256": "72d1b478350be0507a6b9f6e7f78485d4755c71dc9753c7e97879e690f12635e",
+        "bytes": 86080
+      }
+    ],
+    "linuxkit_build_identity_verified": false
+  },
+  "conclusion": "Retained proc mem readability does not prove the original process has not executed another image. CLONE_VM can retain old mm across same-image exec, ABA and original-process exit.",
+  "boundary": "Standalone Linux arm64 kernel experiment with protected non-root C targets. No Vela RuntimeCaller, actual CLI, CRI, Fleet, grant, complete Job, amd64-native or GPU campaign. No production startup behavior changed.",
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/Dockerfile",
+      "bytes": 365,
+      "sha256": "c7915e9e31d092b031dbfeff6c4ccc3612b5a2b5ab54d81bcc28be249b204b99"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/baseline.txt",
+      "bytes": 41,
+      "sha256": "b6573450b96646710c240f8b5ceb47c11c0fb8f747618cde9ac9e8fa163e3be8"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/build.log",
+      "bytes": 1786,
+      "sha256": "497ce52b849eeadef4ac4b8da718c745c94f2de037d1ca3a00d7f688c6f19526"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/check.py",
+      "bytes": 8101,
+      "sha256": "0c2661cb1b00d68f9e0da5036f52ce628ae2fbfa574e49b3926582c98d546465"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/files.sha256",
+      "bytes": 301,
+      "sha256": "ec3a594ea3b4d041c4abe6df1173550daa1dc719a9bdca4b3a49b8e28938e8e9"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/image.txt",
+      "bytes": 71,
+      "sha256": "d6c6c2ae95616869723d79eaf6f7f81d7a84bbbd5f482a20b22a4577f59b5cc8"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/native.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/no-ptrace-exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/no-ptrace.log",
+      "bytes": 383,
+      "sha256": "f55a326ab82d407c5560b7385e46c22250c3db0700bc9420b804726a53028aa8"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/package-evidence.py",
+      "bytes": 4984,
+      "sha256": "15c3d4233bfe2e17323e125dee3ec556ec0afdae7e9e008f7dd6f2be2f291807"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/probe.c",
+      "bytes": 2717,
+      "sha256": "5385958e94dfc3bc6516641bca26e1132932bc9dd004108f7b3b889ea2678752"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/results.json",
+      "bytes": 6919,
+      "sha256": "53c3f24333f59007027c59450cbc9fcbed58f171b4a27dfb952ac89712526096"
+    },
+    {
+      "path": "docs/evidence/runtime-execution-continuity-2026-09-09/run-runtime-mm-witness-experiment.sh",
+      "bytes": 2139,
+      "sha256": "94ad8999f2b99955457e4e9b4832778e7722a1f75ae99ed95026dbba070745de"
+    }
+  ]
+}
