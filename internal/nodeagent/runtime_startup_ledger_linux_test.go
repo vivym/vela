@@ -72,9 +72,10 @@ func startupPlanObserverFixture(t *testing.T, plan *RuntimeLaunchPlan, caller *R
 	if err != nil {
 		t.Fatal(err)
 	}
-	cri, _, observer := runtimeCallerObserverFixture(t, process)
+	node := plan.binding.Claim.NodeIdentity
+	cri, _, observer := runtimeCallerObserverOnNodeFixture(t, process, node)
 	pod := plan.ExpectedPod()
-	pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(cri.target.PodUID.String()), "1", "cpu-node"
+	pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(cri.target.PodUID.String()), "1", node
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "model-runtime", ContainerID: "containerd://" + cri.target.ContainerID,
 		RestartCount: int32(cri.target.ContainerAttempt), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
 	cri.mu.Lock()

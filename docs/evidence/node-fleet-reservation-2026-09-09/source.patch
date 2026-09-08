@@ -1,0 +1,415 @@
+diff --git a/internal/nodeagent/runtime_container_caller_linux_test.go b/internal/nodeagent/runtime_container_caller_linux_test.go
+index f01b513..a06735b 100644
+--- a/internal/nodeagent/runtime_container_caller_linux_test.go
++++ b/internal/nodeagent/runtime_container_caller_linux_test.go
+@@ -147,13 +147,17 @@ func TestRuntimeContainerCallerRejectsNonInit(t *testing.T) {
+ }
+ 
+ func runtimeCallerObserverFixture(t *testing.T, process RuntimeCallerObservation) (*containerCRIServer, *runtimeCallerTaskServer, *RuntimeContainerObserver) {
++	return runtimeCallerObserverOnNodeFixture(t, process, "cpu-node")
++}
++
++func runtimeCallerObserverOnNodeFixture(t *testing.T, process RuntimeCallerObservation, node string) (*containerCRIServer, *runtimeCallerTaskServer, *RuntimeContainerObserver) {
+ 	t.Helper()
+ 	cri := newContainerCRIServer()
+ 	cri.version.RuntimeName, cri.version.RuntimeVersion = "containerd", "v2.3.1"
+ 	tasks := &runtimeCallerTaskServer{target: cri.target, process: &tasktypes.Process{ID: cri.target.ContainerID,
+ 		Pid: uint32(process.HostPID), Status: tasktypes.Status_RUNNING, ExitedAt: timestamppb.New(time.Time{})}}
+ 	socket := serveContainerCRI(t, cri, func(server *grpc.Server) { tasksapi.RegisterTasksServer(server, tasks) })
+-	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: socket, NodeIdentity: "cpu-node"})
++	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: socket, NodeIdentity: node})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux_test.go b/internal/nodeagent/runtime_startup_ledger_linux_test.go
+index 22d36cb..cdce720 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux_test.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux_test.go
+@@ -72,9 +72,10 @@ func startupPlanObserverFixture(t *testing.T, plan *RuntimeLaunchPlan, caller *R
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	cri, _, observer := runtimeCallerObserverFixture(t, process)
++	node := plan.binding.Claim.NodeIdentity
++	cri, _, observer := runtimeCallerObserverOnNodeFixture(t, process, node)
+ 	pod := plan.ExpectedPod()
+-	pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(cri.target.PodUID.String()), "1", "cpu-node"
++	pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(cri.target.PodUID.String()), "1", node
+ 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "model-runtime", ContainerID: "containerd://" + cri.target.ContainerID,
+ 		RestartCount: int32(cri.target.ContainerAttempt), State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
+ 	cri.mu.Lock()
+diff --git a/internal/nodeagent/runtime_startup_fleet_linux_test.go b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+new file mode 100644
+index 0000000..35312f4
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+@@ -0,0 +1,213 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/fleetcontroller"
++	"github.com/vivym/vela/internal/fleettransport"
++	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
++)
++
++// The host integration test provisions PostgreSQL and TLS. Only temporary test
++// credentials cross stdin; no host paths or private keys are printed in reports.
++func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
++	if os.Getenv("VELA_RUNTIME_STARTUP_FLEET_HELPER") != "1" {
++		t.Skip("requires host PostgreSQL/TLS integration orchestrator")
++	}
++	if os.Geteuid() != 0 {
++		t.Fatal("requires root Node")
++	}
++	var input struct {
++		Request                     fleet.WorkerBootstrapRequest
++		Address, ServerName, SPIFFE string
++		CA, Certificate, Key        []byte
++		PublicKeys                  map[string][]byte
++		LoseResponse                bool
++	}
++	if err := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20)).Decode(&input); err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
++	defer cancel()
++	root := t.TempDir()
++	write := func(name string, data []byte) string {
++		t.Helper()
++		path := filepath.Join(root, name)
++		if err := os.WriteFile(path, data, 0o600); err != nil {
++			t.Fatal(err)
++		}
++		return path
++	}
++	credentials, err := fleettransport.NewClientTLSCredentials(write("client.pem", input.Certificate), write("client.key", input.Key), write("ca.pem", input.CA), input.ServerName)
++	if err != nil {
++		t.Fatal(err)
++	}
++	client, err := fleettransport.DialClient(ctx, input.Address, credentials)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = client.Close() }()
++	registry, err := client.WorkerBootstrap(input.SPIFFE)
++	if err != nil {
++		t.Fatal(err)
++	}
++	input.Request.ActorIdentity = registry.ActorIdentity()
++	claim, err := registry.ClaimWorkerBootstrap(ctx, input.Request)
++	if err != nil || !claim.Fresh {
++		t.Fatalf("first Registry claim: %v", err)
++	}
++	bundle, err := fleetcontroller.ParseWorkerBundleActuationManifest(input.Request.BundleManifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	manifest, err := fleetcontroller.WorkerMemberLaunchManifest(bundle, input.Request.WorkerInstanceID, input.Request.WorkerMemberID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	routes, err := modelruntime.RemoteStartupBindings(manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	validator, err := stageauthority.NewValidator(map[string][]byte{"authority": make([]byte, 32)}, time.Now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	journalPath := filepath.Join(root, "journal")
++	if err := os.Mkdir(journalPath, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: manifest, Validator: validator, Routes: routes, Now: time.Now, State: modelruntime.ExecutionFloorStateConfig{Directory: journalPath, Initialize: true}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = owner.Close() }()
++	startup, err := owner.RecordBackendStartupIntent(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	journal, err := owner.Status(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Worker journal is explicitly a fixture. Runtime journal identity is read
++	// from the actual root-owned locked storage created above.
++	_, err = registry.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{RequestID: claim.RequestID, ActorIdentity: registry.ActorIdentity(), WorkerJournalID: uuid.New(), WorkerScope: bytes.Repeat([]byte{0x31}, 32), RuntimeJournalID: journal.JournalID, RuntimeScope: journal.Scope[:]})
++	if err != nil {
++		t.Fatal(err)
++	}
++	verifier, err := journalbinding.NewVerifier(input.PublicKeys)
++	if err != nil {
++		t.Fatal(err)
++	}
++	binding, err := registry.LookupWorkerBootstrapBinding(ctx, claim.RequestID, verifier)
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := VerifyRuntimeLaunchPlan(registry.NodeIdentity(), verifier, binding, input.Request.BundleManifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: registry.NodeIdentity(), RegistryBindingDigest: sha256.Sum256(bindingWire), JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
++	wire, err := modelruntime.EncodeBackendStartupRequest(request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
++	connection, _, _ := runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
++	caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = caller.Close() }()
++	observer, pods := startupPlanObserverFixture(t, plan, caller)
++	ledgerPath := filepath.Join(root, "ledger")
++	if err := os.Mkdir(ledgerPath, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	ledger, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), true)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = ledger.Close() }()
++	config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
++	result, err := ledger.ReserveRemote(ctx, config)
++	if input.LoseResponse {
++		if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
++			t.Fatalf("lost response became result: %v", err)
++		}
++	} else if err != nil || result.OperationID == uuid.Nil {
++		t.Fatalf("real reservation: %v", err)
++	}
++	if _, err := ledger.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
++		t.Fatalf("live retry: %v", err)
++	}
++	record, err := ledger.Inspect(ctx, journal.JournalID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	expected, err := remoteFleetRequest(record)
++	if err != nil {
++		t.Fatal(err)
++	}
++	history, err := registry.LookupRuntimeStartup(ctx, record.OperationID)
++	if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
++		t.Fatalf("database history differs from original Node record: %v", err)
++	}
++	if err := ledger.Close(); err != nil {
++		t.Fatal(err)
++	}
++	recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = recovered.Close() }()
++	if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
++		t.Fatalf("reopen retry: %v", err)
++	}
++	if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
++		t.Fatalf("reopen recreated pidfd: %v", err)
++	}
++	receipt, err := recovered.InspectReservation(ctx, journal.JournalID)
++	if input.LoseResponse {
++		if !errors.Is(err, os.ErrNotExist) {
++			t.Fatalf("lost response created receipt: %v", err)
++		}
++	} else if err != nil || receipt != result {
++		t.Fatalf("lost local receipt: %v", err)
++	}
++	recordWire, err := json.Marshal(record)
++	if err != nil {
++		t.Fatal(err)
++	}
++	report, err := json.Marshal(struct {
++		Request    fleet.RuntimeStartupRequest
++		Record     json.RawMessage
++		HasReceipt bool
++	}{expected, recordWire, !input.LoseResponse})
++	if err != nil {
++		t.Fatal(err)
++	}
++	fmt.Printf("VELA_RESERVATION_REPORT=%s\n", report)
++}
+diff --git a/internal/integration/runtime_startup_node_process_test.go b/internal/integration/runtime_startup_node_process_test.go
+new file mode 100644
+index 0000000..bafa2b5
+--- /dev/null
++++ b/internal/integration/runtime_startup_node_process_test.go
+@@ -0,0 +1,150 @@
++//go:build integration
++
++package integration_test
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"crypto/tls"
++	"encoding/json"
++	"net"
++	"os"
++	"os/exec"
++	"reflect"
++	"regexp"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/journalbinding"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/credentials"
++	"google.golang.org/grpc/peer"
++	"google.golang.org/grpc/status"
++)
++
++// The image must contain /nodeagent.test built from this checkout. Test
++// credentials enter via stdin, never an environment variable or host mount.
++func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
++	image := os.Getenv("VELA_RUNTIME_STARTUP_NODE_IMAGE")
++	if image == "" {
++		t.Skip("set VELA_RUNTIME_STARTUP_NODE_IMAGE to a source-matched native test image")
++	}
++	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(image) {
++		t.Fatal("requires exact local image ID")
++	}
++	for _, lose := range []bool{false, true} {
++		t.Run(map[bool]string{false: "normal", true: "committed-response-lost"}[lose], func(t *testing.T) {
++			database, service, request := newWorkerBootstrapFixture(t)
++			seed := bytes.Repeat([]byte{27}, ed25519.SeedSize)
++			signer, err := journalbinding.NewSigner("registry", seed)
++			if err != nil {
++				t.Fatal(err)
++			}
++			var calls, tlsVersion atomic.Uint32
++			var dropped atomic.Bool
++			clients := bootstrapMutualTLSClientsOn(t, service, func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
++				if info.FullMethod == velav1.FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName {
++					calls.Add(1)
++					if p, ok := peer.FromContext(ctx); ok {
++						if auth, ok := p.AuthInfo.(credentials.TLSInfo); ok {
++							tlsVersion.Store(uint32(auth.State.Version))
++						}
++					}
++				}
++				result, err := handler(ctx, req)
++				if err == nil && info.FullMethod == velav1.FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName && lose && dropped.CompareAndSwap(false, true) {
++					return nil, status.Error(codes.Unavailable, "committed Node reservation response lost")
++				}
++				return result, err
++			}, "0.0.0.0:0", signer)
++			args := map[string]string{}
++			for i := 0; i < len(clients[0].arguments); i += 2 {
++				args[clients[0].arguments[i]] = clients[0].arguments[i+1]
++			}
++			read := func(flag string) []byte {
++				t.Helper()
++				data, err := os.ReadFile(args[flag])
++				if err != nil {
++					t.Fatal(err)
++				}
++				return data
++			}
++			_, port, err := net.SplitHostPort(args["--fleet-address"])
++			if err != nil {
++				t.Fatal(err)
++			}
++			actor := clients[0].bootstrap.ActorIdentity()
++			// Actor's canonical SPIFFE form is retained by the authenticated client.
++			spiffe := "spiffe://vela.internal/" + actor
++			input := struct {
++				Request                     fleet.WorkerBootstrapRequest
++				Address, ServerName, SPIFFE string
++				CA, Certificate, Key        []byte
++				PublicKeys                  map[string][]byte
++				LoseResponse                bool
++			}{request, net.JoinHostPort("host.docker.internal", port), args["--fleet-server-name"], spiffe, read("--fleet-ca-file"), read("--client-cert-file"), read("--client-key-file"), map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)}, lose}
++			wire, err := json.Marshal(input)
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
++			defer cancel()
++			name := "vela-startup-node-" + request.RequestID.String()
++			t.Cleanup(func() {
++				cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++				defer cancel()
++				_ = exec.CommandContext(cleanup, "docker", "rm", "-f", name).Run()
++			})
++			command := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull", "never", "--name", name, "-i", "--add-host", "host.docker.internal:host-gateway", "--cap-add", "SYS_ADMIN", "--cap-add", "SYS_PTRACE", "--security-opt", "seccomp=unconfined", "--cpus", "4", "--memory", "4g", "--pids-limit", "256", "-e", "VELA_RUNTIME_STARTUP_FLEET_HELPER=1", image, "/nodeagent.test", "-test.run=^TestRuntimeStartupFleetProcessHelper$", "-test.v", "-test.timeout=45s")
++			command.Stdin = bytes.NewReader(wire)
++			output, err := command.CombinedOutput()
++			if err != nil {
++				t.Fatalf("native Node process: %v\n%s", err, output)
++			}
++			if !bytes.Contains(output, []byte("--- PASS: TestRuntimeStartupFleetProcessHelper ")) || bytes.Contains(output, []byte("--- SKIP:")) || bytes.Contains(output, []byte("DATA RACE")) {
++				t.Fatalf("missing native test success: %s", output)
++			}
++			t.Logf("native process evidence (no TLS private keys):\n%s", output)
++			var report struct {
++				Request    fleet.RuntimeStartupRequest
++				Record     json.RawMessage
++				HasReceipt bool
++			}
++			found := false
++			for _, line := range strings.Split(string(output), "\n") {
++				if text, ok := strings.CutPrefix(line, "VELA_RESERVATION_REPORT="); ok {
++					if found {
++						t.Fatal("duplicate report")
++					}
++					if err := json.Unmarshal([]byte(text), &report); err != nil {
++						t.Fatal(err)
++					}
++					found = true
++				}
++			}
++			if !found || report.HasReceipt == lose || calls.Load() != 1 || tlsVersion.Load() != tls.VersionTLS13 || dropped.Load() != lose {
++				t.Fatalf("Node result/call count/TLS/loss mismatch: found=%v calls=%d TLS=%x", found, calls.Load(), tlsVersion.Load())
++			}
++			digest := sha256.Sum256(report.Record)
++			if !bytes.Equal(digest[:], report.Request.OwnerObservationDigest) {
++				t.Fatal("database owner digest does not bind the full original Node record")
++			}
++			history, err := clients[0].bootstrap.LookupRuntimeStartup(t.Context(), report.Request.RequestID)
++			if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, report.Request) {
++				t.Fatalf("host database history mismatch: %v", err)
++			}
++			var count int
++			if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 1 {
++				t.Fatalf("expected one immutable reservation: %d %v", count, err)
++			}
++			t.Logf("actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=%v; calls=1 rows=1 receipt=%v; original record SHA256=%x; no grant", lose, report.HasReceipt, digest)
++		})
++	}
++}

@@ -1,0 +1,251 @@
+=== RUN   TestRuntimeStartupNodeProcessPostgresTLS
+=== RUN   TestRuntimeStartupNodeProcessPostgresTLS/normal
+2026/09/09 02:05:43 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 28.3.2
+  API Version: 1.51
+  Operating System: Docker Desktop
+  Total Memory: 32044 MB
+  Labels:
+    com.docker.desktop.address=unix:///Users/viv/Library/Containers/com.docker.docker/Data/docker-cli.sock
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 572c951cef96a0ec19aecad4c21e3246bb7b7607af3167fcb295936a979ab0cf
+  Test ProcessID: 7bbb9e6e-321b-4012-a53f-eb24ee14bdb4
+2026/09/09 02:05:43 🐳 Creating container for image postgres:17-alpine
+2026/09/09 02:05:43 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/09/09 02:05:43 ✅ Container created: 02f2dd717dd8
+2026/09/09 02:05:43 🐳 Starting container: 02f2dd717dd8
+2026/09/09 02:05:43 ✅ Container started: 02f2dd717dd8
+2026/09/09 02:05:43 ⏳ Waiting for container id 02f2dd717dd8 image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/09/09 02:05:44 Shell not found in container
+2026/09/09 02:05:44 🔔 Container is ready: 02f2dd717dd8
+2026/09/09 02:05:44 ✅ Container created: 1ac9241a5067
+2026/09/09 02:05:44 🐳 Starting container: 1ac9241a5067
+2026/09/09 02:05:44 ✅ Container started: 1ac9241a5067
+2026/09/09 02:05:44 ⏳ Waiting for container id 1ac9241a5067 image: postgres:17-alpine. Waiting for: all of: [all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be mapped]]
+2026/09/09 02:05:44 🔔 Container is ready: 1ac9241a5067
+2026/09/09 02:05:44 OK   00001_foundation.sql (78.23ms)
+2026/09/09 02:05:44 OK   00002_worker_assignment.sql (16.75ms)
+2026/09/09 02:05:44 OK   00003_worker_start.sql (2.77ms)
+2026/09/09 02:05:44 OK   00004_worker_heartbeat.sql (17.28ms)
+2026/09/09 02:05:44 OK   00005_execution_failure.sql (15.76ms)
+2026/09/09 02:05:45 OK   00006_customer_cancellation.sql (32.27ms)
+2026/09/09 02:05:45 OK   00007_artifact_finalization.sql (34.73ms)
+2026/09/09 02:05:45 OK   00008_hierarchical_scheduler.sql (55.27ms)
+2026/09/09 02:05:45 OK   00009_invoice_export.sql (14.43ms)
+2026/09/09 02:05:45 OK   00010_profile_certification_circuit.sql (21.78ms)
+2026/09/09 02:05:45 OK   00011_project_webhooks.sql (37.56ms)
+2026/09/09 02:05:45 OK   00012_human_oidc_fixed_rbac.sql (27.98ms)
+2026/09/09 02:05:45 OK   00013_service_principal_administration.sql (16.51ms)
+2026/09/09 02:05:45 OK   00014_human_membership_administration.sql (29.88ms)
+2026/09/09 02:05:45 OK   00015_organization_reporting.sql (19.46ms)
+2026/09/09 02:05:45 OK   00016_project_retention_content_deletion.sql (55.49ms)
+2026/09/09 02:05:45 OK   00017_platform_operator_break_glass.sql (36.71ms)
+2026/09/09 02:05:45 OK   00018_finance_reconciliation.sql (17ms)
+2026/09/09 02:05:45 OK   00019_certified_remediation.sql (24.12ms)
+2026/09/09 02:05:45 OK   00020_remediation_execution_claim.sql (5.59ms)
+2026/09/09 02:05:45 OK   00021_remediation_execution_dispatch.sql (2.49ms)
+2026/09/09 02:05:45 OK   00022_remediation_execution_claim_replay.sql (2.34ms)
+2026/09/09 02:05:45 OK   00023_fleet_controller_worker_readiness.sql (71.08ms)
+2026/09/09 02:05:45 OK   00024_staging_artifact_expiry.sql (4.02ms)
+2026/09/09 02:05:45 OK   00025_scheduler_inbox_receipt.sql (2.59ms)
+2026/09/09 02:05:45 OK   00026_synchronous_quorum_guard.sql (1.94ms)
+2026/09/09 02:05:45 OK   00027_authorized_debug_dump_lifecycle.sql (50.62ms)
+2026/09/09 02:05:45 OK   00028_off_cluster_backup_retention.sql (11.87ms)
+2026/09/09 02:05:45 OK   00029_artifact_backup_replication.sql (11.55ms)
+2026/09/09 02:05:45 OK   00030_non_content_legal_hold.sql (23.07ms)
+2026/09/09 02:05:45 OK   00031_non_content_record_expiry.sql (65.8ms)
+2026/09/09 02:05:45 OK   00032_catalog_promotion_production_gates.sql (34.31ms)
+2026/09/09 02:05:45 OK   00033_statistical_slo_measurement.sql (27.4ms)
+2026/09/09 02:05:45 OK   00034_stage_execution_catalog.sql (60.53ms)
+2026/09/09 02:05:45 OK   00035_worker_instance_residency.sql (68.42ms)
+2026/09/09 02:05:45 OK   00036_stage_attempt_authority.sql (95.77ms)
+2026/09/09 02:05:46 OK   00037_stage_scheduler.sql (49.18ms)
+2026/09/09 02:05:46 OK   00038_stage_artifact.sql (47.07ms)
+2026/09/09 02:05:46 OK   00039_stage_worker_control_authority.sql (3.37ms)
+2026/09/09 02:05:46 OK   00040_stage_worker_execution.sql (22.41ms)
+2026/09/09 02:05:46 OK   00041_stage_worker_operations.sql (13.97ms)
+2026/09/09 02:05:46 OK   00042_stage_worker_assignment.sql (15.8ms)
+2026/09/09 02:05:46 OK   00043_stage_graph_finalization.sql (6.89ms)
+2026/09/09 02:05:46 OK   00044_stage_cache.sql (31.51ms)
+2026/09/09 02:05:46 OK   00045_stage_graph_finalization_outputs.sql (5.18ms)
+2026/09/09 02:05:46 OK   00046_stage_graph_visible_completion.sql (6.46ms)
+2026/09/09 02:05:46 OK   00047_usage_cost_ledger.sql (17.89ms)
+2026/09/09 02:05:46 OK   00048_stage_run_output_binding.sql (14.74ms)
+2026/09/09 02:05:46 OK   00049_stage_cutover_control.sql (58.32ms)
+2026/09/09 02:05:46 OK   00050_stage_graph_instantiation_dispatch.sql (18.62ms)
+2026/09/09 02:05:46 OK   00051_atomic_stage_graph_admission.sql (9.07ms)
+2026/09/09 02:05:46 OK   00052_stage_cutover_zero_backlog_seal.sql (21.56ms)
+2026/09/09 02:05:46 OK   00053_legacy_h3_guarded_contraction.sql (16.21ms)
+2026/09/09 02:05:46 OK   00054_stage_transfer_consume_destination.sql (3.6ms)
+2026/09/09 02:05:46 OK   00055_h3_campaign_evidence_reader.sql (4.16ms)
+2026/09/09 02:05:46 OK   00056_stage_observability_reader.sql (1.58ms)
+2026/09/09 02:05:46 OK   00057_legacy_h3_release_contraction_gate.sql (10.72ms)
+2026/09/09 02:05:46 OK   00058_legacy_h3_schema_contraction.sql (155.7ms)
+2026/09/09 02:05:46 OK   00059_model_runtime_epoch_registration.sql (20.01ms)
+2026/09/09 02:05:46 OK   00060_model_runtime_gang_barrier.sql (19.84ms)
+2026/09/09 02:05:46 OK   00061_stage_worker_gang_authority.sql (6.27ms)
+2026/09/09 02:05:46 OK   00062_stage_authority_member_identity.sql (2.91ms)
+2026/09/09 02:05:46 OK   00063_h3_execution_snapshot.sql (3.52ms)
+2026/09/09 02:05:46 OK   00064_model_runtime_capacity_routes.sql (12.53ms)
+2026/09/09 02:05:46 OK   00065_h3_exact_cache_reconciliation.sql (11.4ms)
+2026/09/09 02:05:46 OK   00066_stage_worker_control_session_capacity.sql (25.83ms)
+2026/09/09 02:05:46 OK   00067_stage_scheduler_project_capacity.sql (2.15ms)
+2026/09/09 02:05:46 OK   00068_stage_assignment_connector_states.sql (1.91ms)
+2026/09/09 02:05:46 OK   00069_stage_transfer_server_clock.sql (5.33ms)
+2026/09/09 02:05:46 OK   00070_stage_lease_expiry_recovery.sql (12.25ms)
+2026/09/09 02:05:46 OK   00071_stage_artifact_lifecycle.sql (18.73ms)
+2026/09/09 02:05:46 OK   00072_recovery_quiescence.sql (13.34ms)
+2026/09/09 02:05:46 OK   00073_stage_cache_downstream_bindings.sql (6.18ms)
+2026/09/09 02:05:46 OK   00074_job_owned_public_artifact_copies.sql (3.46ms)
+2026/09/09 02:05:46 OK   00075_stage_graph_failure_terminalization.sql (21.1ms)
+2026/09/09 02:05:46 OK   00076_allocation_usage_unit.sql (1ms)
+2026/09/09 02:05:46 OK   00077_runtime_usage_receipts.sql (4.18ms)
+2026/09/09 02:05:46 OK   00078_idle_stage_worker_probe.sql (5.5ms)
+2026/09/09 02:05:46 OK   00079_stage_job_expiry.sql (6.48ms)
+2026/09/09 02:05:46 OK   00080_stage_scheduler_snapshot_lock_order.sql (3.17ms)
+2026/09/09 02:05:46 OK   00081_stage_assignment_quorum.sql (1.5ms)
+2026/09/09 02:05:46 OK   00082_stage_success_storage_completion.sql (3.13ms)
+2026/09/09 02:05:46 OK   00083_capacity_observation_lifecycle.sql (4.38ms)
+2026/09/09 02:05:46 OK   00084_blocked_stage_worker_probe.sql (4.29ms)
+2026/09/09 02:05:46 OK   00085_stage_materialization_terminal_replay.sql (2.73ms)
+2026/09/09 02:05:46 OK   00086_stage_failure_terminal_replay.sql (6.58ms)
+2026/09/09 02:05:46 OK   00087_stage_claim_finalization_lock_order.sql (2.33ms)
+2026/09/09 02:05:46 OK   00088_stage_allocation_execution_sequence.sql (4.59ms)
+2026/09/09 02:05:46 OK   00089_stage_terminal_history.sql (9.18ms)
+2026/09/09 02:05:46 OK   00090_stage_assignment_content_lifecycle.sql (20.32ms)
+2026/09/09 02:05:46 OK   00091_worker_journal_bootstrap.sql (19.96ms)
+2026/09/09 02:05:46 OK   00092_worker_bootstrap_history.sql (2.48ms)
+2026/09/09 02:05:46 OK   00093_worker_bootstrap_nonzero_scopes.sql (1.16ms)
+2026/09/09 02:05:46 OK   00094_worker_bootstrap_abandonment.sql (12.03ms)
+2026/09/09 02:05:46 OK   00095_runtime_startup_reservation.sql (12.31ms)
+2026/09/09 02:05:46 goose: successfully migrated database to version: 95
+    runtime_startup_node_process_test.go:114: native process evidence (no TLS private keys):
+        === RUN   TestRuntimeStartupFleetProcessHelper
+        VELA_RESERVATION_REPORT={"Request":{"RequestID":"b3765fef-23b5-4895-a026-b779d6a18e44","BootstrapRequestID":"50e09883-e1b6-4f38-be10-fbe31669b83d","NodeIdentity":"h3-node-01","ActorIdentity":"node-agent/aDMtbm9kZS0wMQ/190714b8-8bff-43af-a407-9db5b23b306f","RuntimeJournalID":"18bec652-ddb1-45c9-803f-94864bea542c","RuntimeScope":"7ec4a/Kg5T8num5kfbdwtJBKTBuArK7UEX10ZnFonjI=","IncarnationID":"19fa42d6-eafa-4c64-8f30-a4562950fa5d","LaunchDigest":"pJ2oOrOypaTJuzPTV4myKl6HCaP2oKtpCEhAzceRcAk=","OwnerObservationDigest":"gpnNnLnLli1NuydcKeIpZZRxWiBniry4ymdVGD3T5XU=","Epochs":[{"model_residency_id":"98e5ce7b-49f1-5d03-9d48-8f430e0d1300","model_runtime_identity":"cpu-test-runtime","stage_profile_revision_id":"49000000-0000-0000-0000-000000000041","model_runtime_epoch":2}]},"Record":{"operation_id":"b3765fef-23b5-4895-a026-b779d6a18e44","request":{"schema_version":1,"node_identity":"h3-node-01","registry_binding_digest":[65,170,235,71,205,243,170,21,79,102,181,93,25,105,77,99,161,132,49,10,34,129,47,122,157,174,1,175,108,4,121,146],"journal_id":"18bec652-ddb1-45c9-803f-94864bea542c","journal_scope":[237,231,56,107,242,160,229,63,39,186,110,100,125,183,112,180,144,74,76,27,128,172,174,212,17,125,116,102,113,104,158,50],"incarnation_id":"19fa42d6-eafa-4c64-8f30-a4562950fa5d","launch_digest":[164,157,168,58,179,178,165,164,201,187,51,211,87,137,178,42,94,135,9,163,246,160,171,105,8,72,64,205,199,145,112,9]},"registry_binding":"CAES8gEKJDUwZTA5ODgzLWUxYjYtNGYzOC1iZTEwLWZiZTMxNjY5YjgzZBIkNDkyMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMjA0GAEiJDNjMTAyMDM3LWViMDgtNTI1YS1hNjcyLTU3ZDRkOTJhYWY4MCgBMgpoMy1ub2RlLTAxOiAL29EFWa3sXICeyoIPlkhopgygTvuMFPL3A2NZjLhgyUIMCPucgdUGEJCjjogCSj5ub2RlLWFnZW50L2FETXRibTlrWlMwd01RLzE5MDcxNGI4LThiZmYtNDNhZi1hNDA3LTlkYjViMjNiMzA2ZhqEAgokNTBlMDk4ODMtZTFiNi00ZjM4LWJlMTAtZmJlMzE2NjliODNkEiQ0YmJkYWNjMC01N2IwLTQ3NDAtOGY5OS04Yjg2YzBlYzY1ZjYaIDExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiQxOGJlYzY1Mi1kZGIxLTQ1YzktODAzZi05NDg2NGJlYTU0MmMqIO3nOGvyoOU/J7puZH23cLSQSkwbgKyu1BF9dGZxaJ4yMgwI+5yB1QYQmMvJkAI6Pm5vZGUtYWdlbnQvYURNdGJtOWtaUzB3TVEvMTkwNzE0YjgtOGJmZi00M2FmLWE0MDctOWRiNWIyM2IzMDZmIghyZWdpc3RyeSpAhukpebjytiMpXGG2AyL4PMZFqq5kI+JdGR8GylK8+LLTUqy6ly9XxSIkbz9bPsDs0VsV12p1v3S9+tRUiiVFDA==","owner":{"schema_version":1,"container":{"schema_version":1,"target":{"container_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sandbox_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","pod_uid":"f4a32a9f-7d0f-4aef-95e2-fbb639ad9379","pod_namespace":"vela-system","pod_name":"wi-49200000000000000000000000000204-ba3790e0","container_name":"model-runtime","container_attempt":3},"node_identity":"h3-node-01","boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","runtime_name":"containerd","runtime_version":"v2.3.1","runtime_api_version":"v1","container_state":"CONTAINER_RUNNING","created_at":"2026-09-08T18:04:47.590490708Z","started_at":"2026-09-08T18:04:48.590490708Z","finished_at":"0001-01-01T00:00:00Z","exit_code":0,"image_ref":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","sandbox_created_at":"2026-09-08T18:04:46.590490708Z","sandbox_attempt":2,"sandbox_state":"SANDBOX_READY","sandbox_pid_namespace":"CONTAINER","observed_from":"2026-09-08T18:05:47.636730583Z","observed_through":"2026-09-08T18:05:47.640115125Z"},"process":{"boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","host_pid":14,"uid":10001,"gid":10001,"start_ticks":12708797,"namespace_pid":1,"pid_namespace":"pid:[4026532959]","namespace_depth":2,"observed_at":"2026-09-08T18:05:47.640397958Z"},"observed_from":"2026-09-08T18:05:47.634227958Z","observed_through":"2026-09-08T18:05:47.640417708Z"},"pod_resource_version":"1","retained_at":"2026-09-08T18:05:47.6404915Z","recorded_at":"2026-09-08T18:05:47.640525667Z","remote":{"journal_identity":{"JournalID":"18bec652-ddb1-45c9-803f-94864bea542c","Scope":[237,231,56,107,242,160,229,63,39,186,110,100,125,183,112,180,144,74,76,27,128,172,174,212,17,125,116,102,113,104,158,50],"Storage":{"root":{"device":67,"inode":52866},"lock":{"device":67,"inode":52867}}},"journal_digest":[252,4,233,56,38,196,91,156,34,99,59,45,246,126,169,137,190,209,195,220,172,86,162,78,199,172,215,230,241,31,116,149],"epochs":[{"model_residency_id":"98e5ce7b-49f1-5d03-9d48-8f430e0d1300","model_runtime_identity":"cpu-test-runtime","stage_profile_revision_id":"49000000-0000-0000-0000-000000000041","model_runtime_epoch":2}],"executable":{"process":{"boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","host_pid":14,"uid":10001,"gid":10001,"start_ticks":12708797,"namespace_pid":1,"pid_namespace":"pid:[4026532959]","namespace_depth":2,"observed_at":"2026-09-08T18:05:47.634091042Z"},"digest":[97,61,218,162,209,253,100,47,182,103,114,240,85,20,130,251,194,85,56,196,236,128,79,142,182,213,69,90,182,239,110,163],"size_bytes":47812192,"file_device":67,"file_inode":49433,"file_uid":0,"file_gid":0,"file_mode":33261,"file_links":1,"observed_from":"2026-09-08T18:05:47.605706667Z","observed_through":"2026-09-08T18:05:47.634091583Z"}}},"HasReceipt":true}
+        --- PASS: TestRuntimeStartupFleetProcessHelper (0.20s)
+        PASS
+    runtime_startup_node_process_test.go:147: actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=false; calls=1 rows=1 receipt=true; original record SHA256=8299cd9cb9cb962d4dbb275c29e2296594715a20678abcb8ca6755183dd3e575; no grant
+2026/09/09 02:05:48 🐳 Stopping container: 1ac9241a5067
+2026/09/09 02:05:49 ✅ Container stopped: 1ac9241a5067
+2026/09/09 02:05:49 🐳 Terminating container: 1ac9241a5067
+2026/09/09 02:05:49 🚫 Container terminated: 1ac9241a5067
+=== RUN   TestRuntimeStartupNodeProcessPostgresTLS/committed-response-lost
+2026/09/09 02:05:49 🐳 Creating container for image postgres:17-alpine
+2026/09/09 02:05:49 ✅ Container created: fe157b760a3e
+2026/09/09 02:05:49 🐳 Starting container: fe157b760a3e
+2026/09/09 02:05:49 ✅ Container started: fe157b760a3e
+2026/09/09 02:05:49 ⏳ Waiting for container id fe157b760a3e image: postgres:17-alpine. Waiting for: all of: [all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be mapped]]
+2026/09/09 02:05:49 🔔 Container is ready: fe157b760a3e
+2026/09/09 02:05:49 OK   00001_foundation.sql (70.17ms)
+2026/09/09 02:05:49 OK   00002_worker_assignment.sql (15.18ms)
+2026/09/09 02:05:49 OK   00003_worker_start.sql (2.86ms)
+2026/09/09 02:05:49 OK   00004_worker_heartbeat.sql (17.43ms)
+2026/09/09 02:05:49 OK   00005_execution_failure.sql (14.7ms)
+2026/09/09 02:05:49 OK   00006_customer_cancellation.sql (34.43ms)
+2026/09/09 02:05:49 OK   00007_artifact_finalization.sql (34.39ms)
+2026/09/09 02:05:50 OK   00008_hierarchical_scheduler.sql (55.46ms)
+2026/09/09 02:05:50 OK   00009_invoice_export.sql (14.55ms)
+2026/09/09 02:05:50 OK   00010_profile_certification_circuit.sql (21.91ms)
+2026/09/09 02:05:50 OK   00011_project_webhooks.sql (37.34ms)
+2026/09/09 02:05:50 OK   00012_human_oidc_fixed_rbac.sql (27.35ms)
+2026/09/09 02:05:50 OK   00013_service_principal_administration.sql (17.01ms)
+2026/09/09 02:05:50 OK   00014_human_membership_administration.sql (30.44ms)
+2026/09/09 02:05:50 OK   00015_organization_reporting.sql (19.35ms)
+2026/09/09 02:05:50 OK   00016_project_retention_content_deletion.sql (59.07ms)
+2026/09/09 02:05:50 OK   00017_platform_operator_break_glass.sql (38.37ms)
+2026/09/09 02:05:50 OK   00018_finance_reconciliation.sql (17.41ms)
+2026/09/09 02:05:50 OK   00019_certified_remediation.sql (24.19ms)
+2026/09/09 02:05:50 OK   00020_remediation_execution_claim.sql (5.72ms)
+2026/09/09 02:05:50 OK   00021_remediation_execution_dispatch.sql (2.38ms)
+2026/09/09 02:05:50 OK   00022_remediation_execution_claim_replay.sql (2.31ms)
+2026/09/09 02:05:50 OK   00023_fleet_controller_worker_readiness.sql (72.65ms)
+2026/09/09 02:05:50 OK   00024_staging_artifact_expiry.sql (4.23ms)
+2026/09/09 02:05:50 OK   00025_scheduler_inbox_receipt.sql (2.69ms)
+2026/09/09 02:05:50 OK   00026_synchronous_quorum_guard.sql (2.03ms)
+2026/09/09 02:05:50 OK   00027_authorized_debug_dump_lifecycle.sql (51.47ms)
+2026/09/09 02:05:50 OK   00028_off_cluster_backup_retention.sql (12.28ms)
+2026/09/09 02:05:50 OK   00029_artifact_backup_replication.sql (11.76ms)
+2026/09/09 02:05:50 OK   00030_non_content_legal_hold.sql (23.54ms)
+2026/09/09 02:05:50 OK   00031_non_content_record_expiry.sql (65.92ms)
+2026/09/09 02:05:50 OK   00032_catalog_promotion_production_gates.sql (35.9ms)
+2026/09/09 02:05:50 OK   00033_statistical_slo_measurement.sql (27.21ms)
+2026/09/09 02:05:50 OK   00034_stage_execution_catalog.sql (60.7ms)
+2026/09/09 02:05:50 OK   00035_worker_instance_residency.sql (68.79ms)
+2026/09/09 02:05:50 OK   00036_stage_attempt_authority.sql (96.75ms)
+2026/09/09 02:05:50 OK   00037_stage_scheduler.sql (50.19ms)
+2026/09/09 02:05:51 OK   00038_stage_artifact.sql (47.21ms)
+2026/09/09 02:05:51 OK   00039_stage_worker_control_authority.sql (3.69ms)
+2026/09/09 02:05:51 OK   00040_stage_worker_execution.sql (22.62ms)
+2026/09/09 02:05:51 OK   00041_stage_worker_operations.sql (14.83ms)
+2026/09/09 02:05:51 OK   00042_stage_worker_assignment.sql (15.8ms)
+2026/09/09 02:05:51 OK   00043_stage_graph_finalization.sql (7.29ms)
+2026/09/09 02:05:51 OK   00044_stage_cache.sql (31.72ms)
+2026/09/09 02:05:51 OK   00045_stage_graph_finalization_outputs.sql (5.14ms)
+2026/09/09 02:05:51 OK   00046_stage_graph_visible_completion.sql (6.65ms)
+2026/09/09 02:05:51 OK   00047_usage_cost_ledger.sql (17.97ms)
+2026/09/09 02:05:51 OK   00048_stage_run_output_binding.sql (15.14ms)
+2026/09/09 02:05:51 OK   00049_stage_cutover_control.sql (59.01ms)
+2026/09/09 02:05:51 OK   00050_stage_graph_instantiation_dispatch.sql (18.82ms)
+2026/09/09 02:05:51 OK   00051_atomic_stage_graph_admission.sql (9.52ms)
+2026/09/09 02:05:51 OK   00052_stage_cutover_zero_backlog_seal.sql (20.8ms)
+2026/09/09 02:05:51 OK   00053_legacy_h3_guarded_contraction.sql (14.99ms)
+2026/09/09 02:05:51 OK   00054_stage_transfer_consume_destination.sql (3.36ms)
+2026/09/09 02:05:51 OK   00055_h3_campaign_evidence_reader.sql (4.02ms)
+2026/09/09 02:05:51 OK   00056_stage_observability_reader.sql (954.46µs)
+2026/09/09 02:05:51 OK   00057_legacy_h3_release_contraction_gate.sql (9.88ms)
+2026/09/09 02:05:51 OK   00058_legacy_h3_schema_contraction.sql (159.78ms)
+2026/09/09 02:05:51 OK   00059_model_runtime_epoch_registration.sql (19.52ms)
+2026/09/09 02:05:51 OK   00060_model_runtime_gang_barrier.sql (19.84ms)
+2026/09/09 02:05:51 OK   00061_stage_worker_gang_authority.sql (6.15ms)
+2026/09/09 02:05:51 OK   00062_stage_authority_member_identity.sql (2.76ms)
+2026/09/09 02:05:51 OK   00063_h3_execution_snapshot.sql (3.23ms)
+2026/09/09 02:05:51 OK   00064_model_runtime_capacity_routes.sql (12.46ms)
+2026/09/09 02:05:51 OK   00065_h3_exact_cache_reconciliation.sql (10.98ms)
+2026/09/09 02:05:51 OK   00066_stage_worker_control_session_capacity.sql (24.81ms)
+2026/09/09 02:05:51 OK   00067_stage_scheduler_project_capacity.sql (2.1ms)
+2026/09/09 02:05:51 OK   00068_stage_assignment_connector_states.sql (1.81ms)
+2026/09/09 02:05:51 OK   00069_stage_transfer_server_clock.sql (5.31ms)
+2026/09/09 02:05:51 OK   00070_stage_lease_expiry_recovery.sql (11.98ms)
+2026/09/09 02:05:51 OK   00071_stage_artifact_lifecycle.sql (18.6ms)
+2026/09/09 02:05:51 OK   00072_recovery_quiescence.sql (13.4ms)
+2026/09/09 02:05:51 OK   00073_stage_cache_downstream_bindings.sql (5.8ms)
+2026/09/09 02:05:51 OK   00074_job_owned_public_artifact_copies.sql (3.2ms)
+2026/09/09 02:05:51 OK   00075_stage_graph_failure_terminalization.sql (20.72ms)
+2026/09/09 02:05:51 OK   00076_allocation_usage_unit.sql (953.96µs)
+2026/09/09 02:05:51 OK   00077_runtime_usage_receipts.sql (4.14ms)
+2026/09/09 02:05:51 OK   00078_idle_stage_worker_probe.sql (5.44ms)
+2026/09/09 02:05:51 OK   00079_stage_job_expiry.sql (6.6ms)
+2026/09/09 02:05:51 OK   00080_stage_scheduler_snapshot_lock_order.sql (3.47ms)
+2026/09/09 02:05:51 OK   00081_stage_assignment_quorum.sql (1.53ms)
+2026/09/09 02:05:51 OK   00082_stage_success_storage_completion.sql (3.19ms)
+2026/09/09 02:05:51 OK   00083_capacity_observation_lifecycle.sql (4.33ms)
+2026/09/09 02:05:51 OK   00084_blocked_stage_worker_probe.sql (4.16ms)
+2026/09/09 02:05:51 OK   00085_stage_materialization_terminal_replay.sql (2.69ms)
+2026/09/09 02:05:51 OK   00086_stage_failure_terminal_replay.sql (6.08ms)
+2026/09/09 02:05:51 OK   00087_stage_claim_finalization_lock_order.sql (2.23ms)
+2026/09/09 02:05:51 OK   00088_stage_allocation_execution_sequence.sql (4.43ms)
+2026/09/09 02:05:51 OK   00089_stage_terminal_history.sql (8.65ms)
+2026/09/09 02:05:51 OK   00090_stage_assignment_content_lifecycle.sql (19.71ms)
+2026/09/09 02:05:51 OK   00091_worker_journal_bootstrap.sql (19.32ms)
+2026/09/09 02:05:51 OK   00092_worker_bootstrap_history.sql (2.41ms)
+2026/09/09 02:05:51 OK   00093_worker_bootstrap_nonzero_scopes.sql (1.13ms)
+2026/09/09 02:05:51 OK   00094_worker_bootstrap_abandonment.sql (11.57ms)
+2026/09/09 02:05:51 OK   00095_runtime_startup_reservation.sql (12.05ms)
+2026/09/09 02:05:51 goose: successfully migrated database to version: 95
+    runtime_startup_node_process_test.go:114: native process evidence (no TLS private keys):
+        === RUN   TestRuntimeStartupFleetProcessHelper
+        VELA_RESERVATION_REPORT={"Request":{"RequestID":"caef7832-28b8-4d81-b9ef-602e0e794ff4","BootstrapRequestID":"3e0a94ca-f51d-40da-9d88-f1ea14ae31d3","NodeIdentity":"h3-node-01","ActorIdentity":"node-agent/aDMtbm9kZS0wMQ/a373ef02-66bb-459d-9c58-0d65ebef3d82","RuntimeJournalID":"5ce65e1e-d3a0-4d24-b341-62379cf3a793","RuntimeScope":"7ec4a/Kg5T8num5kfbdwtJBKTBuArK7UEX10ZnFonjI=","IncarnationID":"bd5e6a38-42d4-4679-96cb-fe3fdb617afb","LaunchDigest":"pJ2oOrOypaTJuzPTV4myKl6HCaP2oKtpCEhAzceRcAk=","OwnerObservationDigest":"gHkNuDZ0B9uuy9gNUmHVBsQdB/a3OnLx2Jc8waGLWtU=","Epochs":[{"model_residency_id":"98e5ce7b-49f1-5d03-9d48-8f430e0d1300","model_runtime_identity":"cpu-test-runtime","stage_profile_revision_id":"49000000-0000-0000-0000-000000000041","model_runtime_epoch":2}]},"Record":{"operation_id":"caef7832-28b8-4d81-b9ef-602e0e794ff4","request":{"schema_version":1,"node_identity":"h3-node-01","registry_binding_digest":[244,98,218,60,234,100,247,147,138,109,17,188,233,26,114,18,40,172,102,177,124,153,107,208,48,201,138,135,12,147,101,151],"journal_id":"5ce65e1e-d3a0-4d24-b341-62379cf3a793","journal_scope":[237,231,56,107,242,160,229,63,39,186,110,100,125,183,112,180,144,74,76,27,128,172,174,212,17,125,116,102,113,104,158,50],"incarnation_id":"bd5e6a38-42d4-4679-96cb-fe3fdb617afb","launch_digest":[164,157,168,58,179,178,165,164,201,187,51,211,87,137,178,42,94,135,9,163,246,160,171,105,8,72,64,205,199,145,112,9]},"registry_binding":"CAES8gEKJDNlMGE5NGNhLWY1MWQtNDBkYS05ZDg4LWYxZWExNGFlMzFkMxIkNDkyMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMjA0GAEiJDNjMTAyMDM3LWViMDgtNTI1YS1hNjcyLTU3ZDRkOTJhYWY4MCgBMgpoMy1ub2RlLTAxOiAL29EFWa3sXICeyoIPlkhopgygTvuMFPL3A2NZjLhgyUIMCICdgdUGEODwnYoCSj5ub2RlLWFnZW50L2FETXRibTlrWlMwd01RL2EzNzNlZjAyLTY2YmItNDU5ZC05YzU4LTBkNjVlYmVmM2Q4MhqEAgokM2UwYTk0Y2EtZjUxZC00MGRhLTlkODgtZjFlYTE0YWUzMWQzEiQwOWE2ZjJhZC0zNjhmLTQwZjYtYWRmMi01YTVkZGFjMGMxNGEaIDExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiQ1Y2U2NWUxZS1kM2EwLTRkMjQtYjM0MS02MjM3OWNmM2E3OTMqIO3nOGvyoOU/J7puZH23cLSQSkwbgKyu1BF9dGZxaJ4yMgwIgJ2B1QYQwLyMkgI6Pm5vZGUtYWdlbnQvYURNdGJtOWtaUzB3TVEvYTM3M2VmMDItNjZiYi00NTlkLTljNTgtMGQ2NWViZWYzZDgyIghyZWdpc3RyeSpA766df3ek3BG/r4kiqF7gyGEeQZbbf7GVmDujiPUZG8IUyS2DhNM6xERaG3tkeCz1TFgSTQ4d4an9NlubPmZKDQ==","owner":{"schema_version":1,"container":{"schema_version":1,"target":{"container_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sandbox_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","pod_uid":"edd8086a-42c1-42aa-b996-fa047ad20eba","pod_namespace":"vela-system","pod_name":"wi-49200000000000000000000000000204-ba3790e0","container_name":"model-runtime","container_attempt":3},"node_identity":"h3-node-01","boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","runtime_name":"containerd","runtime_version":"v2.3.1","runtime_api_version":"v1","container_state":"CONTAINER_RUNNING","created_at":"2026-09-08T18:04:52.593514836Z","started_at":"2026-09-08T18:04:53.593514836Z","finished_at":"0001-01-01T00:00:00Z","exit_code":0,"image_ref":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","sandbox_created_at":"2026-09-08T18:04:51.593514836Z","sandbox_attempt":2,"sandbox_state":"SANDBOX_READY","sandbox_pid_namespace":"CONTAINER","observed_from":"2026-09-08T18:05:52.636165211Z","observed_through":"2026-09-08T18:05:52.637857711Z"},"process":{"boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","host_pid":15,"uid":10001,"gid":10001,"start_ticks":12709297,"namespace_pid":1,"pid_namespace":"pid:[4026532959]","namespace_depth":2,"observed_at":"2026-09-08T18:05:52.638126919Z"},"observed_from":"2026-09-08T18:05:52.632987461Z","observed_through":"2026-09-08T18:05:52.638150586Z"},"pod_resource_version":"1","retained_at":"2026-09-08T18:05:52.638240419Z","recorded_at":"2026-09-08T18:05:52.638286502Z","remote":{"journal_identity":{"JournalID":"5ce65e1e-d3a0-4d24-b341-62379cf3a793","Scope":[237,231,56,107,242,160,229,63,39,186,110,100,125,183,112,180,144,74,76,27,128,172,174,212,17,125,116,102,113,104,158,50],"Storage":{"root":{"device":67,"inode":52866},"lock":{"device":67,"inode":52867}}},"journal_digest":[81,100,151,248,33,185,85,6,75,110,232,146,116,233,220,55,134,107,202,185,182,146,93,52,236,121,42,255,37,251,173,130],"epochs":[{"model_residency_id":"98e5ce7b-49f1-5d03-9d48-8f430e0d1300","model_runtime_identity":"cpu-test-runtime","stage_profile_revision_id":"49000000-0000-0000-0000-000000000041","model_runtime_epoch":2}],"executable":{"process":{"boot_id":"d84a3b1c-4a43-4fb4-a05d-ded394b43e71","host_pid":15,"uid":10001,"gid":10001,"start_ticks":12709297,"namespace_pid":1,"pid_namespace":"pid:[4026532959]","namespace_depth":2,"observed_at":"2026-09-08T18:05:52.632879794Z"},"digest":[97,61,218,162,209,253,100,47,182,103,114,240,85,20,130,251,194,85,56,196,236,128,79,142,182,213,69,90,182,239,110,163],"size_bytes":47812192,"file_device":67,"file_inode":49433,"file_uid":0,"file_gid":0,"file_mode":33261,"file_links":1,"observed_from":"2026-09-08T18:05:52.606560669Z","observed_through":"2026-09-08T18:05:52.632880294Z"}}},"HasReceipt":false}
+        --- PASS: TestRuntimeStartupFleetProcessHelper (0.15s)
+        PASS
+    runtime_startup_node_process_test.go:147: actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=true; calls=1 rows=1 receipt=false; original record SHA256=80790db8367407dbaecbd80d5261d506c41d07f6b73a72f1d8973cc1a18b5ad5; no grant
+2026/09/09 02:05:53 🐳 Stopping container: fe157b760a3e
+2026/09/09 02:05:53 ✅ Container stopped: fe157b760a3e
+2026/09/09 02:05:53 🐳 Terminating container: fe157b760a3e
+2026/09/09 02:05:53 🚫 Container terminated: fe157b760a3e
+--- PASS: TestRuntimeStartupNodeProcessPostgresTLS (10.37s)
+    --- PASS: TestRuntimeStartupNodeProcessPostgresTLS/normal (5.41s)
+    --- PASS: TestRuntimeStartupNodeProcessPostgresTLS/committed-response-lost (4.95s)
+PASS
+ok  	github.com/vivym/vela/internal/integration	12.361s

@@ -1,0 +1,30 @@
+{
+  "diagnostics": 82,
+  "output_identical_to": "docs/evidence/runtime-startup-transport-2026-09-09/integration-lint.log",
+  "unchanged_files_against": "0a4cb28",
+  "files": [
+    "internal/integration/admission_test.go",
+    "internal/integration/attempt_coordinator_test.go",
+    "internal/integration/break_glass_test.go",
+    "internal/integration/cancellation_test.go",
+    "internal/integration/catalog_promotion_test.go",
+    "internal/integration/foundation_test.go",
+    "internal/integration/human_identity_test.go",
+    "internal/integration/human_membership_administration_test.go",
+    "internal/integration/identity_administration_test.go",
+    "internal/integration/invoice_export_test.go",
+    "internal/integration/nats_workload_identity_test.go",
+    "internal/integration/non_content_expiry_test.go",
+    "internal/integration/postgres_restore_test.go",
+    "internal/integration/release_bundle_fixture_test.go",
+    "internal/integration/retention_test.go",
+    "internal/integration/stage_allocation_execution_sequence_test.go",
+    "internal/integration/stage_execution_catalog_test.go",
+    "internal/integration/stage_graph_failure_test.go",
+    "internal/integration/stage_materialization_replay_test.go",
+    "internal/integration/stage_stream_materialization_replay_test.go",
+    "internal/integration/stage_worker_control_test.go",
+    "internal/integration/terminal_job_fixture_test.go",
+    "internal/integration/webhook_test.go"
+  ]
+}

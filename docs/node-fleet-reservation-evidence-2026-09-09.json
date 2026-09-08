@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "0a4cb28733acfc87f37f8f96672d0036e439166b",
+  "source_tree_sha256": "15819872f03dbf0b1815039d93de9152a5152c2cc4b087182eba5d47ca8ded0b",
+  "source_file_count": 978,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "postgres_schema": 95,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "node_startup_ledger_schema": 2,
+  "production_gates": "0/9",
+  "native_suites": {
+    "modelruntime": {
+      "main_tests": [
+        "TestJournalResponseBindsDurableAcknowledgement",
+        "TestJournalResponseReadFailuresAreNotTransportUnavailable",
+        "TestJournalOwnerNonAdmissionRejectsWithoutPublishing",
+        "TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof",
+        "TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent",
+        "TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint",
+        "TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent",
+        "TestExecutionNonAdmissionDoesNotInferHistoricalCoverageAfterRestart",
+        "TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover",
+        "TestExecutionNonAdmissionRejectsConcurrentAcceptedPrepare",
+        "TestExecutionNonAdmissionHistoryRejectsCorruption",
+        "TestExecutionNonAdmissionHistoryBoundsWithoutEvictingProof",
+        "TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource",
+        "TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn",
+        "TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait",
+        "TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads",
+        "TestJournalOwnerAPIWorkflowAndLostReplyReplay",
+        "TestJournalOwnerAPIWorkerCheckpoints",
+        "TestJournalOwnerAPIRejectsWithoutPoisoning",
+        "TestJournalCommandRejectsWireAuthorityInjection",
+        "TestJournalOwnerAPIStorageUncertaintyAndCancellation",
+        "TestJournalOwnerAPIHistoryBoundAndHealth",
+        "TestJournalOwnerAPITrustedRouteAndClose",
+        "TestJournalOwnerInspectStartupRequiresHeldExactFirstUse",
+        "TestJournalRemoteReadContentionDoesNotPoisonAdmission",
+        "TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence",
+        "TestJournalRemoteReadIntegrityFailuresRemainFenced",
+        "TestJournalRemoteReadRetryObservesNewWorkerFloor",
+        "TestJournalRemoteCancellationBoundsAdmission",
+        "TestJournalRemoteWriteReadbackSharesDeadline",
+        "TestJournalRemoteReadTimeoutCanRetry",
+        "TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory",
+        "TestJournalRemoteUncertainAdmissionNeverEntersBackend",
+        "TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation",
+        "TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole",
+        "TestJournalReadRejectsMixedPagesAndPreservesSnapshot",
+        "TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup",
+        "TestRuntimeServerFreezesLaunchBeforeBackendCallbacks",
+        "TestRuntimeServerDrainDoesNotRetireBackendIncarnation",
+        "TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch",
+        "TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories",
+        "TestRuntimeServerRemoteStartupBeforeFactories",
+        "TestRuntimeServerRemoteStartupRejectsMixedCustody",
+        "TestTerminalNonAdmissionRPCRejectsInvalidScopes",
+        "TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency",
+        "TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend",
+        "TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof",
+        "TestTerminalNonAdmissionReplayBindsExactHistoricalScope",
+        "TestTerminalNonAdmissionSerializesWithAcceptedPrepare",
+        "TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence",
+        "TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover",
+        "TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders",
+        "TestTerminalNonAdmissionBoundNeverEvictsOldProof",
+        "TestTerminalNonAdmissionRecoveryRejectsCorruptProofs",
+        "TestTerminalNonAdmissionSchema3UpgradePreservesEvidence",
+        "TestTerminalNonAdmissionSurvivesAbruptProcessExit",
+        "TestTerminalNonAdmissionProcessHelper"
+      ],
+      "skips": 0,
+      "races": 0
+    },
+    "node-startup": {
+      "main_tests": [
+        "TestJournalServerCancellationSurvivesUnresponsiveNode",
+        "TestJournalEndpoint",
+        "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+        "TestJournalServer",
+        "TestJournalServerLiveSupervisorRecoversAfterOverload",
+        "TestJournalServerTimeoutAndJoin",
+        "TestJournalServerListenerFailure",
+        "TestJournalServerConfiguration",
+        "TestJournalServerWorkerBarrierRecoversAfterOverload",
+        "TestRuntimeCallerRejectsInvalidMessages",
+        "TestRuntimeChannelRoundTrip",
+        "TestRuntimeChannelLargeRequestBounds",
+        "TestRuntimeChannelRejectsUntrustedExchange",
+        "TestRuntimeChannelReplyRejectsLostLifetime",
+        "TestRuntimeStartupLedgerBeforeActualFactory",
+        "TestRuntimeStartupLedgerRetainsExactOwnerExit",
+        "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner",
+        "TestRuntimeStartupLedgerReservesExitCapacity",
+        "TestRuntimeStartupLedgerRejectsUnboundRequests",
+        "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed",
+        "TestRuntimeStartupLedgerRejectsMissingAndChangedState",
+        "TestRuntimeStartupReservationProcessCrashRecovery",
+        "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal",
+        "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter",
+        "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent"
+      ],
+      "skips": 0,
+      "races": 0
+    }
+  },
+  "integration_seconds": 12.361,
+  "integration_cases": 2,
+  "integration_races": 0,
+  "integration_skips": 0,
+  "integration_lint": {
+    "passed": false,
+    "baseline_diagnostics": 82,
+    "unchanged_files": 23,
+    "new_diagnostics": 0
+  },
+  "checks": [
+    {
+      "command": "bash hack/run-journal-owner-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "VELA_RUNTIME_STARTUP_NODE_IMAGE=<recorded image.txt> go test -race -tags=integration ./internal/integration -run ^TestRuntimeStartupNodeProcessPostgresTLS$ -count=1 -v -timeout=3m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/integration.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 golangci-lint v2.13.1 run ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/linux-cross.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run --build-tags=integration ./internal/integration",
+      "exit_code": 1,
+      "artifact": "docs/evidence/node-fleet-reservation-2026-09-09/integration-lint.log"
+    }
+  ],
+  "claim_boundary": "Actual root Node and original non-root PID-1 Runtime with held root Runtime journal connect to real Fleet mTLS and PostgreSQL for normal and post-commit lost reply. Pod/CRI and Worker journal remain fixtures. No grant, backend, effective OCI attestation, cross-component SIGKILL, full Job or GPU evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/binaries.sha256",
+      "bytes": 299,
+      "sha256": "420c0a333570e7c9ed686c2a373984b8492540d045ac04fc2204e3bf63e0ab20"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "485524e7571cb97c32dfabcc44604b37e11aa64ac880b019407c2e7542498d69"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "e6c7e0b2b70bf292255178a87a476f1150aa072177b24d10673086d4c5fe6945"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "960e48c6cd545c1afa799dfa2c7d96e9c783a49f9d2a10983ee1770fcdce5f4d"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/integration-lint-baseline.json",
+      "bytes": 1466,
+      "sha256": "0f53e2de6c270e2555c201adbc6213397cc9088fe7dad1364c165370002b214f"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/integration-lint.log",
+      "bytes": 16126,
+      "sha256": "bb40d53aa8ae40315481a2389d007b7fbe1200f332a0daf50add892cf9dab276"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/integration.log",
+      "bytes": 27891,
+      "sha256": "b1dc71b35df01db66ae3fda1127b7c9e1fd8d72f5d746b522680439d4caa2335"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/linux-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/modelruntime.log",
+      "bytes": 42677,
+      "sha256": "a819c4a9bd140bb3b38e5533b9d35b4d3e2190e22000ea3d9952704003a6f3cd"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/native-runner.log",
+      "bytes": 90,
+      "sha256": "a971a3b30696ce097d93571b285b402f7e5a2d1034e1d8b50936cad1876929bd"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/node-reports.json",
+      "bytes": 17519,
+      "sha256": "56d452bdaf37b8dc005029a6eb9d390f5a21eeb4a2a49675fbc9df6c9b12afe8"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/node-startup.log",
+      "bytes": 36674,
+      "sha256": "470e0bf534ffc8845e66cd739cd19f4877c37bc2fefce9cd67f52cc8dfd61d4d"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/repository-test.log",
+      "bytes": 6843,
+      "sha256": "ba01661ce654f1067cec9d869ba1fa1d8ecd6f3434e4a1adb6180d30589b6d6e"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/source-files.json",
+      "bytes": 115428,
+      "sha256": "5dbfa64d0a2c3075cb3fe4ae58b3039c50ec6ff651f60d90132c0ea66594bb25"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "f24f9e8dfec9151ac19c5f7205140f63deac8422dd8ed0c68d3eac461b854c21"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/source.patch",
+      "bytes": 17493,
+      "sha256": "c610660c84c1e4785923a7831a951d8751d6f8094e3138fa2c8d78d5b310d5b1"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/source.txt",
+      "bytes": 280,
+      "sha256": "e4d53a7f57f60aa1cfcb5d1583a10d352b69ffc59aa51bb8158f46d7442d8045"
+    },
+    {
+      "path": "docs/evidence/node-fleet-reservation-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -147,13 +147,17 @@ func TestRuntimeContainerCallerRejectsNonInit(t *testing.T) {
 }
 
 func runtimeCallerObserverFixture(t *testing.T, process RuntimeCallerObservation) (*containerCRIServer, *runtimeCallerTaskServer, *RuntimeContainerObserver) {
+	return runtimeCallerObserverOnNodeFixture(t, process, "cpu-node")
+}
+
+func runtimeCallerObserverOnNodeFixture(t *testing.T, process RuntimeCallerObservation, node string) (*containerCRIServer, *runtimeCallerTaskServer, *RuntimeContainerObserver) {
 	t.Helper()
 	cri := newContainerCRIServer()
 	cri.version.RuntimeName, cri.version.RuntimeVersion = "containerd", "v2.3.1"
 	tasks := &runtimeCallerTaskServer{target: cri.target, process: &tasktypes.Process{ID: cri.target.ContainerID,
 		Pid: uint32(process.HostPID), Status: tasktypes.Status_RUNNING, ExitedAt: timestamppb.New(time.Time{})}}
 	socket := serveContainerCRI(t, cri, func(server *grpc.Server) { tasksapi.RegisterTasksServer(server, tasks) })
-	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: socket, NodeIdentity: "cpu-node"})
+	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: socket, NodeIdentity: node})
 	if err != nil {
 		t.Fatal(err)
 	}

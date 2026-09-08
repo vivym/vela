@@ -531,6 +531,13 @@ SIGKILL boundaries and twelve error-return boundaries. Schema 2 association
 ledgers support reservations; schema 1 retains local history without implicit
 upgrade. Fleet/Pod/CRI remain fixtures in this native assembly; production
 approval, once-only grants and a complete remote-owner CPU Job remain open.
+The [Node/Fleet reservation integration](node-fleet-reservation-evidence-2026-09-09.md)
+joins root Node storage/original Runtime pidfd to the actual Fleet TLS client
+and PostgreSQL in one operation. Normal and post-commit lost-response cases each
+make one reservation RPC and retain one database row; loss leaves only a local
+intent, while history and reopening issue no new request. Pod/CRI and Worker
+journal data remain fixtures. Effective launch approval and the Job/grant
+assembly remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

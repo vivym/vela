@@ -50,6 +50,11 @@ the receipt. Schema 2 histories never contain a permission bit; restart cannot
 reconstruct the original process handle. Native Fleet calls remain fixtures;
 effective launch approval, once-only grant issuance and protected command/mount
 assembly remain open.
+The [Node/Fleet same-operation validation](node-fleet-reservation-evidence-2026-09-09.md)
+now connects the actual root Node, original non-root Runtime and held Runtime
+journal through TLS1.3 to PostgreSQL for normal and post-commit lost-response
+cases. Pod/CRI and Worker journal identities remain fixtures. This is a
+reservation association, not effective OCI approval or backend permission.
 The next [authenticated reservation channel](runtime-startup-transport-evidence-2026-09-09.md)
 binds requests to registered Node Agent TLS principals at the Control listener.
 Real PostgreSQL/TLS response loss preserves one reservation and no new Fresh on
