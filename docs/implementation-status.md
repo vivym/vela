@@ -575,6 +575,13 @@ binary/state paths and matching cgroup mode, otherwise default options and no
 OCI hooks. Native CRI covers an implicit handler rejection and an explicit
 handler match plus 84 invalid-file cases. The policy is test-assembled; executable,
 effective mount and production grant approval are still separate prerequisites.
+The [actual remote Runtime CLI](runtime-remote-cli-evidence-2026-09-09.md) adds
+`serve-remote --bootstrap-file`, consuming one root-owned read-only configuration
+snapshot and real Node journal/startup channels without local epoch/journal
+ownership. Eighteen native CLI scenarios include an actual process backend's
+initialize/shutdown and Worker discovery of epoch 2. Node permission, Registry
+and CRI are fixtures; production publication, Fleet wiring, image association,
+once-only grant and a full CLI Job remain open.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation

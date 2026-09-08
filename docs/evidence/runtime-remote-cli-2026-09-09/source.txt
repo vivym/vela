@@ -1,0 +1,12 @@
+333d3e5833c5decb84ce69c491b1f9ef087b4844
+ M cmd/vela-model-runtime/journal.go
+ M cmd/vela-model-runtime/main.go
+ M internal/nodeagent/journal_endpoint_linux_test.go
+ M internal/nodeagent/journal_worker_barrier_linux_test.go
+?? cmd/vela-model-runtime/remote_linux.go
+?? cmd/vela-model-runtime/remote_other.go
+?? hack/run-remote-runtime-cli-native.sh
+?? internal/modelruntime/remote_bootstrap.go
+?? internal/modelruntime/remote_bootstrap_linux.go
+?? internal/modelruntime/remote_bootstrap_test.go
+?? internal/nodeagent/journal_remote_cli_linux_test.go

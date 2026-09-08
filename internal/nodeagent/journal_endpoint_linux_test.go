@@ -49,6 +49,7 @@ type journalEndpointControl struct {
 	RemoteServer          bool
 	RegistryBinding       []byte
 	AllowRemoteStartup    bool
+	ExecRemoteCLI         string
 }
 
 type journalEndpointReport struct {
@@ -69,10 +70,13 @@ type journalEndpointReport struct {
 	CancelReason        velav1.ModelRuntimeCancelReason
 	RemoteStartup       *modelruntime.RemoteBackendStartupRequest
 	FactoryCalls        int
+	Discovery           *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
 }
 
 type journalEndpointChild struct {
 	process *os.Process
+	command *exec.Cmd
+	done    <-chan struct{}
 	input   *json.Encoder
 	reader  *os.File
 	reports *json.Decoder
@@ -116,6 +120,14 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 		} else if err != nil {
 			t.Fatal(err)
 		}
+		if request.ExecRemoteCLI != "" {
+			// Preserve the already-enrolled original PID across exec. The actual
+			// CLI then protects its mm and reads only its root-published bootstrap.
+			environment := append(os.Environ(), "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE=/untrusted/launch.json", "VELA_MODEL_RUNTIME_EPOCH_DIRECTORY=/untrusted/epochs", "VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY=/untrusted/journal", "VELA_MODEL_RUNTIME_SOCKET=/untrusted/runtime.sock")
+			if err := unix.Exec("/vela-model-runtime", []string{"/vela-model-runtime", "serve-remote", "--bootstrap-file", request.ExecRemoteCLI}, environment); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if request.IdleConnections != 0 || request.CloseIdle {
 			for _, connection := range idle {
 				_ = connection.Close()
@@ -151,7 +163,7 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 			}
 			continue
 		}
-		if request.Manifest != nil {
+		if request.Manifest != nil && request.WorkerSocket == "" {
 			if request.RemoteServer {
 				journalEndpointRunRemoteServer(t, socket, request, decoder, encoder)
 				continue
@@ -235,7 +247,7 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
 	if err := errors.Join(caller.Reply(t.Context(), []byte("enrolled")), observer.Close()); err != nil {
 		t.Fatal(err)
 	}
-	return &journalEndpointChild{process: command.Process, input: json.NewEncoder(input), reader: reader, reports: json.NewDecoder(reader), owner: owner}
+	return &journalEndpointChild{process: command.Process, command: command, done: done, input: json.NewEncoder(input), reader: reader, reports: json.NewDecoder(reader), owner: owner}
 }
 
 func journalEndpointAccept(t *testing.T, listener *net.UnixListener) *net.UnixConn {
@@ -300,6 +312,11 @@ func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
 
 func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) journalEndpointFixture {
 	t.Helper()
+	return newJournalEndpointConfiguredFixture(t, epochOffset, nil)
+}
+
+func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string)) journalEndpointFixture {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
 	}
@@ -316,6 +333,9 @@ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) j
 		t.Fatal(err)
 	}
 	fixture := runtimeLaunchFixture(t)
+	if configure != nil {
+		configure(&fixture.launch, root)
+	}
 	now := time.Now().UTC()
 	clock := func() time.Time { return now }
 	keys := map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}

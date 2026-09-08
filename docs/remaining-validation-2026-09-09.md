@@ -75,6 +75,14 @@ CRI 的 17 个场景覆盖请求绑定错误、入口替换、预留期间 task 
 这里 Pod/Registry/Fleet 仍为 fixture，尚未与真实 PostgreSQL/TLS、生产
 Node/Runtime CLI 或完整 Job 合并验证，返回回执没有启动授权含义。
 
+新增 [实际 Runtime 远程 CLI](runtime-remote-cli-evidence-2026-09-09.md) 提供
+`serve-remote --bootstrap-file`：非 root Runtime 从受保护的 root-owned 只读
+配置快照装配真实 Node journal/startup 通道，不再在这个模式下创建本地 epoch
+或 journal。18 个原生 CLI 场景覆盖实际 process backend 初始化/关闭、实际
+Worker 发现 epoch=2、旧环境变量不能覆盖配置及文件/编码/绑定反例。
+Node Permit、Registry/CRI 仍为 fixture；配置发布、生产 Node/Fleet 接线、
+镜像关联与一次性 grant、同一装配下完整 Job 尚未完成。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

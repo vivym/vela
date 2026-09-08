@@ -104,6 +104,18 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
 		t.Fatal(err)
 	}
 	defer func() { _ = connection.Close() }()
+	if request.WorkerAction == "discover-only" {
+		manifest := request.Manifest
+		if manifest == nil {
+			t.Fatal("discovery requires expected member")
+		}
+		reply, err := connection.DiscoverRuntimeIdentities(ctx, &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{WorkerInstanceId: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch, WorkerMemberId: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch})
+		if err != nil {
+			t.Fatal(err)
+		}
+		journalBarrierReport(t, encoder, journalEndpointReport{Discovery: reply})
+		return
+	}
 	client, err := modelruntime.NewJournalWorkerClient(connection, modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity})
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "333d3e5833c5decb84ce69c491b1f9ef087b4844",
+  "source_tree_sha256": "c779567a9b9a4b8c70f88db5c36aa178bd23c6f4a85e51661066bdc57a426a8f",
+  "source_file_count": 1004,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "84e1793419b7ead6132dbb4f0845b5d22b5c63af80541221998d976c2b4f4811",
+  "production_gates": "0/9",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "native_main_tests": {
+    "TestJournalServerActualRemoteCLI": "3.43s",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution": "0.42s"
+  },
+  "actual_cli_cases": {
+    "permit": "2.16s",
+    "deny": "0.09s",
+    "changed-config": "0.07s",
+    "workload-owned": "0.07s",
+    "writable": "0.07s",
+    "symlink": "0.07s",
+    "wrong-scope": "0.08s",
+    "wrong-incarnation": "0.08s",
+    "workload-parent": "0.07s",
+    "hardlink": "0.07s",
+    "fifo": "0.07s",
+    "oversize": "0.07s",
+    "duplicate": "0.07s",
+    "unknown": "0.07s",
+    "socket-alias": "0.07s",
+    "bad-key": "0.07s",
+    "missing-file": "0.07s",
+    "empty": "0.10s"
+  },
+  "ordinary_bootstrap_negative_cases": 15,
+  "checks": [
+    {
+      "command": "bash hack/run-remote-runtime-cli-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run ./cmd/vela-model-runtime ./internal/modelruntime ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet ./cmd/vela-model-runtime ./internal/modelruntime ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./internal/nodeagent ./cmd/vela-model-runtime ./internal/modelruntime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-remote-cli-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "initial_failures": [
+    {
+      "label": "root-discovery",
+      "cause": "Root test client correctly refused a non-root-owned private socket directory; discovery moved to actual non-root Worker."
+    },
+    {
+      "label": "helper-dispatch",
+      "cause": "Test helper treated discovery Manifest as Supervisor input; fixed test-only dispatch."
+    },
+    {
+      "label": "driver-timeout",
+      "cause": "Fake fixture one-second shutdown timeout conflicted with race binary default one-second exit delay; fixture now uses existing CLI test five-second driver budgets."
+    }
+  ],
+  "claim_boundary": "Actual non-root Runtime CLI with root-owned read-only bootstrap, real Node journal transport and original pidfd roles, actual CPU process backend initialize/shutdown, Worker discovery, no local epoch/journal files. Node Permit, Registry/CRI are fixtures. No production publisher/Fleet/Node entry, image/OCI association in this assembly, once-only grant, full CLI Job, Worker business custody, hardware/GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/amd64-cross.log",
+      "bytes": 166,
+      "sha256": "035726582f19a36aea452c4798ff1fadf5ee2cebceef952a5b27c99577c3b8ae"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/binaries.sha256",
+      "bytes": 478,
+      "sha256": "72f739da14f860b6f584cd5f78f1f26ed855fbbc34942c7eb416dd91998344c8"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "f19b25dec49f1144eaaf013267ef92468c4e5a6f20ea1ad0cb25716059b42c95"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "7602a357e927181ed9eba3ecd6c89a87e68a8c5583f07329496cc63ee4326344"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "e6446a8ec3dbc23b3b569062c879a1b790c82adf4c210d787fa308a6e07b278d"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "eb00e08af758b17a8f090ee279a9c196cd7222bfa904c38aab1f086f26d79152"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-driver-timeout-binaries.sha256",
+      "bytes": 481,
+      "sha256": "152399df4781f63a9463a6ff47d3f1dedd83ad671a2b3a94e86b5d8093cd3b88"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-driver-timeout-image.txt",
+      "bytes": 72,
+      "sha256": "48775cb26213d5d44d856d302d24d4d12bada7b1173db531a4b7e0c52c70c606"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-driver-timeout-native.log",
+      "bytes": 9572,
+      "sha256": "325399adbb89605fed93c0bb9f84dcfc8d57bc01b64dce7292997aaf9975eab2"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-driver-timeout-source.patch",
+      "bytes": 37790,
+      "sha256": "9d2d7a6d4766e0d840d9a2b7173a1f99d08233e09806d267a74d6cd02c841345"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-helper-dispatch-binaries.sha256",
+      "bytes": 472,
+      "sha256": "1ba065c6e4564ab151411bfabd26001bb23f1818758e6a913f0570e7cae158aa"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-helper-dispatch-image.txt",
+      "bytes": 72,
+      "sha256": "a854e286e9f816fb61d1e48d74d70d711b1a63c8b3bcdfa9becf4af6cd3e7ff5"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-helper-dispatch-native.log",
+      "bytes": 9603,
+      "sha256": "270aebac58785f4e77e055c09a23c3e07f914872612a199e100207ec748519d3"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-helper-dispatch-source.patch",
+      "bytes": 36706,
+      "sha256": "5c68ac16f4dcec601fa9a8f8c5dcbd7c418e2b43974f6d011ff8ba01ed138194"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-root-discovery-binaries.sha256",
+      "bytes": 472,
+      "sha256": "cf1db15a1e12454d8d2a108bd59e0e6f99c751bdc7ee00b62f9645434de51811"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-root-discovery-image.txt",
+      "bytes": 72,
+      "sha256": "e7534482bc4981f56fe364247f5ed7cefc8dee2bf393fa64f6a40d3eb0edf3e7"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-root-discovery-native.log",
+      "bytes": 4857,
+      "sha256": "96f43cbb9f631bc06726ea4df63d118b18e18ce62a1978f6d6c57a7eb2ec61ab"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/initial-root-discovery-source.patch",
+      "bytes": 30577,
+      "sha256": "38c7f5668f23bbeb80829bdc7547c0e1f1457fa6cc537519bf2acec4c4a1369d"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/native-runner.log",
+      "bytes": 103,
+      "sha256": "7e6f7df39562855a94a4a70a665fe13306fdb80e67b275c9a3877daf35084c07"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/native.log",
+      "bytes": 9663,
+      "sha256": "003c3cd0cd65201d07e3d9acff5a699b23ab2848810461fac583a31059495668"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/source-files.json",
+      "bytes": 118691,
+      "sha256": "cab1589f6d605dcb057a969a25bc0c8c15c32899afaefd50141019fbfb8f7f0e"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "84e3f2dd1105b2db72f44da289856b24b44a40af106b456e374be40a91d289b9"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/source.patch",
+      "bytes": 38126,
+      "sha256": "4dd93379e8b4eb18d6e23bcce035f8e809d0e6bf24816494903598b42e51f22e"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/source.txt",
+      "bytes": 550,
+      "sha256": "c9a64f3e7880be26dd5b672fa4fe0f940b4ebf91de98692d882c36f1dc4a30cd"
+    },
+    {
+      "path": "docs/evidence/runtime-remote-cli-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

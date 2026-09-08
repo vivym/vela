@@ -1,0 +1,699 @@
+diff --git a/cmd/vela-model-runtime/journal.go b/cmd/vela-model-runtime/journal.go
+index e71d15c..2353064 100644
+--- a/cmd/vela-model-runtime/journal.go
++++ b/cmd/vela-model-runtime/journal.go
+@@ -15,8 +15,11 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
+ 	if len(arguments) == 0 {
+ 		return run(ctx)
+ 	}
++	if arguments[0] == "serve-remote" {
++		return runRemote(ctx, arguments[1:], stderr)
++	}
+ 	if arguments[0] != "journal" {
+-		return errors.New("expected no arguments to serve, or journal with an explicit action")
++		return errors.New("expected no arguments to serve, serve-remote, or journal with an explicit action")
+ 	}
+ 	return runJournal(ctx, arguments[1:], stdout, stderr)
+ }
+diff --git a/cmd/vela-model-runtime/main.go b/cmd/vela-model-runtime/main.go
+index fa89502..ce3fc8d 100644
+--- a/cmd/vela-model-runtime/main.go
++++ b/cmd/vela-model-runtime/main.go
+@@ -128,6 +128,10 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	return waitRuntimeServer(ctx, server)
++}
++
++func waitRuntimeServer(ctx context.Context, server modelRuntimeServer) error {
+ 	wait := make(chan error, 1)
+ 	go func() { wait <- server.Wait() }()
+ 	select {
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index f2886e8..c4f76d7 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -49,6 +49,7 @@ type journalEndpointControl struct {
+ 	RemoteServer          bool
+ 	RegistryBinding       []byte
+ 	AllowRemoteStartup    bool
++	ExecRemoteCLI         string
+ }
+ 
+ type journalEndpointReport struct {
+@@ -73,6 +74,8 @@ type journalEndpointReport struct {
+ 
+ type journalEndpointChild struct {
+ 	process *os.Process
++	command *exec.Cmd
++	done    <-chan struct{}
+ 	input   *json.Encoder
+ 	reader  *os.File
+ 	reports *json.Decoder
+@@ -116,6 +119,14 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 		} else if err != nil {
+ 			t.Fatal(err)
+ 		}
++		if request.ExecRemoteCLI != "" {
++			// Preserve the already-enrolled original PID across exec. The actual
++			// CLI then protects its mm and reads only its root-published bootstrap.
++			environment := append(os.Environ(), "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE=/untrusted/launch.json", "VELA_MODEL_RUNTIME_EPOCH_DIRECTORY=/untrusted/epochs", "VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY=/untrusted/journal", "VELA_MODEL_RUNTIME_SOCKET=/untrusted/runtime.sock")
++			if err := unix.Exec("/vela-model-runtime", []string{"/vela-model-runtime", "serve-remote", "--bootstrap-file", request.ExecRemoteCLI}, environment); err != nil {
++				t.Fatal(err)
++			}
++		}
+ 		if request.IdleConnections != 0 || request.CloseIdle {
+ 			for _, connection := range idle {
+ 				_ = connection.Close()
+@@ -235,7 +246,7 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
+ 	if err := errors.Join(caller.Reply(t.Context(), []byte("enrolled")), observer.Close()); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	return &journalEndpointChild{process: command.Process, input: json.NewEncoder(input), reader: reader, reports: json.NewDecoder(reader), owner: owner}
++	return &journalEndpointChild{process: command.Process, command: command, done: done, input: json.NewEncoder(input), reader: reader, reports: json.NewDecoder(reader), owner: owner}
+ }
+ 
+ func journalEndpointAccept(t *testing.T, listener *net.UnixListener) *net.UnixConn {
+@@ -299,6 +310,11 @@ func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
+ }
+ 
+ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) journalEndpointFixture {
++	t.Helper()
++	return newJournalEndpointConfiguredFixture(t, epochOffset, nil)
++}
++
++func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string)) journalEndpointFixture {
+ 	t.Helper()
+ 	if os.Geteuid() != 0 {
+ 		t.Skip("requires root Node and independent non-root PID namespaces")
+@@ -316,6 +332,9 @@ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) j
+ 		t.Fatal(err)
+ 	}
+ 	fixture := runtimeLaunchFixture(t)
++	if configure != nil {
++		configure(&fixture.launch, root)
++	}
+ 	now := time.Now().UTC()
+ 	clock := func() time.Time { return now }
+ 	keys := map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}
+diff --git a/cmd/vela-model-runtime/remote_linux.go b/cmd/vela-model-runtime/remote_linux.go
+new file mode 100644
+index 0000000..469d9e0
+--- /dev/null
++++ b/cmd/vela-model-runtime/remote_linux.go
+@@ -0,0 +1,48 @@
++package main
++
++import (
++	"context"
++	"errors"
++	"flag"
++	"io"
++	"os"
++
++	"github.com/vivym/vela/internal/modelruntime"
++)
++
++func runRemote(ctx context.Context, arguments []string, stderr io.Writer) error {
++	if ctx == nil || stderr == nil {
++		return errors.New("remote Runtime requires context and error output")
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	if err := protectRuntimeProcess(); err != nil {
++		return err
++	}
++	flags := flag.NewFlagSet("vela-model-runtime serve-remote", flag.ContinueOnError)
++	flags.SetOutput(stderr)
++	path := flags.String("bootstrap-file", "", "root-published read-only remote startup snapshot")
++	if err := flags.Parse(arguments); err != nil {
++		if errors.Is(err, flag.ErrHelp) {
++			return nil
++		}
++		return err
++	}
++	if flags.NArg() != 0 || *path == "" || os.Geteuid() == 0 || os.Getegid() == 0 {
++		return errors.New("remote Runtime requires a non-root process and one explicit bootstrap file")
++	}
++	wire, err := modelruntime.ReadRemoteRuntimeBootstrapFile(ctx, *path)
++	if err != nil {
++		return err
++	}
++	config, err := modelruntime.RemoteRuntimeServerConfig(wire)
++	if err != nil {
++		return err
++	}
++	server, err := modelruntime.StartRuntimeServer(ctx, config)
++	if err != nil {
++		return err
++	}
++	return waitRuntimeServer(ctx, server)
++}
+diff --git a/cmd/vela-model-runtime/remote_other.go b/cmd/vela-model-runtime/remote_other.go
+new file mode 100644
+index 0000000..7486506
+--- /dev/null
++++ b/cmd/vela-model-runtime/remote_other.go
+@@ -0,0 +1,13 @@
++//go:build !linux
++
++package main
++
++import (
++	"context"
++	"errors"
++	"io"
++)
++
++func runRemote(context.Context, []string, io.Writer) error {
++	return errors.New("remote Runtime startup requires Linux process authentication")
++}
+diff --git a/hack/run-remote-runtime-cli-native.sh b/hack/run-remote-runtime-cli-native.sh
+new file mode 100644
+index 0000000..fef9fa7
+--- /dev/null
++++ b/hack/run-remote-runtime-cli-native.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++# Actual non-root Runtime CLI, root journal RPC and CPU process backend.
++set -euo pipefail
++remote_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++remote_evidence="${VELA_REMOTE_CLI_EVIDENCE:-$(mktemp -d /tmp/vela-remote-cli.XXXXXX)}"
++remote_cache="${VELA_REMOTE_CLI_BUILD_CACHE:-$remote_evidence/go-cache}"
++remote_modules="$(go env GOMODCACHE)"
++remote_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
++[[ "$remote_evidence" = /* && "$remote_cache" = /* ]] || exit 2
++mkdir -p "$remote_evidence/image/rootfs/run" "$remote_evidence/image/rootfs/tmp" "$remote_cache"
++chmod 1777 "$remote_evidence/image/rootfs/tmp"
++git -C "$remote_repo" rev-parse HEAD > "$remote_evidence/source.txt"
++git -C "$remote_repo" status --short >> "$remote_evidence/source.txt"
++git -C "$remote_repo" diff HEAD --binary -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent hack/run-remote-runtime-cli-native.sh > "$remote_evidence/source.patch"
++while IFS= read -r -d '' remote_file; do
++  remote_diff_status=0
++  git -C "$remote_repo" diff --no-index --binary /dev/null "$remote_file" >> "$remote_evidence/source.patch" || remote_diff_status=$?
++  [[ "$remote_diff_status" = 0 || "$remote_diff_status" = 1 ]] || exit "$remote_diff_status"
++done < <(git -C "$remote_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent hack/run-remote-runtime-cli-native.sh)
++shasum -a 256 "$remote_evidence/source.patch" > "$remote_evidence/source-patch.sha256"
++docker version > "$remote_evidence/docker-version.txt"
++for remote_target in nodeagent runtime-command vela-model-runtime; do
++  remote_args=(test -race -c)
++  remote_package='./internal/nodeagent'
++  remote_output="$remote_target.test"
++  if [[ "$remote_target" != nodeagent ]]; then remote_package='./cmd/vela-model-runtime'; fi
++  if [[ "$remote_target" = vela-model-runtime ]]; then remote_args=(build -race); remote_output=vela-model-runtime; fi
++  docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
++    -v "$remote_repo:/workspace:ro" -v "$remote_modules:/go/pkg/mod:ro" \
++    -v "$remote_evidence:/evidence" -v "$remote_cache:/build-cache" -w /workspace \
++    -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 "$remote_builder" \
++    go "${remote_args[@]}" -ldflags '-linkmode external -extldflags=-static' \
++    -o "/evidence/image/rootfs/$remote_output" "$remote_package" > "$remote_evidence/build-$remote_target.log" 2>&1
++done
++cat > "$remote_evidence/image/Dockerfile" <<'DOCKERFILE'
++FROM scratch
++COPY rootfs /
++DOCKERFILE
++remote_image="$(docker build --network none -q "$remote_evidence/image")"
++echo "$remote_image" > "$remote_evidence/image.txt"
++shasum -a 256 "$remote_evidence/image/rootfs/"*.test "$remote_evidence/image/rootfs/vela-model-runtime" > "$remote_evidence/binaries.sha256"
++# No host mounts, network or GPU. Root Node creates private PID namespaces;
++# Runtime, Worker and the actual backend execute as non-root.
++docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined \
++  --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
++  -test.run '^(TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution)$' \
++  -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
++for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution; do
++  rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
++done
++if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$remote_evidence/native.log"; then exit 1; fi
++echo "Actual remote Runtime CLI checks passed: $remote_evidence"
+diff --git a/internal/modelruntime/remote_bootstrap.go b/internal/modelruntime/remote_bootstrap.go
+new file mode 100644
+index 0000000..b5d0f39
+--- /dev/null
++++ b/internal/modelruntime/remote_bootstrap.go
+@@ -0,0 +1,124 @@
++package modelruntime
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"io"
++	"path/filepath"
++	"strings"
++	"time"
++
++	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/stageauthority"
++	"github.com/vivym/vela/internal/strictjson"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++const MaximumRemoteBootstrapBytes = 4 << 20
++
++var ErrRemoteBootstrap = errors.New("remote Runtime bootstrap is not a complete trusted Node configuration")
++
++// RemoteRuntimeBootstrap is published by trusted Node assembly for one original
++// incarnation. It contains public verifier keys, never signing keys or a permit.
++// The Runtime consumes one protected snapshot; no workload environment selects
++// launch/key files, local journal paths, local epochs or an alternate authorizer.
++type RemoteRuntimeBootstrap struct {
++	SchemaVersion   int                      `json:"schema_version"`
++	Manifest        LaunchManifest           `json:"manifest"`
++	AuthorityKeys   map[string][]byte        `json:"authority_keys"`
++	RegistryKeys    map[string][]byte        `json:"registry_keys"`
++	RegistryBinding []byte                   `json:"registry_binding"`
++	Identity        ExecutionJournalIdentity `json:"identity"`
++	Startup         BackendLifecycleStatus   `json:"startup"`
++	JournalSocket   string                   `json:"journal_socket"`
++	StartupSocket   string                   `json:"startup_socket"`
++	RuntimeSocket   string                   `json:"runtime_socket"`
++	JournalTimeout  time.Duration            `json:"journal_timeout"`
++	CancelTimeout   time.Duration            `json:"cancel_timeout"`
++	ShutdownTimeout time.Duration            `json:"shutdown_timeout"`
++}
++
++func EncodeRemoteRuntimeBootstrap(config RemoteRuntimeBootstrap) ([]byte, error) {
++	if err := config.validate(); err != nil {
++		return nil, err
++	}
++	wire, err := json.Marshal(config)
++	if err != nil || len(wire) > MaximumRemoteBootstrapBytes {
++		return nil, errors.Join(ErrRemoteBootstrap, err)
++	}
++	return wire, nil
++}
++
++func ParseRemoteRuntimeBootstrap(wire []byte) (RemoteRuntimeBootstrap, error) {
++	var config RemoteRuntimeBootstrap
++	if len(wire) == 0 || len(wire) > MaximumRemoteBootstrapBytes || strictjson.RejectDuplicateKeys(wire) != nil {
++		return config, ErrRemoteBootstrap
++	}
++	decoder := json.NewDecoder(bytes.NewReader(wire))
++	decoder.DisallowUnknownFields()
++	if decoder.Decode(&config) != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) {
++		return RemoteRuntimeBootstrap{}, ErrRemoteBootstrap
++	}
++	canonical, err := EncodeRemoteRuntimeBootstrap(config)
++	if err != nil || !bytes.Equal(canonical, wire) {
++		return RemoteRuntimeBootstrap{}, errors.Join(ErrRemoteBootstrap, err)
++	}
++	return config, nil
++}
++
++func (config RemoteRuntimeBootstrap) validate() error {
++	if config.SchemaVersion != 1 || config.JournalTimeout <= 0 || config.JournalTimeout > 45*time.Second ||
++		config.CancelTimeout < time.Millisecond || config.CancelTimeout > time.Minute || config.ShutdownTimeout < time.Millisecond || config.ShutdownTimeout > 10*time.Minute ||
++		len(config.AuthorityKeys) == 0 || len(config.AuthorityKeys) > 32 || len(config.RegistryKeys) == 0 || len(config.RegistryKeys) > 32 {
++		return ErrRemoteBootstrap
++	}
++	for _, path := range []string{config.JournalSocket, config.StartupSocket, config.RuntimeSocket} {
++		if !filepath.IsAbs(path) || filepath.Clean(path) != path || len(path) > 100 || strings.ContainsRune(path, '\x00') || path == "/" {
++			return ErrRemoteBootstrap
++		}
++	}
++	if config.JournalSocket == config.StartupSocket || config.JournalSocket == config.RuntimeSocket || config.StartupSocket == config.RuntimeSocket {
++		return ErrRemoteBootstrap
++	}
++	manifest, err := EncodeLaunchManifest(config.Manifest)
++	if err != nil || !config.Identity.Storage.Valid() || config.Startup.State != BackendLifecycleUnresolved || config.Startup.LaunchDigest != sha256.Sum256(manifest) || config.Startup.RecordedAt.IsZero() || config.Startup.RecordedAt.Location() != time.UTC {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	validator, err := stageauthority.NewVerifier(config.AuthorityKeys, time.Now)
++	if err != nil {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	scope, err := executionScopeForManifest(config.Manifest, validator)
++	if err != nil {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	digest, err := scope.digest()
++	if err != nil || digest != config.Identity.Scope {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	verifier, err := journalbinding.NewVerifier(config.RegistryKeys)
++	if err != nil {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	var binding velav1.WorkerBootstrapBinding
++	if err := proto.Unmarshal(config.RegistryBinding, &binding); err != nil {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	canonical, err := proto.MarshalOptions{Deterministic: true}.Marshal(&binding)
++	if err != nil || !bytes.Equal(canonical, config.RegistryBinding) {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	if err := verifier.VerifyJournal(&binding, journalbinding.RuntimeJournal, journalbinding.Journal{
++		WorkerInstanceID: config.Manifest.WorkerInstanceID, WorkerInstanceEpoch: config.Manifest.WorkerInstanceEpoch,
++		WorkerMemberID: config.Manifest.WorkerMemberID, WorkerMemberEpoch: config.Manifest.WorkerMemberEpoch,
++		JournalID: config.Identity.JournalID, Scope: config.Identity.Scope,
++	}); err != nil {
++		return errors.Join(ErrRemoteBootstrap, err)
++	}
++	request := BackendStartupRequest{SchemaVersion: 1, NodeIdentity: binding.GetClaim().GetNodeIdentity(), RegistryBindingDigest: sha256.Sum256(config.RegistryBinding),
++		JournalID: config.Identity.JournalID, JournalScope: config.Identity.Scope, IncarnationID: config.Startup.IncarnationID, LaunchDigest: config.Startup.LaunchDigest}
++	return request.Validate()
++}
+diff --git a/internal/modelruntime/remote_bootstrap_linux.go b/internal/modelruntime/remote_bootstrap_linux.go
+new file mode 100644
+index 0000000..a891d03
+--- /dev/null
++++ b/internal/modelruntime/remote_bootstrap_linux.go
+@@ -0,0 +1,136 @@
++package modelruntime
++
++import (
++	"context"
++	"errors"
++	"io"
++	"os"
++	"path/filepath"
++	"strings"
++	"time"
++
++	"github.com/vivym/vela/internal/authoritypolicy"
++	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"golang.org/x/sys/unix"
++	"google.golang.org/protobuf/proto"
++)
++
++// ReadRemoteRuntimeBootstrapFile reads a bounded, root-owned read-only regular
++// file through root-owned non-writable ancestors, without following symlinks or
++// opening a device/FIFO. Node/root administration and the kernel are trusted.
++// It does not prove where this file was mounted or approve its original writer.
++func ReadRemoteRuntimeBootstrapFile(ctx context.Context, path string) ([]byte, error) {
++	if ctx == nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsRune(path, '\x00') || len(path) > 4096 || path == "/" {
++		return nil, ErrRemoteBootstrap
++	}
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, err
++	}
++	defer func() { _ = unix.Close(fd) }()
++	components := strings.Split(strings.TrimPrefix(path, "/"), "/")
++	for i, component := range components {
++		var parent unix.Stat_t
++		if err := unix.Fstat(fd, &parent); err != nil || parent.Uid != 0 || parent.Mode&unix.S_IFMT != unix.S_IFDIR || parent.Mode&0o022 != 0 {
++			return nil, errors.Join(ErrRemoteBootstrap, err)
++		}
++		if err := ctx.Err(); err != nil {
++			return nil, err
++		}
++		flags := unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
++		if i == len(components)-1 {
++			flags = unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC | unix.O_NONBLOCK | unix.O_NOCTTY
++		}
++		// O_PATH probes the final type first; opening a device is never part of
++		// bootstrap loading, even if it has plausible permissions and ownership.
++		if i == len(components)-1 {
++			probe, err := unix.Openat(fd, component, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++			if err != nil {
++				return nil, err
++			}
++			var before unix.Stat_t
++			err = unix.Fstat(probe, &before)
++			_ = unix.Close(probe)
++			if err != nil || !validRemoteBootstrapFile(before) {
++				return nil, errors.Join(ErrRemoteBootstrap, err)
++			}
++			opened, err := unix.Openat(fd, component, flags, 0)
++			if err != nil {
++				return nil, err
++			}
++			file := os.NewFile(uintptr(opened), "remote-runtime-bootstrap")
++			defer func() { _ = file.Close() }()
++			var current unix.Stat_t
++			if err := unix.Fstat(opened, &current); err != nil || current != before {
++				return nil, errors.Join(ErrRemoteBootstrap, err)
++			}
++			data, err := io.ReadAll(io.LimitReader(file, MaximumRemoteBootstrapBytes+1))
++			if err != nil || int64(len(data)) != before.Size {
++				return nil, errors.Join(ErrRemoteBootstrap, err)
++			}
++			var after unix.Stat_t
++			if err := unix.Fstat(opened, &after); err != nil || !sameRemoteBootstrapFile(before, after) {
++				return nil, errors.Join(ErrRemoteBootstrap, err)
++			}
++			if err := ctx.Err(); err != nil {
++				return nil, err
++			}
++			return data, nil
++		}
++		next, err := unix.Openat(fd, component, flags, 0)
++		if err != nil {
++			return nil, err
++		}
++		_ = unix.Close(fd)
++		fd = next
++	}
++	return nil, ErrRemoteBootstrap
++}
++
++func validRemoteBootstrapFile(info unix.Stat_t) bool {
++	return info.Uid == 0 && info.Mode&unix.S_IFMT == unix.S_IFREG && info.Mode&0o7222 == 0 && info.Nlink == 1 && info.Size > 0 && info.Size <= MaximumRemoteBootstrapBytes
++}
++
++func sameRemoteBootstrapFile(first, last unix.Stat_t) bool {
++	// Reading may update atime. All identity, content-change and access fields
++	// must remain unchanged; atime has no authority significance.
++	first.Atim = last.Atim
++	return first == last
++}
++
++// RemoteRuntimeServerConfig owns the parsed snapshot and installs only the real
++// authenticated Unix journal and startup transports. It cannot select a local
++// epoch store, execution file owner, injected backend or permissive callback.
++func RemoteRuntimeServerConfig(wire []byte) (RuntimeServerConfig, error) {
++	bootstrap, err := ParseRemoteRuntimeBootstrap(wire)
++	if err != nil {
++		return RuntimeServerConfig{}, err
++	}
++	validator, err := stageauthority.NewVerifier(bootstrap.AuthorityKeys, time.Now)
++	if err != nil {
++		return RuntimeServerConfig{}, err
++	}
++	verifier, err := journalbinding.NewVerifier(bootstrap.RegistryKeys)
++	if err != nil {
++		return RuntimeServerConfig{}, err
++	}
++	var binding velav1.WorkerBootstrapBinding
++	if err := proto.Unmarshal(bootstrap.RegistryBinding, &binding); err != nil {
++		return RuntimeServerConfig{}, err
++	}
++	gate, err := NewNodeBackendStartupGate(bootstrap.StartupSocket)
++	if err != nil {
++		return RuntimeServerConfig{}, err
++	}
++	return RuntimeServerConfig{Manifest: bootstrap.Manifest, Validator: validator, RegistryBinding: &binding, RegistryVerifier: verifier,
++		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
++		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
++			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
++			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error { return gate(ctx, request.Intent) },
++		}}, nil
++}
+diff --git a/internal/nodeagent/journal_remote_cli_linux_test.go b/internal/nodeagent/journal_remote_cli_linux_test.go
+new file mode 100644
+index 0000000..3406b79
+--- /dev/null
++++ b/internal/nodeagent/journal_remote_cli_linux_test.go
+@@ -0,0 +1,191 @@
++package nodeagent
++
++import (
++	"bytes"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"net"
++	"os"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/modelruntimetransport"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++)
++
++func TestJournalServerActualRemoteCLI(t *testing.T) {
++	if _, err := os.Stat("/vela-model-runtime"); err != nil {
++		t.Skip("requires actual CLI in the native remote startup sandbox")
++	}
++	for _, mode := range []string{"permit", "deny", "changed-config", "workload-owned", "writable", "symlink", "wrong-scope", "wrong-incarnation"} {
++		t.Run(mode, func(t *testing.T) {
++			var directory, eventPath string
++			f := newJournalEndpointConfiguredFixture(t, 1, func(manifest *modelruntime.LaunchManifest, root string) {
++				directory = filepath.Join(root, "workload")
++				if err := os.Mkdir(directory, 0o700); err != nil {
++					t.Fatal(err)
++				}
++				if err := os.Chown(directory, 65532, 65532); err != nil {
++					t.Fatal(err)
++				}
++				eventPath = filepath.Join(directory, "events.log")
++				for _, path := range []string{"inputs", "outputs"} {
++					p := filepath.Join(directory, path)
++					if err := os.Mkdir(p, 0o700); err != nil {
++						t.Fatal(err)
++					}
++					if err := os.Chown(p, 65532, 65532); err != nil {
++						t.Fatal(err)
++					}
++				}
++				manifest.Runtimes[0].Command = []string{"/runtime-command.test", "-test.run=^TestModelRuntimeCommandDriverHelper$"}
++				manifest.Runtimes[0].Environment = []string{"GO_WANT_VELA_MODEL_RUNTIME_DRIVER=1", "TEST_VELA_MODEL_RUNTIME_DRIVER_EVENTS=" + eventPath}
++				manifest.Runtimes[0].ScratchRoot, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot = directory, filepath.Join(directory, "inputs"), filepath.Join(directory, "outputs")
++			})
++			server, done := startJournalTestServer(t, f, 30*time.Second)
++			root := filepath.Dir(f.listener.Addr().String())
++			startupPath := filepath.Join(root, "startup.sock")
++			listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: startupPath, Net: "unixpacket"})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = listener.Close() }()
++			if err := errors.Join(os.Chown(startupPath, 0, 65532), os.Chmod(startupPath, 0o660)); err != nil {
++				t.Fatal(err)
++			}
++			keys, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)})
++			if err != nil {
++				t.Fatal(err)
++			}
++			seed := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{17}, 32))
++			bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: f.manifest, AuthorityKeys: keys, RegistryKeys: map[string][]byte{"registry": seed.Public().(ed25519.PublicKey)}, RegistryBinding: journalRemoteServerBinding(t, f), Identity: f.identity, Startup: f.startup,
++				JournalSocket: f.listener.Addr().String(), StartupSocket: startupPath, RuntimeSocket: filepath.Join(directory, "runtime.sock"), JournalTimeout: 5 * time.Second, CancelTimeout: time.Second, ShutdownTimeout: 5 * time.Second}
++			wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if mode == "wrong-scope" {
++				bootstrap.Identity.Scope[0] ^= 1
++				wire, err = json.Marshal(bootstrap)
++			}
++			if mode == "wrong-incarnation" {
++				bootstrap.Startup.IncarnationID[0] ^= 1
++				wire, err = json.Marshal(bootstrap)
++			}
++			if err != nil {
++				t.Fatal(err)
++			}
++			if mode == "changed-config" {
++				wire = append(wire, ' ')
++			}
++			path := filepath.Join(root, "bootstrap.json")
++			if err := os.WriteFile(path, wire, 0o444); err != nil {
++				t.Fatal(err)
++			}
++			switch mode {
++			case "workload-owned":
++				if err := os.Chown(path, 65532, 65532); err != nil {
++					t.Fatal(err)
++				}
++			case "writable":
++				if err := os.Chmod(path, 0o644); err != nil {
++					t.Fatal(err)
++				}
++			case "symlink":
++				if err := os.Symlink(path, path+".link"); err != nil {
++					t.Fatal(err)
++				}
++				path += ".link"
++			}
++			if err := f.runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: path}); err != nil {
++				t.Fatal(err)
++			}
++			if mode == "permit" || mode == "deny" {
++				connection := journalEndpointAccept(t, listener)
++				caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
++				if err != nil {
++					t.Fatal(err)
++				}
++				request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
++				observed, inspectErr := caller.Inspect(t.Context())
++				if err != nil || inspectErr != nil || observed.HostPID != int32(f.runtime.process.Pid) || request.JournalID != f.identity.JournalID || request.IncarnationID != f.startup.IncarnationID || request.RegistryBindingDigest != sha256.Sum256(bootstrap.RegistryBinding) {
++					t.Fatalf("actual CLI requested wrong owner/startup: %v %v", err, inspectErr)
++				}
++				if _, err := os.Stat(eventPath); !errors.Is(err, os.ErrNotExist) {
++					t.Fatal("actual backend started before Node decision")
++				}
++				decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: mode == "permit"})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := caller.Reply(t.Context(), decision); err != nil {
++					t.Fatal(err)
++				}
++				_ = caller.Close()
++				_ = connection.Close()
++			}
++			if mode == "permit" {
++				deadline := time.Now().Add(10 * time.Second)
++				for {
++					data, _ := os.ReadFile(eventPath)
++					_, socketErr := os.Stat(bootstrap.RuntimeSocket)
++					if strings.Contains(string(data), "initialize\n") && socketErr == nil {
++						break
++					}
++					if time.Now().After(deadline) {
++						t.Fatal("actual process backend never initialized")
++					}
++					time.Sleep(10 * time.Millisecond)
++				}
++				client, err := modelruntimetransport.Dial(t.Context(), modelruntimetransport.Config{SocketPath: bootstrap.RuntimeSocket, ExpectedUID: 65532})
++				if err != nil {
++					t.Fatal(err)
++				}
++				reply, err := client.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{WorkerInstanceId: f.manifest.WorkerInstanceID, WorkerInstanceEpoch: f.manifest.WorkerInstanceEpoch, WorkerMemberId: f.manifest.WorkerMemberID, WorkerMemberEpoch: f.manifest.WorkerMemberEpoch})
++				_ = client.Close()
++				if err != nil || len(reply.GetIdentities()) != 1 || reply.Identities[0].GetModelRuntimeEpoch() != 2 {
++					t.Fatalf("actual remote CLI discovery: %v %v", reply, err)
++				}
++				if err := f.runtime.process.Signal(syscall.SIGTERM); err != nil {
++					t.Fatal(err)
++				}
++			}
++			select {
++			case <-f.runtime.done:
++			case <-time.After(10 * time.Second):
++				t.Fatal("actual CLI did not exit")
++			}
++			state := f.runtime.command.ProcessState
++			if (mode == "permit") != state.Success() {
++				t.Fatalf("actual CLI exit mode=%s: %v", mode, state)
++			}
++			data, readErr := os.ReadFile(eventPath)
++			if mode == "permit" {
++				if readErr != nil || string(data) != "initialize\nshutdown\n" {
++					t.Fatalf("actual backend lifecycle: %q %v", data, readErr)
++				}
++			} else if !errors.Is(readErr, os.ErrNotExist) {
++				t.Fatal("rejected startup initialized backend")
++			}
++			if _, err := os.Stat(bootstrap.RuntimeSocket); !errors.Is(err, os.ErrNotExist) {
++				t.Fatal("CLI left runtime socket")
++			}
++			status, err := f.owner.Status(t.Context())
++			if err != nil || status.Highest != 0 || status.BackendLifecycle != f.startup {
++				t.Fatalf("CLI rewrote Node startup history: %v", err)
++			}
++			if err := server.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, server, done)
++			t.Logf("actual CLI and process backend: mode=%s exit=%s Node journal original incarnation retained; no local epoch/journal allocation", mode, state.String())
++		})
++	}
++}

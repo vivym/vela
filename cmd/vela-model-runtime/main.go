@@ -128,6 +128,10 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 	if err != nil {
 		return err
 	}
+	return waitRuntimeServer(ctx, server)
+}
+
+func waitRuntimeServer(ctx context.Context, server modelRuntimeServer) error {
 	wait := make(chan error, 1)
 	go func() { wait <- server.Wait() }()
 	select {

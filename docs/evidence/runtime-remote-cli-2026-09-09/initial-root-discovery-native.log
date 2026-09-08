@@ -1,0 +1,44 @@
+=== RUN   TestJournalServerActualRemoteCLI
+=== RUN   TestJournalServerActualRemoteCLI/permit
+    journal_remote_cli_linux_test.go:149: validate ModelRuntime socket directory: secure executable ancestor "workload" is not trusted
+=== RUN   TestJournalServerActualRemoteCLI/deny
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=deny exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/changed-config
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=changed-config exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/workload-owned
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=workload-owned exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/writable
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=writable exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/symlink
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=symlink exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/wrong-scope
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=wrong-scope exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/wrong-incarnation
+    journal_remote_cli_linux_test.go:187: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_cli_linux_test.go:188: actual CLI and process backend: mode=wrong-incarnation exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+--- FAIL: TestJournalServerActualRemoteCLI (0.65s)
+    --- FAIL: TestJournalServerActualRemoteCLI/permit (0.13s)
+    --- PASS: TestJournalServerActualRemoteCLI/deny (0.08s)
+    --- PASS: TestJournalServerActualRemoteCLI/changed-config (0.08s)
+    --- PASS: TestJournalServerActualRemoteCLI/workload-owned (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/writable (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/symlink (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/wrong-scope (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/wrong-incarnation (0.08s)
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/permit
+    journal_remote_server_linux_test.go:161: joined Node journal server: {Accepted:39 Overloaded:0 Authenticated:39 Replied:39 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_server_linux_test.go:162: actual remote Runtime server: permit=true; factory permission precedes RPC publication; Node owns journal; fixture matches exact proposed epochs; Worker uses real RPC
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/deny
+    journal_remote_server_linux_test.go:161: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_server_linux_test.go:162: actual remote Runtime server: permit=false; factory permission precedes RPC publication; Node owns journal; fixture matches exact proposed epochs; Worker uses real RPC
+--- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution (0.41s)
+    --- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/permit (0.34s)
+    --- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/deny (0.08s)
+FAIL

@@ -89,6 +89,12 @@ task/sandbox bootstrap records before reading the sandbox's shim path. Only an
 explicit binary/state policy with default ancillary options and no OCI hooks
 matches. This does not prove which executable bytes ran at those paths or supply
 the production policy/approval/grant assembly.
+The [actual remote Runtime CLI](runtime-remote-cli-evidence-2026-09-09.md) now
+consumes a root-owned read-only bootstrap snapshot and installs real Node journal
+and startup transports. This removes local epoch/journal ownership in that
+explicit CLI mode. Actual process initialization, Worker discovery and shutdown
+are tested; publication, effective mounts, production Fleet/Node and one-shot
+permission remain fixture boundaries, and the default Fleet path is unchanged.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) connects
 the canonical original-caller request to the held Runtime journal and repeated
 image/task observations before and after the single Fleet call. The storage and

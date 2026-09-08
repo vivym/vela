@@ -15,8 +15,11 @@ func runCommand(ctx context.Context, arguments []string, stdout, stderr io.Write
 	if len(arguments) == 0 {
 		return run(ctx)
 	}
+	if arguments[0] == "serve-remote" {
+		return runRemote(ctx, arguments[1:], stderr)
+	}
 	if arguments[0] != "journal" {
-		return errors.New("expected no arguments to serve, or journal with an explicit action")
+		return errors.New("expected no arguments to serve, serve-remote, or journal with an explicit action")
 	}
 	return runJournal(ctx, arguments[1:], stdout, stderr)
 }
