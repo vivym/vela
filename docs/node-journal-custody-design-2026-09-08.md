@@ -104,6 +104,13 @@ response loss or owner exit without restoring a process handle or grant. Actual
 CLI consumption and six process-kill boundaries are tested. Publication is not
 unique per incarnation and does not authenticate its production mount/writer;
 these still belong to the pending launch approval and one-shot grant assembly.
+The [published startup association](node-startup-publication-evidence-2026-09-09.md)
+compares the original caller's effective bootstrap file to that private Node
+history through its retained procfs root. Exact inode/content and kernel read-only
+mount ID accompany the same-invocation image/journal/Fleet reservation. Repeated
+observations reject both content-equivalent copies and same-inode remounts.
+This proves sampled availability in the caller view; it does not prove the CLI
+consumed that file or approve effective argv/env and execution continuity.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) connects
 the canonical original-caller request to the held Runtime journal and repeated
 image/task observations before and after the single Fleet call. The storage and

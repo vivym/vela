@@ -28,12 +28,13 @@ type RuntimeStartupRegistry interface {
 }
 
 type RuntimeStartupReservationConfig struct {
-	Plan     *RuntimeLaunchPlan
-	Pods     RuntimeLaunchPodReader
-	Observer *RuntimeContainerObserver
-	Caller   *RuntimeCaller
-	Journal  *modelruntime.ExecutionJournalOwner
-	Registry RuntimeStartupRegistry
+	Plan        *RuntimeLaunchPlan
+	Pods        RuntimeLaunchPodReader
+	Observer    *RuntimeContainerObserver
+	Caller      *RuntimeCaller
+	Journal     *modelruntime.ExecutionJournalOwner
+	Registry    RuntimeStartupRegistry
+	publication *RuntimeStartupPublicationConfig
 }
 
 // RuntimeStartupRemoteIntent binds Node's held storage and actual journal
@@ -44,6 +45,7 @@ type RuntimeStartupRemoteIntent struct {
 	JournalDigest   [sha256.Size]byte                     `json:"journal_digest"`
 	Epochs          []fleet.RuntimeStartupEpoch           `json:"epochs"`
 	Executable      RuntimeExecutableObservation          `json:"executable"`
+	Bootstrap       *RuntimeStartupBootstrapObservation   `json:"bootstrap,omitempty"`
 }
 
 // RuntimeStartupReservationRecord records a committed Fleet reservation. It
@@ -161,6 +163,10 @@ func inspectRemoteStartup(ctx context.Context, config RuntimeStartupReservationC
 	slices.SortFunc(result.Epochs, func(a, b fleet.RuntimeStartupEpoch) int {
 		return strings.Compare(a.ModelResidencyID.String(), b.ModelResidencyID.String())
 	})
+	result.Bootstrap, err = inspectStartupPublication(ctx, config)
+	if err != nil {
+		return RuntimeStartupRemoteIntent{}, err
+	}
 	return result, nil
 }
 
@@ -233,6 +239,16 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
 
 func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
 	remote := record.Remote
+	if remote.Bootstrap != nil {
+		bootstrap := remote.Bootstrap
+		publication := bootstrap.Publication
+		if !validRuntimeBootstrapPath(bootstrap.BootstrapPath) || bootstrap.MountID == 0 || !strings.HasPrefix(bootstrap.MountNamespace, "mnt:[") || !strings.HasSuffix(bootstrap.MountNamespace, "]") ||
+			publication.SchemaVersion != 1 || publication.ID == uuid.Nil || publication.NodeIdentity != record.Request.NodeIdentity || publication.BindingDigest != record.Request.RegistryBindingDigest ||
+			publication.RuntimeGID != record.Owner.Process.GID || publication.RecordedAt.IsZero() || publication.RecordedAt.Location() != time.UTC ||
+			publication.Directory.Inode == 0 || publication.RecordFile.Inode == 0 || publication.BootstrapFile.Inode == 0 || publication.BootstrapBytes <= 0 || publication.BootstrapBytes > modelruntime.MaximumRemoteBootstrapBytes || publication.BootstrapDigest == ([sha256.Size]byte{}) {
+			return ErrRuntimeStartupLedger
+		}
+	}
 	process := remote.Executable.Process
 	process.ObservedAt = record.Owner.Process.ObservedAt
 	if remote.JournalIdentity.JournalID != record.Request.JournalID || remote.JournalIdentity.Scope != record.Request.JournalScope ||

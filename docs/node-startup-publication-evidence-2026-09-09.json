@@ -1,0 +1,341 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "1e985f9f9124c007440240920de813f3bd972fe7",
+  "source_tree_sha256": "451d22d32ca200dfdd9be4fe5d63d4d399ee337fd55bfb9693cba5724c02585f",
+  "source_file_count": 1008,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "b986b31d053a64169838ed8f96f54bf844ecbc213666555575724b38ad02c124",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "production_gates": "0/9",
+  "native_scope": "startup-publication",
+  "publication_cases": {
+    "publication-valid": "1.00s",
+    "publication-missing": "0.33s",
+    "publication-copy": "0.31s",
+    "publication-writable-mount": "0.31s",
+    "publication-wrong-plan": "0.31s",
+    "publication-hardlink": "0.29s",
+    "publication-before-fleet-replaced": "0.62s",
+    "publication-after-fleet-replaced": "0.69s",
+    "publication-fleet-loss": "0.78s",
+    "publication-incarnation": "0.21s",
+    "publication-before-fleet-remounted": "2.00s",
+    "publication-after-fleet-remounted": "1.96s"
+  },
+  "ledger_main_tests": {
+    "TestRuntimeStartupLedgerBeforeActualFactory": "4.50s",
+    "TestRuntimeStartupLedgerRetainsExactOwnerExit": "0.10s",
+    "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner": "0.06s",
+    "TestRuntimeStartupLedgerReservesExitCapacity": "19.15s",
+    "TestRuntimeStartupLedgerRejectsUnboundRequests": "0.13s",
+    "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed": "0.24s",
+    "TestRuntimeStartupLedgerRejectsMissingAndChangedState": "0.01s",
+    "TestRuntimeStartupReservationProcessCrashRecovery": "0.84s",
+    "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal": "0.14s",
+    "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter": "0.11s",
+    "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent": "1.35s"
+  },
+  "checks": [
+    {
+      "command": "VELA_TASK_LAUNCH_SCOPE=startup-publication bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "Native pinned image: eleven explicit TestRuntimeStartupLedger/Reservation tests, -test.count=1 -test.v -test.timeout=2m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/ledger-native.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/linux-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -tags=integration -exec=true ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-startup-publication-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "regression": {
+    "changes": [
+      "Disable effective mount ID comparison by returning constant 1",
+      "Remove nested bootstrap snapshot copy"
+    ],
+    "native_exit_code": 1,
+    "runner_exit_code": 0,
+    "expected_failing_cases": [
+      "publication-valid",
+      "publication-before-fleet-remounted",
+      "publication-after-fleet-remounted"
+    ]
+  },
+  "earlier_full_campaign": "first-full-native.log is the earlier source.patch snapshot, before later test/clone/runner changes; do not claim it is a full final-source rerun.",
+  "initial_failures": [
+    "os.Root has no Fd method: use retained root.Open(\".\") procfs descriptor",
+    "Mount namespace helper Setns rejected shared CLONE_FS; unshare within disposable OS thread",
+    "Cross-namespace mount helper path could not resolve; use retained source/target FDs with OpenTree/MoveMount",
+    "Docker FROM raw local image ID was resolved as remote name; tag the existing local image before overlay build"
+  ],
+  "claim_boundary": "Same-invocation Node publication, original caller procfs-root effective read-only file/mount, image/task observations, held journal and single Fleet reservation. This is sampled availability, not proof of actual CLI configuration consumption or executable continuity. Registry/Pod/Fleet are fixtures, CRI caller is test probe. No Permit, once-only grant, actual CLI plus real Fleet/TLS/PostgreSQL in this operation, production Node/Fleet mounts, full Job, Worker business journal, power-loss recovery, sustained capacity, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "0a2580ec516aef3a96d1bc38177d3ce367ce0ce1143a52d894b57b4227f09158"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/binaries.sha256",
+      "bytes": 860,
+      "sha256": "2e403ee1f4213953a02cdcf42524aa4edcea40f401d8982185fea21d13efae61"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/build.log",
+      "bytes": 1721,
+      "sha256": "f3cdd139910b8d8604a81de0b0cf8a8bcb9e2c830fc335d40b7bfc19e20d62b1"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/first-full-binaries.sha256",
+      "bytes": 855,
+      "sha256": "54921349e5c28ba8c935312364d9b5e3804372137df54367546ec66792283766"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/first-full-image.txt",
+      "bytes": 72,
+      "sha256": "f9f064be7396e1425957622bc77b8c08efae0a86c04d8db530dc23cc7ee70e65"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/first-full-native.log",
+      "bytes": 45633,
+      "sha256": "070eae9b4fa9ab306bf5ca4f2ac16535edaa5bdd51192cc88993bd49d5b7a900"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/first-full-source.patch",
+      "bytes": 24166,
+      "sha256": "a4635377b64339aacf8720df0b4359608e93a132616f8ff29b179199320129ff"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/first-full-source.txt",
+      "bytes": 287,
+      "sha256": "1ed710fc5d392590331b5622575da866251383af6c5d757f9ecd6fd5507b6c05"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-root-path-binaries.sha256",
+      "bytes": 855,
+      "sha256": "e7e14fbf3594d7f1d5f7f912f783eb4b88aefc3c3de5f3c78388fc13fe86dbc0"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-root-path-image.txt",
+      "bytes": 72,
+      "sha256": "67911cadd91703cc90e2fb3d3d95597bd7f58bf5dd0203cc62359410ea3c425f"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-root-path-native.log",
+      "bytes": 90843,
+      "sha256": "95994dafab2edf01a28b8887c3dd6edbe419f535f8647e7aedbc18f27eb8de07"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-root-path-source.patch",
+      "bytes": 32354,
+      "sha256": "3dac4ef6b05e649d648292f26356c68d58af6c03603a88fa732cfe818aed5e1b"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-root-path-source.txt",
+      "bytes": 451,
+      "sha256": "16415172605d045416bf16f1b62603b46b9f5146e6f6df2c4c0e34172ad26704"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-shared-fs-binaries.sha256",
+      "bytes": 865,
+      "sha256": "59c04fb5c3bc72c4955e685b7a1eede78c7c9a1631a88eca6781cd7bd6aa9bd6"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-shared-fs-image.txt",
+      "bytes": 72,
+      "sha256": "8828935de6a557cd79da9938e59725ac429e3adc418a5f0d0591506d97be1f25"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-shared-fs-native.log",
+      "bytes": 90818,
+      "sha256": "973485e0fe6a12e9b314f07c3508e1eaddb1cbe740b605802a915d2ba3038bfb"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-shared-fs-source.patch",
+      "bytes": 32235,
+      "sha256": "56d5af47138267e1648b4fbb403a316267ded9dcc5eaf3085a440ec7d140345e"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/helper-shared-fs-source.txt",
+      "bytes": 451,
+      "sha256": "16415172605d045416bf16f1b62603b46b9f5146e6f6df2c4c0e34172ad26704"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "492f9bb86b0be39e37ed1efb3060025cd1ef1d9d5bd8e21ad4860bb1a255712b"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/initial-compile.log",
+      "bytes": 345,
+      "sha256": "ece2f35935da73959b258bda50bc393dd08ae63e6c039cddbe59531fdf184567"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/ledger-native.log",
+      "bytes": 11849,
+      "sha256": "c850410f4608d9f518221c5233187f7242a9f2171169271fc5235bfff63a81f0"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/native-runner.log",
+      "bytes": 104,
+      "sha256": "55199bb7faf8d28398683ae8c5ce90ad44760f40eb91fa470892ed2265fd1a22"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/native.log",
+      "bytes": 5245,
+      "sha256": "7c45f3e4f7ffd15609abba3c0d7a6e26546c2a75dea4263bba769f613f7c96b3"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/package-evidence.py",
+      "bytes": 7031,
+      "sha256": "8f2695f143e517bd61ee1a421f356d3fd489ce89f8489e7e50cf56c2317241f4"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-binaries.sha256",
+      "bytes": 148,
+      "sha256": "137c5433baa90286a8092a1018561aebd5119ba7a305a98ebdf453ee0e0766ad"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-build-failure.log",
+      "bytes": 654,
+      "sha256": "9d380e69db2a800e3acb310b8425c17dd585b035db610b1dba895d0a5a4ee7d8"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-build.log",
+      "bytes": 1721,
+      "sha256": "410752056a70fdb31de9634c88d898a03f205292fec9af868e0eee908759cb93"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-image.txt",
+      "bytes": 72,
+      "sha256": "2523a4bd6b48151cb2b4c2f31c7a6ba9c52a4ba88c3cc67339ce74c5dc856804"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-mount-identity-disabled.go.txt",
+      "bytes": 9238,
+      "sha256": "811e37dfb1e167eb71b2bdac4d5bb8ba575fc9a8c30d53426ccc03337e84563d"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-native.log",
+      "bytes": 37828,
+      "sha256": "58772dc26e68b134ec35ec7d04d64d459a1d87e93d68fe8a08bc25388813b7f1"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-overlay.json",
+      "bytes": 255,
+      "sha256": "d89c5a9a3d1963d257415346aac30ff3eba3f73307a0258a89988e8720c02410"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-publication-copy-disabled.go.txt",
+      "bytes": 22961,
+      "sha256": "b0f0916011d354f2caa2163c7211412e50417859ceb7b66f2d5dd81825b9bee1"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-run.sh",
+      "bytes": 2370,
+      "sha256": "254a3bf5e629c493058d5fca7a91873221508f6d6fe5d03af37123685de7d744"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/regression-runner.log",
+      "bytes": 69,
+      "sha256": "03bbccca97616bfe1c729e561569257102e8b5433447d7f35c825a1ce2b4c952"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/scope.txt",
+      "bytes": 20,
+      "sha256": "080109ce8f46251548599ceb13f4fc8436afed14bffe6f564d94b86cd6b2a5b8"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/source-files.json",
+      "bytes": 159672,
+      "sha256": "eac7f9351e08978352ba344839336a21a662d0c81f17682f9e577115ce52a134"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "e47dbfaf6598e0a1d59b910e7fe570d6c7f15b454d61985af2d1807c5aa824f0"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/source.patch",
+      "bytes": 32857,
+      "sha256": "e4904d6077e679f9dd28ef462c92f2faaaca5ca9bdf23efa0609f9102fab7a73"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/source.txt",
+      "bytes": 451,
+      "sha256": "16415172605d045416bf16f1b62603b46b9f5146e6f6df2c4c0e34172ad26704"
+    },
+    {
+      "path": "docs/evidence/node-startup-publication-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

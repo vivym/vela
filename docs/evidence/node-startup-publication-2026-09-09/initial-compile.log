@@ -1,0 +1,3 @@
+# github.com/vivym/vela/internal/nodeagent [github.com/vivym/vela/internal/nodeagent.test]
+internal/nodeagent/runtime_startup_publication_linux.go:162:37: process.Fd undefined (type *os.Root has no field or method Fd)
+internal/nodeagent/runtime_startup_publication_linux.go:165:37: process.Fd undefined (type *os.Root has no field or method Fd)

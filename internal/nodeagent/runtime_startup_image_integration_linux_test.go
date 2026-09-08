@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +30,8 @@ import (
 
 func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, image RuntimeImageTarget) {
 	t.Helper()
-	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close"} {
+	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close",
+		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted"} {
 		t.Run(fault, func(t *testing.T) {
 			plan, owner, request := startupImagePlanFixture(t, image)
 			switch fault {
@@ -54,7 +56,56 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 				payload = plan.manifest
 			}
 			client := runtimev1.NewRuntimeServiceClient(fixture.connection)
-			target, listener := fixture.createCRICallerPayload(t, client, fault, plan, payload)
+			var publication *RuntimeStartupPublicationConfig
+			var mounts []*runtimev1.Mount
+			var published *RuntimeBootstrapPublication
+			if strings.HasPrefix(fault, "publication-") {
+				configuration := publicationFixture(t, false)
+				if fault != "publication-wrong-plan" {
+					configuration.Plan, configuration.Journal = plan, owner
+				}
+				published, err = PublishRuntimeBootstrap(t.Context(), configuration)
+				if err != nil {
+					t.Fatal(err)
+				}
+				publication = &RuntimeStartupPublicationConfig{Directory: configuration.Directory, BootstrapPath: "/runtime-config/bootstrap.json"}
+				source := configuration.Directory
+				if fault == "publication-copy" {
+					source = filepath.Join(filepath.Dir(source), "copy")
+					if err := os.Mkdir(source, 0o750); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Chown(source, 0, int(plan.gid)); err != nil {
+						t.Fatal(err)
+					}
+					wire, err := os.ReadFile(filepath.Join(configuration.Directory, runtimeBootstrapFilename))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(source, runtimeBootstrapFilename), wire, 0o440); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Chown(filepath.Join(source, runtimeBootstrapFilename), 0, int(plan.gid)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if fault == "publication-hardlink" {
+					if err := os.Link(filepath.Join(source, runtimeBootstrapFilename), filepath.Join(filepath.Dir(source), "hardlink")); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if fault != "publication-missing" {
+					mounts = []*runtimev1.Mount{{ContainerPath: "/runtime-config", HostPath: source, Readonly: fault != "publication-writable-mount"}}
+				}
+				if fault == "publication-incarnation" {
+					request.IncarnationID = uuid.New()
+					payload, err = modelruntime.EncodeBackendStartupRequest(request)
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			target, listener := fixture.createCRICallerPayloadMounts(t, client, fault, plan, payload, mounts)
 			if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err != nil {
 				t.Fatal(err)
 			}
@@ -101,6 +152,48 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 			ledger, directory := startupTestLedger(t)
 			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: plan.binding.Claim.ActorIdentity}
 			config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
+			reserve := func() (RuntimeStartupReservationRecord, error) {
+				if publication != nil {
+					return ledger.ReservePublishedImageRemote(t.Context(), config, imageConfig, *publication)
+				}
+				return ledger.ReserveImageRemote(t.Context(), config, imageConfig)
+			}
+			replacePublication := func() {
+				t.Helper()
+				path := filepath.Join(publication.Directory, runtimeBootstrapFilename)
+				wire, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(path, path+".old"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, wire, 0o440); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chown(path, 0, int(plan.gid)); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(path + ".old"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if fault == "publication-before-fleet-replaced" {
+				ledger.boundary = func(phase string) error {
+					if phase == "after-sync" {
+						replacePublication()
+					}
+					return nil
+				}
+			}
+			if fault == "publication-before-fleet-remounted" {
+				ledger.boundary = func(phase string) error {
+					if phase == "after-sync" {
+						replaceStartupPublicationMount(t, caller, publication.Directory)
+					}
+					return nil
+				}
+			}
 			changeTask := func() {
 				t.Helper()
 				path := filepath.Join(imageConfig.StateDirectory, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
@@ -136,8 +229,12 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 					t.Fatal("reservation did not bind original request to Node-held epoch routes")
 				}
 				switch fault {
-				case "fleet-loss":
+				case "fleet-loss", "publication-fleet-loss":
 					return fleet.RuntimeStartupReservation{}, errors.New("fixture committed response lost")
+				case "publication-after-fleet-replaced":
+					replacePublication()
+				case "publication-after-fleet-remounted":
+					replaceStartupPublicationMount(t, caller, publication.Directory)
 				case "after-fleet-task-change":
 					changeTask()
 				case "image-observer-closed":
@@ -147,26 +244,43 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 				}
 				return fleet.RuntimeStartupReservation{RuntimeStartupRequest: sent, Fresh: true, ReservedAt: time.Now().UTC()}, nil
 			}
-			result, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig)
+			result, err := reserve()
 			wantCalls, wantIntent := 0, 0
 			switch fault {
-			case "none", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "after-fleet-journal-close":
+			case "none", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "after-fleet-journal-close", "publication-valid", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-after-fleet-remounted":
 				wantCalls, wantIntent = 1, 1
-			case "before-fleet-task-change", "before-fleet-journal-close":
+			case "before-fleet-task-change", "before-fleet-journal-close", "publication-before-fleet-replaced", "publication-before-fleet-remounted":
 				wantIntent = 1
 			}
 			if registry.calls != wantCalls || len(ledger.starts) != wantIntent {
 				t.Fatalf("wrong authority side effects: calls=%d intent=%d err=%v", registry.calls, len(ledger.starts), err)
 			}
-			if fault == "none" {
+			if fault == "none" || fault == "publication-valid" {
 				if err != nil || result.JournalID != request.JournalID {
 					t.Fatalf("valid image-bound startup did not reserve: %+v %v", result, err)
+				}
+				if publication != nil {
+					bootstrap := ledger.starts[request.JournalID].Remote.Bootstrap
+					if bootstrap == nil || bootstrap.Publication != published.Record() || bootstrap.MountID == 0 || bootstrap.BootstrapPath != publication.BootstrapPath {
+						t.Fatal("reservation omitted original publication/mount identity")
+					}
+					expectedBootstrap := *bootstrap
+					returned, err := ledger.Inspect(t.Context(), request.JournalID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					returned.Remote.Bootstrap.Publication.BootstrapDigest[0] ^= 1
+					returned.Remote.Bootstrap.MountID++
+					again, err := ledger.Inspect(t.Context(), request.JournalID)
+					if err != nil || *again.Remote.Bootstrap != expectedBootstrap {
+						t.Fatalf("returned history mutated live association: %v", err)
+					}
 				}
 			} else if err == nil || result != (RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
 				t.Fatalf("failed observation returned a receipt: %+v %v", result, err)
 			}
 			if wantIntent != 0 {
-				if _, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
+				if _, err := reserve(); err == nil || registry.calls != wantCalls {
 					t.Fatalf("live retry consumed another reservation: %v", err)
 				}
 				if err := ledger.Close(); err != nil {
@@ -178,14 +292,18 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 				}
 				defer func() { _ = recovered.Close() }()
 				history, err := recovered.InspectReservation(t.Context(), request.JournalID)
-				if fault == "none" {
+				if fault == "none" || fault == "publication-valid" {
 					if err != nil || history != result {
 						t.Fatalf("recovery lost receipt: %v", err)
+					}
+					if publication != nil && recovered.starts[request.JournalID].Remote.Bootstrap.Publication != published.Record() {
+						t.Fatal("recovery lost publication association")
 					}
 				} else if !errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("recovery manufactured receipt: %v", err)
 				}
-				if _, err := recovered.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
+				ledger = recovered
+				if _, err := reserve(); err == nil || registry.calls != wantCalls {
 					t.Fatalf("restart consumed another reservation: %v", err)
 				}
 				if _, err := recovered.RecordExit(t.Context(), request.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {

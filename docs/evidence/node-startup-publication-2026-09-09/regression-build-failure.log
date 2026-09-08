@@ -1,0 +1,9 @@
+Dockerfile:1
+--------------------
+   1 | >>> FROM sha256:6f9cf46151959b3d9a8be30347e0360fedaa02dbca7a4f2e5c7ede42b34288c2
+   2 |     COPY nodeagent.test /nodeagent.test
+   3 |     
+--------------------
+ERROR: failed to build: failed to solve: sha256:6f9cf46151959b3d9a8be30347e0360fedaa02dbca7a4f2e5c7ede42b34288c2: failed to resolve source metadata for docker.io/library/sha256:6f9cf46151959b3d9a8be30347e0360fedaa02dbca7a4f2e5c7ede42b34288c2: docker.io/library/sha256:6f9cf46151959b3d9a8be30347e0360fedaa02dbca7a4f2e5c7ede42b34288c2: not found
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/rlehvmv8vqv9rfw3lhss1gqxz

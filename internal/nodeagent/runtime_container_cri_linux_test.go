@@ -402,6 +402,11 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 
 func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte) (RuntimeContainerTarget, *net.UnixListener) {
 	t.Helper()
+	return fixture.createCRICallerPayloadMounts(t, client, mode, plan, payload, nil)
+}
+
+func (fixture *containerdProcessFixture) createCRICallerPayloadMounts(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte, extra []*runtimev1.Mount) (RuntimeContainerTarget, *net.UnixListener) {
+	t.Helper()
 	uid := uuid.New()
 	root := filepath.Join(fixture.root, uid.String())
 	if err := os.Mkdir(root, 0o755); err != nil {
@@ -454,6 +459,7 @@ func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, cl
 		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(payload)})
 	}
 	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
+	mounts = append(mounts, extra...)
 	if mode == "substituted-executable" {
 		data, err := os.ReadFile(fixture.binary)
 		if err != nil {

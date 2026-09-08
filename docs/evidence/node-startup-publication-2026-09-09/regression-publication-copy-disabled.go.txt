@@ -319,10 +319,6 @@ func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {
 	if record.Remote != nil {
 		copyRemote := *record.Remote
 		copyRemote.Epochs = slices.Clone(record.Remote.Epochs)
-		if record.Remote.Bootstrap != nil {
-			bootstrap := *record.Remote.Bootstrap
-			copyRemote.Bootstrap = &bootstrap
-		}
 		record.Remote = &copyRemote
 	}
 	return record

@@ -91,6 +91,14 @@ verified plan、当前持锁 Runtime journal 及其实际公钥生成配置，�
 不是每个 incarnation 的唯一授权。生产挂载/发布者来源、镜像检查和 Fleet
 预留仍未与这个 CLI 调用合并，一次性 grant 与完整 Job 仍未完成。
 
+新增 [调用者视图中的发布文件关联](node-startup-publication-evidence-2026-09-09.md)
+将原始 pidfd 的 procfs/root、实际只读挂载、发布文件 inode/摘要与同次镜像检查、
+held journal 和单次 Fleet 预留连接起来。Node 持久 intent 保留 publication
+记录及 mount ID，并纳入 Fleet owner observation 摘要；同内容复制文件和
+同 inode 重新挂载均不能替代原观察。这里证明的是采样时调用者可以看到的文件，
+不是它之前实际读取并使用的配置。真实 CRI 调用者仍是测试 probe，尚未将实际
+CLI 的配置消费、有效 argv/env 和执行连续性关联到 grant。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

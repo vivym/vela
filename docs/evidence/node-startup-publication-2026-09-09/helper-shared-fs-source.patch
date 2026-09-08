@@ -1,0 +1,639 @@
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index e0be31d..f4998dc 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -8,6 +8,18 @@ launch_cache="${VELA_TASK_LAUNCH_BUILD_CACHE:-$launch_evidence/go-cache}"
+ launch_downloads="${VELA_TASK_LAUNCH_DOWNLOADS:-$launch_evidence/downloads}"
+ launch_modules="$(go env GOMODCACHE)"
+ launch_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
++launch_scope="${VELA_TASK_LAUNCH_SCOPE:-full}"
++case "$launch_scope" in
++  full)
++    launch_pattern='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding|TestRuntimeImageDefaultEntrypoint|TestRuntimeImageLayerExecutableIdentity)$'
++    launch_expected=(TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding TestRuntimeImageDefaultEntrypoint TestRuntimeImageLayerExecutableIdentity)
++    ;;
++  startup-publication)
++    launch_pattern='^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^publication-'
++    launch_expected=(TestRuntimeCallerContainerCRI)
++    ;;
++  *) echo "Unknown task launch scope: $launch_scope" >&2; exit 2 ;;
++esac
+ [[ "$launch_evidence" = /* && "$launch_cache" = /* && "$launch_downloads" = /* ]] || exit 2
+ [[ "$(docker version --format '{{.Server.Arch}}')" == arm64 ]] || { echo 'This pinned fixture supports Linux arm64 only' >&2; exit 2; }
+ mkdir -p "$launch_evidence/image/rootfs/usr/local/bin" "$launch_cache" "$launch_downloads"
+@@ -39,6 +51,7 @@ while IFS= read -r -d '' launch_untracked; do
+ done < <(git -C "$launch_repo" ls-files -z --others --exclude-standard -- internal/nodeagent hack/run-task-launch-native.sh)
+ shasum -a 256 "$launch_evidence/source.patch" > "$launch_evidence/source-patch.sha256"
+ docker version > "$launch_evidence/docker-version.txt"
++echo "$launch_scope" > "$launch_evidence/scope.txt"
+ 
+ docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
+   -v "$launch_repo:/workspace:ro" -v "$launch_modules:/go/pkg/mod:ro" \
+@@ -58,10 +71,15 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
+ # paths/sockets, host PID namespace, network, model weights or GPU are used.
+ docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
+   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
+-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding|TestRuntimeImageDefaultEntrypoint|TestRuntimeImageLayerExecutableIdentity)$' -test.count=1 -test.v -test.timeout=3m \
++  -test.run="$launch_pattern" -test.count=1 -test.v -test.timeout=3m \
+   > "$launch_evidence/native.log" 2>&1
+-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding TestRuntimeImageDefaultEntrypoint TestRuntimeImageLayerExecutableIdentity; do
++for launch_test in "${launch_expected[@]}"; do
+   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
+ done
++if [[ "$launch_scope" == startup-publication ]]; then
++  for launch_case in valid missing copy writable-mount wrong-plan hardlink before-fleet-replaced after-fleet-replaced fleet-loss incarnation before-fleet-remounted after-fleet-remounted; do
++    rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-$launch_case " "$launch_evidence/native.log" || exit 1
++  done
++fi
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
+ echo "Native task launch checks passed: $launch_evidence"
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index c564900..7443b61 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -401,6 +401,11 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
+ }
+ 
+ func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte) (RuntimeContainerTarget, *net.UnixListener) {
++	t.Helper()
++	return fixture.createCRICallerPayloadMounts(t, client, mode, plan, payload, nil)
++}
++
++func (fixture *containerdProcessFixture) createCRICallerPayloadMounts(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte, extra []*runtimev1.Mount) (RuntimeContainerTarget, *net.UnixListener) {
+ 	t.Helper()
+ 	uid := uuid.New()
+ 	root := filepath.Join(fixture.root, uid.String())
+@@ -454,6 +459,7 @@ func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, cl
+ 		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(payload)})
+ 	}
+ 	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
++	mounts = append(mounts, extra...)
+ 	if mode == "substituted-executable" {
+ 		data, err := os.ReadFile(fixture.binary)
+ 		if err != nil {
+diff --git a/internal/nodeagent/runtime_startup_image_integration_linux_test.go b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+index b62a949..e1a43eb 100644
+--- a/internal/nodeagent/runtime_startup_image_integration_linux_test.go
++++ b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+@@ -9,6 +9,7 @@ import (
+ 	"errors"
+ 	"os"
+ 	"path/filepath"
++	"strings"
+ 	"testing"
+ 	"time"
+ 
+@@ -29,7 +30,8 @@ import (
+ 
+ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, image RuntimeImageTarget) {
+ 	t.Helper()
+-	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close"} {
++	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close",
++		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted"} {
+ 		t.Run(fault, func(t *testing.T) {
+ 			plan, owner, request := startupImagePlanFixture(t, image)
+ 			switch fault {
+@@ -54,7 +56,56 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 				payload = plan.manifest
+ 			}
+ 			client := runtimev1.NewRuntimeServiceClient(fixture.connection)
+-			target, listener := fixture.createCRICallerPayload(t, client, fault, plan, payload)
++			var publication *RuntimeStartupPublicationConfig
++			var mounts []*runtimev1.Mount
++			var published *RuntimeBootstrapPublication
++			if strings.HasPrefix(fault, "publication-") {
++				configuration := publicationFixture(t, false)
++				if fault != "publication-wrong-plan" {
++					configuration.Plan, configuration.Journal = plan, owner
++				}
++				published, err = PublishRuntimeBootstrap(t.Context(), configuration)
++				if err != nil {
++					t.Fatal(err)
++				}
++				publication = &RuntimeStartupPublicationConfig{Directory: configuration.Directory, BootstrapPath: "/runtime-config/bootstrap.json"}
++				source := configuration.Directory
++				if fault == "publication-copy" {
++					source = filepath.Join(filepath.Dir(source), "copy")
++					if err := os.Mkdir(source, 0o750); err != nil {
++						t.Fatal(err)
++					}
++					if err := os.Chown(source, 0, int(plan.gid)); err != nil {
++						t.Fatal(err)
++					}
++					wire, err := os.ReadFile(filepath.Join(configuration.Directory, runtimeBootstrapFilename))
++					if err != nil {
++						t.Fatal(err)
++					}
++					if err := os.WriteFile(filepath.Join(source, runtimeBootstrapFilename), wire, 0o440); err != nil {
++						t.Fatal(err)
++					}
++					if err := os.Chown(filepath.Join(source, runtimeBootstrapFilename), 0, int(plan.gid)); err != nil {
++						t.Fatal(err)
++					}
++				}
++				if fault == "publication-hardlink" {
++					if err := os.Link(filepath.Join(source, runtimeBootstrapFilename), filepath.Join(filepath.Dir(source), "hardlink")); err != nil {
++						t.Fatal(err)
++					}
++				}
++				if fault != "publication-missing" {
++					mounts = []*runtimev1.Mount{{ContainerPath: "/runtime-config", HostPath: source, Readonly: fault != "publication-writable-mount"}}
++				}
++				if fault == "publication-incarnation" {
++					request.IncarnationID = uuid.New()
++					payload, err = modelruntime.EncodeBackendStartupRequest(request)
++					if err != nil {
++						t.Fatal(err)
++					}
++				}
++			}
++			target, listener := fixture.createCRICallerPayloadMounts(t, client, fault, plan, payload, mounts)
+ 			if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err != nil {
+ 				t.Fatal(err)
+ 			}
+@@ -101,6 +152,48 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 			ledger, directory := startupTestLedger(t)
+ 			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: plan.binding.Claim.ActorIdentity}
+ 			config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
++			reserve := func() (RuntimeStartupReservationRecord, error) {
++				if publication != nil {
++					return ledger.ReservePublishedImageRemote(t.Context(), config, imageConfig, *publication)
++				}
++				return ledger.ReserveImageRemote(t.Context(), config, imageConfig)
++			}
++			replacePublication := func() {
++				t.Helper()
++				path := filepath.Join(publication.Directory, runtimeBootstrapFilename)
++				wire, err := os.ReadFile(path)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := os.Rename(path, path+".old"); err != nil {
++					t.Fatal(err)
++				}
++				if err := os.WriteFile(path, wire, 0o440); err != nil {
++					t.Fatal(err)
++				}
++				if err := os.Chown(path, 0, int(plan.gid)); err != nil {
++					t.Fatal(err)
++				}
++				if err := os.Remove(path + ".old"); err != nil {
++					t.Fatal(err)
++				}
++			}
++			if fault == "publication-before-fleet-replaced" {
++				ledger.boundary = func(phase string) error {
++					if phase == "after-sync" {
++						replacePublication()
++					}
++					return nil
++				}
++			}
++			if fault == "publication-before-fleet-remounted" {
++				ledger.boundary = func(phase string) error {
++					if phase == "after-sync" {
++						replaceStartupPublicationMount(t, caller, publication.Directory)
++					}
++					return nil
++				}
++			}
+ 			changeTask := func() {
+ 				t.Helper()
+ 				path := filepath.Join(imageConfig.StateDirectory, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
+@@ -136,8 +229,12 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 					t.Fatal("reservation did not bind original request to Node-held epoch routes")
+ 				}
+ 				switch fault {
+-				case "fleet-loss":
++				case "fleet-loss", "publication-fleet-loss":
+ 					return fleet.RuntimeStartupReservation{}, errors.New("fixture committed response lost")
++				case "publication-after-fleet-replaced":
++					replacePublication()
++				case "publication-after-fleet-remounted":
++					replaceStartupPublicationMount(t, caller, publication.Directory)
+ 				case "after-fleet-task-change":
+ 					changeTask()
+ 				case "image-observer-closed":
+@@ -147,26 +244,42 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 				}
+ 				return fleet.RuntimeStartupReservation{RuntimeStartupRequest: sent, Fresh: true, ReservedAt: time.Now().UTC()}, nil
+ 			}
+-			result, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig)
++			result, err := reserve()
+ 			wantCalls, wantIntent := 0, 0
+ 			switch fault {
+-			case "none", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "after-fleet-journal-close":
++			case "none", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "after-fleet-journal-close", "publication-valid", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-after-fleet-remounted":
+ 				wantCalls, wantIntent = 1, 1
+-			case "before-fleet-task-change", "before-fleet-journal-close":
++			case "before-fleet-task-change", "before-fleet-journal-close", "publication-before-fleet-replaced", "publication-before-fleet-remounted":
+ 				wantIntent = 1
+ 			}
+ 			if registry.calls != wantCalls || len(ledger.starts) != wantIntent {
+ 				t.Fatalf("wrong authority side effects: calls=%d intent=%d err=%v", registry.calls, len(ledger.starts), err)
+ 			}
+-			if fault == "none" {
++			if fault == "none" || fault == "publication-valid" {
+ 				if err != nil || result.JournalID != request.JournalID {
+ 					t.Fatalf("valid image-bound startup did not reserve: %+v %v", result, err)
+ 				}
++				if publication != nil {
++					bootstrap := ledger.starts[request.JournalID].Remote.Bootstrap
++					if bootstrap == nil || bootstrap.Publication != published.Record() || bootstrap.MountID == 0 || bootstrap.BootstrapPath != publication.BootstrapPath {
++						t.Fatal("reservation omitted original publication/mount identity")
++					}
++					returned, err := ledger.Inspect(t.Context(), request.JournalID)
++					if err != nil {
++						t.Fatal(err)
++					}
++					returned.Remote.Bootstrap.Publication.BootstrapDigest[0] ^= 1
++					returned.Remote.Bootstrap.MountID++
++					again, err := ledger.Inspect(t.Context(), request.JournalID)
++					if err != nil || *again.Remote.Bootstrap != *bootstrap {
++						t.Fatalf("returned history mutated live association: %v", err)
++					}
++				}
+ 			} else if err == nil || result != (RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
+ 				t.Fatalf("failed observation returned a receipt: %+v %v", result, err)
+ 			}
+ 			if wantIntent != 0 {
+-				if _, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
++				if _, err := reserve(); err == nil || registry.calls != wantCalls {
+ 					t.Fatalf("live retry consumed another reservation: %v", err)
+ 				}
+ 				if err := ledger.Close(); err != nil {
+@@ -178,14 +291,18 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 				}
+ 				defer func() { _ = recovered.Close() }()
+ 				history, err := recovered.InspectReservation(t.Context(), request.JournalID)
+-				if fault == "none" {
++				if fault == "none" || fault == "publication-valid" {
+ 					if err != nil || history != result {
+ 						t.Fatalf("recovery lost receipt: %v", err)
+ 					}
++					if publication != nil && recovered.starts[request.JournalID].Remote.Bootstrap.Publication != published.Record() {
++						t.Fatal("recovery lost publication association")
++					}
+ 				} else if !errors.Is(err, os.ErrNotExist) {
+ 					t.Fatalf("recovery manufactured receipt: %v", err)
+ 				}
+-				if _, err := recovered.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
++				ledger = recovered
++				if _, err := reserve(); err == nil || registry.calls != wantCalls {
+ 					t.Fatalf("restart consumed another reservation: %v", err)
+ 				}
+ 				if _, err := recovered.RecordExit(t.Context(), request.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux.go b/internal/nodeagent/runtime_startup_ledger_linux.go
+index b07d365..51e3bb6 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux.go
+@@ -319,6 +319,10 @@ func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {
+ 	if record.Remote != nil {
+ 		copyRemote := *record.Remote
+ 		copyRemote.Epochs = slices.Clone(record.Remote.Epochs)
++		if record.Remote.Bootstrap != nil {
++			bootstrap := *record.Remote.Bootstrap
++			copyRemote.Bootstrap = &bootstrap
++		}
+ 		record.Remote = &copyRemote
+ 	}
+ 	return record
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux.go b/internal/nodeagent/runtime_startup_reservation_linux.go
+index a2bc6e4..95c97b0 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux.go
+@@ -28,12 +28,13 @@ type RuntimeStartupRegistry interface {
+ }
+ 
+ type RuntimeStartupReservationConfig struct {
+-	Plan     *RuntimeLaunchPlan
+-	Pods     RuntimeLaunchPodReader
+-	Observer *RuntimeContainerObserver
+-	Caller   *RuntimeCaller
+-	Journal  *modelruntime.ExecutionJournalOwner
+-	Registry RuntimeStartupRegistry
++	Plan        *RuntimeLaunchPlan
++	Pods        RuntimeLaunchPodReader
++	Observer    *RuntimeContainerObserver
++	Caller      *RuntimeCaller
++	Journal     *modelruntime.ExecutionJournalOwner
++	Registry    RuntimeStartupRegistry
++	publication *RuntimeStartupPublicationConfig
+ }
+ 
+ // RuntimeStartupRemoteIntent binds Node's held storage and actual journal
+@@ -44,6 +45,7 @@ type RuntimeStartupRemoteIntent struct {
+ 	JournalDigest   [sha256.Size]byte                     `json:"journal_digest"`
+ 	Epochs          []fleet.RuntimeStartupEpoch           `json:"epochs"`
+ 	Executable      RuntimeExecutableObservation          `json:"executable"`
++	Bootstrap       *RuntimeStartupBootstrapObservation   `json:"bootstrap,omitempty"`
+ }
+ 
+ // RuntimeStartupReservationRecord records a committed Fleet reservation. It
+@@ -161,6 +163,10 @@ func inspectRemoteStartup(ctx context.Context, config RuntimeStartupReservationC
+ 	slices.SortFunc(result.Epochs, func(a, b fleet.RuntimeStartupEpoch) int {
+ 		return strings.Compare(a.ModelResidencyID.String(), b.ModelResidencyID.String())
+ 	})
++	result.Bootstrap, err = inspectStartupPublication(ctx, config)
++	if err != nil {
++		return RuntimeStartupRemoteIntent{}, err
++	}
+ 	return result, nil
+ }
+ 
+@@ -233,6 +239,16 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
+ 
+ func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
+ 	remote := record.Remote
++	if remote.Bootstrap != nil {
++		bootstrap := remote.Bootstrap
++		publication := bootstrap.Publication
++		if !validRuntimeBootstrapPath(bootstrap.BootstrapPath) || bootstrap.MountID == 0 || !strings.HasPrefix(bootstrap.MountNamespace, "mnt:[") || !strings.HasSuffix(bootstrap.MountNamespace, "]") ||
++			publication.SchemaVersion != 1 || publication.ID == uuid.Nil || publication.NodeIdentity != record.Request.NodeIdentity || publication.BindingDigest != record.Request.RegistryBindingDigest ||
++			publication.RuntimeGID != record.Owner.Process.GID || publication.RecordedAt.IsZero() || publication.RecordedAt.Location() != time.UTC ||
++			publication.Directory.Inode == 0 || publication.RecordFile.Inode == 0 || publication.BootstrapFile.Inode == 0 || publication.BootstrapBytes <= 0 || publication.BootstrapBytes > modelruntime.MaximumRemoteBootstrapBytes || publication.BootstrapDigest == ([sha256.Size]byte{}) {
++			return ErrRuntimeStartupLedger
++		}
++	}
+ 	process := remote.Executable.Process
+ 	process.ObservedAt = record.Owner.Process.ObservedAt
+ 	if remote.JournalIdentity.JournalID != record.Request.JournalID || remote.JournalIdentity.Scope != record.Request.JournalScope ||
+diff --git a/internal/nodeagent/runtime_startup_publication_integration_linux_test.go b/internal/nodeagent/runtime_startup_publication_integration_linux_test.go
+new file mode 100644
+index 0000000..1f6bb9b
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_publication_integration_linux_test.go
+@@ -0,0 +1,62 @@
++//go:build integration && linux
++
++package nodeagent
++
++import (
++	"fmt"
++	"os"
++	"os/exec"
++	"runtime"
++	"testing"
++
++	"golang.org/x/sys/unix"
++)
++
++func TestRuntimeStartupPublicationMountHelper(t *testing.T) {
++	target := os.Getenv("VELA_PUBLICATION_MOUNT_TARGET")
++	if target == "" {
++		t.Skip("private mount-namespace mutation helper")
++	}
++	// The namespace change is confined to this disposable child OS thread.
++	// Keep the host procfs/root view to address the original caller's root.
++	runtime.LockOSThread()
++	if err := unix.Setns(3, unix.CLONE_NEWNS); err != nil {
++		t.Fatal(err)
++	}
++	if err := unix.Mount("/proc/self/fd/4", target, "", unix.MS_BIND, ""); err != nil {
++		t.Fatal(err)
++	}
++	if err := unix.Mount("", target, "", unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func replaceStartupPublicationMount(t *testing.T, caller *RuntimeCaller, source string) {
++	t.Helper()
++	anchor, err := caller.process.Open(".")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = anchor.Close() }()
++	fd, err := unix.Openat(int(anchor.Fd()), "ns/mnt", unix.O_RDONLY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	namespace := os.NewFile(uintptr(fd), "original-caller-mount-namespace")
++	defer func() { _ = namespace.Close() }()
++	directory, err := os.Open(source)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = directory.Close() }()
++	binary, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	command := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeStartupPublicationMountHelper$", "-test.timeout=5s")
++	command.Env = []string{fmt.Sprintf("VELA_PUBLICATION_MOUNT_TARGET=/proc/%d/root/runtime-config", caller.peer.Pid)}
++	command.ExtraFiles = []*os.File{namespace, directory}
++	if output, err := command.CombinedOutput(); err != nil {
++		t.Fatalf("actual Runtime mount replacement failed: %v %s", err, output)
++	}
++}
+diff --git a/internal/nodeagent/runtime_startup_publication_linux.go b/internal/nodeagent/runtime_startup_publication_linux.go
+new file mode 100644
+index 0000000..15d526a
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_publication_linux.go
+@@ -0,0 +1,205 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	"golang.org/x/sys/unix"
++)
++
++var ErrRuntimeStartupPublication = errors.New("runtime caller does not see the original published bootstrap through a protected mount")
++
++// Paths are trusted Node deployment inputs. Directory is the Node publication
++// view; BootstrapPath is the expected path inside the original caller's root.
++type RuntimeStartupPublicationConfig struct {
++	Directory     string
++	BootstrapPath string
++}
++
++// RuntimeStartupBootstrapObservation describes a sampled effective file/mount,
++// not the configuration previously consumed by the process or a startup permit.
++// It retains publication identity in the Node/Fleet owner observation digest.
++type RuntimeStartupBootstrapObservation struct {
++	Publication    RuntimeBootstrapPublicationRecord `json:"publication"`
++	BootstrapPath  string                            `json:"bootstrap_path"`
++	MountNamespace string                            `json:"mount_namespace"`
++	MountID        uint64                            `json:"mount_id"`
++}
++
++// ReservePublishedImageRemote checks the Node-published artifact through the
++// original caller's filesystem view and binds it to the same held journal,
++// startup request and approved image used by the single Fleet reservation.
++// No historical publication/receipt grants startup. argv/env consumption,
++// execution continuity and once-only permission remain separate requirements.
++func (ledger *RuntimeStartupLedger) ReservePublishedImageRemote(ctx context.Context, config RuntimeStartupReservationConfig, image RuntimeStartupImageConfig, publication RuntimeStartupPublicationConfig) (RuntimeStartupReservationRecord, error) {
++	if image.Images == nil || !validRuntimeBootstrapPath(publication.BootstrapPath) || publication.Directory == "" {
++		return RuntimeStartupReservationRecord{}, ErrRuntimeStartupPublication
++	}
++	config.publication = &publication
++	return ledger.reserveRemote(ctx, config, &runtimeStartupImageCheck{config: image})
++}
++
++func validRuntimeBootstrapPath(path string) bool {
++	return filepath.IsAbs(path) && filepath.Clean(path) == path && path != "/" && len(path) <= 4096 && !strings.ContainsRune(path, '\x00')
++}
++
++func inspectStartupPublication(ctx context.Context, config RuntimeStartupReservationConfig) (*RuntimeStartupBootstrapObservation, error) {
++	if config.publication == nil {
++		return nil, nil
++	}
++	publication, err := InspectRuntimeBootstrapPublication(ctx, config.publication.Directory)
++	if err != nil {
++		return nil, err
++	}
++	bootstrap, err := publication.Bootstrap()
++	if err != nil {
++		return nil, err
++	}
++	// Rebuild from the actual plan/owner, including its actual public verifier
++	// keys. Reusing a same-shaped publication for another journal is rejected.
++	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
++		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
++		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
++	if err != nil || !bytes.Equal(wire, publication.encoded) {
++		return nil, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
++	if err != nil || request.IncarnationID != bootstrap.Startup.IncarnationID {
++		return nil, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	observation, err := config.Caller.inspectPublishedBootstrap(ctx, publication, config.publication.BootstrapPath)
++	if err != nil {
++		return nil, err
++	}
++	// Potentially blocking process-root I/O must not hide loss/replacement of
++	// Node's publication or live journal. Repeat both after the remote read.
++	current, err := InspectRuntimeBootstrapPublication(ctx, config.publication.Directory)
++	if err != nil || current.Record() != publication.Record() {
++		return nil, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	if err := config.Journal.RequireRootCustody(ctx); err != nil {
++		return nil, err
++	}
++	if _, err := config.Journal.InspectStartup(ctx, bootstrap.Manifest, request); err != nil {
++		return nil, err
++	}
++	return &observation, nil
++}
++
++func (caller *RuntimeCaller) inspectPublishedBootstrap(ctx context.Context, publication *RuntimeBootstrapPublication, path string) (RuntimeStartupBootstrapObservation, error) {
++	if err := contextError(ctx); err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	if caller == nil || publication == nil || !validRuntimeBootstrapPath(path) {
++		return RuntimeStartupBootstrapObservation{}, ErrRuntimeStartupPublication
++	}
++	caller.mu.Lock()
++	defer caller.mu.Unlock()
++	first, err := caller.inspectLocked(ctx)
++	if err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	namespace, err := caller.process.Readlink("ns/mnt")
++	if err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	file, err := openCallerBootstrap(caller.process, path)
++	if err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	defer func() { _ = file.Close() }()
++	mount, err := runtimeBootstrapReadOnlyMount(file)
++	if err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	record := publication.Record()
++	content, info, err := readRuntimePublicationFile(ctx, file, record.RuntimeGID, 0o440, modelruntime.MaximumRemoteBootstrapBytes)
++	if err != nil || record.BootstrapFile != (runtimeStartupFileIdentity{Device: info.Dev, Inode: info.Ino}) || record.BootstrapDigest != sha256.Sum256(content) || record.BootstrapBytes != int64(len(content)) {
++		return RuntimeStartupBootstrapObservation{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	// Reopen from the original proc root, not a numeric PID or Node pathname.
++	// This observes current path resolution rather than trusting the old FD.
++	current, err := openCallerBootstrap(caller.process, path)
++	if err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	defer func() { _ = current.Close() }()
++	currentMount, err := runtimeBootstrapReadOnlyMount(current)
++	if err != nil || currentMount != mount {
++		return RuntimeStartupBootstrapObservation{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	var last unix.Stat_t
++	if err := unix.Fstat(int(current.Fd()), &last); err != nil {
++		return RuntimeStartupBootstrapObservation{}, err
++	}
++	last.Atim = info.Atim
++	if last != info {
++		return RuntimeStartupBootstrapObservation{}, ErrRuntimeStartupPublication
++	}
++	lastNamespace, err := caller.process.Readlink("ns/mnt")
++	if err != nil || lastNamespace != namespace {
++		return RuntimeStartupBootstrapObservation{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	lastProcess, err := caller.inspectLocked(ctx)
++	first.ObservedAt = lastProcess.ObservedAt
++	if err != nil || first != lastProcess {
++		return RuntimeStartupBootstrapObservation{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	return RuntimeStartupBootstrapObservation{Publication: record, BootstrapPath: path, MountNamespace: namespace, MountID: mount}, nil
++}
++
++func openCallerBootstrap(process *os.Root, path string) (*os.File, error) {
++	// The fixed procfs root link deliberately enters the caller's mount view.
++	// All further components reject symlinks; O_PATH probes the final inode
++	// before the existing pinned-inode reader can open its regular-file data.
++	anchor, err := process.Open(".")
++	if err != nil {
++		return nil, err
++	}
++	defer func() { _ = anchor.Close() }()
++	var procfs unix.Statfs_t
++	if err := unix.Fstatfs(int(anchor.Fd()), &procfs); err != nil || procfs.Type != unix.PROC_SUPER_MAGIC {
++		return nil, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	fd, err := unix.Openat(int(anchor.Fd()), "root", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, err
++	}
++	directory := os.NewFile(uintptr(fd), "caller-root")
++	defer func() { _ = directory.Close() }()
++	components := strings.Split(strings.TrimPrefix(path, "/"), "/")
++	for i, component := range components {
++		var info unix.Stat_t
++		if err := unix.Fstat(int(directory.Fd()), &info); err != nil || info.Uid != 0 || info.Mode&0o7022 != 0 {
++			return nil, errors.Join(ErrRuntimeStartupPublication, err)
++		}
++		if i == len(components)-1 {
++			return openRuntimePublicationFile(directory, component)
++		}
++		next, err := unix.Openat(int(directory.Fd()), component, unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++		if err != nil {
++			return nil, err
++		}
++		_ = directory.Close()
++		directory = os.NewFile(uintptr(next), "caller-bootstrap-directory")
++	}
++	return nil, ErrRuntimeStartupPublication
++}
++
++func runtimeBootstrapReadOnlyMount(file *os.File) (uint64, error) {
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(int(file.Fd()), &filesystem); err != nil || filesystem.Flags&unix.ST_RDONLY == 0 {
++		return 0, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	var info unix.Statx_t
++	if err := unix.Statx(int(file.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_STATX_SYNC_AS_STAT, unix.STATX_MNT_ID, &info); err != nil || info.Mask&unix.STATX_MNT_ID == 0 || info.Mnt_id == 0 {
++		return 0, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	return info.Mnt_id, nil
++}

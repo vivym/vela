@@ -8,6 +8,18 @@ launch_cache="${VELA_TASK_LAUNCH_BUILD_CACHE:-$launch_evidence/go-cache}"
 launch_downloads="${VELA_TASK_LAUNCH_DOWNLOADS:-$launch_evidence/downloads}"
 launch_modules="$(go env GOMODCACHE)"
 launch_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
+launch_scope="${VELA_TASK_LAUNCH_SCOPE:-full}"
+case "$launch_scope" in
+  full)
+    launch_pattern='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding|TestRuntimeImageDefaultEntrypoint|TestRuntimeImageLayerExecutableIdentity)$'
+    launch_expected=(TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding TestRuntimeImageDefaultEntrypoint TestRuntimeImageLayerExecutableIdentity)
+    ;;
+  startup-publication)
+    launch_pattern='^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^publication-'
+    launch_expected=(TestRuntimeCallerContainerCRI)
+    ;;
+  *) echo "Unknown task launch scope: $launch_scope" >&2; exit 2 ;;
+esac
 [[ "$launch_evidence" = /* && "$launch_cache" = /* && "$launch_downloads" = /* ]] || exit 2
 [[ "$(docker version --format '{{.Server.Arch}}')" == arm64 ]] || { echo 'This pinned fixture supports Linux arm64 only' >&2; exit 2; }
 mkdir -p "$launch_evidence/image/rootfs/usr/local/bin" "$launch_cache" "$launch_downloads"
@@ -39,6 +51,7 @@ while IFS= read -r -d '' launch_untracked; do
 done < <(git -C "$launch_repo" ls-files -z --others --exclude-standard -- internal/nodeagent hack/run-task-launch-native.sh)
 shasum -a 256 "$launch_evidence/source.patch" > "$launch_evidence/source-patch.sha256"
 docker version > "$launch_evidence/docker-version.txt"
+echo "$launch_scope" > "$launch_evidence/scope.txt"
 
 docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
   -v "$launch_repo:/workspace:ro" -v "$launch_modules:/go/pkg/mod:ro" \
@@ -58,10 +71,15 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
 # paths/sockets, host PID namespace, network, model weights or GPU are used.
 docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding|TestRuntimeImageDefaultEntrypoint|TestRuntimeImageLayerExecutableIdentity)$' -test.count=1 -test.v -test.timeout=3m \
+  -test.run="$launch_pattern" -test.count=1 -test.v -test.timeout=3m \
   > "$launch_evidence/native.log" 2>&1
-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding TestRuntimeImageDefaultEntrypoint TestRuntimeImageLayerExecutableIdentity; do
+for launch_test in "${launch_expected[@]}"; do
   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
 done
+if [[ "$launch_scope" == startup-publication ]]; then
+  for launch_case in valid missing copy writable-mount wrong-plan hardlink before-fleet-replaced after-fleet-replaced fleet-loss incarnation before-fleet-remounted after-fleet-remounted; do
+    rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-$launch_case " "$launch_evidence/native.log" || exit 1
+  done
+fi
 if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
 echo "Native task launch checks passed: $launch_evidence"

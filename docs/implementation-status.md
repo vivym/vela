@@ -590,6 +590,13 @@ the actual CLI, non-root access, concurrency, substitution and six Node SIGKILL
 boundaries. Reopening yields history only; the per-directory create-once rule is
 not an incarnation grant. Production mounts, Fleet/Node entry wiring, image
 association and a complete Job still require the same-assembly closure.
+The [published startup association](node-startup-publication-evidence-2026-09-09.md)
+now checks the original caller's procfs-root view against the Node publication
+inode/digest and a kernel read-only mount. The publication record and mount ID
+are retained in the intent and Fleet owner observation digest; before/after
+reservation checks reject a same-content copy or same-inode remount. Real CRI
+tests cover this observation-only adapter, not actual CLI configuration
+consumption, effective argv/env approval, execution continuity or a grant.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation
