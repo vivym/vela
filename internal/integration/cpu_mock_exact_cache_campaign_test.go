@@ -21,7 +21,7 @@ import (
 )
 
 func TestCPUMockExactCacheSourceTargetCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, true)
+	runCPUMockRuntimeCampaign(t, true, false)
 }
 
 type cpuExactCacheBinding struct {
@@ -185,6 +185,18 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 			"Project cache remains enabled with two admitted entries; cache carrying history is retained",
 			"Reconciler drives real ADMIT/HIT before target physical Acquire; this does not benchmark a cache/scheduler race",
 			"real ffprobe verifies media; host execution does not prove Linux sandboxing; native subprocesses are not race-instrumented"}}
+	if workers[0].durable != nil {
+		receipt["durable_records_by_worker"] = assertCPUDurableJournals(t, workers)
+		replayed := int64(0)
+		for _, worker := range workers {
+			replayed += worker.replayedCommits.Load()
+		}
+		receipt["durable_stream"] = true
+		receipt["replayed_commits"] = replayed
+		receipt["limitations"] = append(cpuDurableStreamLimitations(),
+			"BITWISE policy is a fixture declaration; native payloads, exact versions, ADMIT/HIT and billing are measured",
+			"Reconciler drives ADMIT/HIT before target Acquire; cache/scheduler races and organization isolation are separate tests")
+	}
 	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		t.Fatal(err)

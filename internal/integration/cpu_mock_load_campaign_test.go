@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,7 @@ type cpuLoadObservation struct {
 	HeapBytes         uint64           `json:"test_process_heap_bytes"`
 	Goroutines        int              `json:"test_process_goroutines"`
 	ScratchBytes      int64            `json:"runtime_scratch_bytes"`
+	JournalBytes      int64            `json:"local_journal_bytes,omitempty"`
 	InputBytes        int64            `json:"runtime_input_bytes"`
 	OutputBytes       int64            `json:"runtime_output_bytes"`
 	RuntimeWatchdogs  int              `json:"runtime_watchdog_goroutines"`
@@ -115,27 +117,34 @@ type cpuLoadReceipt struct {
 	AcquireRetries      int64                       `json:"acquire_transaction_retries"`
 	AcquireDeadlocks    int64                       `json:"acquire_deadlock_retries"`
 	AcquireConflicts    int64                       `json:"acquire_serialization_retries"`
+	AcquireStalePolls   int64                       `json:"acquire_confirmed_stale_polls,omitempty"`
 	CapacityReports     map[string]int64            `json:"capacity_reports_by_worker"`
 	SourceTreeSHA256    string                      `json:"source_tree_sha256"`
 	RuntimeBinaries     map[string]string           `json:"runtime_binary_sha256"`
 	GoVersion           string                      `json:"go_version"`
 	FFprobeVersion      string                      `json:"ffprobe_version"`
 	Limitations         []string                    `json:"limitations"`
+	DurableStream       bool                        `json:"durable_stream,omitempty"`
+	ReplayedCommits     int64                       `json:"replayed_materialization_commits,omitempty"`
+	DurableRecords      map[string]int              `json:"durable_records_by_worker,omitempty"`
 }
 
 // This opt-in campaign uses actual subprocesses and ffprobe; ordinary integration
 // shards continue to run without requiring the host media toolchain.
 func TestCPUMockConcurrentAdmissionRuntimeCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, false)
+	runCPUMockRuntimeCampaign(t, false, false)
 }
 
-func runCPUMockRuntimeCampaign(t *testing.T, exactCache bool) {
+func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
 	t.Helper()
 	if os.Getenv("VELA_RUN_CPU_MOCK_CAMPAIGN") != "1" {
 		t.Skip("set VELA_RUN_CPU_MOCK_CAMPAIGN=1 for the bounded subprocess campaign")
 	}
 	waves := cpuLoadIntegerSetting(t, "VELA_CPU_MOCK_WAVES", 2, 2, 256)
 	width := cpuLoadIntegerSetting(t, "VELA_CPU_MOCK_WIDTH", 8, 3, 10)
+	if durableStream && waves*width > 32 {
+		t.Fatal("durable campaign exceeds retained Runtime history; reclamation must be implemented before sustained operation")
+	}
 	timeout := 90 * time.Second
 	if value := os.Getenv("VELA_CPU_MOCK_TIMEOUT"); value != "" {
 		var err error
@@ -185,7 +194,7 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache bool) {
 	budget := seedCPULoadCreditBudget(t, database, plannedJobs)
 	startRecord, err := json.Marshal(map[string]any{"source_tree_sha256": sourceDigest,
 		"runtime_binary_sha256": binaryDigests, "go_version": runtime.Version(),
-		"initial_budget": budget, "exact_cache": exactCache})
+		"initial_budget": budget, "exact_cache": exactCache, "durable_stream": durableStream})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,13 +286,16 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache bool) {
 				ModelResidencyID: worker.authority.ModelResidencyID, ModelRuntimeEpoch: worker.authority.ModelRuntimeEpoch,
 				CapacityVector: worker.capacity}, observation: stagescheduler.CapacityObservation{Sequence: worker.evidence.Capacity.Sequence}}
 		resident := newCPULoadWorker(t, ctx, root, binary, stage, worker, fixture,
-			validator, execution, evidence, artifacts, tickets, connector, materializer)
+			validator, execution, evidence, artifacts, tickets, connector, materializer, durableStream)
 		if err := resident.reportCapacity(ctx); err != nil {
 			t.Fatal(err)
 		}
 		worker.evidence.ControlSessionEpoch = resident.controlSessionEpoch
 		worker.evidence.Capacity.Sequence = resident.fixture.observation.Sequence
 		registerStageSchedulerRuntime(t, database, worker.evidence, worker.authority, stage.profileID)
+		if durableStream {
+			configureCPUDurableWorker(t, resident, store, keys)
+		}
 		workers = append(workers, resident)
 	}
 	if exactCache {
@@ -324,6 +336,10 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache bool) {
 			"ps/lsof cover the test process and native workers; PostgreSQL container and Docker VM RSS/FD are not sampled",
 			"raw after_wave observations precede one production retention batch; after_maintenance records the separate result",
 			"database history and exact objects are retained; successful local scratch uses production retirement API; crash/restart journal recovery has separate coverage"}}
+	if durableStream {
+		receipt.DurableStream = true
+		receipt.Limitations = cpuDurableStreamLimitations()
+	}
 	receipt.Before = observeCPULoad(t, database, root)
 	receipt.Before.Processes = observeCPULoadProcesses(t)
 	if len(receipt.Before.Processes) != len(workers)+1 {
@@ -408,6 +424,11 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache bool) {
 		receipt.AcquireRetries += worker.retries.Load()
 		receipt.AcquireDeadlocks += worker.deadlocks.Load()
 		receipt.AcquireConflicts += worker.conflicts.Load()
+		receipt.AcquireStalePolls += worker.stalePolls.Load()
+		receipt.ReplayedCommits += worker.replayedCommits.Load()
+	}
+	if durableStream {
+		receipt.DurableRecords = assertCPUDurableJournals(t, workers)
 	}
 	receipt.CapacityReports = cpuLoadCapacityReports(t, workers)
 	select {
@@ -469,6 +490,9 @@ type cpuLoadWorker struct {
 	retries               atomic.Int64
 	deadlocks             atomic.Int64
 	conflicts             atomic.Int64
+	durable               *cpuDurableWorker
+	replayedCommits       atomic.Int64
+	stalePolls            atomic.Int64
 }
 
 func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, stage h3IntegrationStage,
@@ -476,7 +500,7 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 	execution *stageworkercontrol.PostgresExecutionBackend, evidence *stageworkercontrol.PostgresWorkerEvidenceBackend,
 	artifacts *stageartifact.PostgresRepository,
 	tickets *stageartifact.TransferTicketSigner, connector *stageartifact.ObjectStorePullConnector,
-	materializer *stageartifact.Materializer) *cpuLoadWorker {
+	materializer *stageartifact.Materializer, durableStream bool) *cpuLoadWorker {
 	t.Helper()
 	scratch := filepath.Join(root, stage.key)
 	inputRoot, outputRoot := filepath.Join(scratch, "inputs"), filepath.Join(scratch, "outputs")
@@ -510,6 +534,21 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 			t.Fatal(err)
 		}
 	}
+	var durable *cpuDurableWorker
+	var identityDigest, subsetDigest []byte
+	if durableStream {
+		identityDigest, err = hex.DecodeString(member.IdentityDigest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		subsetDigest, err = hex.DecodeString(member.DeviceSubsetDigest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		admissionBinding := binding
+		admissionBinding.ModelRuntimeEpoch = worker.authority.ModelRuntimeEpoch
+		durable = newCPUDurableJournals(t, scratch, admissionBinding, validator, identityDigest, subsetDigest)
+	}
 	service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, Validator: validator,
 		EpochStore:    modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return worker.authority.ModelRuntimeEpoch, nil }),
 		CancelTimeout: time.Second,
@@ -524,12 +563,24 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 		t.Fatal(err)
 	}
 	t.Cleanup(service.Close)
+	var runtimeServer velav1.ModelRuntimeServiceServer = service
+	if durableStream {
+		durable.supervisor, err = modelruntime.NewSupervisorWithExecutionFloor(modelruntime.ExecutionFloorConfig{
+			Validator: validator, State: &modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(scratch, "runtime-admission"), Initialize: true},
+			Members: []modelruntime.ExecutionFloorMember{{WorkerMemberID: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch, IdentityDigest: identityDigest, DeviceSubsetDigest: subsetDigest}},
+		}, service)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(durable.supervisor.Close)
+		runtimeServer = durable.supervisor
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server := grpc.NewServer()
-	velav1.RegisterModelRuntimeServiceServer(server, service)
+	velav1.RegisterModelRuntimeServiceServer(server, runtimeServer)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	t.Cleanup(func() { server.Stop(); <-done })
@@ -545,7 +596,7 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 	return &cpuLoadWorker{stage: stage, fixture: fixture, assignments: newPostgresAssignmentTestBackend(t, fixture),
 		execution: execution, evidence: evidence, controlSessionEpoch: worker.evidence.ControlSessionEpoch,
 		validator: validator, artifacts: artifacts, tickets: tickets, connector: connector,
-		materializer: materializer, agent: agent, scratchRetirer: scratchRetirer, inputRoot: inputRoot, outputRoot: outputRoot}
+		materializer: materializer, agent: agent, scratchRetirer: scratchRetirer, inputRoot: inputRoot, outputRoot: outputRoot, durable: durable}
 }
 
 func (worker *cpuLoadWorker) run(ctx context.Context) error {
@@ -574,6 +625,9 @@ func (worker *cpuLoadWorker) run(ctx context.Context) error {
 func (worker *cpuLoadWorker) acquire(ctx context.Context) (stageworkercontrol.AcquireResult, error) {
 	if err := worker.reportCapacity(ctx); err != nil {
 		return stageworkercontrol.AcquireResult{}, err
+	}
+	if worker.durable != nil {
+		return worker.acquireDurable(ctx)
 	}
 	command := worker.controlCommand()
 	result, err := worker.assignments.AcquireStage(ctx, command, stageWorkerAcquireRequest(worker.fixture))
@@ -644,6 +698,9 @@ func cpuLoadCapacityReports(t *testing.T, workers []*cpuLoadWorker) map[string]i
 }
 
 func (worker *cpuLoadWorker) execute(ctx context.Context, assignment *velav1.StageAssignment) error {
+	if worker.durable != nil {
+		return worker.executeDurable(ctx, assignment)
+	}
 	authority := assignment.GetAuthority()
 	for i, input := range assignment.GetExecutionSpec().GetInputs() {
 		ticket := stageartifact.SignedTransferTicket{Token: assignment.GetInputTransferTickets()[i].GetTransferTicket()}
@@ -801,12 +858,16 @@ func observeCPULoad(t *testing.T, database testDatabase, root string) cpuLoadObs
 			return nil
 		}
 		if err == nil {
-			observation.ScratchBytes += info.Size()
 			relative, err := filepath.Rel(root, path)
 			if err != nil {
 				return err
 			}
 			parts := strings.Split(filepath.ToSlash(relative), "/")
+			if len(parts) > 2 && (parts[1] == "worker-admission" || parts[1] == "runtime-admission" || parts[1] == "materialization-journal" || parts[1] == "input-transfer-journal" || entry.Name() == ".vela-assignment-admission") {
+				observation.JournalBytes += info.Size()
+				return nil
+			}
+			observation.ScratchBytes += info.Size()
 			if len(parts) > 2 && parts[1] == "inputs" {
 				observation.InputBytes += info.Size()
 			} else if len(parts) > 2 && parts[1] == "outputs" {
@@ -869,6 +930,7 @@ func mergeCPULoadPeak(peak *cpuLoadObservation, value cpuLoadObservation) {
 	peak.HeapBytes = max(peak.HeapBytes, value.HeapBytes)
 	peak.Goroutines = max(peak.Goroutines, value.Goroutines)
 	peak.ScratchBytes = max(peak.ScratchBytes, value.ScratchBytes)
+	peak.JournalBytes = max(peak.JournalBytes, value.JournalBytes)
 	peak.InputBytes = max(peak.InputBytes, value.InputBytes)
 	peak.OutputBytes = max(peak.OutputBytes, value.OutputBytes)
 	peak.RuntimeWatchdogs = max(peak.RuntimeWatchdogs, value.RuntimeWatchdogs)

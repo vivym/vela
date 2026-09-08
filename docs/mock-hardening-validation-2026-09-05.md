@@ -6,12 +6,16 @@ Work branch: `feature/vela-mock-hardening`
 Current local migration: `94`
 Status: In progress
 
-Latest local checkpoint (2026-09-08): Runtime journal schema 8 retains explicit
-Worker health across drain and replacement. The
-[health durability report](worker-health-durability-evidence-2026-09-08.md)
-records current verification, migration constraints and the remaining custody,
-replacement, retirement and complete CPU/open-loop campaign work. Earlier
-measurements below remain bound to their original revisions.
+Latest local checkpoint (2026-09-08): the
+[durable Control stream CPU campaign](cpu-durable-stream-evidence-2026-09-08.md)
+completes 32 Jobs and an exact-cache source/target pair under race detection,
+including lost commit-response recovery, matching PostgreSQL/Worker/Runtime
+history and zero final payload scratch. It reaches the 32-record Runtime history
+bound; trusted custody, full process/session recovery, history reclamation and
+open-loop operation remain open. Runtime schema-8
+[health durability](worker-health-durability-evidence-2026-09-08.md) remains the
+preceding production-code checkpoint. Earlier measurements below remain bound
+to their original revisions.
 
 ## Objective and evidence boundary
 
