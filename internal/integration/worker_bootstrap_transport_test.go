@@ -189,6 +189,11 @@ type bootstrapTLSClient struct {
 
 func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor grpc.UnaryServerInterceptor, signers ...*journalbinding.Signer) []bootstrapTLSClient {
 	t.Helper()
+	return bootstrapMutualTLSClientsOn(t, service, interceptor, "127.0.0.1:0", signers...)
+}
+
+func bootstrapMutualTLSClientsOn(t *testing.T, service *fleet.Service, interceptor grpc.UnaryServerInterceptor, address string, signers ...*journalbinding.Signer) []bootstrapTLSClient {
+	t.Helper()
 	identities := []nodeagent.NodeAgentIdentity{
 		{NodeIdentity: "h3-node-01", AgentID: uuid.New(), AgentEpoch: 1},
 		{NodeIdentity: "h3-node-02", AgentID: uuid.New(), AgentEpoch: 1},
@@ -226,10 +231,15 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 	if err != nil {
 		t.Fatal(err)
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp4", address)
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	localAddress := net.JoinHostPort("127.0.0.1", port)
 	grpcServer := grpc.NewServer(grpc.Creds(serverTLS), grpc.UnaryInterceptor(interceptor), grpc.MaxRecvMsgSize(fleettransport.MaximumMessageBytes))
 	velav1.RegisterFleetMaintenanceServiceServer(grpcServer, server)
 	done := make(chan error, 1)
@@ -251,7 +261,7 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		base, err := fleettransport.DialClient(ctx, listener.Addr().String(), clientTLS)
+		base, err := fleettransport.DialClient(ctx, localAddress, clientTLS)
 		cancel()
 		if err != nil {
 			t.Fatal(err)
@@ -261,13 +271,13 @@ func bootstrapMutualTLSClients(t *testing.T, service *fleet.Service, interceptor
 		if err != nil {
 			t.Fatal(err)
 		}
-		connection, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(clientTLS))
+		connection, err := grpc.NewClient(localAddress, grpc.WithTransportCredentials(clientTLS))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = connection.Close() })
 		clients = append(clients, bootstrapTLSClient{bootstrap: bootstrap, rpc: velav1.NewFleetMaintenanceServiceClient(connection),
-			arguments: []string{"--fleet-address", listener.Addr().String(), "--fleet-server-name", serverName,
+			arguments: []string{"--fleet-address", localAddress, "--fleet-server-name", serverName,
 				"--fleet-ca-file", caPath, "--client-cert-file", certificatePath, "--client-key-file", keyPath}})
 	}
 	return clients

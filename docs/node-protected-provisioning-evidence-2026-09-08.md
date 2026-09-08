@@ -6,6 +6,10 @@ It does not issue Runtime startup permission or activate durable Fleet Pods.
 PostgreSQL 94, Worker journal 5, Runtime journal 6, Registry binding 1, release
 bundle 3 and Production Gates `0/9` remain unchanged.
 
+The subsequent [actual command and Linux race campaign](node-provisioning-command-evidence-2026-09-08.md)
+fills the PostgreSQL/mTLS and Linux race gaps recorded below. It does not close
+startup authorization or recovery availability.
+
 ## Initialization and ownership boundary
 
 The earlier `bootstrap/journal-origin.json` belongs to the same UID as its

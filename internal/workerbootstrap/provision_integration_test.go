@@ -3,11 +3,13 @@
 package workerbootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -23,9 +25,12 @@ func TestProtectedProvisioningSandbox(t *testing.T) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		output, err := exec.CommandContext(ctx, "docker", arguments...).CombinedOutput()
+		command := exec.CommandContext(ctx, "docker", arguments...)
+		var stderr bytes.Buffer
+		command.Stderr = &stderr
+		output, err := command.Output()
 		if err != nil {
-			t.Fatalf("Docker %s: %s %v", arguments[0], output, err)
+			t.Fatalf("Docker %s: %s %s %v", arguments[0], output, stderr.Bytes(), err)
 		}
 		return output
 	}
@@ -48,8 +53,21 @@ func TestProtectedProvisioningSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(directory, "rootfs", "workerbootstrap.test")
-	build := exec.CommandContext(t.Context(), "go", "test", "-c", "-o", binary, ".")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+server.Arch)
+	buildArgs := []string{"test", "-c", "-o", binary}
+	cgo := "0"
+	race := os.Getenv("VELA_TEST_PROVISION_RACE")
+	if race != "" && race != "1" {
+		t.Fatal("VELA_TEST_PROVISION_RACE must be empty or 1")
+	}
+	if race == "1" {
+		if runtime.GOOS != "linux" || runtime.GOARCH != server.Arch {
+			t.Fatal("static race provisioning checks require a matching native Linux toolchain")
+		}
+		cgo = "1"
+		buildArgs = append(buildArgs, "-race", "-ldflags", "-linkmode external -extldflags=-static")
+	}
+	build := exec.CommandContext(t.Context(), "go", append(buildArgs, ".")...)
+	build.Env = append(os.Environ(), "CGO_ENABLED="+cgo, "GOOS=linux", "GOARCH="+server.Arch)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build Linux provisioning fixture: %s %v", output, err)
 	}
@@ -60,7 +78,7 @@ func TestProtectedProvisioningSandbox(t *testing.T) {
 	if !strings.HasPrefix(image, "sha256:") || len(image) != 71 {
 		t.Fatalf("build returned no immutable CPU image: %q", image)
 	}
-	t.Logf("CPU image=%s Docker=%s platform=%s/%s", image, server.Version, server.Os, server.Arch)
+	t.Logf("CPU image=%s Docker=%s platform=%s/%s race=%t", image, server.Version, server.Os, server.Arch, race == "1")
 	names := []string{"TestProvisionProtectsOriginalEvidenceThroughOwnershipTransfer", "TestProvisionNeverAdoptsOrRetriesExistingState",
 		"TestProvisionConcurrentFirstUse", "TestProvisionProcessExitKeepsFirstUseConsumed", "TestProvisionRejectsUnsafeRootsBeforeClaim", "TestProvisionDetectsChangedTransfer"}
 	container := strings.TrimSpace(string(docker("create", "--pull", "never", "--network", "none", "--privileged", "--pids-limit", "128", "--memory", "512m", "--cpus", "2",

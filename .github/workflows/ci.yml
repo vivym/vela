@@ -130,6 +130,29 @@ jobs:
           go test ./internal/artifactvalidator -count=1
           go test ./internal/h3stagemock -count=1
 
+  protected_provisioning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VELA_TEST_PROVISION_SANDBOX: "1"
+      VELA_TEST_PROVISION_RACE: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify protected provisioning with Linux race and actual Node commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -race -tags=integration ./internal/workerbootstrap \
+            -run '^TestProtectedProvisioningSandbox$' -count=1 -timeout=6m -v
+          go test -race -tags=integration ./internal/integration \
+            -run '^TestProtectedProvisioningCommandPostgres$' -count=1 -timeout=8m -v
+
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -195,7 +218,7 @@ jobs:
 
   verify:
     if: always()
-    needs: [generated_contracts, go_quality, sandbox, integration, contracts]
+    needs: [generated_contracts, go_quality, sandbox, protected_provisioning, integration, contracts]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -205,6 +228,7 @@ jobs:
           test "${{ needs.generated_contracts.result }}" = success
           test "${{ needs.go_quality.result }}" = success
           test "${{ needs.sandbox.result }}" = success
+          test "${{ needs.protected_provisioning.result }}" = success
           test "${{ needs.integration.result }}" = success
           if [[ "${{ github.event_name }}" == pull_request ]]; then
             test "${{ needs.contracts.result }}" = success
