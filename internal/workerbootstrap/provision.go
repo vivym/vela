@@ -27,3 +27,13 @@ type ProvisionedJournals struct {
 func Provision(ctx context.Context, config Config, directory string, authority Authority) (ProvisionedJournals, error) {
 	return provision(ctx, config, directory, authority, nil)
 }
+
+// InspectProvisionedJournals confirms a completed, still-pristine ownership
+// handover against root-private evidence, original storage and Registry history.
+// It holds the intent and both journal locks through lookup and final checks.
+// It changes no files or Registry state and grants no startup/mount permission.
+// Changed journals and interrupted handovers require separate recovery; this
+// API never repairs them or treats historical completion as current activation.
+func InspectProvisionedJournals(ctx context.Context, config Config, directory string, reader HistoryReader) (ProvisionedJournals, error) {
+	return inspectProvisionedJournals(ctx, config, directory, reader)
+}

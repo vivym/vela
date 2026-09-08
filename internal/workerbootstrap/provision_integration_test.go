@@ -80,7 +80,10 @@ func TestProtectedProvisioningSandbox(t *testing.T) {
 	}
 	t.Logf("CPU image=%s Docker=%s platform=%s/%s race=%t", image, server.Version, server.Os, server.Arch, race == "1")
 	names := []string{"TestProvisionProtectsOriginalEvidenceThroughOwnershipTransfer", "TestProvisionNeverAdoptsOrRetriesExistingState",
-		"TestProvisionConcurrentFirstUse", "TestProvisionProcessExitKeepsFirstUseConsumed", "TestProvisionRejectsUnsafeRootsBeforeClaim", "TestProvisionDetectsChangedTransfer"}
+		"TestProvisionConcurrentFirstUse", "TestProvisionProcessExitKeepsFirstUseConsumed", "TestProvisionRejectsUnsafeRootsBeforeClaim", "TestProvisionDetectsChangedTransfer",
+		"TestInspectProvisionedJournalsRetainsLocksAndOriginalEvidence", "TestInspectProvisionedJournalsRejectsInterruptedHandover",
+		"TestInspectProvisionedJournalsRejectsChangedStateAndHistory", "TestInspectProvisionedJournalsRechecksAfterLookup",
+		"TestInspectProvisionedJournalsRejectsLiveOwnersWithoutLeakingLocks"}
 	container := strings.TrimSpace(string(docker("create", "--pull", "never", "--network", "none", "--privileged", "--pids-limit", "128", "--memory", "512m", "--cpus", "2",
 		image, "-test.run=^("+strings.Join(names, "|")+")$", "-test.v", "-test.timeout=90s")))
 	if len(container) != 64 || strings.ContainsAny(container, " /\n\r") {

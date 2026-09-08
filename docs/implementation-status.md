@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-09-06
+Date: 2026-09-08
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -864,6 +864,16 @@ state; no adoption or ownership-repair operation exists. Current Fleet mount
 assembly, protected-record recovery, effective launch/current activation and the
 durable startup permission transaction remain open. Schema versions and
 Production Gates remain unchanged.
+The subsequent [actual provisioning command campaign](node-provisioning-command-evidence-2026-09-08.md)
+passes eight PostgreSQL/mTLS failure and identity scenarios and adds a required
+Linux race CI job. The [protected handover inspector](node-provisioning-inspection-evidence-2026-09-08.md)
+now strictly reads the root-private records and checks still-pristine original
+storage plus Registry history with four exclusive locks held. A new actual Node
+command process can recover the original completion result from the same volume;
+partial handovers and changed journals remain rejected. Eleven mandatory Linux
+race tests pass without skips. This does not authorize startup, repair ownership,
+validate evolved journals or replace current Fleet activation. No Production
+Gate changes.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

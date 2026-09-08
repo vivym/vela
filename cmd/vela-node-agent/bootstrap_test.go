@@ -20,6 +20,8 @@ func TestBootstrapCommandRejectsAmbiguousActionsBeforeTransport(t *testing.T) {
 	for _, arguments := range [][]string{
 		{}, {"--action", "initialize"}, {"--action", "prepare"}, {"--action", "reconcile-pair"}, {"--action", "history"},
 		{"--action", "provision"},
+		{"--action", "inspect-provision"},
+		{"--action", "inspect-provision", "--node-state-directory", "/unused", "--scratch-directory", "/unused/scratch"},
 		{"--action", "provision", "--node-state-directory", "/unused", "--scratch-directory", "/unused/scratch"},
 		{"--action", "prepare", "--node-state-directory", "/unused"},
 		{"--action", "history", "--request-id", uuid.NewString(), "--node-state-directory", "/unused"},

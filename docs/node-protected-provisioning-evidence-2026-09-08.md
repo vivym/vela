@@ -9,6 +9,9 @@ bundle 3 and Production Gates `0/9` remain unchanged.
 The subsequent [actual command and Linux race campaign](node-provisioning-command-evidence-2026-09-08.md)
 fills the PostgreSQL/mTLS and Linux race gaps recorded below. It does not close
 startup authorization or recovery availability.
+The later [read-only handover inspector](node-provisioning-inspection-evidence-2026-09-08.md)
+also permits strict inspection of complete, still-pristine state. Partial
+handover repair and evolved-journal recovery remain open.
 
 ## Initialization and ownership boundary
 

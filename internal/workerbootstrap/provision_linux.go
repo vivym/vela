@@ -249,9 +249,7 @@ func (storage provisionStorage) capture(p preparation, prepared Result) (files [
 	if err != nil || origin.Pair.RequestID != prepared.RequestID || origin.Worker != prepared.Worker.Storage || origin.Runtime != prepared.Runtime.Storage {
 		return nil, nil, errors.Join(err, errors.New("private preparation differs from original storage"))
 	}
-	children := [][]string{rootNames[1:], {operationName, originName, pairName},
-		{"assignment-admission.json", "assignment-admission.lock"}, {"execution-admission.json", "execution-admission.lock"},
-		{".vela-assignment-admission"}, {".vela-assignment-admission"}}
+	children := provisionChildren()
 	for i, directory := range rootNames {
 		path := "scratch/" + directory
 		if err := provisionNames(storage.root, path, children[i]); err != nil {
@@ -290,6 +288,12 @@ func (storage provisionStorage) capture(p preparation, prepared Result) (files [
 		}
 	}
 	return files, held, nil
+}
+
+func provisionChildren() [][]string {
+	return [][]string{rootNames[1:], {operationName, originName, pairName},
+		{"assignment-admission.json", "assignment-admission.lock"}, {"execution-admission.json", "execution-admission.lock"},
+		{".vela-assignment-admission"}, {".vela-assignment-admission"}}
 }
 
 func provisionNames(root *os.Root, path string, expected []string) error {

@@ -102,7 +102,10 @@ func TestProtectedProvisioningCommandPostgres(t *testing.T) {
 					}
 				}
 			}
+			volume := strings.TrimSpace(string(provisionDocker(t, "volume", "create")))
+			t.Cleanup(func() { provisionDocker(t, "volume", "rm", volume) })
 			create := []string{"create", "--pull", "never", "--add-host", "host.docker.internal:host-gateway", "--pids-limit", "64", "--memory", "256m", "--cpus", "2",
+				"--mount", "type=volume,src=" + volume + ",dst=/node-state",
 				"--env", "VELA_NODE_AGENT_ID=", "--env", "VELA_NODE_AGENT_NVIDIA_SMI_PATH=/nonexistent", image, "bootstrap"}
 			container := strings.TrimSpace(string(provisionDocker(t, append(create, arguments...)...)))
 			t.Cleanup(func() { provisionDocker(t, "rm", "--force", "--volumes", container) })
@@ -203,6 +206,36 @@ func TestProtectedProvisioningCommandPostgres(t *testing.T) {
 			if err != nil || claims.Load() != beforeClaims || receipts.Load() != beforeReceipts || !reflect.DeepEqual(after, history) ||
 				!reflect.DeepEqual(provisionCommandSnapshot(t, container), snapshot) {
 				t.Fatal("restarted command changed retained evidence or Registry authority")
+			}
+			// A new command process reads the same original volume; copying state
+			// would change storage identities and cannot establish retained origin.
+			inspectArguments := append([]string(nil), arguments...)
+			for i := 0; i < len(inspectArguments); i += 2 {
+				if inspectArguments[i] == "--action" {
+					inspectArguments[i+1] = "inspect-provision"
+				}
+			}
+			inspector := strings.TrimSpace(string(provisionDocker(t, append(create, inspectArguments...)...)))
+			t.Cleanup(func() { provisionDocker(t, "rm", "--force", "--volumes", inspector) })
+			provisionCommandFiles(t, inspector, files)
+			inspect := exec.CommandContext(t.Context(), "docker", "start", "--attach", inspector)
+			var inspectStderr bytes.Buffer
+			inspect.Stderr = &inspectStderr
+			inspected, inspectErr := inspect.Output()
+			if success {
+				var original, observed workerbootstrap.ProvisionedJournals
+				if err := json.Unmarshal(stdout.Bytes(), &original); err != nil {
+					t.Fatal(err)
+				}
+				if inspectErr != nil || json.Unmarshal(inspected, &observed) != nil || observed != original {
+					t.Fatalf("new Node process could not inspect original handover: %v %s", inspectErr, inspectStderr.Bytes())
+				}
+			} else if inspectErr == nil || len(inspected) != 0 {
+				t.Fatal("inspection adopted interrupted provisioning")
+			}
+			afterInspection, err := clients[0].bootstrap.LookupWorkerBootstrap(t.Context(), operationID)
+			if err != nil || !reflect.DeepEqual(afterInspection, history) || claims.Load() != beforeClaims || receipts.Load() != beforeReceipts || !reflect.DeepEqual(provisionCommandSnapshot(t, inspector), snapshot) {
+				t.Fatal("inspection changed Registry first use or protected storage")
 			}
 			t.Logf("real command: TLS=1.3 claim_count=1 recorded_pair=%t success=%t restart_rejected=true", wantReceipt, success)
 		})

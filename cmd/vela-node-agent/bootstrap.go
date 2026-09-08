@@ -52,7 +52,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	}
 	flags := flag.NewFlagSet("vela-node-agent bootstrap", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	action := flags.String("action", "", "provision, prepare, reconcile-pair, history, binding, or abandon")
+	action := flags.String("action", "", "provision, inspect-provision, prepare, reconcile-pair, history, binding, or abandon")
 	address := flags.String("fleet-address", "", "Fleet host and port")
 	serverName := flags.String("fleet-server-name", "", "Fleet TLS server name")
 	caPath := flags.String("fleet-ca-file", "", "Fleet server CA file")
@@ -64,7 +64,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	verifierPath := flags.String("verifier-keyring-file", "", "public StageAuthority verifier keyring file")
 	bindingVerifierPath := flags.String("binding-verifier-keyring-file", "", "public Registry journal binding verifier keyring file")
 	directory := flags.String("scratch-directory", "", "preprovisioned private scratch mount")
-	nodeDirectory := flags.String("node-state-directory", "", "empty root-only Node directory for explicit Linux provisioning")
+	nodeDirectory := flags.String("node-state-directory", "", "root-only Linux Node directory: empty for provision, retained for inspect-provision")
 	maxRecords := flags.Int("max-records", 0, "bound on retained Worker history (1-64)")
 	request := flags.String("request-id", "", "original bootstrap request UUID")
 	if err := flags.Parse(arguments); err != nil {
@@ -82,14 +82,15 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	var config workerbootstrap.Config
 	var requestID uuid.UUID
 	var bindingVerifier *journalbinding.Verifier
-	if (*action == "provision") != (*nodeDirectory != "") {
-		return errors.New("only provision requires node-state-directory")
+	protected := *action == "provision" || *action == "inspect-provision"
+	if protected != (*nodeDirectory != "") {
+		return errors.New("only provision/inspect-provision requires node-state-directory")
 	}
 	switch *action {
-	case "provision", "prepare", "reconcile-pair":
+	case "provision", "inspect-provision", "prepare", "reconcile-pair":
 		if *request != "" || *bindingVerifierPath != "" || *bundlePath == "" || *launchPath == "" || *verifierPath == "" ||
-			(*action != "provision") != (*directory != "") || *maxRecords < 1 || *maxRecords > 64 {
-			return errors.New("preparation requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file and max-records; provision derives scratch from node-state-directory, prepare/reconcile-pair requires scratch-directory")
+			(!protected) != (*directory != "") || *maxRecords < 1 || *maxRecords > 64 {
+			return errors.New("preparation requires bundle-manifest-file, launch-manifest-file, verifier-keyring-file and max-records; provision/inspect-provision derives scratch from node-state-directory, prepare/reconcile-pair requires scratch-directory")
 		}
 		wire, err := securefile.Read(*bundlePath, fleet.MaximumWorkerBootstrapManifestBytes, true)
 		if err != nil {
@@ -113,7 +114,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			return err
 		}
 		config.ScratchDirectory, config.MaxRecords = *directory, *maxRecords
-		if *action == "provision" {
+		if protected {
 			config.ScratchDirectory = filepath.Join(*nodeDirectory, "scratch")
 		}
 	case "history", "binding", "abandon":
@@ -131,7 +132,7 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 			}
 		}
 	default:
-		return errors.New("bootstrap action must be provision, prepare, reconcile-pair, history, binding, or abandon")
+		return errors.New("bootstrap action must be provision, inspect-provision, prepare, reconcile-pair, history, binding, or abandon")
 	}
 	transport, identity, err := fleettransport.NewWorkerBootstrapTLSCredentials(*certificatePath, *keyPath, *caPath, *serverName)
 	if err != nil {
@@ -183,6 +184,9 @@ func runBootstrap(ctx context.Context, arguments []string, stdout, stderr io.Wri
 	config.NodeIdentity, config.ActorIdentity = authority.NodeIdentity(), authority.ActorIdentity()
 	if *action == "provision" {
 		return provisionBootstrap(ctx, config, *nodeDirectory, authority, stdout)
+	}
+	if *action == "inspect-provision" {
+		return inspectProvisionBootstrap(ctx, config, *nodeDirectory, authority, stdout)
 	}
 	var result workerbootstrap.Result
 	if *action == "reconcile-pair" {
