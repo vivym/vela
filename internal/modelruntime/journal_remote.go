@@ -20,6 +20,8 @@ var errJournalReadInterrupted = errors.New("execution journal read interrupted")
 
 // RuntimeJournalTransport is supplied by trusted assembly. Implementations must
 // authenticate the owner; implementing this interface is not startup permission.
+// Read may return ErrJournalReadUnavailable only without a usable result. Owner
+// recovery responses and invalid journal evidence must retain their fatal error.
 type RuntimeJournalTransport interface {
 	Apply(context.Context, JournalCommand) (JournalMutationReceipt, error)
 	Read(context.Context) (JournalDocument, error)
@@ -131,19 +133,24 @@ func (store *remoteExecutionJournal) checkContext(requestCtx context.Context) er
 	var err error
 	for range 3 {
 		document, err = store.config.Transport.Read(ctx)
-		if !errors.Is(err, ErrJournalChanged) {
+		if !errors.Is(err, ErrJournalChanged) || errors.Is(err, ErrExecutionStateRecovery) || errors.Is(err, ErrJournalCommand) {
 			break
 		}
 		if err := store.readInterruption(ctx); err != nil {
 			return err
 		}
 	}
-	if errors.Is(err, ErrJournalChanged) {
-		return ErrJournalChanged
-	}
 	if err != nil {
+		// Explicit owner/integrity failure outranks transport/cancellation
+		// markers, including errors joined by a transport implementation.
+		if errors.Is(err, ErrExecutionStateRecovery) || errors.Is(err, ErrJournalCommand) {
+			return errors.Join(ErrExecutionStateRecovery, err)
+		}
 		if interrupted := store.readInterruption(ctx); interrupted != nil {
 			return errors.Join(interrupted, err)
+		}
+		if errors.Is(err, ErrJournalChanged) || errors.Is(err, ErrJournalReadUnavailable) {
+			return err
 		}
 		return errors.Join(ErrExecutionStateRecovery, err)
 	}

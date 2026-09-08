@@ -14,6 +14,12 @@ const JournalPageBytes = 16 << 10
 
 var ErrJournalChanged = errors.New("execution journal changed during paged read")
 
+// ErrJournalReadUnavailable means the transport returned no usable read result.
+// The current operation must stop; a later pure read may authenticate and verify
+// the complete owner snapshot again. This does not certify a transient outage,
+// owner health, identity or absence of a preceding mutation.
+var ErrJournalReadUnavailable = errors.New("execution journal read transport unavailable")
+
 type JournalPage struct {
 	JournalID    uuid.UUID         `json:"journal_id"`
 	JournalScope [sha256.Size]byte `json:"journal_scope"`

@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "7950416fb6d9c8ff1b286645922d5097203345cf",
+  "source_tree_sha256": "1d380c4444b816ea2f454846e93863060d25b35520072c781e588d8d32a52e12",
+  "source_file_count": 951,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "native_runner_sha256": "daf2836517f72c93d47508beb7aeb3d3d4b11b05a6c608e94694dcfc06568bbf",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/focused-final.log",
+      "bytes": 56,
+      "sha256": "e3c20825358de8292f518178ad9b0836b691af6f9027304e2252def5c5512257"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/modelruntime-race.log",
+      "bytes": 57,
+      "sha256": "4341f41bcc6be8d44e74337afeaf5afb0c334a7cdd5278a3305ddcf99b9b79b0"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/repository-tests.log",
+      "bytes": 6838,
+      "sha256": "bddaa88cca52c156819aba7ad16333894487bde05442717fa26d11ee16837c65"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/linux-cross.log",
+      "bytes": 167,
+      "sha256": "19ba34379cccf6e0f2369939699427874f6208ed50a42dd1c0a80a85f8d75a15"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/campaigns.log",
+      "bytes": 63975,
+      "sha256": "4febe4cb089e40abf8b046159e4d415b665b69ff1be4d081bd26c12bf3c83abb"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native-final-runner.log",
+      "bytes": 102,
+      "sha256": "c488c189dc4a52b5256c0b518f89229700706a8e40c5661926849e1724be11c9"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline-runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/modelruntime.log",
+      "bytes": 37325,
+      "sha256": "309b91592fcbaed5ddf355a6027ed521f37c96d25d630e71963fc2e4e2f24b61"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/node-startup.log",
+      "bytes": 22188,
+      "sha256": "3d07374a416694cc48fe0ba93bd143d031e2d07c72f17ec88bad6db342483867"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "a56cad2065b6fddfe3361e983712d246790c8e9c437cbe4141c774fe098ec8eb"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "350d25c1a9a1849b20c5445ca3f1b34f32d5c6f2893eaf1c3b349b960fc55387"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/source.txt",
+      "bytes": 430,
+      "sha256": "1f7c8b917fe87d9b25781099a06e9ecd480407c62823ae60e3e23db44e244595"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/source.patch",
+      "bytes": 22262,
+      "sha256": "f2f485cd453a598166dc3d20b05e74846dae75282dae4b1556a9ad15b2f64386"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/source-patch.sha256",
+      "bytes": 145,
+      "sha256": "c88a0c77c14b98d071918fecd78e34f8a0d61593b257e09bdcfc41cce1a60b9d"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/binaries.sha256",
+      "bytes": 323,
+      "sha256": "bf2f840f601ff42514f67c9ddb0022c5978b3091c2a1931d5f360587933615bc"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/native/image.txt",
+      "bytes": 72,
+      "sha256": "c9c5e3b4b43f731e5709edf8556b1326a663e44c012615acc1d3ba27aa93be61"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/node-startup.log",
+      "bytes": 23571,
+      "sha256": "0fe95a92d18c555a7ae03bd2740e8ba791206274a122e720ab324679bc4ac8de"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/source.patch",
+      "bytes": 8899,
+      "sha256": "dbfac15451ddf3fe0b840f8b9a0ecc28cf106922fdbb5a0df302f44cb4dc5895"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/source.txt",
+      "bytes": 145,
+      "sha256": "a111f47c4f3f8724ac7e37c18fd7f00396c7027a3bd2965cf98438aaa16955b0"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/source-patch.sha256",
+      "bytes": 141,
+      "sha256": "79e516357aafb4d1feed2b79621290f4b562af0b007fd55918f230f0ec3948a7"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/binaries.sha256",
+      "bytes": 315,
+      "sha256": "cac41bff229f8b584c8f8c64b80811c08881794eabdc6e1f97eb91f4b5f2919c"
+    },
+    {
+      "path": "docs/evidence/journal-overload-recovery-2026-09-08/baseline/image.txt",
+      "bytes": 72,
+      "sha256": "f0b2e5cb6aa779445d49c0be482c193c60a73af3b8358b243607f7e52d6aff63"
+    }
+  ],
+  "checks": {
+    "baseline_native_runner_exit": 1,
+    "baseline_failure": "TestJournalServerLiveSupervisorRecoversAfterOverload",
+    "baseline_patch_contains_only_tests": true,
+    "focused_race_exit": 0,
+    "full_modelruntime_race_exit": 0,
+    "full_modelruntime_race_seconds": 82.35,
+    "native_runner_exit": 0,
+    "native_modelruntime_behavioral_tests": 51,
+    "native_modelruntime_helper_entrypoints": 1,
+    "native_node_main_tests": 12,
+    "native_skips": 0,
+    "race_reports": 0,
+    "repository_tests_exit": 0,
+    "vet_exit": 0,
+    "lint_exit": 0,
+    "linux_lint_exit": 0,
+    "linux_amd64_cross_exit": 0,
+    "cpu_campaigns_exit": 0,
+    "cpu_campaigns_seconds": 68.847
+  },
+  "native_live_supervisor_overload": {
+    "prepared_before_overload": true,
+    "same_original_supervisor": true,
+    "overloaded_start_backend_calls": 0,
+    "overloaded_read_preserved_exact_journal_bytes": true,
+    "successful_retry_start_backend_calls": 1,
+    "sealed_and_drained": true,
+    "highest": 1,
+    "pending_executions": 0,
+    "accepted_connections": 36,
+    "overloaded_connections": 1,
+    "authenticated_handshakes": 33,
+    "replied": 33,
+    "failed": 2,
+    "in_flight": 0,
+    "peak_in_flight": 2
+  },
+  "scope": {
+    "no_automatic_mutation_retry": true,
+    "no_cached_admission_fallback": true,
+    "worker_barrier_retry_policy_changed": false,
+    "production_startup_assembly": false,
+    "full_remote_job_campaign": false,
+    "cpu_campaigns_use_local_persistence": true,
+    "sustained_operation": false
+  }
+}

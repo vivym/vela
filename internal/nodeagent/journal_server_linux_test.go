@@ -1,6 +1,7 @@
 package nodeagent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/modelruntime"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
 func journalServerRequest(t *testing.T, child *journalEndpointChild, request journalEndpointControl) journalEndpointReport {
@@ -155,6 +157,55 @@ func TestJournalServer(t *testing.T) {
 	if err := server.Serve(t.Context(), replacement); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("stopped server restarted: %v", err)
 	}
+}
+
+func TestJournalServerLiveSupervisorRecoversAfterOverload(t *testing.T) {
+	f := newJournalEndpointFixture(t)
+	server, done := startJournalTestServer(t, f, 30*time.Second)
+	ready := journalServerRequest(t, f.runtime, journalEndpointControl{Identity: f.identity, Manifest: &f.manifest, Startup: f.startup, Authority: f.authority, InteractiveSupervisor: true})
+	if !ready.SupervisorReady {
+		t.Fatalf("Supervisor not prepared: %+v", ready)
+	}
+	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.InFlight == 0 })
+	before, err := f.owner.Status(t.Context())
+	if err != nil || before.Highest != 1 || before.PendingExecutions != 1 {
+		t.Fatalf("prepared journal: %+v %v", before, err)
+	}
+	statePath := filepath.Join(filepath.Dir(f.listener.Addr().String()), "state", "execution-admission.json")
+	beforeBytes, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journalServerRequest(t, f.sibling, journalEndpointControl{IdleConnections: 2})
+	failed := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "start"})
+	if failed.Decision == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || failed.StartCalls != 0 || server.Stats().Overloaded != 1 {
+		t.Fatalf("overload entered backend or did not reach server limit: %+v %+v", failed, server.Stats())
+	}
+	after, err := f.owner.Status(t.Context())
+	if err != nil || after.Highest != before.Highest || after.PendingExecutions != before.PendingExecutions {
+		t.Fatalf("overloaded read changed durable history: %+v %v", after, err)
+	}
+	afterBytes, err := os.ReadFile(statePath)
+	if err != nil || !bytes.Equal(beforeBytes, afterBytes) {
+		t.Fatalf("overload changed journal bytes: %v", err)
+	}
+	journalServerRequest(t, f.sibling, journalEndpointControl{CloseIdle: true})
+	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.InFlight == 0 })
+	recovered := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "start"})
+	if recovered.Decision != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || recovered.StartCalls != 1 {
+		t.Fatalf("same live Supervisor remained fenced after read-only overload: first=%+v retry=%+v", failed, recovered)
+	}
+	if report := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "finish"}); !report.SupervisorCompleted {
+		t.Fatalf("recovered Supervisor could not seal/drain: %+v", report)
+	}
+	if status, err := f.owner.Status(t.Context()); err != nil || status.PendingExecutions != 0 || status.Highest != 1 {
+		t.Fatalf("recovered history: %+v %v", status, err)
+	}
+	if err := server.Shutdown(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertJournalServerJoined(t, server, done)
+	t.Log("same non-root PID-1 Supervisor prepared before overload, refused Start without backend entry, then started once and sealed/drained after capacity returned")
 }
 
 func TestJournalServerTimeoutAndJoin(t *testing.T) {

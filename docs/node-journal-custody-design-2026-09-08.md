@@ -16,6 +16,9 @@ read-only retry versus uncertain-mutation fencing.
 The subsequent [bounded journal service](journal-server-evidence-2026-09-08.md)
 adds the actual accept loop, overload/timeout handling and joined shutdown,
 with native Supervisor progress after a measured finite overload burst.
+The subsequent [overload recovery correction](journal-overload-recovery-evidence-2026-09-08.md)
+keeps an already prepared Supervisor usable after a failed pure read, while
+requiring full owner revalidation and preserving uncertain-mutation fences.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

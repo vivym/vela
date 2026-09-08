@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -28,14 +29,16 @@ import (
 )
 
 type journalEndpointControl struct {
-	Identity        modelruntime.ExecutionJournalIdentity
-	Command         modelruntime.JournalCommand
-	Manifest        *modelruntime.LaunchManifest
-	Startup         modelruntime.BackendLifecycleStatus
-	Authority       []byte
-	IdleConnections int
-	CloseIdle       bool
-	Read            bool
+	Identity              modelruntime.ExecutionJournalIdentity
+	Command               modelruntime.JournalCommand
+	Manifest              *modelruntime.LaunchManifest
+	Startup               modelruntime.BackendLifecycleStatus
+	Authority             []byte
+	IdleConnections       int
+	CloseIdle             bool
+	Read                  bool
+	InteractiveSupervisor bool
+	SupervisorAction      string
 }
 
 type journalEndpointReport struct {
@@ -45,6 +48,9 @@ type journalEndpointReport struct {
 	SupervisorCompleted bool
 	IdleReady           int
 	ReadCompleted       bool
+	SupervisorReady     bool
+	Decision            velav1.ModelRuntimeCommandDecision
+	StartCalls          int64
 }
 
 type journalEndpointChild struct {
@@ -128,7 +134,7 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 			continue
 		}
 		if request.Manifest != nil {
-			journalEndpointRunSupervisor(t, socket, request)
+			journalEndpointRunSupervisor(t, socket, request, decoder, encoder)
 			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
 				t.Fatal(err)
 			}
@@ -459,7 +465,17 @@ func journalEndpointSpec() *velav1.StageExecutionSpec {
 	return &velav1.StageExecutionSpec{ParametersJson: []byte(`{}`), ExpectedOutputManifestJson: []byte(`{"kind":"LATENT"}`)}
 }
 
-func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl) {
+type journalEndpointBackend struct {
+	*modelruntime.FakeRuntime
+	startCalls atomic.Int64
+}
+
+func (backend *journalEndpointBackend) Start(ctx context.Context, authority stageauthority.Verified) error {
+	backend.startCalls.Add(1)
+	return backend.FakeRuntime.Start(ctx, authority)
+}
+
+func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl, decoder *json.Decoder, encoder *json.Encoder) {
 	t.Helper()
 	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
 	if err != nil {
@@ -470,9 +486,9 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
 		t.Fatal(err)
 	}
 	var services []*modelruntime.Service
-	var backends []*modelruntime.FakeRuntime
+	var backends []*journalEndpointBackend
 	for i, binding := range bindings {
-		backend := modelruntime.NewFakeDiTRuntime()
+		backend := &journalEndpointBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
 		epoch := request.Manifest.Runtimes[i].ModelRuntimeEpochFloor
 		service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return epoch, nil }),
 			Validator: validator, Backend: backend, CancelTimeout: time.Second})
@@ -497,9 +513,38 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
 	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
 		t.Fatalf("native remote Prepare: %v %v", prepared, err)
 	}
-	started, err := supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: &authority})
-	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
-		t.Fatalf("native remote Start: %v %v", started, err)
+	if request.InteractiveSupervisor {
+		if err := encoder.Encode(journalEndpointReport{SupervisorReady: true}); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			var control journalEndpointControl
+			if err := decoder.Decode(&control); err != nil {
+				t.Fatal(err)
+			}
+			if control.SupervisorAction == "finish" {
+				break
+			}
+			if control.SupervisorAction != "start" {
+				t.Fatalf("unknown Supervisor control: %q", control.SupervisorAction)
+			}
+			started, err := supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: &authority})
+			report := journalEndpointReport{Decision: started.GetDecision(), Error: started.GetDetail(), StartCalls: backends[0].startCalls.Load()}
+			if err != nil {
+				report.Error = err.Error()
+			}
+			if err := encoder.Encode(report); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if backends[0].startCalls.Load() != 1 {
+			t.Fatal("interactive Supervisor did not start exactly once")
+		}
+	} else {
+		started, err := supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: &authority})
+		if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+			t.Fatalf("native remote Start: %v %v", started, err)
+		}
 	}
 	backends[0].MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
 	sealed, err := supervisor.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: &authority})

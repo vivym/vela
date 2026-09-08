@@ -251,7 +251,7 @@ func (admission *executionAdmission) checkStateLocked(ctx context.Context) error
 	}
 	if admission.store != nil {
 		if err := admission.store.checkContext(ctx); err != nil {
-			if errors.Is(err, ErrJournalChanged) || errors.Is(err, errJournalReadInterrupted) {
+			if !errors.Is(err, ErrExecutionStateRecovery) && (errors.Is(err, ErrJournalChanged) || errors.Is(err, errJournalReadInterrupted) || errors.Is(err, ErrJournalReadUnavailable)) {
 				return err
 			}
 			return admission.failStateLocked(err)

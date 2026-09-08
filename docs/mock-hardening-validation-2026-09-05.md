@@ -7,6 +7,14 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[live Supervisor overload recovery](journal-overload-recovery-evidence-2026-09-08.md)
+fixes a reproduced permanent admission fence after a read-only transport failure.
+The same native Supervisor now rejects Start during overload, then starts once
+and seals/drains after capacity returns. Every retry rereads the owner, including
+new Worker floors; uncertain writes and invalid evidence remain fenced. Full
+Worker barrier/remote Job overload behavior remains a separate obligation.
+
+The preceding
 [bounded Node journal service](journal-server-evidence-2026-09-08.md) replaces
 the missing caller-owned accept loop with bounded handshake/handler concurrency,
 overload refusal, exchange deadlines, counters and explicit shutdown joining.

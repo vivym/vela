@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,112 @@ func TestJournalRemoteReadContentionDoesNotPoisonAdmission(t *testing.T) {
 				t.Fatalf("read-only contention poisoned legal admission: %v %v", response, err)
 			}
 		})
+	}
+}
+
+func TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence(t *testing.T) {
+	for _, phase := range []string{"read", "write-reply", "readback"} {
+		t.Run(phase, func(t *testing.T) {
+			f, owner, transport, _ := remoteSupervisorFixture(t)
+			unavailable := errors.Join(modelruntime.ErrJournalReadUnavailable, io.ErrUnexpectedEOF)
+			reads := 0
+			transport.beforeRead = func(context.Context) error {
+				reads++
+				if phase == "read" || phase == "readback" && transport.mutations != 0 {
+					return unavailable
+				}
+				return nil
+			}
+			if phase == "write-reply" {
+				transport.afterApply = func(context.Context) error { return unavailable }
+			}
+			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
+			response, err := f.supervisor.PrepareStage(t.Context(), request)
+			if err != nil || response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 0 {
+				t.Fatalf("unavailable exchange entered backend: %v %v", response, err)
+			}
+			status, err := owner.Status(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if phase == "read" {
+				if reads != 1 || transport.mutations != 0 || status.Highest != 0 {
+					t.Fatalf("pure read retried internally or mutated: reads=%d writes=%d highest=%d", reads, transport.mutations, status.Highest)
+				}
+			} else if transport.mutations != 1 || status.Highest != 10 {
+				t.Fatalf("uncertain write lost durable sequence: %+v writes=%d", status, transport.mutations)
+			}
+			transport.beforeRead, transport.afterApply = nil, nil
+			response, err = f.supervisor.PrepareStage(t.Context(), request)
+			if phase == "read" {
+				if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 1 {
+					t.Fatalf("pure read failure poisoned legal retry: %v %v", response, err)
+				}
+			} else if err != nil || !strings.Contains(response.GetDetail(), modelruntime.ErrExecutionStateRecovery.Error()) || transport.mutations != 1 || f.backend.calls.Load() != 0 {
+				t.Fatalf("read-unavailable marker bypassed mutation fence: %v %v", response, err)
+			}
+		})
+	}
+}
+
+func TestJournalRemoteReadIntegrityFailuresRemainFenced(t *testing.T) {
+	for _, fault := range []struct {
+		name   string
+		err    error
+		cancel bool
+	}{
+		{"invalid", modelruntime.ErrJournalCommand, false},
+		{"invalid-and-canceled", modelruntime.ErrJournalCommand, true},
+		{"uncertain", modelruntime.ErrExecutionStateRecovery, false},
+		{"uncertain-and-canceled", modelruntime.ErrExecutionStateRecovery, true},
+		{"unavailable-and-invalid", errors.Join(modelruntime.ErrJournalReadUnavailable, modelruntime.ErrJournalCommand), false},
+		{"unavailable-and-uncertain", errors.Join(modelruntime.ErrJournalReadUnavailable, modelruntime.ErrExecutionStateRecovery), false},
+		{"changed-and-uncertain", errors.Join(modelruntime.ErrJournalChanged, modelruntime.ErrExecutionStateRecovery), false},
+	} {
+		t.Run(fault.name, func(t *testing.T) {
+			f, _, transport, _ := remoteSupervisorFixture(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			reads := 0
+			transport.beforeRead = func(context.Context) error {
+				reads++
+				if fault.cancel {
+					cancel()
+				}
+				return fault.err
+			}
+			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
+			response, err := f.supervisor.PrepareStage(ctx, request)
+			if err != nil || response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || reads != 1 {
+				t.Fatalf("fatal read was accepted or retried: %v %v reads=%d", response, err, reads)
+			}
+			transport.beforeRead = nil
+			response, err = f.supervisor.PrepareStage(t.Context(), request)
+			if err != nil || !strings.Contains(response.GetDetail(), modelruntime.ErrExecutionStateRecovery.Error()) || transport.mutations != 0 || f.backend.calls.Load() != 0 {
+				t.Fatalf("integrity/recovery error was downgraded: %v %v", response, err)
+			}
+		})
+	}
+}
+
+func TestJournalRemoteReadRetryObservesNewWorkerFloor(t *testing.T) {
+	f, owner, transport, _ := remoteSupervisorFixture(t)
+	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
+	beforeCalls, beforeWrites := f.backend.calls.Load(), transport.mutations
+	transport.beforeRead = func(context.Context) error {
+		return errors.Join(modelruntime.ErrJournalReadUnavailable, io.ErrUnexpectedEOF)
+	}
+	request := &velav1.ModelRuntimeServiceStartStageRequest{Authority: f.authorities[0]}
+	failed, err := f.supervisor.StartStage(t.Context(), request)
+	if err != nil || failed.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("unavailable read started execution: %v %v", failed, err)
+	}
+	applyOwnerCommand(t, owner, modelruntime.JournalWorkerRole, modelruntime.JournalCommand{Floor: &modelruntime.JournalFloorCommand{Disposition: journalProto(t, f.disposition(t))}})
+	transport.beforeRead = nil
+	retry, err := f.supervisor.StartStage(t.Context(), request)
+	if err != nil || retry.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE || !strings.Contains(retry.GetDetail(), "admission floor") ||
+		f.backend.calls.Load() != beforeCalls || transport.mutations != beforeWrites {
+		t.Fatalf("retry used cached state or retained a transport fence instead of reading the new floor: %v %v", retry, err)
 	}
 }
 

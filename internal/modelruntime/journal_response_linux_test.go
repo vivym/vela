@@ -60,3 +60,41 @@ func TestJournalResponseBindsDurableAcknowledgement(t *testing.T) {
 		})
 	}
 }
+
+func TestJournalResponseReadFailuresAreNotTransportUnavailable(t *testing.T) {
+	request := sha256.Sum256([]byte("read"))
+	for _, fault := range []string{"uncertain", "rejected", "unknown", "changed", "wrong-request", "ambiguous", "mutation", "trailing", "duplicate"} {
+		t.Run(fault, func(t *testing.T) {
+			response := JournalEndpointResponse{SchemaVersion: 1, RequestDigest: request, Error: "REJECTED"}
+			want := ErrJournalCommand
+			switch fault {
+			case "uncertain":
+				response.Error, want = "UNCERTAIN", ErrExecutionStateRecovery
+			case "changed":
+				response.Error, want = "CHANGED", ErrJournalChanged
+			case "unknown":
+				response.Error = "BUSY"
+			case "wrong-request":
+				response.RequestDigest[0]++
+			case "ambiguous":
+				response.Page = &JournalPage{}
+			case "mutation":
+				response.Error, response.Receipt = "", &JournalMutationReceipt{}
+			}
+			wire, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fault == "trailing" {
+				wire = append(wire, ' ')
+			}
+			if fault == "duplicate" {
+				wire = append(wire[:len(wire)-1], []byte(`,"schema_version":1}`)...)
+			}
+			page, err := parseJournalReadResponse(wire, request)
+			if !errors.Is(err, want) || errors.Is(err, ErrJournalReadUnavailable) || page.Document != nil || page.LockDocument != nil {
+				t.Fatalf("owner/protocol failure was downgraded or exposed data: %+v %v", page, err)
+			}
+		})
+	}
+}

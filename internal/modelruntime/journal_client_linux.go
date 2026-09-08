@@ -105,9 +105,16 @@ func ExchangeJournalRead(ctx context.Context, socket string, request JournalRead
 	}
 	reply, err := runtimechannel.Exchange(ctx, socket, wire)
 	if err != nil {
-		return JournalPage{}, err
+		// No page escaped the authenticated channel. Retrying a later pure
+		// read is safe even if this failed exchange could not authenticate;
+		// the next exchange must satisfy every channel and snapshot check.
+		return JournalPage{}, errors.Join(ErrJournalReadUnavailable, err)
 	}
-	response, err := decodeJournalEndpointResponse(reply, sha256.Sum256(wire))
+	return parseJournalReadResponse(reply, sha256.Sum256(wire))
+}
+
+func parseJournalReadResponse(reply []byte, request [sha256.Size]byte) (JournalPage, error) {
+	response, err := decodeJournalEndpointResponse(reply, request)
 	if err != nil {
 		return JournalPage{}, err
 	}
