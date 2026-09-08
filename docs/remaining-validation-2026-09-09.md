@@ -99,6 +99,17 @@ held journal 和单次 Fleet 预留连接起来。Node 持久 intent 保留 publ
 不是它之前实际读取并使用的配置。真实 CRI 调用者仍是测试 probe，尚未将实际
 CLI 的配置消费、有效 argv/env 和执行连续性关联到 grant。
 
+新增 [实际 CLI 配置消费声明](node-bootstrap-consumption-evidence-2026-09-09.md)
+使用 schema 2 将解析时冻结的 SHA256 和实际 bootstrap 路径带入启动请求，
+Node 与独立 publication/plan/held journal 匹配。实际 CLI 在首次 journal
+RPC 暂停后替换配置，仍发送原摘要而被拒绝；同内容不同路径也被拒绝。
+发送前重读路径的 overlay 按预期失败。真实 CRI 的 17 个场景通过，旧 API
+不能静默丢弃 schema 2 的关联，恢复也保留摘要/路径约束。CLI 和 CRI 仍是
+两组装配；有效 argv/env、可执行代码连续性、真实 Fleet 与一次性 grant
+必须接到同次启动，不能把这一消费声明当成任意 caller 的可信执行证明。
+本轮首次全库测试的纯读超时重试失败已通过分离故意读取 deadline 与正常
+fsync 预算修正并留证；它不解释下表的历史 `11ce026` STALE 失败。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

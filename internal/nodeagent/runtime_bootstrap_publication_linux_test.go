@@ -97,7 +97,7 @@ func TestRuntimeBootstrapPublicationAccessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := modelruntime.RemoteRuntimeServerConfig(wire); err != nil {
+	if _, err := modelruntime.RemoteRuntimeServerConfig(wire, filepath.Join(directory, runtimeBootstrapFilename)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.ReadFile(filepath.Join(directory, runtimeBootstrapRecordName)); !errors.Is(err, os.ErrPermission) {
@@ -492,6 +492,13 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
 	if _, err := os.Stat("/vela-model-runtime"); err != nil {
 		t.Skip("requires actual native CLI sandbox")
 	}
+	for _, mode := range []string{"permit", "changed-after-read", "alias-path"} {
+		t.Run(mode, func(t *testing.T) { verifyRuntimeBootstrapPublicationActualCLI(t, mode) })
+	}
+}
+
+func verifyRuntimeBootstrapPublicationActualCLI(t *testing.T, mode string) {
+	t.Helper()
 	config := publicationFixture(t, true)
 	var manifest modelruntime.LaunchManifest
 	if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
@@ -543,15 +550,65 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(t.Context(), listener) }()
+	if mode != "changed-after-read" {
+		go func() { done <- server.Serve(t.Context(), listener) }()
+	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(ctx)
 	})
 	startupListener := listen(config.StartupSocket)
-	if err := runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: filepath.Join(config.Directory, runtimeBootstrapFilename)}); err != nil {
+	consumedPath := filepath.Join(config.Directory, runtimeBootstrapFilename)
+	if mode == "alias-path" {
+		consumedPath = filepath.Join(filepath.Dir(config.Directory), "alias.json")
+		if err := os.WriteFile(consumedPath, publication.encoded, 0o444); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: consumedPath}); err != nil {
 		t.Fatal(err)
+	}
+	if mode == "changed-after-read" {
+		// The actual CLI has parsed its configuration before its first journal
+		// exchange, but cannot reach the startup gate until this reply arrives.
+		// Replace the publication here to detect a gate that rereads the path.
+		first := journalEndpointAccept(t, listener)
+		defer func() { _ = first.Close() }()
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		firstCaller, err := ReceiveRuntimeCallerWithRequestLimit(ctx, first, credentials, modelruntime.MaximumJournalCommandBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = firstCaller.Close() }()
+		firstObservation, err := firstCaller.Inspect(ctx)
+		if err != nil || firstObservation.HostPID != int32(runtime.process.Pid) {
+			t.Fatalf("first journal exchange is not original CLI: %v", err)
+		}
+		replacement := config
+		replacement.Directory = config.Directory + ".next"
+		replacement.ShutdownTimeout++
+		if err := os.Mkdir(replacement.Directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := PublishRuntimeBootstrap(t.Context(), replacement); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(config.Directory, config.Directory+".old"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(replacement.Directory, config.Directory); err != nil {
+			t.Fatal(err)
+		}
+		reply, err := endpoint.Handle(ctx, firstCaller)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := firstCaller.Reply(ctx, reply); err != nil {
+			t.Fatal(err)
+		}
+		go func() { done <- server.Serve(t.Context(), listener) }()
 	}
 	connection := journalEndpointAccept(t, startupListener)
 	defer func() { _ = connection.Close() }()
@@ -565,23 +622,63 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	observed, err := caller.Inspect(t.Context())
-	if err != nil || observed.HostPID != int32(runtime.process.Pid) || request.RegistryBindingDigest != publication.Record().BindingDigest {
+	if err != nil || observed.HostPID != int32(runtime.process.Pid) || request.RegistryBindingDigest != publication.Record().BindingDigest || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != consumedPath {
 		t.Fatalf("CLI caller not bound to publication: %v", err)
 	}
 	if _, err := config.Journal.InspectStartup(t.Context(), manifest, request); err != nil {
 		t.Fatal(err)
+	}
+	current, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentBootstrap, err := current.Bootstrap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, matchErr := matchStartupBootstrapConsumption(t.Context(), RuntimeStartupReservationConfig{Plan: config.Plan, Caller: caller, Journal: config.Journal,
+		publication: &RuntimeStartupPublicationConfig{Directory: config.Directory, BootstrapPath: filepath.Join(config.Directory, runtimeBootstrapFilename)}}, current, currentBootstrap)
+	permit := mode == "permit"
+	if permit != (matchErr == nil) {
+		t.Fatalf("Node consumption match mode=%s: %v", mode, matchErr)
 	}
 	events := filepath.Join(scratch, "events.log")
 	if _, err := os.Stat(events); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("backend initialized before Node fixture decision")
 	}
 	// Explicit test Permit only: publishing configuration is never a grant.
-	decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: true})
+	decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: permit})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := caller.Reply(t.Context(), decision); err != nil {
 		t.Fatal(err)
+	}
+	if !permit {
+		select {
+		case <-runtime.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("denied CLI did not exit")
+		}
+		if runtime.command.ProcessState.Success() {
+			t.Fatal("mismatched consumed bootstrap started")
+		}
+		if _, err := os.Stat(events); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("denied CLI initialized backend")
+		}
+		if _, err := os.Stat(config.RuntimeSocket); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("denied CLI published Runtime socket")
+		}
+		status, err := config.Journal.Status(t.Context())
+		if err != nil || status.Highest != 0 || status.BackendLifecycle != bootstrap.Startup {
+			t.Fatalf("denied CLI rewrote startup: %v", err)
+		}
+		if err := server.Shutdown(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		assertJournalServerJoined(t, server, done)
+		t.Logf("actual CLI consumed original bytes/path; Node rejected %s before backend initialization", mode)
+		return
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for {

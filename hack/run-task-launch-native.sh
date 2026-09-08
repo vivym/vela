@@ -43,12 +43,12 @@ chmod 755 "$launch_evidence/image/rootfs/usr/local/bin/"*
 shasum -a 256 "$launch_downloads/containerd.tar.gz" "$launch_downloads/runc.api.arm64" > "$launch_evidence/downloads.sha256"
 git -C "$launch_repo" rev-parse HEAD > "$launch_evidence/source.txt"
 git -C "$launch_repo" status --short >> "$launch_evidence/source.txt"
-git -C "$launch_repo" diff HEAD --binary -- internal/nodeagent hack/run-task-launch-native.sh > "$launch_evidence/source.patch"
+git -C "$launch_repo" diff HEAD --binary -- internal/nodeagent internal/modelruntime cmd/vela-model-runtime hack/run-task-launch-native.sh hack/run-remote-runtime-cli-native.sh > "$launch_evidence/source.patch"
 while IFS= read -r -d '' launch_untracked; do
   launch_diff_status=0
   git -C "$launch_repo" diff --no-index --binary -- /dev/null "$launch_untracked" >> "$launch_evidence/source.patch" || launch_diff_status=$?
   [[ "$launch_diff_status" == 0 || "$launch_diff_status" == 1 ]] || exit "$launch_diff_status"
-done < <(git -C "$launch_repo" ls-files -z --others --exclude-standard -- internal/nodeagent hack/run-task-launch-native.sh)
+done < <(git -C "$launch_repo" ls-files -z --others --exclude-standard -- internal/nodeagent internal/modelruntime cmd/vela-model-runtime hack/run-task-launch-native.sh hack/run-remote-runtime-cli-native.sh)
 shasum -a 256 "$launch_evidence/source.patch" > "$launch_evidence/source-patch.sha256"
 docker version > "$launch_evidence/docker-version.txt"
 echo "$launch_scope" > "$launch_evidence/scope.txt"
@@ -77,7 +77,7 @@ for launch_test in "${launch_expected[@]}"; do
   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
 done
 if [[ "$launch_scope" == startup-publication ]]; then
-  for launch_case in valid missing copy writable-mount wrong-plan hardlink before-fleet-replaced after-fleet-replaced fleet-loss incarnation before-fleet-remounted after-fleet-remounted; do
+    for launch_case in valid missing copy writable-mount wrong-plan hardlink before-fleet-replaced after-fleet-replaced fleet-loss incarnation before-fleet-remounted after-fleet-remounted wrong-consumed-digest wrong-consumed-path legacy-request unbound-api unbound-record; do
     rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-$launch_case " "$launch_evidence/native.log" || exit 1
   done
 fi

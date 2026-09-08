@@ -2,6 +2,7 @@ package modelruntime
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"os"
@@ -114,11 +115,17 @@ func sameRemoteBootstrapFile(first, last unix.Stat_t) bool {
 // RemoteRuntimeServerConfig owns the parsed snapshot and installs only the real
 // authenticated Unix journal and startup transports. It cannot select a local
 // epoch store, execution file owner, injected backend or permissive callback.
-func RemoteRuntimeServerConfig(wire []byte) (RuntimeServerConfig, error) {
+func RemoteRuntimeServerConfig(wire []byte, bootstrapPath string) (RuntimeServerConfig, error) {
+	if !validBootstrapConsumptionPath(bootstrapPath) {
+		return RuntimeServerConfig{}, ErrRemoteBootstrap
+	}
 	bootstrap, err := ParseRemoteRuntimeBootstrap(wire)
 	if err != nil {
 		return RuntimeServerConfig{}, err
 	}
+	// Freeze the bytes actually parsed by this CLI invocation. Do not reread a
+	// pathname later or retain the caller-owned byte slice in the gate closure.
+	consumedDigest := sha256.Sum256(wire)
 	validator, err := stageauthority.NewVerifier(bootstrap.AuthorityKeys, time.Now)
 	if err != nil {
 		return RuntimeServerConfig{}, err
@@ -139,6 +146,10 @@ func RemoteRuntimeServerConfig(wire []byte) (RuntimeServerConfig, error) {
 		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
 			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
-			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error { return gate(ctx, request.Intent) },
+			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error {
+				intent := request.Intent
+				intent.SchemaVersion, intent.BootstrapDigest, intent.BootstrapPath = 2, consumedDigest, bootstrapPath
+				return gate(ctx, intent)
+			},
 		}}, nil
 }

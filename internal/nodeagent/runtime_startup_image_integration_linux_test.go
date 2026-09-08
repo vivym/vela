@@ -31,7 +31,8 @@ import (
 func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, image RuntimeImageTarget) {
 	t.Helper()
 	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close",
-		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted"} {
+		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted",
+		"publication-wrong-consumed-digest", "publication-wrong-consumed-path", "publication-legacy-request", "publication-unbound-api", "publication-unbound-record"} {
 		t.Run(fault, func(t *testing.T) {
 			plan, owner, request := startupImagePlanFixture(t, image)
 			switch fault {
@@ -69,6 +70,15 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 					t.Fatal(err)
 				}
 				publication = &RuntimeStartupPublicationConfig{Directory: configuration.Directory, BootstrapPath: "/runtime-config/bootstrap.json"}
+				request.SchemaVersion, request.BootstrapDigest, request.BootstrapPath = 2, published.Record().BootstrapDigest, publication.BootstrapPath
+				switch fault {
+				case "publication-wrong-consumed-digest":
+					request.BootstrapDigest[0] ^= 1
+				case "publication-wrong-consumed-path":
+					request.BootstrapPath = "/other/bootstrap.json"
+				case "publication-legacy-request":
+					request.SchemaVersion, request.BootstrapDigest, request.BootstrapPath = 1, [sha256.Size]byte{}, ""
+				}
 				source := configuration.Directory
 				if fault == "publication-copy" {
 					source = filepath.Join(filepath.Dir(source), "copy")
@@ -99,10 +109,10 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 				}
 				if fault == "publication-incarnation" {
 					request.IncarnationID = uuid.New()
-					payload, err = modelruntime.EncodeBackendStartupRequest(request)
-					if err != nil {
-						t.Fatal(err)
-					}
+				}
+				payload, err = modelruntime.EncodeBackendStartupRequest(request)
+				if err != nil {
+					t.Fatal(err)
 				}
 			}
 			target, listener := fixture.createCRICallerPayloadMounts(t, client, fault, plan, payload, mounts)
@@ -153,6 +163,13 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: plan.binding.Claim.ActorIdentity}
 			config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
 			reserve := func() (RuntimeStartupReservationRecord, error) {
+				if fault == "publication-unbound-api" {
+					return ledger.ReserveImageRemote(t.Context(), config, imageConfig)
+				}
+				if fault == "publication-unbound-record" {
+					_, err := ledger.Record(t.Context(), plan, pods, observer, caller)
+					return RuntimeStartupReservationRecord{}, err
+				}
 				if publication != nil {
 					return ledger.ReservePublishedImageRemote(t.Context(), config, imageConfig, *publication)
 				}

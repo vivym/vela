@@ -1,0 +1,18 @@
+=== RUN   TestRuntimeBootstrapPublicationActualCLI
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/permit
+    runtime_bootstrap_publication_linux_test.go:496: joined Node journal server: {Accepted:5 Overloaded:0 Authenticated:5 Replied:5 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_bootstrap_publication_linux_test.go:496: Node verified plan + held journal publication -> actual UID/GID 10001 CLI -> explicit fixture Permit -> real CPU backend initialize/shutdown, actual Worker epoch=2, no local epoch/journal
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/changed-after-read
+    runtime_bootstrap_publication_linux_test.go:496: CLI caller not bound to publication: <nil>
+    journal_endpoint_linux_test.go:237: journal child 45 output: vela-model-runtime stopped: start resident runtime "cpu-runtime": start resident ModelRuntime backend: node did not permit this exact backend startup intent
+        runtime channel kernel identity or frame is untrusted
+        runtime channel kernel identity or frame is untrusted
+        runtime channel kernel identity or frame is untrusted
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/alias-path
+    runtime_bootstrap_publication_linux_test.go:496: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_bootstrap_publication_linux_test.go:496: actual CLI consumed original bytes/path; Node rejected alias-path before backend initialization
+--- FAIL: TestRuntimeBootstrapPublicationActualCLI (2.35s)
+    --- PASS: TestRuntimeBootstrapPublicationActualCLI/permit (2.16s)
+    --- FAIL: TestRuntimeBootstrapPublicationActualCLI/changed-after-read (0.11s)
+    --- PASS: TestRuntimeBootstrapPublicationActualCLI/alias-path (0.08s)
+FAIL

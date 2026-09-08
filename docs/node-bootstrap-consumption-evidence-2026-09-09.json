@@ -1,0 +1,468 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "cd34dbe0f3c490963a4e113a23a1dd34750fa955",
+  "source_tree_sha256": "9f4d7e3a7ce30f85203198638759040fd7101d004c318d62ab8cbaa9c2123b2f",
+  "source_file_count": 1009,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": {
+    "hack/run-remote-runtime-cli-native.sh": "3e201fadc68bee725c31eb736cf2eda1f6a426ee996c5274648327304bd8a232",
+    "hack/run-task-launch-native.sh": "d97df8bb0543b6cae49f2929b070f46d19c4e6f3206a4b6fa1b5942deb7953ab"
+  },
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "production_gates": "0/9",
+  "cli_tests": {
+    "TestJournalServerActualRemoteCLI": "3.35s",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution": "0.39s",
+    "TestRuntimeBootstrapPublication": "1.06s",
+    "TestRuntimeBootstrapPublicationPreflight": "0.13s",
+    "TestRuntimeBootstrapPublicationBoundaries": "0.10s",
+    "TestRuntimeBootstrapPublicationConcurrent": "0.03s",
+    "TestRuntimeBootstrapPublicationProcessCrash": "0.27s",
+    "TestRuntimeBootstrapPublicationChanged": "0.31s",
+    "TestRuntimeBootstrapPublicationCustodyLoss": "0.10s",
+    "TestRuntimeBootstrapPublicationActualCLI": "2.32s"
+  },
+  "cli_publication_cases": {
+    "permit": "2.13s",
+    "changed-after-read": "0.12s",
+    "alias-path": "0.08s"
+  },
+  "cri_publication_cases": {
+    "publication-valid": "1.19s",
+    "publication-missing": "0.30s",
+    "publication-copy": "0.33s",
+    "publication-writable-mount": "0.29s",
+    "publication-wrong-plan": "0.27s",
+    "publication-hardlink": "0.34s",
+    "publication-before-fleet-replaced": "0.62s",
+    "publication-after-fleet-replaced": "0.89s",
+    "publication-fleet-loss": "1.43s",
+    "publication-incarnation": "0.33s",
+    "publication-before-fleet-remounted": "1.93s",
+    "publication-after-fleet-remounted": "2.12s",
+    "publication-wrong-consumed-digest": "0.24s",
+    "publication-wrong-consumed-path": "0.29s",
+    "publication-legacy-request": "0.23s",
+    "publication-unbound-api": "0.34s",
+    "publication-unbound-record": "0.34s"
+  },
+  "ledger_tests": {
+    "TestRuntimeStartupLedgerBeforeActualFactory": "4.53s",
+    "TestRuntimeStartupLedgerRetainsExactOwnerExit": "0.08s",
+    "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner": "0.07s",
+    "TestRuntimeStartupLedgerReservesExitCapacity": "24.80s",
+    "TestRuntimeStartupLedgerRejectsUnboundRequests": "0.15s",
+    "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed": "0.25s",
+    "TestRuntimeStartupLedgerRejectsMissingAndChangedState": "0.02s",
+    "TestRuntimeStartupReservationProcessCrashRecovery": "0.85s",
+    "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal": "0.14s",
+    "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter": "0.12s",
+    "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent": "1.89s"
+  },
+  "checks": [
+    {
+      "command": "VELA_REMOTE_CLI_EVIDENCE=<scratch>/cli-final bash hack/run-remote-runtime-cli-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/runner.log"
+    },
+    {
+      "command": "VELA_TASK_LAUNCH_SCOPE=startup-publication VELA_TASK_LAUNCH_EVIDENCE=<scratch>/cri-final bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/runner.log"
+    },
+    {
+      "command": "Native cli image: eleven explicit TestRuntimeStartupLedger/Reservation tests, -test.count=1 -test.v -test.timeout=2m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/ledger-native.log"
+    },
+    {
+      "command": "go test ./internal/modelruntime -run 'TestBackendStartup|TestJournalRemoteReadTimeoutCanRetry' -count=10",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/focused-final.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/repository-test-final.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/vet-final.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent ./internal/modelruntime ./cmd/vela-model-runtime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/linux-lint-pinned.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent ./internal/modelruntime ./cmd/vela-model-runtime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -tags=integration -exec=true ./internal/nodeagent ./internal/modelruntime ./cmd/vela-model-runtime",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-bootstrap-consumption-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "regression": {
+    "change": "Actual CLI gate rereads bootstrap path and replaces frozen digest",
+    "native_exit_code": 1,
+    "runner_exit_code": 0,
+    "expected_failure": "TestRuntimeBootstrapPublicationActualCLI/changed-after-read",
+    "passing_controls": [
+      "permit",
+      "alias-path"
+    ]
+  },
+  "first_failure": {
+    "command": "go test ./...",
+    "exit_code": 1,
+    "test": "TestJournalRemoteReadTimeoutCanRetry",
+    "observation": "Successful retry returned STALE/requires state recovery/context deadline exceeded with 1-second journal I/O budget; host latency source is not established.",
+    "resolution": "Scope 50ms caller deadline to intentionally blocked read; retain 30-second owner I/O budget for durable successful retry. Product uncertainty isolation is unchanged. This does not explain historical 11ce026 STALE."
+  },
+  "earlier_native_runs": "first-cli predates the stronger first-journal-RPC replacement boundary and final runner source snapshot; first-cri predates final test-only changes. Use cli/cri for final source evidence.",
+  "claim_boundary": "Actual CLI snapshot digest/path freezing and independent Node declaration comparison; separately real CRI image/mount/journal single-reservation association with fixture Registry/Pod/Fleet. No arbitrary caller attestation, effective argv/env approval, executable continuity, once-only grant, same-operation actual CLI plus CRI plus real TLS/PostgreSQL/Fleet, production Node wiring, protected full Job, Worker input/materialization ownership, power-loss recovery, sustained capacity, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/amd64-cross.log",
+      "bytes": 166,
+      "sha256": "5e8e9f982d697877e8582eddcdde89beab528ba3f8759126d980d7d64d9272a3"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/binaries.sha256",
+      "bytes": 496,
+      "sha256": "fb0f5d1ba1eefe43e6849a132fb2edebdadd62c14612933154cc491635b769a7"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "d472cede04ba46393abe41c000a708fc13b2817e4c27579373c07ec0f0597519"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/build-runtime-command.log",
+      "bytes": 340,
+      "sha256": "f8288afe7580156c97a54ea162ce4158dd9657359032d2c71c561b77d2a5f213"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "55b08c01a440b4750a17d25f61d7c533f69dab313900c4d7d8a622adf8a65454"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/image.txt",
+      "bytes": 72,
+      "sha256": "09e440ac2ff86c89bd63037c897b59fb19c703faa3df23d17cf608b92150fdd2"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/native.log",
+      "bytes": 19132,
+      "sha256": "ea83f0524ba6d51e4fe0da46691360c4b71b0f7bdd7305a66fd9b6d18f4e8f6e"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/runner.log",
+      "bytes": 109,
+      "sha256": "bd50c67cda538042aabb4b31a823834eedb445df89dee746e62747d0b3681b8e"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "e160e9f5b2b1d9fac35310cd97b42f9559ab5bf3b62796a5ad37dee1bdb69ceb"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/source.patch",
+      "bytes": 34956,
+      "sha256": "40e3130e4449f4a944061ebdd89eeba983bffc882c4c1cbf79bb7e21022ff850"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cli/source.txt",
+      "bytes": 730,
+      "sha256": "64a8c410740a6d49db0ed1dd427bee23981f6f22c2fbf53b1db4630336822675"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/binaries.sha256",
+      "bytes": 850,
+      "sha256": "9d6187de9835fa59a0c8da6b1a6ed49bd2212fb93f53a17e708c971b1e501e5b"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/build.log",
+      "bytes": 1715,
+      "sha256": "5c382deb56f55aba7ea8845b6359dd061cbbc325bb62a87a705ad014dad1cab8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/image.txt",
+      "bytes": 72,
+      "sha256": "bde6950eb2eab08dc68317ccc3cbe1bb550fd0016bc16c492d3a862ee6f7d8fc"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/native.log",
+      "bytes": 7253,
+      "sha256": "db7bad4858db873e1a0d51cfd33c77d420be1e08c13ef1341224e09748a2aa68"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/runner.log",
+      "bytes": 102,
+      "sha256": "14dec0d10dcb66632b9f0fefbb357ee2d223b75cae63386d7c2c41e581959b92"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/scope.txt",
+      "bytes": 20,
+      "sha256": "080109ce8f46251548599ceb13f4fc8436afed14bffe6f564d94b86cd6b2a5b8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "e160e9f5b2b1d9fac35310cd97b42f9559ab5bf3b62796a5ad37dee1bdb69ceb"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/source.patch",
+      "bytes": 34956,
+      "sha256": "40e3130e4449f4a944061ebdd89eeba983bffc882c4c1cbf79bb7e21022ff850"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/cri/source.txt",
+      "bytes": 730,
+      "sha256": "64a8c410740a6d49db0ed1dd427bee23981f6f22c2fbf53b1db4630336822675"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/binaries.sha256",
+      "bytes": 499,
+      "sha256": "7db5b565b82240281d46d43b150e8d56d37daa58a93b4fb8385c137c8120e104"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "5d5b4d6b01646cb8672e309ebac5e01e1f524d31fef18abb7ac94cad6b7cd2fd"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "9b99ed04646ab079bebbd1b76e97567745e982e1ec00059964822a179bab348a"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "9318a15d267c6af5687b64e55d412011530ace603f24c41b48c03d615599bd56"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/image.txt",
+      "bytes": 72,
+      "sha256": "3ec1cf0cada35fdebca8f615726369a0af7a121dde9967b873b3e92feef015f2"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/native.log",
+      "bytes": 19132,
+      "sha256": "acc4dec1e526be10c85f7d794fc6426b071c9528ad4346d07f364e7eb23e7945"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/runner.log",
+      "bytes": 110,
+      "sha256": "87d85ae6e0ca8ad7f971d8643c62b3eba7f414bbc811b5484a428556c5691bce"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "3e25c0b8240fb76f32304067b3e540080f4980e4012f301bda77d909802bbff8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/source.patch",
+      "bytes": 26518,
+      "sha256": "06d9b833fe906305148779015a43bbd627e432b972b65b81ae18d36faadf4385"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cli/source.txt",
+      "bytes": 641,
+      "sha256": "b2ad96cce0ef4393c1a1fe492ce86b3ef90557fdf9e7afd9b1ccee7c894b47d8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/binaries.sha256",
+      "bytes": 855,
+      "sha256": "cdfa78cfaea9d55b5933f02ab99d608504ce841319fc200b954986296e6c3aa1"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/build.log",
+      "bytes": 1721,
+      "sha256": "55f2fbfdd15a8ffba71d05cad4000c7da5af2adeb5b0005e8a72a4da0050dda4"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/image.txt",
+      "bytes": 72,
+      "sha256": "a8690e9b03c319dc5c25cb5035057754ccebb62cb49b626b3e3f449a22eeb20c"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/native.log",
+      "bytes": 7253,
+      "sha256": "29d53ddfee1eb0bbded694cedc9048bab85f105bd2b54eb71cc1dff45872056a"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/runner.log",
+      "bytes": 103,
+      "sha256": "ef8504edc0dd034ff42a014f247342475ed6e401563bbcbe46ef199a97f60df4"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/scope.txt",
+      "bytes": 20,
+      "sha256": "080109ce8f46251548599ceb13f4fc8436afed14bffe6f564d94b86cd6b2a5b8"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "04133ab108bd4bcb2a11e8d8a10c1211bc438a3600b88cbb89f2a9704cde7202"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/source.patch",
+      "bytes": 31911,
+      "sha256": "062847a044fd5ef527735673639902d357eadc062b24404b989a5c384d0315d6"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/first-cri/source.txt",
+      "bytes": 682,
+      "sha256": "683ddf9ab2f0c219bf779555f767508f77a1c3404554a0248cb219cbf6928c1f"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/focused-final.log",
+      "bytes": 56,
+      "sha256": "828ff804a24ea8215d700280b68f5d4a8a3c425db9aab0d11e2ffd7ef05dd6ef"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/ledger-native.log",
+      "bytes": 11849,
+      "sha256": "c5481fd4a2f529a229d4dd49f35db84f607e87adafb0b61fc95d51a07b6923b3"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/linux-lint-pinned.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/package-evidence.py",
+      "bytes": 8547,
+      "sha256": "6fdbcdb482fdfb122a916b8aa526b1b8b0f4ab0ff9eea5afc16bd66b47dfbd2a"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/Dockerfile",
+      "bytes": 95,
+      "sha256": "bc4ab3c5d01adb4c03272e51f722910df95673d3e42411a9befd89fe945d755a"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/binaries.sha256",
+      "bytes": 154,
+      "sha256": "94ec1787781127a849ffe7226afdb1231e957ed8a927ad6564fa5bc8f19e5b12"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/build.log",
+      "bytes": 493,
+      "sha256": "a9f1911b7ce5aef4ae402fd0ac23fca4ca14a183b5ed7d4348236a2a8e1f597c"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/image.txt",
+      "bytes": 72,
+      "sha256": "3e4989b319a3861f40418d3773a1396335f9cae4a6ae75e4ad2377db99d53f13"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/native.log",
+      "bytes": 1761,
+      "sha256": "110c2e3229fd4ed51e4cd3e6af3a70c90f2a53f17fb0f0d431965243d49b248f"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/overlay.json",
+      "bytes": 123,
+      "sha256": "0e05511975bc0db0465426bde8f2aa6b8de9a2199b078eb566586b4e95e14381"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/prepare_regression.py",
+      "bytes": 827,
+      "sha256": "bc41c9f36972d42cf82a60de7f4d3c2be0dd06d00fc305eaea6ebcd5db5b28e2"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/reread-at-gate.go.txt",
+      "bytes": 6531,
+      "sha256": "3c4ff92139975e9eb7df75756ca9a397ba47700434d6558e2ff4a036c9921236"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression/run-regression.sh",
+      "bytes": 2375,
+      "sha256": "9dfda692ad82252115ed7bbdb05ed43ed7a16ba7bd0a2b3d3babafac64803764"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/regression-runner.log",
+      "bytes": 75,
+      "sha256": "04bed68cc7cff46ba97eed7b4e2e76906961e469e784a05f75bd4d160001af69"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/repository-test-final.log",
+      "bytes": 6844,
+      "sha256": "1a4372fd3e03249e43fd69b9dc27c182d57a953f1266a3e0af7b21e584985a9d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/repository-test.log",
+      "bytes": 7687,
+      "sha256": "2585dc70fa0ae40e6d066f40682371c380dbd139d6bf96871a547872e918094d"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/source-files.json",
+      "bytes": 159843,
+      "sha256": "d355f8bcf9ed23560d99b701496e1cd52d3917ec0b00fadcd564b6f9cb01e787"
+    },
+    {
+      "path": "docs/evidence/node-bootstrap-consumption-2026-09-09/vet-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

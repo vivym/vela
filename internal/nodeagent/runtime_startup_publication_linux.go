@@ -61,17 +61,9 @@ func inspectStartupPublication(ctx context.Context, config RuntimeStartupReserva
 	if err != nil {
 		return nil, err
 	}
-	// Rebuild from the actual plan/owner, including its actual public verifier
-	// keys. Reusing a same-shaped publication for another journal is rejected.
-	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
-		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
-		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
-	if err != nil || !bytes.Equal(wire, publication.encoded) {
-		return nil, errors.Join(ErrRuntimeStartupPublication, err)
-	}
-	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
-	if err != nil || request.IncarnationID != bootstrap.Startup.IncarnationID {
-		return nil, errors.Join(ErrRuntimeStartupPublication, err)
+	request, err := matchStartupBootstrapConsumption(ctx, config, publication, bootstrap)
+	if err != nil {
+		return nil, err
 	}
 	observation, err := config.Caller.inspectPublishedBootstrap(ctx, publication, config.publication.BootstrapPath)
 	if err != nil {
@@ -90,6 +82,24 @@ func inspectStartupPublication(ctx context.Context, config RuntimeStartupReserva
 		return nil, err
 	}
 	return &observation, nil
+}
+
+// This comparison binds a consumption declaration, not the effective mount or
+// caller's executable. The enclosing reservation must check those separately.
+func matchStartupBootstrapConsumption(ctx context.Context, config RuntimeStartupReservationConfig, publication *RuntimeBootstrapPublication, bootstrap modelruntime.RemoteRuntimeBootstrap) (modelruntime.BackendStartupRequest, error) {
+	// Rebuild from the actual plan/owner, including its actual public verifier
+	// keys. Reusing a same-shaped publication for another journal is rejected.
+	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
+		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
+		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
+	if err != nil || !bytes.Equal(wire, publication.encoded) {
+		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)
+	}
+	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
+	if err != nil || request.IncarnationID != bootstrap.Startup.IncarnationID || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != config.publication.BootstrapPath {
+		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)
+	}
+	return request, nil
 }
 
 func (caller *RuntimeCaller) inspectPublishedBootstrap(ctx context.Context, publication *RuntimeBootstrapPublication, path string) (RuntimeStartupBootstrapObservation, error) {

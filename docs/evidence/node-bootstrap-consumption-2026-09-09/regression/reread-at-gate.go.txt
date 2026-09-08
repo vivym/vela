@@ -1,0 +1,160 @@
+package modelruntime
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/vivym/vela/internal/authoritypolicy"
+	"github.com/vivym/vela/internal/journalbinding"
+	"github.com/vivym/vela/internal/stageauthority"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"golang.org/x/sys/unix"
+	"google.golang.org/protobuf/proto"
+)
+
+// ReadRemoteRuntimeBootstrapFile reads a bounded, root-owned read-only regular
+// file through root-owned non-writable ancestors, without following symlinks or
+// opening a device/FIFO. Node/root administration and the kernel are trusted.
+// It does not prove where this file was mounted or approve its original writer.
+func ReadRemoteRuntimeBootstrapFile(ctx context.Context, path string) ([]byte, error) {
+	if ctx == nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsRune(path, '\x00') || len(path) > 4096 || path == "/" {
+		return nil, ErrRemoteBootstrap
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = unix.Close(fd) }()
+	components := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for i, component := range components {
+		var parent unix.Stat_t
+		if err := unix.Fstat(fd, &parent); err != nil || parent.Uid != 0 || parent.Mode&unix.S_IFMT != unix.S_IFDIR || parent.Mode&0o022 != 0 {
+			return nil, errors.Join(ErrRemoteBootstrap, err)
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		flags := unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+		// O_PATH probes the final type first; opening a device is never part of
+		// bootstrap loading, even if it has plausible permissions and ownership.
+		if i == len(components)-1 {
+			probe, err := unix.Openat(fd, component, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = unix.Close(probe) }()
+			var before unix.Stat_t
+			err = unix.Fstat(probe, &before)
+			if err != nil || !validRemoteBootstrapFile(before) {
+				return nil, errors.Join(ErrRemoteBootstrap, err)
+			}
+			// Reopen the retained regular inode, never its replaceable pathname.
+			descriptors, err := os.Open("/proc/self/fd")
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = descriptors.Close() }()
+			var filesystem unix.Statfs_t
+			if err := unix.Fstatfs(int(descriptors.Fd()), &filesystem); err != nil || filesystem.Type != unix.PROC_SUPER_MAGIC {
+				return nil, errors.Join(ErrRemoteBootstrap, err)
+			}
+			opened, err := unix.Openat(int(descriptors.Fd()), strconv.Itoa(probe), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK|unix.O_NOCTTY, 0)
+			if err != nil {
+				return nil, err
+			}
+			file := os.NewFile(uintptr(opened), "remote-runtime-bootstrap")
+			defer func() { _ = file.Close() }()
+			var current unix.Stat_t
+			if err := unix.Fstat(opened, &current); err != nil || current != before {
+				return nil, errors.Join(ErrRemoteBootstrap, err)
+			}
+			data, err := io.ReadAll(io.LimitReader(file, MaximumRemoteBootstrapBytes+1))
+			if err != nil || int64(len(data)) != before.Size {
+				return nil, errors.Join(ErrRemoteBootstrap, err)
+			}
+			var after unix.Stat_t
+			if err := unix.Fstat(opened, &after); err != nil || !sameRemoteBootstrapFile(before, after) {
+				return nil, errors.Join(ErrRemoteBootstrap, err)
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return data, nil
+		}
+		next, err := unix.Openat(fd, component, flags, 0)
+		if err != nil {
+			return nil, err
+		}
+		_ = unix.Close(fd)
+		fd = next
+	}
+	return nil, ErrRemoteBootstrap
+}
+
+func validRemoteBootstrapFile(info unix.Stat_t) bool {
+	return info.Uid == 0 && info.Mode&unix.S_IFMT == unix.S_IFREG && info.Mode&0o7222 == 0 && info.Nlink == 1 && info.Size > 0 && info.Size <= MaximumRemoteBootstrapBytes
+}
+
+func sameRemoteBootstrapFile(first, last unix.Stat_t) bool {
+	// Reading may update atime. All identity, content-change and access fields
+	// must remain unchanged; atime has no authority significance.
+	first.Atim = last.Atim
+	return first == last
+}
+
+// RemoteRuntimeServerConfig owns the parsed snapshot and installs only the real
+// authenticated Unix journal and startup transports. It cannot select a local
+// epoch store, execution file owner, injected backend or permissive callback.
+func RemoteRuntimeServerConfig(wire []byte, bootstrapPath string) (RuntimeServerConfig, error) {
+	if !validBootstrapConsumptionPath(bootstrapPath) {
+		return RuntimeServerConfig{}, ErrRemoteBootstrap
+	}
+	bootstrap, err := ParseRemoteRuntimeBootstrap(wire)
+	if err != nil {
+		return RuntimeServerConfig{}, err
+	}
+	// Freeze the bytes actually parsed by this CLI invocation. Do not reread a
+	// pathname later or retain the caller-owned byte slice in the gate closure.
+	consumedDigest := sha256.Sum256(wire)
+	validator, err := stageauthority.NewVerifier(bootstrap.AuthorityKeys, time.Now)
+	if err != nil {
+		return RuntimeServerConfig{}, err
+	}
+	verifier, err := journalbinding.NewVerifier(bootstrap.RegistryKeys)
+	if err != nil {
+		return RuntimeServerConfig{}, err
+	}
+	var binding velav1.WorkerBootstrapBinding
+	if err := proto.Unmarshal(bootstrap.RegistryBinding, &binding); err != nil {
+		return RuntimeServerConfig{}, err
+	}
+	gate, err := NewNodeBackendStartupGate(bootstrap.StartupSocket)
+	if err != nil {
+		return RuntimeServerConfig{}, err
+	}
+	return RuntimeServerConfig{Manifest: bootstrap.Manifest, Validator: validator, RegistryBinding: &binding, RegistryVerifier: verifier,
+		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
+		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
+			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
+			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error {
+				intent := request.Intent
+				intent.SchemaVersion, intent.BootstrapDigest, intent.BootstrapPath = 2, consumedDigest, bootstrapPath
+				reread, readErr := ReadRemoteRuntimeBootstrapFile(ctx, bootstrapPath)
+				if readErr != nil {
+					return readErr
+				}
+				intent.BootstrapDigest = sha256.Sum256(reread)
+				return gate(ctx, intent)
+			},
+		}}, nil
+}

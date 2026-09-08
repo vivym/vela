@@ -597,6 +597,16 @@ are retained in the intent and Fleet owner observation digest; before/after
 reservation checks reject a same-content copy or same-inode remount. Real CRI
 tests cover this observation-only adapter, not actual CLI configuration
 consumption, effective argv/env approval, execution continuity or a grant.
+The subsequent [actual CLI consumption declaration](node-bootstrap-consumption-evidence-2026-09-09.md)
+adds schema 2 with the parsed-byte digest and actual bootstrap path, matched to
+the independent Node publication/plan/held journal. Actual non-root CLI tests
+reject replacement at its first journal RPC and an identical-content alternate
+path. An overlay that rereads at gate time fails the former test. Seventeen real
+CRI publication cases reject missing/mismatched declarations and legacy API
+bypass before intent/Fleet calls. Recovery retains digest/path consistency.
+The CLI and CRI tests still use separate assemblies and fixture permission/Fleet;
+effective argv/env, executable continuity, real Fleet and once-only grant must
+converge in the same operation before claiming protected startup or a full Job.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation

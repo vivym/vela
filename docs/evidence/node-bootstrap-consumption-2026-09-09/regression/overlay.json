@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/workspace/internal/modelruntime/remote_bootstrap_linux.go": "/evidence/reread-at-gate.go.txt"
+  }
+}

@@ -1,0 +1,12 @@
+cd34dbe0f3c490963a4e113a23a1dd34750fa955
+ M cmd/vela-model-runtime/remote_linux.go
+ M hack/run-task-launch-native.sh
+ M internal/modelruntime/backend_startup_gate.go
+ M internal/modelruntime/remote_bootstrap_linux.go
+ M internal/nodeagent/journal_remote_cli_linux_test.go
+ M internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+ M internal/nodeagent/runtime_startup_image_integration_linux_test.go
+ M internal/nodeagent/runtime_startup_ledger_linux.go
+ M internal/nodeagent/runtime_startup_publication_linux.go
+ M internal/nodeagent/runtime_startup_reservation_linux.go
+?? internal/modelruntime/backend_startup_consumption_test.go

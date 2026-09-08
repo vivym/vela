@@ -145,6 +145,9 @@ func inspectRemoteStartup(ctx context.Context, config RuntimeStartupReservationC
 	if err != nil {
 		return RuntimeStartupRemoteIntent{}, err
 	}
+	if request.SchemaVersion == 2 && config.publication == nil {
+		return RuntimeStartupRemoteIntent{}, ErrRuntimeStartupPublication
+	}
 	snapshot, err := config.Journal.InspectStartup(ctx, manifest, request)
 	if err != nil {
 		return RuntimeStartupRemoteIntent{}, err
@@ -239,6 +242,9 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
 
 func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
 	remote := record.Remote
+	if record.Request.SchemaVersion == 2 && (remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != record.Request.BootstrapDigest || remote.Bootstrap.BootstrapPath != record.Request.BootstrapPath) {
+		return ErrRuntimeStartupLedger
+	}
 	if remote.Bootstrap != nil {
 		bootstrap := remote.Bootstrap
 		publication := bootstrap.Publication

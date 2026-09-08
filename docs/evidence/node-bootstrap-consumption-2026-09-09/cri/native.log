@@ -1,0 +1,62 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-valid
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-valid Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-missing
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-missing Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-copy
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-copy Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-writable-mount
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-writable-mount Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-plan
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-wrong-plan Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-hardlink
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-hardlink Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-before-fleet-replaced
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-before-fleet-replaced Fleet fixture calls=0 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-after-fleet-replaced
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-after-fleet-replaced Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-fleet-loss
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-fleet-loss Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-incarnation
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-incarnation Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-before-fleet-remounted
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-before-fleet-remounted Fleet fixture calls=0 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-after-fleet-remounted
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-after-fleet-remounted Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-consumed-digest
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-wrong-consumed-digest Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-consumed-path
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-wrong-consumed-path Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-legacy-request
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-legacy-request Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-unbound-api
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-unbound-api Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/publication-unbound-record
+    runtime_startup_image_integration_linux_test.go:333: actual CRI startup envelope + root journal + image observation: fault=publication-unbound-record Fleet fixture calls=0 durable intents=0
+--- PASS: TestRuntimeCallerContainerCRI (20.02s)
+    --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation (11.51s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-valid (1.19s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-missing (0.30s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-copy (0.33s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-writable-mount (0.29s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-plan (0.27s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-hardlink (0.34s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-before-fleet-replaced (0.62s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-after-fleet-replaced (0.89s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-fleet-loss (1.43s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-incarnation (0.33s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-before-fleet-remounted (1.93s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-after-fleet-remounted (2.12s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-consumed-digest (0.24s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-wrong-consumed-path (0.29s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-legacy-request (0.23s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-unbound-api (0.34s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-unbound-record (0.34s)
+PASS

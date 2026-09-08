@@ -41,6 +41,10 @@ type BackendStartupRequest struct {
 	JournalScope          [sha256.Size]byte `json:"journal_scope"`
 	IncarnationID         uuid.UUID         `json:"incarnation_id"`
 	LaunchDigest          [sha256.Size]byte `json:"launch_digest"`
+	// Version 2 binds the path and exact canonical bytes consumed by the remote
+	// CLI. These remain declarations until Node checks its independent history.
+	BootstrapDigest [sha256.Size]byte `json:"bootstrap_digest,omitzero"`
+	BootstrapPath   string            `json:"bootstrap_path,omitempty"`
 }
 
 // BackendStartupDecision is authenticated only by the surrounding Node channel.
@@ -53,20 +57,40 @@ type BackendStartupDecision struct {
 }
 
 func (request BackendStartupRequest) Validate() error {
-	if request.SchemaVersion != 1 || !validDriverText(request.NodeIdentity, 253) ||
+	if !validDriverText(request.NodeIdentity, 253) ||
 		request.RegistryBindingDigest == ([sha256.Size]byte{}) || request.JournalID == uuid.Nil ||
 		request.JournalScope == ([sha256.Size]byte{}) || request.IncarnationID == uuid.Nil ||
 		request.IncarnationID.Version() != 4 || request.IncarnationID.Variant() != uuid.RFC4122 || request.LaunchDigest == ([sha256.Size]byte{}) {
 		return ErrBackendStartupDenied
 	}
+	switch request.SchemaVersion {
+	case 1:
+		if request.BootstrapDigest != ([sha256.Size]byte{}) || request.BootstrapPath != "" {
+			return ErrBackendStartupDenied
+		}
+	case 2:
+		if request.BootstrapDigest == ([sha256.Size]byte{}) || !validBootstrapConsumptionPath(request.BootstrapPath) {
+			return ErrBackendStartupDenied
+		}
+	default:
+		return ErrBackendStartupDenied
+	}
 	return nil
+}
+
+func validBootstrapConsumptionPath(path string) bool {
+	return validDriverText(path, 2048) && filepath.IsAbs(path) && filepath.Clean(path) == path && path != "/"
 }
 
 func EncodeBackendStartupRequest(request BackendStartupRequest) ([]byte, error) {
 	if err := request.Validate(); err != nil {
 		return nil, err
 	}
-	return json.Marshal(request)
+	wire, err := json.Marshal(request)
+	if err != nil || len(wire) > maximumBackendStartupBytes {
+		return nil, errors.Join(ErrBackendStartupDenied, err)
+	}
+	return wire, nil
 }
 
 func ParseBackendStartupRequest(document []byte) (BackendStartupRequest, error) {

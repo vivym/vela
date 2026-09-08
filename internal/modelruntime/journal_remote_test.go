@@ -333,15 +333,17 @@ func TestJournalRemoteWriteReadbackSharesDeadline(t *testing.T) {
 }
 
 func TestJournalRemoteReadTimeoutCanRetry(t *testing.T) {
-	// The timeout is intentional here. Other cancellation tests signal entry
-	// before canceling and have a much longer owner budget than their hang guard.
-	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), time.Second)
+	// Expire only the intentionally blocked read. The successful retry includes
+	// durable writes and must not depend on completing fsync within one second.
+	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 30*time.Second)
 	transport.beforeRead = func(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}
 	request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
-	response, err := f.supervisor.PrepareStage(t.Context(), request)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	response, err := f.supervisor.PrepareStage(ctx, request)
 	if err != nil || !strings.Contains(response.GetDetail(), context.DeadlineExceeded.Error()) || transport.mutations != 0 || f.backend.calls.Load() != 0 {
 		t.Fatalf("pure read timeout crossed admission: %v %v", response, err)
 	}

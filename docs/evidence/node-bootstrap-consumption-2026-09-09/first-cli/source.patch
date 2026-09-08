@@ -1,0 +1,501 @@
+diff --git a/cmd/vela-model-runtime/remote_linux.go b/cmd/vela-model-runtime/remote_linux.go
+index 469d9e0..2054dee 100644
+--- a/cmd/vela-model-runtime/remote_linux.go
++++ b/cmd/vela-model-runtime/remote_linux.go
+@@ -36,7 +36,7 @@ func runRemote(ctx context.Context, arguments []string, stderr io.Writer) error
+ 	if err != nil {
+ 		return err
+ 	}
+-	config, err := modelruntime.RemoteRuntimeServerConfig(wire)
++	config, err := modelruntime.RemoteRuntimeServerConfig(wire, *path)
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/internal/modelruntime/backend_startup_gate.go b/internal/modelruntime/backend_startup_gate.go
+index 6e0a41a..49d9975 100644
+--- a/internal/modelruntime/backend_startup_gate.go
++++ b/internal/modelruntime/backend_startup_gate.go
+@@ -41,6 +41,10 @@ type BackendStartupRequest struct {
+ 	JournalScope          [sha256.Size]byte `json:"journal_scope"`
+ 	IncarnationID         uuid.UUID         `json:"incarnation_id"`
+ 	LaunchDigest          [sha256.Size]byte `json:"launch_digest"`
++	// Version 2 binds the path and exact canonical bytes consumed by the remote
++	// CLI. These remain declarations until Node checks its independent history.
++	BootstrapDigest [sha256.Size]byte `json:"bootstrap_digest,omitzero"`
++	BootstrapPath   string            `json:"bootstrap_path,omitempty"`
+ }
+ 
+ // BackendStartupDecision is authenticated only by the surrounding Node channel.
+@@ -53,20 +57,40 @@ type BackendStartupDecision struct {
+ }
+ 
+ func (request BackendStartupRequest) Validate() error {
+-	if request.SchemaVersion != 1 || !validDriverText(request.NodeIdentity, 253) ||
++	if !validDriverText(request.NodeIdentity, 253) ||
+ 		request.RegistryBindingDigest == ([sha256.Size]byte{}) || request.JournalID == uuid.Nil ||
+ 		request.JournalScope == ([sha256.Size]byte{}) || request.IncarnationID == uuid.Nil ||
+ 		request.IncarnationID.Version() != 4 || request.IncarnationID.Variant() != uuid.RFC4122 || request.LaunchDigest == ([sha256.Size]byte{}) {
+ 		return ErrBackendStartupDenied
+ 	}
++	switch request.SchemaVersion {
++	case 1:
++		if request.BootstrapDigest != ([sha256.Size]byte{}) || request.BootstrapPath != "" {
++			return ErrBackendStartupDenied
++		}
++	case 2:
++		if request.BootstrapDigest == ([sha256.Size]byte{}) || !validBootstrapConsumptionPath(request.BootstrapPath) {
++			return ErrBackendStartupDenied
++		}
++	default:
++		return ErrBackendStartupDenied
++	}
+ 	return nil
+ }
+ 
++func validBootstrapConsumptionPath(path string) bool {
++	return validDriverText(path, 2048) && filepath.IsAbs(path) && filepath.Clean(path) == path && path != "/"
++}
++
+ func EncodeBackendStartupRequest(request BackendStartupRequest) ([]byte, error) {
+ 	if err := request.Validate(); err != nil {
+ 		return nil, err
+ 	}
+-	return json.Marshal(request)
++	wire, err := json.Marshal(request)
++	if err != nil || len(wire) > maximumBackendStartupBytes {
++		return nil, errors.Join(ErrBackendStartupDenied, err)
++	}
++	return wire, nil
+ }
+ 
+ func ParseBackendStartupRequest(document []byte) (BackendStartupRequest, error) {
+diff --git a/internal/modelruntime/remote_bootstrap_linux.go b/internal/modelruntime/remote_bootstrap_linux.go
+index 85674ff..4112716 100644
+--- a/internal/modelruntime/remote_bootstrap_linux.go
++++ b/internal/modelruntime/remote_bootstrap_linux.go
+@@ -2,6 +2,7 @@ package modelruntime
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
+ 	"errors"
+ 	"io"
+ 	"os"
+@@ -114,11 +115,17 @@ func sameRemoteBootstrapFile(first, last unix.Stat_t) bool {
+ // RemoteRuntimeServerConfig owns the parsed snapshot and installs only the real
+ // authenticated Unix journal and startup transports. It cannot select a local
+ // epoch store, execution file owner, injected backend or permissive callback.
+-func RemoteRuntimeServerConfig(wire []byte) (RuntimeServerConfig, error) {
++func RemoteRuntimeServerConfig(wire []byte, bootstrapPath string) (RuntimeServerConfig, error) {
++	if !validBootstrapConsumptionPath(bootstrapPath) {
++		return RuntimeServerConfig{}, ErrRemoteBootstrap
++	}
+ 	bootstrap, err := ParseRemoteRuntimeBootstrap(wire)
+ 	if err != nil {
+ 		return RuntimeServerConfig{}, err
+ 	}
++	// Freeze the bytes actually parsed by this CLI invocation. Do not reread a
++	// pathname later or retain the caller-owned byte slice in the gate closure.
++	consumedDigest := sha256.Sum256(wire)
+ 	validator, err := stageauthority.NewVerifier(bootstrap.AuthorityKeys, time.Now)
+ 	if err != nil {
+ 		return RuntimeServerConfig{}, err
+@@ -139,6 +146,10 @@ func RemoteRuntimeServerConfig(wire []byte) (RuntimeServerConfig, error) {
+ 		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
+ 		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
+ 			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
+-			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error { return gate(ctx, request.Intent) },
++			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error {
++				intent := request.Intent
++				intent.SchemaVersion, intent.BootstrapDigest, intent.BootstrapPath = 2, consumedDigest, bootstrapPath
++				return gate(ctx, intent)
++			},
+ 		}}, nil
+ }
+diff --git a/internal/nodeagent/journal_remote_cli_linux_test.go b/internal/nodeagent/journal_remote_cli_linux_test.go
+index 54e0481..7966010 100644
+--- a/internal/nodeagent/journal_remote_cli_linux_test.go
++++ b/internal/nodeagent/journal_remote_cli_linux_test.go
+@@ -158,7 +158,7 @@ func TestJournalServerActualRemoteCLI(t *testing.T) {
+ 				}
+ 				request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
+ 				observed, inspectErr := caller.Inspect(t.Context())
+-				if err != nil || inspectErr != nil || observed.HostPID != int32(f.runtime.process.Pid) || request.JournalID != f.identity.JournalID || request.IncarnationID != f.startup.IncarnationID || request.RegistryBindingDigest != sha256.Sum256(bootstrap.RegistryBinding) {
++				if err != nil || inspectErr != nil || observed.HostPID != int32(f.runtime.process.Pid) || request.JournalID != f.identity.JournalID || request.IncarnationID != f.startup.IncarnationID || request.RegistryBindingDigest != sha256.Sum256(bootstrap.RegistryBinding) || request.SchemaVersion != 2 || request.BootstrapDigest != sha256.Sum256(wire) || request.BootstrapPath != path {
+ 					t.Fatalf("actual CLI requested wrong owner/startup: %v %v", err, inspectErr)
+ 				}
+ 				if _, err := os.Stat(eventPath); !errors.Is(err, os.ErrNotExist) {
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+index e066c11..7588dd4 100644
+--- a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+@@ -97,7 +97,7 @@ func TestRuntimeBootstrapPublicationAccessHelper(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	if _, err := modelruntime.RemoteRuntimeServerConfig(wire); err != nil {
++	if _, err := modelruntime.RemoteRuntimeServerConfig(wire, filepath.Join(directory, runtimeBootstrapFilename)); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	if _, err := os.ReadFile(filepath.Join(directory, runtimeBootstrapRecordName)); !errors.Is(err, os.ErrPermission) {
+@@ -492,6 +492,13 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
+ 	if _, err := os.Stat("/vela-model-runtime"); err != nil {
+ 		t.Skip("requires actual native CLI sandbox")
+ 	}
++	for _, mode := range []string{"permit", "changed-after-read", "alias-path"} {
++		t.Run(mode, func(t *testing.T) { verifyRuntimeBootstrapPublicationActualCLI(t, mode) })
++	}
++}
++
++func verifyRuntimeBootstrapPublicationActualCLI(t *testing.T, mode string) {
++	t.Helper()
+ 	config := publicationFixture(t, true)
+ 	var manifest modelruntime.LaunchManifest
+ 	if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
+@@ -550,7 +557,14 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
+ 		_ = server.Shutdown(ctx)
+ 	})
+ 	startupListener := listen(config.StartupSocket)
+-	if err := runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: filepath.Join(config.Directory, runtimeBootstrapFilename)}); err != nil {
++	consumedPath := filepath.Join(config.Directory, runtimeBootstrapFilename)
++	if mode == "alias-path" {
++		consumedPath = filepath.Join(filepath.Dir(config.Directory), "alias.json")
++		if err := os.WriteFile(consumedPath, publication.encoded, 0o444); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := runtime.input.Encode(journalEndpointControl{ExecRemoteCLI: consumedPath}); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	connection := journalEndpointAccept(t, startupListener)
+@@ -565,24 +579,81 @@ func TestRuntimeBootstrapPublicationActualCLI(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	observed, err := caller.Inspect(t.Context())
+-	if err != nil || observed.HostPID != int32(runtime.process.Pid) || request.RegistryBindingDigest != publication.Record().BindingDigest {
++	if err != nil || observed.HostPID != int32(runtime.process.Pid) || request.RegistryBindingDigest != publication.Record().BindingDigest || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != consumedPath {
+ 		t.Fatalf("CLI caller not bound to publication: %v", err)
+ 	}
+ 	if _, err := config.Journal.InspectStartup(t.Context(), manifest, request); err != nil {
+ 		t.Fatal(err)
+ 	}
++	if mode == "changed-after-read" {
++		replacement := config
++		replacement.Directory = config.Directory + ".next"
++		replacement.ShutdownTimeout++
++		if err := os.Mkdir(replacement.Directory, 0o700); err != nil {
++			t.Fatal(err)
++		}
++		if _, err := PublishRuntimeBootstrap(t.Context(), replacement); err != nil {
++			t.Fatal(err)
++		}
++		if err := os.Rename(config.Directory, config.Directory+".old"); err != nil {
++			t.Fatal(err)
++		}
++		if err := os.Rename(replacement.Directory, config.Directory); err != nil {
++			t.Fatal(err)
++		}
++	}
++	current, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory)
++	if err != nil {
++		t.Fatal(err)
++	}
++	currentBootstrap, err := current.Bootstrap()
++	if err != nil {
++		t.Fatal(err)
++	}
++	_, matchErr := matchStartupBootstrapConsumption(t.Context(), RuntimeStartupReservationConfig{Plan: config.Plan, Caller: caller, Journal: config.Journal,
++		publication: &RuntimeStartupPublicationConfig{Directory: config.Directory, BootstrapPath: filepath.Join(config.Directory, runtimeBootstrapFilename)}}, current, currentBootstrap)
++	permit := mode == "permit"
++	if permit != (matchErr == nil) {
++		t.Fatalf("Node consumption match mode=%s: %v", mode, matchErr)
++	}
+ 	events := filepath.Join(scratch, "events.log")
+ 	if _, err := os.Stat(events); !errors.Is(err, os.ErrNotExist) {
+ 		t.Fatal("backend initialized before Node fixture decision")
+ 	}
+ 	// Explicit test Permit only: publishing configuration is never a grant.
+-	decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: true})
++	decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: permit})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	if err := caller.Reply(t.Context(), decision); err != nil {
+ 		t.Fatal(err)
+ 	}
++	if !permit {
++		select {
++		case <-runtime.done:
++		case <-time.After(10 * time.Second):
++			t.Fatal("denied CLI did not exit")
++		}
++		if runtime.command.ProcessState.Success() {
++			t.Fatal("mismatched consumed bootstrap started")
++		}
++		if _, err := os.Stat(events); !errors.Is(err, os.ErrNotExist) {
++			t.Fatal("denied CLI initialized backend")
++		}
++		if _, err := os.Stat(config.RuntimeSocket); !errors.Is(err, os.ErrNotExist) {
++			t.Fatal("denied CLI published Runtime socket")
++		}
++		status, err := config.Journal.Status(t.Context())
++		if err != nil || status.Highest != 0 || status.BackendLifecycle != bootstrap.Startup {
++			t.Fatalf("denied CLI rewrote startup: %v", err)
++		}
++		if err := server.Shutdown(t.Context()); err != nil {
++			t.Fatal(err)
++		}
++		assertJournalServerJoined(t, server, done)
++		t.Logf("actual CLI consumed original bytes/path; Node rejected %s before backend initialization", mode)
++		return
++	}
+ 	deadline := time.Now().Add(10 * time.Second)
+ 	for {
+ 		wire, _ := os.ReadFile(events)
+diff --git a/internal/nodeagent/runtime_startup_image_integration_linux_test.go b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+index f273960..7b39ebd 100644
+--- a/internal/nodeagent/runtime_startup_image_integration_linux_test.go
++++ b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+@@ -31,7 +31,8 @@ import (
+ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, image RuntimeImageTarget) {
+ 	t.Helper()
+ 	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close",
+-		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted"} {
++		"publication-valid", "publication-missing", "publication-copy", "publication-writable-mount", "publication-wrong-plan", "publication-hardlink", "publication-before-fleet-replaced", "publication-after-fleet-replaced", "publication-fleet-loss", "publication-incarnation", "publication-before-fleet-remounted", "publication-after-fleet-remounted",
++		"publication-wrong-consumed-digest", "publication-wrong-consumed-path", "publication-legacy-request", "publication-unbound-api", "publication-unbound-record"} {
+ 		t.Run(fault, func(t *testing.T) {
+ 			plan, owner, request := startupImagePlanFixture(t, image)
+ 			switch fault {
+@@ -69,6 +70,15 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 					t.Fatal(err)
+ 				}
+ 				publication = &RuntimeStartupPublicationConfig{Directory: configuration.Directory, BootstrapPath: "/runtime-config/bootstrap.json"}
++				request.SchemaVersion, request.BootstrapDigest, request.BootstrapPath = 2, published.Record().BootstrapDigest, publication.BootstrapPath
++				switch fault {
++				case "publication-wrong-consumed-digest":
++					request.BootstrapDigest[0] ^= 1
++				case "publication-wrong-consumed-path":
++					request.BootstrapPath = "/other/bootstrap.json"
++				case "publication-legacy-request":
++					request.SchemaVersion, request.BootstrapDigest, request.BootstrapPath = 1, [sha256.Size]byte{}, ""
++				}
+ 				source := configuration.Directory
+ 				if fault == "publication-copy" {
+ 					source = filepath.Join(filepath.Dir(source), "copy")
+@@ -99,10 +109,10 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 				}
+ 				if fault == "publication-incarnation" {
+ 					request.IncarnationID = uuid.New()
+-					payload, err = modelruntime.EncodeBackendStartupRequest(request)
+-					if err != nil {
+-						t.Fatal(err)
+-					}
++				}
++				payload, err = modelruntime.EncodeBackendStartupRequest(request)
++				if err != nil {
++					t.Fatal(err)
+ 				}
+ 			}
+ 			target, listener := fixture.createCRICallerPayloadMounts(t, client, fault, plan, payload, mounts)
+@@ -153,6 +163,13 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: plan.binding.Claim.ActorIdentity}
+ 			config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
+ 			reserve := func() (RuntimeStartupReservationRecord, error) {
++				if fault == "publication-unbound-api" {
++					return ledger.ReserveImageRemote(t.Context(), config, imageConfig)
++				}
++				if fault == "publication-unbound-record" {
++					_, err := ledger.Record(t.Context(), plan, pods, observer, caller)
++					return RuntimeStartupReservationRecord{}, err
++				}
+ 				if publication != nil {
+ 					return ledger.ReservePublishedImageRemote(t.Context(), config, imageConfig, *publication)
+ 				}
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux.go b/internal/nodeagent/runtime_startup_ledger_linux.go
+index 51e3bb6..bf421fd 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux.go
+@@ -212,6 +212,9 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
+ 	if err != nil {
+ 		return RuntimeStartupRecord{}, err
+ 	}
++	if request.SchemaVersion == 2 && (remote == nil || remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != request.BootstrapDigest || remote.Bootstrap.BootstrapPath != request.BootstrapPath) {
++		return RuntimeStartupRecord{}, ErrRuntimeStartupPublication
++	}
+ 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+ 	defer cancel()
+ 	ledger.mu.Lock()
+@@ -586,6 +589,9 @@ func (ledger *RuntimeStartupLedger) apply(entry runtimeStartupEntry) error {
+ }
+ 
+ func validateRuntimeStartupRecord(record RuntimeStartupRecord, node string) error {
++	if record.Request.SchemaVersion == 2 && record.Remote == nil {
++		return ErrRuntimeStartupLedger
++	}
+ 	binding := &velav1.WorkerBootstrapBinding{}
+ 	if err := proto.Unmarshal(record.RegistryBinding, binding); err != nil {
+ 		return errors.Join(ErrRuntimeStartupLedger, err)
+diff --git a/internal/nodeagent/runtime_startup_publication_linux.go b/internal/nodeagent/runtime_startup_publication_linux.go
+index 15d526a..8dfad5e 100644
+--- a/internal/nodeagent/runtime_startup_publication_linux.go
++++ b/internal/nodeagent/runtime_startup_publication_linux.go
+@@ -61,17 +61,9 @@ func inspectStartupPublication(ctx context.Context, config RuntimeStartupReserva
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	// Rebuild from the actual plan/owner, including its actual public verifier
+-	// keys. Reusing a same-shaped publication for another journal is rejected.
+-	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
+-		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
+-		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
+-	if err != nil || !bytes.Equal(wire, publication.encoded) {
+-		return nil, errors.Join(ErrRuntimeStartupPublication, err)
+-	}
+-	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
+-	if err != nil || request.IncarnationID != bootstrap.Startup.IncarnationID {
+-		return nil, errors.Join(ErrRuntimeStartupPublication, err)
++	request, err := matchStartupBootstrapConsumption(ctx, config, publication, bootstrap)
++	if err != nil {
++		return nil, err
+ 	}
+ 	observation, err := config.Caller.inspectPublishedBootstrap(ctx, publication, config.publication.BootstrapPath)
+ 	if err != nil {
+@@ -92,6 +84,24 @@ func inspectStartupPublication(ctx context.Context, config RuntimeStartupReserva
+ 	return &observation, nil
+ }
+ 
++// This comparison binds a consumption declaration, not the effective mount or
++// caller's executable. The enclosing reservation must check those separately.
++func matchStartupBootstrapConsumption(ctx context.Context, config RuntimeStartupReservationConfig, publication *RuntimeBootstrapPublication, bootstrap modelruntime.RemoteRuntimeBootstrap) (modelruntime.BackendStartupRequest, error) {
++	// Rebuild from the actual plan/owner, including its actual public verifier
++	// keys. Reusing a same-shaped publication for another journal is rejected.
++	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
++		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
++		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
++	if err != nil || !bytes.Equal(wire, publication.encoded) {
++		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
++	if err != nil || request.IncarnationID != bootstrap.Startup.IncarnationID || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != config.publication.BootstrapPath {
++		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)
++	}
++	return request, nil
++}
++
+ func (caller *RuntimeCaller) inspectPublishedBootstrap(ctx context.Context, publication *RuntimeBootstrapPublication, path string) (RuntimeStartupBootstrapObservation, error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return RuntimeStartupBootstrapObservation{}, err
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux.go b/internal/nodeagent/runtime_startup_reservation_linux.go
+index 95c97b0..35ff542 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux.go
+@@ -145,6 +145,9 @@ func inspectRemoteStartup(ctx context.Context, config RuntimeStartupReservationC
+ 	if err != nil {
+ 		return RuntimeStartupRemoteIntent{}, err
+ 	}
++	if request.SchemaVersion == 2 && config.publication == nil {
++		return RuntimeStartupRemoteIntent{}, ErrRuntimeStartupPublication
++	}
+ 	snapshot, err := config.Journal.InspectStartup(ctx, manifest, request)
+ 	if err != nil {
+ 		return RuntimeStartupRemoteIntent{}, err
+@@ -239,6 +242,9 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
+ 
+ func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
+ 	remote := record.Remote
++	if record.Request.SchemaVersion == 2 && (remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != record.Request.BootstrapDigest || remote.Bootstrap.BootstrapPath != record.Request.BootstrapPath) {
++		return ErrRuntimeStartupLedger
++	}
+ 	if remote.Bootstrap != nil {
+ 		bootstrap := remote.Bootstrap
+ 		publication := bootstrap.Publication
+diff --git a/internal/modelruntime/backend_startup_consumption_test.go b/internal/modelruntime/backend_startup_consumption_test.go
+new file mode 100644
+index 0000000..8f1d060
+--- /dev/null
++++ b/internal/modelruntime/backend_startup_consumption_test.go
+@@ -0,0 +1,84 @@
++package modelruntime_test
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"strings"
++	"testing"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/modelruntime"
++)
++
++func TestBackendStartupBootstrapConsumptionEnvelope(t *testing.T) {
++	request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: "cpu-node", JournalID: uuid.New(), IncarnationID: uuid.New(),
++		RegistryBindingDigest: sha256.Sum256([]byte("binding")), JournalScope: sha256.Sum256([]byte("scope")), LaunchDigest: sha256.Sum256([]byte("manifest"))}
++	legacy, err := modelruntime.EncodeBackendStartupRequest(request)
++	if err != nil || bytes.Contains(legacy, []byte("bootstrap_")) {
++		t.Fatalf("legacy encoding changed: %s %v", legacy, err)
++	}
++	request.SchemaVersion, request.BootstrapDigest, request.BootstrapPath = 2, sha256.Sum256([]byte("parsed canonical bootstrap")), "/etc/vela/runtime/bootstrap.json"
++	wire, err := modelruntime.EncodeBackendStartupRequest(request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	parsed, err := modelruntime.ParseBackendStartupRequest(wire)
++	if err != nil || parsed != request {
++		t.Fatalf("consumed snapshot declaration changed: %v", err)
++	}
++	for _, mode := range []string{"legacy-with-digest", "legacy-with-path", "missing-digest", "missing-path", "relative-path", "unclean-path", "root-path", "long-path", "nul-path", "invalid-utf8", "escaped-size", "unsupported-version", "duplicate", "unknown", "trailing", "noncanonical-zero"} {
++		t.Run(mode, func(t *testing.T) {
++			changed := request
++			switch mode {
++			case "legacy-with-digest":
++				changed.SchemaVersion, changed.BootstrapPath = 1, ""
++			case "legacy-with-path":
++				changed.SchemaVersion, changed.BootstrapDigest = 1, [sha256.Size]byte{}
++			case "missing-digest":
++				changed.BootstrapDigest = [sha256.Size]byte{}
++			case "missing-path":
++				changed.BootstrapPath = ""
++			case "relative-path":
++				changed.BootstrapPath = "relative.json"
++			case "unclean-path":
++				changed.BootstrapPath = "/etc/../bootstrap.json"
++			case "root-path":
++				changed.BootstrapPath = "/"
++			case "long-path":
++				changed.BootstrapPath = "/" + strings.Repeat("a", 2048)
++			case "nul-path":
++				changed.BootstrapPath = "/etc/boot\x00strap.json"
++			case "invalid-utf8":
++				changed.BootstrapPath = "/etc/boot\xffstrap.json"
++			case "escaped-size":
++				changed.BootstrapPath = "/" + strings.Repeat("\x01", 2047)
++			case "unsupported-version":
++				changed.SchemaVersion = 3
++			}
++			if mode == "invalid-utf8" || mode == "escaped-size" {
++				if _, err := modelruntime.EncodeBackendStartupRequest(changed); err == nil {
++					t.Fatal("invalid or oversized encoded path accepted")
++				}
++				return
++			}
++			document, err := json.Marshal(changed)
++			if err != nil {
++				t.Fatal(err)
++			}
++			switch mode {
++			case "duplicate":
++				document = append([]byte(`{"schema_version":2,`), document[1:]...)
++			case "unknown":
++				document = append([]byte(`{"unknown":true,`), document[1:]...)
++			case "trailing":
++				document = append(document, ' ')
++			case "noncanonical-zero":
++				document = bytes.Replace(legacy, []byte(`"schema_version":1`), []byte(`"schema_version":1,"bootstrap_path":""`), 1)
++			}
++			if got, err := modelruntime.ParseBackendStartupRequest(document); err == nil || got != (modelruntime.BackendStartupRequest{}) {
++				t.Fatalf("invalid declaration accepted: %s %v", document, err)
++			}
++		})
++	}
++}

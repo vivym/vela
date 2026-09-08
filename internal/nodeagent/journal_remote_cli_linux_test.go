@@ -158,7 +158,7 @@ func TestJournalServerActualRemoteCLI(t *testing.T) {
 				}
 				request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
 				observed, inspectErr := caller.Inspect(t.Context())
-				if err != nil || inspectErr != nil || observed.HostPID != int32(f.runtime.process.Pid) || request.JournalID != f.identity.JournalID || request.IncarnationID != f.startup.IncarnationID || request.RegistryBindingDigest != sha256.Sum256(bootstrap.RegistryBinding) {
+				if err != nil || inspectErr != nil || observed.HostPID != int32(f.runtime.process.Pid) || request.JournalID != f.identity.JournalID || request.IncarnationID != f.startup.IncarnationID || request.RegistryBindingDigest != sha256.Sum256(bootstrap.RegistryBinding) || request.SchemaVersion != 2 || request.BootstrapDigest != sha256.Sum256(wire) || request.BootstrapPath != path {
 					t.Fatalf("actual CLI requested wrong owner/startup: %v %v", err, inspectErr)
 				}
 				if _, err := os.Stat(eventPath); !errors.Is(err, os.ErrNotExist) {

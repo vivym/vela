@@ -11,12 +11,12 @@ mkdir -p "$remote_evidence/image/rootfs/run" "$remote_evidence/image/rootfs/tmp"
 chmod 1777 "$remote_evidence/image/rootfs/tmp"
 git -C "$remote_repo" rev-parse HEAD > "$remote_evidence/source.txt"
 git -C "$remote_repo" status --short >> "$remote_evidence/source.txt"
-git -C "$remote_repo" diff HEAD --binary -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh > "$remote_evidence/source.patch"
+git -C "$remote_repo" diff HEAD --binary -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh hack/run-task-launch-native.sh > "$remote_evidence/source.patch"
 while IFS= read -r -d '' remote_file; do
   remote_diff_status=0
   git -C "$remote_repo" diff --no-index --binary /dev/null "$remote_file" >> "$remote_evidence/source.patch" || remote_diff_status=$?
   [[ "$remote_diff_status" = 0 || "$remote_diff_status" = 1 ]] || exit "$remote_diff_status"
-done < <(git -C "$remote_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh)
+done < <(git -C "$remote_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime internal/modelruntime internal/nodeagent internal/stageauthority hack/run-remote-runtime-cli-native.sh hack/run-task-launch-native.sh)
 shasum -a 256 "$remote_evidence/source.patch" > "$remote_evidence/source-patch.sha256"
 docker version > "$remote_evidence/docker-version.txt"
 for remote_target in nodeagent runtime-command vela-model-runtime; do
@@ -47,6 +47,9 @@ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --securi
   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
 for remote_test in TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
+done
+for remote_case in permit changed-after-read alias-path; do
+  rg -q -- "--- PASS: TestRuntimeBootstrapPublicationActualCLI/$remote_case " "$remote_evidence/native.log" || exit 1
 done
 if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$remote_evidence/native.log"; then exit 1; fi
 echo "Actual remote Runtime CLI checks passed: $remote_evidence"

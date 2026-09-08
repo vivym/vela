@@ -212,6 +212,9 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
 	if err != nil {
 		return RuntimeStartupRecord{}, err
 	}
+	if request.SchemaVersion == 2 && (remote == nil || remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != request.BootstrapDigest || remote.Bootstrap.BootstrapPath != request.BootstrapPath) {
+		return RuntimeStartupRecord{}, ErrRuntimeStartupPublication
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	ledger.mu.Lock()
@@ -586,6 +589,9 @@ func (ledger *RuntimeStartupLedger) apply(entry runtimeStartupEntry) error {
 }
 
 func validateRuntimeStartupRecord(record RuntimeStartupRecord, node string) error {
+	if record.Request.SchemaVersion == 2 && record.Remote == nil {
+		return ErrRuntimeStartupLedger
+	}
 	binding := &velav1.WorkerBootstrapBinding{}
 	if err := proto.Unmarshal(record.RegistryBinding, binding); err != nil {
 		return errors.Join(ErrRuntimeStartupLedger, err)

@@ -36,7 +36,7 @@ func runRemote(ctx context.Context, arguments []string, stderr io.Writer) error 
 	if err != nil {
 		return err
 	}
-	config, err := modelruntime.RemoteRuntimeServerConfig(wire)
+	config, err := modelruntime.RemoteRuntimeServerConfig(wire, *path)
 	if err != nil {
 		return err
 	}

@@ -1,0 +1,206 @@
+=== RUN   TestJournalServerActualRemoteCLI
+=== RUN   TestJournalServerActualRemoteCLI/permit
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:5 Overloaded:0 Authenticated:5 Replied:5 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=permit exit=exit status 0 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/deny
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=deny exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/changed-config
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=changed-config exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/workload-owned
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=workload-owned exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/writable
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=writable exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/symlink
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=symlink exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/wrong-scope
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=wrong-scope exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/wrong-incarnation
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=wrong-incarnation exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/workload-parent
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=workload-parent exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/hardlink
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=hardlink exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/fifo
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=fifo exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/oversize
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=oversize exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/duplicate
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=duplicate exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/unknown
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=unknown exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/socket-alias
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=socket-alias exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/bad-key
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=bad-key exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/missing-file
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=missing-file exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+=== RUN   TestJournalServerActualRemoteCLI/empty
+    journal_remote_cli_linux_test.go:235: joined Node journal server: {Accepted:0 Overloaded:0 Authenticated:0 Replied:0 Failed:0 InFlight:0 PeakInFlight:0}
+    journal_remote_cli_linux_test.go:236: actual CLI and process backend: mode=empty exit=exit status 1 Node journal original incarnation retained; no local epoch/journal allocation
+--- PASS: TestJournalServerActualRemoteCLI (3.35s)
+    --- PASS: TestJournalServerActualRemoteCLI/permit (2.16s)
+    --- PASS: TestJournalServerActualRemoteCLI/deny (0.10s)
+    --- PASS: TestJournalServerActualRemoteCLI/changed-config (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/workload-owned (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/writable (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/symlink (0.06s)
+    --- PASS: TestJournalServerActualRemoteCLI/wrong-scope (0.09s)
+    --- PASS: TestJournalServerActualRemoteCLI/wrong-incarnation (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/workload-parent (0.06s)
+    --- PASS: TestJournalServerActualRemoteCLI/hardlink (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/fifo (0.06s)
+    --- PASS: TestJournalServerActualRemoteCLI/oversize (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/duplicate (0.06s)
+    --- PASS: TestJournalServerActualRemoteCLI/unknown (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/socket-alias (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/bad-key (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/missing-file (0.07s)
+    --- PASS: TestJournalServerActualRemoteCLI/empty (0.07s)
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/permit
+    journal_remote_server_linux_test.go:161: joined Node journal server: {Accepted:39 Overloaded:0 Authenticated:39 Replied:39 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_server_linux_test.go:162: actual remote Runtime server: permit=true; factory permission precedes RPC publication; Node owns journal; fixture matches exact proposed epochs; Worker uses real RPC
+=== RUN   TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/deny
+    journal_remote_server_linux_test.go:161: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    journal_remote_server_linux_test.go:162: actual remote Runtime server: permit=false; factory permission precedes RPC publication; Node owns journal; fixture matches exact proposed epochs; Worker uses real RPC
+--- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution (0.39s)
+    --- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/permit (0.31s)
+    --- PASS: TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution/deny (0.07s)
+=== RUN   TestRuntimeBootstrapPublication
+    runtime_bootstrap_publication_linux_test.go:163: verified plan and held journal -> immutable snapshot; actual UID/GID 10001 can read only bootstrap; reopening returns history after owner closure
+--- PASS: TestRuntimeBootstrapPublication (1.06s)
+=== RUN   TestRuntimeBootstrapPublicationPreflight
+=== RUN   TestRuntimeBootstrapPublicationPreflight/nil-plan
+=== RUN   TestRuntimeBootstrapPublicationPreflight/nil-journal
+=== RUN   TestRuntimeBootstrapPublicationPreflight/closed-journal
+=== RUN   TestRuntimeBootstrapPublicationPreflight/wrong-plan
+=== RUN   TestRuntimeBootstrapPublicationPreflight/wrong-registry
+=== RUN   TestRuntimeBootstrapPublicationPreflight/socket-alias
+=== RUN   TestRuntimeBootstrapPublicationPreflight/writable-directory
+=== RUN   TestRuntimeBootstrapPublicationPreflight/workload-directory
+=== RUN   TestRuntimeBootstrapPublicationPreflight/nonempty
+=== RUN   TestRuntimeBootstrapPublicationPreflight/sticky-parent
+=== RUN   TestRuntimeBootstrapPublicationPreflight/cancelled
+--- PASS: TestRuntimeBootstrapPublicationPreflight (0.13s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/nil-plan (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/nil-journal (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/closed-journal (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/wrong-plan (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/wrong-registry (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/socket-alias (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/writable-directory (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/workload-directory (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/nonempty (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/sticky-parent (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationPreflight/cancelled (0.01s)
+=== RUN   TestRuntimeBootstrapPublicationBoundaries
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/intent-created
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/bootstrap-synced
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/intent-synced
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/renamed
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/exposed
+=== RUN   TestRuntimeBootstrapPublicationBoundaries/verified
+--- PASS: TestRuntimeBootstrapPublicationBoundaries (0.10s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/intent-created (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/bootstrap-synced (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/intent-synced (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/renamed (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/exposed (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationBoundaries/verified (0.03s)
+=== RUN   TestRuntimeBootstrapPublicationConcurrent
+--- PASS: TestRuntimeBootstrapPublicationConcurrent (0.03s)
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/intent-created
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at intent-created: history_complete=false, no publication retry or grant restoration
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/bootstrap-synced
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at bootstrap-synced: history_complete=false, no publication retry or grant restoration
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/intent-synced
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at intent-synced: history_complete=false, no publication retry or grant restoration
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/renamed
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at renamed: history_complete=false, no publication retry or grant restoration
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/exposed
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at exposed: history_complete=true, no publication retry or grant restoration
+=== RUN   TestRuntimeBootstrapPublicationProcessCrash/verified
+    runtime_bootstrap_publication_linux_test.go:361: actual Node SIGKILL at verified: history_complete=true, no publication retry or grant restoration
+--- PASS: TestRuntimeBootstrapPublicationProcessCrash (0.27s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/intent-created (0.04s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/bootstrap-synced (0.04s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/intent-synced (0.04s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/renamed (0.05s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/exposed (0.05s)
+    --- PASS: TestRuntimeBootstrapPublicationProcessCrash/verified (0.05s)
+=== RUN   TestRuntimeBootstrapPublicationChanged
+=== RUN   TestRuntimeBootstrapPublicationChanged/content
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-copy
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-link
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-symlink
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-fifo
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-writable
+=== RUN   TestRuntimeBootstrapPublicationChanged/file-owner
+=== RUN   TestRuntimeBootstrapPublicationChanged/record-copy
+=== RUN   TestRuntimeBootstrapPublicationChanged/record-missing
+=== RUN   TestRuntimeBootstrapPublicationChanged/record-writable
+=== RUN   TestRuntimeBootstrapPublicationChanged/record-content
+=== RUN   TestRuntimeBootstrapPublicationChanged/directory-copy
+=== RUN   TestRuntimeBootstrapPublicationChanged/directory-writable
+=== RUN   TestRuntimeBootstrapPublicationChanged/extra
+--- PASS: TestRuntimeBootstrapPublicationChanged (0.31s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/content (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-copy (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-link (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-symlink (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-fifo (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-writable (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/file-owner (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/record-copy (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/record-missing (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/record-writable (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/record-content (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/directory-copy (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/directory-writable (0.04s)
+    --- PASS: TestRuntimeBootstrapPublicationChanged/extra (0.02s)
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/intent-synced
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/renamed
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/exposed
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/pending-corrupt
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/directory-replaced
+=== RUN   TestRuntimeBootstrapPublicationCustodyLoss/record-replaced
+--- PASS: TestRuntimeBootstrapPublicationCustodyLoss (0.10s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/intent-synced (0.01s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/renamed (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/exposed (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/pending-corrupt (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/directory-replaced (0.02s)
+    --- PASS: TestRuntimeBootstrapPublicationCustodyLoss/record-replaced (0.02s)
+=== RUN   TestRuntimeBootstrapPublicationActualCLI
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/permit
+    runtime_bootstrap_publication_linux_test.go:496: joined Node journal server: {Accepted:5 Overloaded:0 Authenticated:5 Replied:5 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_bootstrap_publication_linux_test.go:496: Node verified plan + held journal publication -> actual UID/GID 10001 CLI -> explicit fixture Permit -> real CPU backend initialize/shutdown, actual Worker epoch=2, no local epoch/journal
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/changed-after-read
+    runtime_bootstrap_publication_linux_test.go:496: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_bootstrap_publication_linux_test.go:496: actual CLI consumed original bytes/path; Node rejected changed-after-read before backend initialization
+=== RUN   TestRuntimeBootstrapPublicationActualCLI/alias-path
+    runtime_bootstrap_publication_linux_test.go:496: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:2 Replied:2 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_bootstrap_publication_linux_test.go:496: actual CLI consumed original bytes/path; Node rejected alias-path before backend initialization
+--- PASS: TestRuntimeBootstrapPublicationActualCLI (2.32s)
+    --- PASS: TestRuntimeBootstrapPublicationActualCLI/permit (2.13s)
+    --- PASS: TestRuntimeBootstrapPublicationActualCLI/changed-after-read (0.12s)
+    --- PASS: TestRuntimeBootstrapPublicationActualCLI/alias-path (0.08s)
+PASS
