@@ -24,6 +24,11 @@ exercises actual Worker-to-Runtime gRPC in independent non-root processes during
 Prepare/Start overload. Old-execution non-admission or stopped/drain evidence
 precedes a useful subsequent execution, under explicit single-member test
 orchestration. Cancellation acknowledgement alone never restores capacity.
+The subsequent [stop during journal outage correction](journal-stop-outage-evidence-2026-09-08.md)
+removes journal I/O from cancellation of an already installed signed execution.
+Native unresponsive-socket tests show explicit stop/watchdog dispatch and retain
+pending durable history until communication and exact drain recover. Concurrent
+lock waits and actual backend containment remain separate obligations.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

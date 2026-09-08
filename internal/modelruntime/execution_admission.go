@@ -177,6 +177,20 @@ func (admission *executionAdmission) validateOperationLocked(ctx context.Context
 	if admission.closing {
 		return false, errors.New("ModelRuntime execution admission is closed")
 	}
+	if cancellation {
+		if _, err := service.refreshExecutionAuthority(verified, true); err != nil {
+			return false, err
+		}
+		// A signed request for an already installed execution can only stop
+		// that execution. Reading the journal here can consume the entire
+		// watchdog/Cancel budget during an outage. It grants no successor,
+		// renewal, drain, readiness or reuse authority; those still require
+		// the current durable state. Recheck the target under operationMu
+		// before dispatch, including any ambiguous backend envelope.
+		if _, _, err := service.cancellationTarget(*verified, false); err == nil {
+			return false, ctx.Err()
+		}
+	}
 	stateErr := admission.checkStateLocked(ctx)
 	if err := ctx.Err(); err != nil {
 		return false, err

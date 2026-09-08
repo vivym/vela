@@ -45,6 +45,7 @@ type journalEndpointControl struct {
 	WorkerAction          string
 	PauseBefore           string
 	Floor                 []byte
+	ControlledClock       bool
 }
 
 type journalEndpointReport struct {
@@ -62,6 +63,7 @@ type journalEndpointReport struct {
 	Barrier             *stageworkeragent.StartBarrierResult
 	PausedBefore        string
 	Checkpoint          bool
+	CancelReason        velav1.ModelRuntimeCancelReason
 }
 
 type journalEndpointChild struct {
@@ -493,6 +495,7 @@ type journalEndpointBackend struct {
 	startCalls   atomic.Int64
 	prepareCalls atomic.Int64
 	cancelCalls  atomic.Int64
+	cancelReason atomic.Int32
 }
 
 func (backend *journalEndpointBackend) Prepare(ctx context.Context, authority stageauthority.Verified, spec *velav1.StageExecutionSpec) error {
@@ -501,6 +504,7 @@ func (backend *journalEndpointBackend) Prepare(ctx context.Context, authority st
 }
 
 func (backend *journalEndpointBackend) Cancel(ctx context.Context, authority stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
+	backend.cancelReason.Store(int32(reason))
 	backend.cancelCalls.Add(1)
 	return backend.FakeRuntime.Cancel(ctx, authority, reason)
 }
@@ -512,7 +516,14 @@ func (backend *journalEndpointBackend) Start(ctx context.Context, authority stag
 
 func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl, decoder *json.Decoder, encoder *json.Encoder) {
 	t.Helper()
-	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
+	var testClock *journalEndpointClock
+	var serviceClock modelruntime.Clock
+	now := time.Now
+	if request.ControlledClock {
+		testClock = &journalEndpointClock{now: time.Now()}
+		serviceClock, now = testClock, testClock.Now
+	}
+	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +537,7 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
 		backend := &journalEndpointBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
 		epoch := request.Manifest.Runtimes[i].ModelRuntimeEpochFloor
 		service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return epoch, nil }),
-			Validator: validator, Backend: backend, CancelTimeout: time.Second})
+			Validator: validator, Backend: backend, CancelTimeout: time.Second, Clock: serviceClock})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -541,7 +552,7 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
 	}
 	defer supervisor.Close()
 	if request.RuntimeSocket != "" {
-		journalEndpointServeSupervisor(t, supervisor, backends[0], request.RuntimeSocket, decoder, encoder)
+		journalEndpointServeSupervisor(t, supervisor, backends[0], request.RuntimeSocket, testClock, decoder, encoder)
 		return
 	}
 	var authority velav1.StageAuthority

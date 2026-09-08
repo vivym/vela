@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "89fd3d13c77368cb1e2ab35c0cfd1c46427e920a",
+  "source_tree_sha256": "09d9397c46e7f9719acf93ae9ebdc541da28ecbcb2ba02cc46b83f113e8e152e",
+  "source_file_count": 954,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "native_runner_sha256": "daf2836517f72c93d47508beb7aeb3d3d4b11b05a6c608e94694dcfc06568bbf",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/baseline.log",
+      "bytes": 1530,
+      "sha256": "57d5af140a880157aa986915d8ab8b6274d6d92a99255713907c2ac0dfbcc1ad"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/baseline.patch",
+      "bytes": 3499,
+      "sha256": "52f6fbd8573b41d53b42690eca4bb86b7581359946a8f4c879559d0f937435ea"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/focused.log",
+      "bytes": 56,
+      "sha256": "f24e24e2be7c6feba68f362570a81b8cd68196e503ca133acb456d4eb6c4c91c"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/linux-cross.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/modelruntime-race.log",
+      "bytes": 58,
+      "sha256": "a2f2ebf242901ffd25f81e3b6f55e9733d4cb0ad72901073cd2525fbda4aa372"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/binaries.sha256",
+      "bytes": 317,
+      "sha256": "dc01b0578e869aefedaabd9e0fe93cbdb2a55fc722855a5ec5b5c2d9bace7a7a"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "8fe79b4c67236476faffa79356d76a4a13516dfe1346d7089b754d38e8e53f1e"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "355f9ea3bda5a12c43bb2da400447ed9e2b90ab6b5df7208dd47f124092eda0a"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/image.txt",
+      "bytes": 72,
+      "sha256": "622d20ba87bc9eff01e14d91d88f19dc7509c65dcb0a895c602dc8e90f76285a"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/modelruntime.log",
+      "bytes": 37869,
+      "sha256": "1f270a73cb602ef187cd1faa844cb85bee8c348aa43d5916253591bd714fbdec"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/node-startup.log",
+      "bytes": 24770,
+      "sha256": "1bada0d0193a8fec2a6fca683ae23253caec36fd715ed15dc0d751dfe0d066cc"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/source-patch.sha256",
+      "bytes": 142,
+      "sha256": "b8d3cdf1be9b6f200dba02dc6428f8a08804f139794792f406ed985b7a6ddfb8"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/source.patch",
+      "bytes": 18365,
+      "sha256": "740cc623f7390f1f7dd9cbc56743d451c82da640c911e32d6b5acdaa51061c9f"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native/source.txt",
+      "bytes": 326,
+      "sha256": "9e5c3263174b9bca524dd1ba7e1436c383c32fb58bd552cb9e21ae8f6dcb13c3"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/native-runner.log",
+      "bytes": 99,
+      "sha256": "740ff0ed52b712dfa7416e4a6b28b6300e908612424e641d4ebad2143600afba"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/repository-tests.log",
+      "bytes": 6838,
+      "sha256": "d6400179bf5867b0bae09401d7eccfbdb01c55a97508762fa105d15c6bec6c35"
+    },
+    {
+      "path": "docs/evidence/journal-stop-outage-2026-09-08/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

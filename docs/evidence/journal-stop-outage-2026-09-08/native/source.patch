@@ -1,0 +1,413 @@
+diff --git a/internal/modelruntime/execution_admission.go b/internal/modelruntime/execution_admission.go
+index e8f26a2..6cef542 100644
+--- a/internal/modelruntime/execution_admission.go
++++ b/internal/modelruntime/execution_admission.go
+@@ -177,6 +177,20 @@ func (admission *executionAdmission) validateOperationLocked(ctx context.Context
+ 	if admission.closing {
+ 		return false, errors.New("ModelRuntime execution admission is closed")
+ 	}
++	if cancellation {
++		if _, err := service.refreshExecutionAuthority(verified, true); err != nil {
++			return false, err
++		}
++		// A signed request for an already installed execution can only stop
++		// that execution. Reading the journal here can consume the entire
++		// watchdog/Cancel budget during an outage. It grants no successor,
++		// renewal, drain, readiness or reuse authority; those still require
++		// the current durable state. Recheck the target under operationMu
++		// before dispatch, including any ambiguous backend envelope.
++		if _, _, err := service.cancellationTarget(*verified, false); err == nil {
++			return false, ctx.Err()
++		}
++	}
+ 	stateErr := admission.checkStateLocked(ctx)
+ 	if err := ctx.Err(); err != nil {
+ 		return false, err
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index 8e29257..ced969e 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -45,6 +45,7 @@ type journalEndpointControl struct {
+ 	WorkerAction          string
+ 	PauseBefore           string
+ 	Floor                 []byte
++	ControlledClock       bool
+ }
+ 
+ type journalEndpointReport struct {
+@@ -62,6 +63,7 @@ type journalEndpointReport struct {
+ 	Barrier             *stageworkeragent.StartBarrierResult
+ 	PausedBefore        string
+ 	Checkpoint          bool
++	CancelReason        velav1.ModelRuntimeCancelReason
+ }
+ 
+ type journalEndpointChild struct {
+@@ -493,6 +495,7 @@ type journalEndpointBackend struct {
+ 	startCalls   atomic.Int64
+ 	prepareCalls atomic.Int64
+ 	cancelCalls  atomic.Int64
++	cancelReason atomic.Int32
+ }
+ 
+ func (backend *journalEndpointBackend) Prepare(ctx context.Context, authority stageauthority.Verified, spec *velav1.StageExecutionSpec) error {
+@@ -501,6 +504,7 @@ func (backend *journalEndpointBackend) Prepare(ctx context.Context, authority st
+ }
+ 
+ func (backend *journalEndpointBackend) Cancel(ctx context.Context, authority stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
++	backend.cancelReason.Store(int32(reason))
+ 	backend.cancelCalls.Add(1)
+ 	return backend.FakeRuntime.Cancel(ctx, authority, reason)
+ }
+@@ -512,7 +516,14 @@ func (backend *journalEndpointBackend) Start(ctx context.Context, authority stag
+ 
+ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl, decoder *json.Decoder, encoder *json.Encoder) {
+ 	t.Helper()
+-	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
++	var testClock *journalEndpointClock
++	var serviceClock modelruntime.Clock
++	now := time.Now
++	if request.ControlledClock {
++		testClock = &journalEndpointClock{now: time.Now()}
++		serviceClock, now = testClock, testClock.Now
++	}
++	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, now)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -526,7 +537,7 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
+ 		backend := &journalEndpointBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
+ 		epoch := request.Manifest.Runtimes[i].ModelRuntimeEpochFloor
+ 		service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return epoch, nil }),
+-			Validator: validator, Backend: backend, CancelTimeout: time.Second})
++			Validator: validator, Backend: backend, CancelTimeout: time.Second, Clock: serviceClock})
+ 		if err != nil {
+ 			t.Fatal(err)
+ 		}
+@@ -541,7 +552,7 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
+ 	}
+ 	defer supervisor.Close()
+ 	if request.RuntimeSocket != "" {
+-		journalEndpointServeSupervisor(t, supervisor, backends[0], request.RuntimeSocket, decoder, encoder)
++		journalEndpointServeSupervisor(t, supervisor, backends[0], request.RuntimeSocket, testClock, decoder, encoder)
+ 		return
+ 	}
+ 	var authority velav1.StageAuthority
+diff --git a/internal/nodeagent/journal_worker_barrier_linux_test.go b/internal/nodeagent/journal_worker_barrier_linux_test.go
+index 906c452..170a867 100644
+--- a/internal/nodeagent/journal_worker_barrier_linux_test.go
++++ b/internal/nodeagent/journal_worker_barrier_linux_test.go
+@@ -24,7 +24,7 @@ import (
+ // This harness keeps actual Worker RPCs and Runtime admission in distinct
+ // non-root PID-1 processes. Only fault timing and fake backend completion are
+ // controlled by the parent; Node ownership uses retained kernel identities.
+-func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Supervisor, backend *journalEndpointBackend, socket string, decoder *json.Decoder, encoder *json.Encoder) {
++func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Supervisor, backend *journalEndpointBackend, socket string, clock *journalEndpointClock, decoder *json.Decoder, encoder *json.Encoder) {
+ 	t.Helper()
+ 	listener, err := net.Listen("unix", socket)
+ 	if err != nil {
+@@ -54,6 +54,11 @@ func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Super
+ 		case "stats":
+ 		case "stop":
+ 			backend.FinishStop()
++		case "expire":
++			if clock == nil {
++				t.Fatal("expiry requires controlled test clock")
++			}
++			clock.Advance(2 * time.Minute)
+ 		case "output":
+ 			backend.MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
+ 		case "close":
+@@ -64,7 +69,7 @@ func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Super
+ 		default:
+ 			t.Fatalf("unknown served Supervisor control: %q", request.SupervisorAction)
+ 		}
+-		journalBarrierReport(t, encoder, journalEndpointReport{PrepareCalls: backend.prepareCalls.Load(), StartCalls: backend.startCalls.Load(), CancelCalls: backend.cancelCalls.Load()})
++		journalBarrierReport(t, encoder, journalEndpointReport{PrepareCalls: backend.prepareCalls.Load(), StartCalls: backend.startCalls.Load(), CancelCalls: backend.cancelCalls.Load(), CancelReason: velav1.ModelRuntimeCancelReason(backend.cancelReason.Load())})
+ 	}
+ }
+ 
+@@ -174,6 +179,23 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
+ 				t.Fatalf("Worker drain: %v %v", result, err)
+ 			}
+ 			report.Checkpoint = result.GetResult().GetCheckpoint() != nil
++		case "drain-unavailable":
++			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
++			result, err := client.DrainStageExecution(readCtx, &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
++			cancel()
++			if err == nil || result.GetResult().GetCheckpoint() != nil {
++				t.Fatalf("unavailable Node allowed drain: %v %v", result, err)
++			}
++			report.Error = err.Error()
++		case "cancel":
++			callCtx, cancel := context.WithTimeout(ctx, time.Second)
++			result, err := client.CancelStage(callCtx, &velav1.ModelRuntimeServiceCancelStageRequest{Authority: &authority,
++				Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP})
++			cancel()
++			if err != nil || !result.GetCancellationAcknowledged() {
++				t.Fatalf("Worker could not cancel during journal outage: %v %v", result, err)
++			}
++			report.Decision = result.Decision
+ 		case "seal":
+ 			result, err := client.SealOutput(ctx, &velav1.ModelRuntimeServiceSealOutputRequest{Authority: &authority})
+ 			if err != nil || result.GetReceipt() == nil {
+diff --git a/internal/modelruntime/journal_cancellation_outage_test.go b/internal/modelruntime/journal_cancellation_outage_test.go
+new file mode 100644
+index 0000000..1e9cb1d
+--- /dev/null
++++ b/internal/modelruntime/journal_cancellation_outage_test.go
+@@ -0,0 +1,82 @@
++package modelruntime_test
++
++import (
++	"bytes"
++	"context"
++	"os"
++	"path/filepath"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++)
++
++func TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads(t *testing.T) {
++	for _, operation := range []string{"cancel", "watchdog"} {
++		t.Run(operation, func(t *testing.T) {
++			f, owner, transport, directory := remoteSupervisorContextFixture(t, t.Context(), 5*time.Second)
++			authority := f.authorities[0]
++			prepareFloorRuntime(t, f.supervisor, authority)
++			started, err := f.supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: authority})
++			if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
++				t.Fatalf("initial start: %v %v", started, err)
++			}
++			beforeCalls := f.backend.calls.Load()
++			statePath := filepath.Join(directory, durableStateFileName)
++			before, err := os.ReadFile(statePath)
++			if err != nil {
++				t.Fatal(err)
++			}
++			var stalled atomic.Bool
++			var reads atomic.Int64
++			transport.beforeRead = func(ctx context.Context) error {
++				if stalled.Load() {
++					reads.Add(1)
++					<-ctx.Done()
++					return ctx.Err()
++				}
++				return nil
++			}
++			stalled.Store(true)
++			defer stalled.Store(false)
++			if operation == "cancel" {
++				ctx, cancel := context.WithTimeout(t.Context(), time.Second)
++				response, err := f.supervisor.CancelStage(ctx, &velav1.ModelRuntimeServiceCancelStageRequest{Authority: authority,
++					Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP})
++				cancel()
++				if err != nil || !response.GetCancellationAcknowledged() {
++					t.Fatalf("journal read consumed cancellation budget without stopping installed execution: %v %v", response, err)
++				}
++			} else {
++				f.clock.Advance(2 * time.Minute)
++				deadline := time.Now().Add(2 * time.Second)
++				for f.backend.calls.Load() == beforeCalls && time.Now().Before(deadline) {
++					time.Sleep(time.Millisecond)
++				}
++			}
++			if f.backend.calls.Load() != beforeCalls+1 || reads.Load() != 0 {
++				t.Fatalf("stop depended on unavailable journal: backend calls before=%d after=%d journal reads=%d", beforeCalls, f.backend.calls.Load(), reads.Load())
++			}
++			// Even observed stop cannot establish durable drain during an outage.
++			f.backend.FinishStop()
++			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
++			if _, err := f.supervisor.DrainExecution(ctx, authority); err == nil {
++				t.Fatal("unavailable journal acknowledged drain")
++			}
++			cancel()
++			after, err := os.ReadFile(statePath)
++			if err != nil || !bytes.Equal(before, after) {
++				t.Fatalf("stop or failed drain changed durable history: %v", err)
++			}
++			status, err := owner.Status(t.Context())
++			if err != nil || status.PendingExecutions != 1 {
++				t.Fatalf("stop released persistent execution: %+v %v", status, err)
++			}
++			stalled.Store(false)
++			if result, err := f.supervisor.DrainExecution(t.Context(), authority); err != nil || result == nil {
++				t.Fatalf("restored journal could not persist real stop/drain: %+v %v", result, err)
++			}
++		})
++	}
++}
+diff --git a/internal/nodeagent/journal_cancellation_outage_linux_test.go b/internal/nodeagent/journal_cancellation_outage_linux_test.go
+new file mode 100644
+index 0000000..a0e3ee3
+--- /dev/null
++++ b/internal/nodeagent/journal_cancellation_outage_linux_test.go
+@@ -0,0 +1,166 @@
++package nodeagent
++
++import (
++	"bytes"
++	"errors"
++	"net"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++)
++
++func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
++	for _, operation := range []string{"cancel", "watchdog"} {
++		t.Run(operation, func(t *testing.T) {
++			f := newJournalEndpointFixture(t)
++			server, done := startJournalTestServer(t, f, 30*time.Second)
++			directory := filepath.Join(filepath.Dir(f.listener.Addr().String()), "workload")
++			if err := os.Mkdir(directory, 0o700); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.Chown(directory, 65532, 65532); err != nil {
++				t.Fatal(err)
++			}
++			socket := filepath.Join(directory, "runtime.sock")
++			if report := journalServerRequest(t, f.runtime, journalEndpointControl{Identity: f.identity, Manifest: &f.manifest, Startup: f.startup, RuntimeSocket: socket, ControlledClock: true}); !report.SupervisorReady {
++				t.Fatalf("Runtime startup: %+v", report)
++			}
++			started := journalServerRequest(t, f.worker, journalEndpointControl{Identity: f.identity, Authority: f.authority, WorkerSocket: socket, WorkerAction: "execute"})
++			if started.Barrier == nil || !started.Barrier.BarrierPassed {
++				t.Fatalf("Worker barrier: %+v", started)
++			}
++			if err := server.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, server, done)
++			// A valid root-owned socket accepts connects but supplies no challenge
++			// or response. Unlike immediate refusal, this consumes a read deadline.
++			path := f.listener.Addr().String()
++			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
++				t.Fatal(err)
++			}
++			listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = listener.Close() }()
++			if err := errors.Join(os.Chown(path, 0, 65532), os.Chmod(path, 0o660)); err != nil {
++				t.Fatal(err)
++			}
++			statePath := filepath.Join(filepath.Dir(path), "state", "execution-admission.json")
++			before, err := os.ReadFile(statePath)
++			if err != nil {
++				t.Fatal(err)
++			}
++			// Establish that the actual RPC/Unix journal read stalls and fails
++			// without producing a drain checkpoint, before the stop attempt.
++			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority}); report.Error == "" {
++				t.Fatal("unserved socket did not expose journal outage")
++			}
++			reason := velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP
++			if operation == "watchdog" {
++				reason = velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE
++				journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "expire"})
++			} else {
++				journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "cancel", Authority: f.authority})
++			}
++			deadline := time.Now().Add(2 * time.Second)
++			var calls journalEndpointReport
++			for {
++				calls = journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "stats"})
++				if calls.CancelCalls != 0 || time.Now().After(deadline) {
++					break
++				}
++				time.Sleep(time.Millisecond)
++			}
++			if calls.PrepareCalls != 1 || calls.StartCalls != 1 || calls.CancelCalls != 1 || calls.CancelReason != reason {
++				t.Fatalf("unresponsive Node suppressed stop or changed target: %+v", calls)
++			}
++			journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "stop"})
++			journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority})
++			after, err := os.ReadFile(statePath)
++			if err != nil || !bytes.Equal(before, after) {
++				t.Fatalf("outage stop or failed drain changed durable state: %v", err)
++			}
++			status, err := f.owner.Status(t.Context())
++			if err != nil || status.Highest != 1 || status.PendingExecutions != 1 {
++				t.Fatalf("outage granted durable reuse: %+v %v", status, err)
++			}
++			f.listener = listener
++			restored, restoredDone := startJournalTestServer(t, f, 30*time.Second)
++			waitJournalServer(t, restored, func(s JournalServerStats) bool { return s.Accepted >= 2 && s.InFlight == 0 })
++			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain", Authority: f.authority}); !report.Checkpoint {
++				t.Fatalf("same owner could not persist actual stopped execution: %+v", report)
++			}
++			status, err = f.owner.Status(t.Context())
++			if err != nil || status.PendingExecutions != 0 {
++				t.Fatalf("restored drain remained pending: %+v %v", status, err)
++			}
++			journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "close", Authority: f.authority})
++			if report := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "close"}); !report.SupervisorCompleted {
++				t.Fatalf("Runtime close: %+v", report)
++			}
++			if err := restored.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, restored, restoredDone)
++			t.Logf("%s reached installed backend once with unserved Node socket; root journal unchanged until restored exact drain", operation)
++		})
++	}
++}
++
++type journalEndpointClock struct {
++	mu     sync.Mutex
++	now    time.Time
++	timers []*journalEndpointTimer
++}
++
++type journalEndpointTimer struct {
++	clock          *journalEndpointClock
++	deadline       time.Time
++	channel        chan time.Time
++	stopped, fired bool
++}
++
++func (clock *journalEndpointClock) Now() time.Time {
++	clock.mu.Lock()
++	defer clock.mu.Unlock()
++	return clock.now
++}
++
++func (clock *journalEndpointClock) NewTimer(duration time.Duration) modelruntime.Timer {
++	clock.mu.Lock()
++	defer clock.mu.Unlock()
++	timer := &journalEndpointTimer{clock: clock, deadline: clock.now.Add(duration), channel: make(chan time.Time, 1)}
++	clock.timers = append(clock.timers, timer)
++	return timer
++}
++
++func (clock *journalEndpointClock) Advance(duration time.Duration) {
++	clock.mu.Lock()
++	defer clock.mu.Unlock()
++	clock.now = clock.now.Add(duration)
++	for _, timer := range clock.timers {
++		if !timer.stopped && !timer.fired && !clock.now.Before(timer.deadline) {
++			timer.fired = true
++			timer.channel <- clock.now
++		}
++	}
++}
++
++func (timer *journalEndpointTimer) C() <-chan time.Time { return timer.channel }
++
++func (timer *journalEndpointTimer) Stop() bool {
++	timer.clock.mu.Lock()
++	defer timer.clock.mu.Unlock()
++	if timer.stopped || timer.fired {
++		return false
++	}
++	timer.stopped = true
++	return true
++}

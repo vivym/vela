@@ -24,7 +24,7 @@ import (
 // This harness keeps actual Worker RPCs and Runtime admission in distinct
 // non-root PID-1 processes. Only fault timing and fake backend completion are
 // controlled by the parent; Node ownership uses retained kernel identities.
-func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Supervisor, backend *journalEndpointBackend, socket string, decoder *json.Decoder, encoder *json.Encoder) {
+func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Supervisor, backend *journalEndpointBackend, socket string, clock *journalEndpointClock, decoder *json.Decoder, encoder *json.Encoder) {
 	t.Helper()
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
@@ -54,6 +54,11 @@ func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Super
 		case "stats":
 		case "stop":
 			backend.FinishStop()
+		case "expire":
+			if clock == nil {
+				t.Fatal("expiry requires controlled test clock")
+			}
+			clock.Advance(2 * time.Minute)
 		case "output":
 			backend.MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
 		case "close":
@@ -64,7 +69,7 @@ func journalEndpointServeSupervisor(t *testing.T, supervisor *modelruntime.Super
 		default:
 			t.Fatalf("unknown served Supervisor control: %q", request.SupervisorAction)
 		}
-		journalBarrierReport(t, encoder, journalEndpointReport{PrepareCalls: backend.prepareCalls.Load(), StartCalls: backend.startCalls.Load(), CancelCalls: backend.cancelCalls.Load()})
+		journalBarrierReport(t, encoder, journalEndpointReport{PrepareCalls: backend.prepareCalls.Load(), StartCalls: backend.startCalls.Load(), CancelCalls: backend.cancelCalls.Load(), CancelReason: velav1.ModelRuntimeCancelReason(backend.cancelReason.Load())})
 	}
 }
 
@@ -174,6 +179,23 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
 				t.Fatalf("Worker drain: %v %v", result, err)
 			}
 			report.Checkpoint = result.GetResult().GetCheckpoint() != nil
+		case "drain-unavailable":
+			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+			result, err := client.DrainStageExecution(readCtx, &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
+			cancel()
+			if err == nil || result.GetResult().GetCheckpoint() != nil {
+				t.Fatalf("unavailable Node allowed drain: %v %v", result, err)
+			}
+			report.Error = err.Error()
+		case "cancel":
+			callCtx, cancel := context.WithTimeout(ctx, time.Second)
+			result, err := client.CancelStage(callCtx, &velav1.ModelRuntimeServiceCancelStageRequest{Authority: &authority,
+				Reason: velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP})
+			cancel()
+			if err != nil || !result.GetCancellationAcknowledged() {
+				t.Fatalf("Worker could not cancel during journal outage: %v %v", result, err)
+			}
+			report.Decision = result.Decision
 		case "seal":
 			result, err := client.SealOutput(ctx, &velav1.ModelRuntimeServiceSealOutputRequest{Authority: &authority})
 			if err != nil || result.GetReceipt() == nil {

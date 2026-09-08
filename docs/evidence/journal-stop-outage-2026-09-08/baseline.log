@@ -1,0 +1,11 @@
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/cancel
+    journal_cancellation_outage_test.go:49: journal read consumed cancellation budget without stopping installed execution: authority_digest:"\x15\x01d\xb5\xbep\xa4\x00\xbaF\xec^\x00\x9d\x03\x883a\xf0ｫN\xf8]y\x19\x85\x9eYS\xb3"  decision:MODEL_RUNTIME_COMMAND_DECISION_STALE  detail:"context deadline exceeded"  runtime_identity:{worker_instance_id:"21000000-0000-0000-0000-000000000001"  worker_instance_epoch:5  device_set_digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"  membership_digest:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"  model_residency_id:"51000000-0000-0000-0000-000000000001"  runtime_identity:"h3-runtime-1"  model_runtime_epoch:9  stage_profile_revision_id:"61000000-0000-0000-0000-000000000001"  worker_member_id:"41000000-0000-0000-0000-000000000001"  worker_member_epoch:8} <nil>
+=== RUN   TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/watchdog
+    journal_cancellation_outage_test.go:59: stop depended on unavailable journal: backend calls before=2 after=2 journal reads=1
+--- FAIL: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads (3.12s)
+    --- FAIL: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/cancel (1.07s)
+    --- FAIL: TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads/watchdog (2.05s)
+FAIL
+FAIL	github.com/vivym/vela/internal/modelruntime	3.796s
+FAIL

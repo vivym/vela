@@ -6,6 +6,16 @@ Work branch: `feature/vela-mock-hardening`
 Current local migration: `94`
 Status: In progress
 
+Latest production-code increment (2026-09-08):
+[stop during an unresponsive journal read](journal-stop-outage-evidence-2026-09-08.md)
+fixes reproduced explicit Cancel and watchdog failures after journal I/O exhausted
+their stop budgets. Verified installed-execution cancellation avoids its own
+journal read, grants no successor and preserves durable drain/reuse requirements.
+Actual independent Linux Worker/Runtime processes stop during an unserved Node
+socket outage; drain remains unavailable until the same owner serves again.
+Concurrent lock waits, backend/process containment and full Job assembly remain
+separate obligations.
+
 Latest validation increment (2026-09-08):
 [actual Worker barrier recovery](journal-worker-barrier-evidence-2026-09-08.md)
 places Worker and Runtime in separate non-root Linux PID-1 processes with real
@@ -16,7 +26,7 @@ within the same processes. This is a single-member Stage fixture, with explicit
 parent-orchestrated recovery; complete remote Job/cache and production assembly
 remain open.
 
-Latest production-code checkpoint (2026-09-08):
+Preceding production-code checkpoint (2026-09-08):
 [live Supervisor overload recovery](journal-overload-recovery-evidence-2026-09-08.md)
 fixes a reproduced permanent admission fence after a read-only transport failure.
 The same native Supervisor now rejects Start during overload, then starts once
