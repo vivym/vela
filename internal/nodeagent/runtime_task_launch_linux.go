@@ -24,17 +24,29 @@ var ErrRuntimeTaskLaunch = errors.New("runtime task launch bundle is missing, un
 // It does not approve that content, loaded memory, effective mounts or a grant.
 // Configuration returns a copy; the retained bytes cannot be changed by callers.
 type RuntimeTaskLaunch struct {
-	Caller          RuntimeContainerCallerObservation
-	ConfigDigest    [sha256.Size]byte
-	ConfigBytes     int64
-	BundleDevice    uint64
-	BundleInode     uint64
-	ConfigDevice    uint64
-	ConfigInode     uint64
-	ObservedFrom    time.Time
-	ObservedThrough time.Time
-	DaemonStatePath string
-	encoded         []byte
+	Caller            RuntimeContainerCallerObservation
+	ConfigDigest      [sha256.Size]byte
+	ConfigBytes       int64
+	BundleDevice      uint64
+	BundleInode       uint64
+	ConfigDevice      uint64
+	ConfigInode       uint64
+	ObservedFrom      time.Time
+	ObservedThrough   time.Time
+	DaemonStatePath   string
+	encoded           []byte
+	OptionsFile       RuntimeTaskFileObservation
+	RuntimeFile       RuntimeTaskFileObservation
+	ShimFile          RuntimeTaskFileObservation
+	SandboxFile       RuntimeTaskFileObservation
+	TaskBootstrapFile RuntimeTaskFileObservation
+	ShimBootstrapFile RuntimeTaskFileObservation
+	ShimBundleID      string
+	RuntimeBinaryPath string
+	ShimBinaryPath    string
+	optionsEncoded    []byte
+	runtimeEncoded    []byte
+	shimEncoded       []byte
 }
 
 func (launch *RuntimeTaskLaunch) Configuration() (specs.Spec, error) {
@@ -50,8 +62,9 @@ func (launch *RuntimeTaskLaunch) Configuration() (specs.Spec, error) {
 // Containers.Get.spec/CRI verbose runtimeSpec metadata. stateDirectory is Node
 // configuration naming the state root in the Node's mount view. Its inode must
 // match the path reported by CRI Status in the pinned daemon's filesystem view;
-// bundle reads use that daemon view. This adapter supports rootful runc-v2 tasks
-// without remapped bundle ownership. Root administrators remain trusted.
+// bundle reads use that daemon view. This adapter supports rootful runc-v2 CRI
+// tasks sharing a v3 sandbox shim without remapped bundle ownership. Root
+// administrators remain trusted.
 func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context, stateDirectory string, target RuntimeContainerTarget, caller *RuntimeCaller) (*RuntimeTaskLaunch, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -87,6 +100,45 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	if err != nil || pid == 0 || pid != uint64(first.Process.HostPID) {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
 	}
+	sandboxPath := filepath.Join(daemonState, "io.containerd.runtime.v2.task", "k8s.io", target.SandboxID)
+	sandboxBundle, err := observer.daemon.openDirectory(sandboxPath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = sandboxBundle.Close() }()
+	var sandboxDirectory unix.Stat_t
+	if err := unix.Fstat(int(sandboxBundle.Fd()), &sandboxDirectory); err != nil || sandboxDirectory.Mode != unix.S_IFDIR|0o700 {
+		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
+	}
+	mechanismFiles := []struct {
+		bundle           *os.File
+		name             string
+		minimum, maximum int64
+		data             []byte
+		identity         runtimeTaskFileIdentity
+	}{
+		{bundle: bundle, name: "options.json", minimum: 1, maximum: 64 << 10},
+		{bundle: bundle, name: "runtime", minimum: 0, maximum: 4096},
+		{bundle: sandboxBundle, name: "shim-binary-path", minimum: 1, maximum: 4096},
+		{bundle: bundle, name: "sandbox", minimum: 64, maximum: 64},
+		{bundle: bundle, name: "bootstrap.json", minimum: 1, maximum: 64 << 10},
+		{bundle: sandboxBundle, name: "bootstrap.json", minimum: 1, maximum: 64 << 10},
+	}
+	for i := range mechanismFiles {
+		file := &mechanismFiles[i]
+		file.data, file.identity, err = readRuntimeTaskBundleFileBounds(ctx, file.bundle, file.name, file.minimum, file.maximum)
+		if err != nil {
+			return nil, err
+		}
+	}
+	options, err := parseRuntimeTaskOptions(mechanismFiles[0].data)
+	if err != nil || options.GetBinaryName() != string(mechanismFiles[1].data) {
+		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
+	}
+	if string(mechanismFiles[3].data) != target.SandboxID || !bytes.Equal(mechanismFiles[4].data, mechanismFiles[5].data) ||
+		validateRuntimeTaskBootstrap(mechanismFiles[4].data) != nil {
+		return nil, ErrRuntimeTaskMechanism
+	}
 	var configuration specs.Spec
 	decoder := json.NewDecoder(bytes.NewReader(config))
 	decoder.DisallowUnknownFields()
@@ -119,6 +171,16 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 		directory.Mode != currentDirectory.Mode || directory.Uid != currentDirectory.Uid || directory.Gid != currentDirectory.Gid {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
 	}
+	currentSandbox, err := observer.daemon.openDirectory(sandboxPath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = currentSandbox.Close() }()
+	var lastSandboxDirectory unix.Stat_t
+	if err := unix.Fstat(int(currentSandbox.Fd()), &lastSandboxDirectory); err != nil || sandboxDirectory.Dev != lastSandboxDirectory.Dev ||
+		sandboxDirectory.Ino != lastSandboxDirectory.Ino || sandboxDirectory.Mode != lastSandboxDirectory.Mode {
+		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
+	}
 	lastConfig, lastIdentity, err := readRuntimeTaskBundleFile(ctx, bundle, "config.json", 1<<20)
 	if err != nil || configIdentity != lastIdentity || !bytes.Equal(config, lastConfig) {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
@@ -126,6 +188,12 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	lastPID, lastPIDIdentity, err := readRuntimeTaskBundleFile(ctx, bundle, "init.pid", 16)
 	if err != nil || pidIdentity != lastPIDIdentity || !bytes.Equal(pidBytes, lastPID) {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+	}
+	for _, file := range mechanismFiles {
+		last, identity, err := readRuntimeTaskBundleFileBounds(ctx, file.bundle, file.name, file.minimum, file.maximum)
+		if err != nil || identity != file.identity || !bytes.Equal(last, file.data) {
+			return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+		}
 	}
 	if err := errors.Join(observer.check(), ctx.Err()); err != nil {
 		return nil, err
@@ -138,7 +206,16 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	}
 	return &RuntimeTaskLaunch{Caller: last, ConfigDigest: sha256.Sum256(config), ConfigBytes: int64(len(config)),
 		BundleDevice: directory.Dev, BundleInode: directory.Ino, ConfigDevice: configIdentity.device, ConfigInode: configIdentity.inode,
-		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config}, nil
+		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config,
+		OptionsFile:       runtimeTaskFileObservation(mechanismFiles[0].data, mechanismFiles[0].identity),
+		RuntimeFile:       runtimeTaskFileObservation(mechanismFiles[1].data, mechanismFiles[1].identity),
+		ShimFile:          runtimeTaskFileObservation(mechanismFiles[2].data, mechanismFiles[2].identity),
+		SandboxFile:       runtimeTaskFileObservation(mechanismFiles[3].data, mechanismFiles[3].identity),
+		TaskBootstrapFile: runtimeTaskFileObservation(mechanismFiles[4].data, mechanismFiles[4].identity),
+		ShimBootstrapFile: runtimeTaskFileObservation(mechanismFiles[5].data, mechanismFiles[5].identity),
+		ShimBundleID:      target.SandboxID,
+		RuntimeBinaryPath: string(mechanismFiles[1].data), ShimBinaryPath: string(mechanismFiles[2].data),
+		optionsEncoded: mechanismFiles[0].data, runtimeEncoded: mechanismFiles[1].data, shimEncoded: mechanismFiles[2].data}, nil
 }
 
 type runtimeTaskFileIdentity struct {
@@ -150,6 +227,10 @@ type runtimeTaskFileIdentity struct {
 }
 
 func readRuntimeTaskBundleFile(ctx context.Context, bundle *os.File, name string, limit int64) ([]byte, runtimeTaskFileIdentity, error) {
+	return readRuntimeTaskBundleFileBounds(ctx, bundle, name, 1, limit)
+}
+
+func readRuntimeTaskBundleFileBounds(ctx context.Context, bundle *os.File, name string, minimum, limit int64) ([]byte, runtimeTaskFileIdentity, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, runtimeTaskFileIdentity{}, err
 	}
@@ -164,7 +245,7 @@ func readRuntimeTaskBundleFile(ctx context.Context, bundle *os.File, name string
 	identity := func() (runtimeTaskFileIdentity, error) {
 		var stat unix.Stat_t
 		if err := unix.Fstat(fd, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != 0 || stat.Gid != 0 ||
-			stat.Mode&0o7022 != 0 || stat.Nlink != 1 || stat.Size <= 0 || stat.Size > limit {
+			stat.Mode&0o7022 != 0 || stat.Nlink != 1 || stat.Size < minimum || stat.Size > limit {
 			return runtimeTaskFileIdentity{}, errors.Join(ErrRuntimeTaskLaunch, err)
 		}
 		return runtimeTaskFileIdentity{stat.Dev, stat.Ino, stat.Size, stat.Mode, stat.Mtim, stat.Ctim}, nil

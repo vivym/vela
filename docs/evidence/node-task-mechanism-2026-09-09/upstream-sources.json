@@ -1,0 +1,10 @@
+{
+  "module": "github.com/containerd/containerd/v2@v2.3.1",
+  "revision": "64b425cf570b3b8dd1d4cc46da7c1fce65c6651a",
+  "files": {
+    "cmd/containerd-shim-runc-v2/runc/container.go": "af7b6741d2a4ece7ac7ff5ee6996ddcb855357730bee09e9603e7895a016726a",
+    "core/runtime/v2/binary.go": "1fa6e3393127ea8794ec8ef586b1a55170d544d9cec907a202f85cec684e0e9b",
+    "core/runtime/v2/shim_manager.go": "92544eb0e8d1e9f08d9e7515d4e1f0867a1da102a14151aa4a8bdfe51a0a2bc4",
+    "core/runtime/v2/shim.go": "05350ff3b92a15f679b5336d9753b2fd25c7d6c516f1f50a2b3daaf87c5ec46d"
+  }
+}

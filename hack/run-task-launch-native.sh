@@ -58,9 +58,9 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
 # paths/sockets, host PID namespace, network, model weights or GPU are used.
 docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles)$' -test.count=1 -test.v -test.timeout=3m \
+  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding|TestRuntimeTaskBootstrapBinding)$' -test.count=1 -test.v -test.timeout=3m \
   > "$launch_evidence/native.log" 2>&1
-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles; do
+for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding TestRuntimeTaskBootstrapBinding; do
   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
 done
 if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi

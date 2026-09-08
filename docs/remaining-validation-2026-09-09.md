@@ -58,7 +58,11 @@ I/O 未返回时处理当前执行，调用前还会重新核对 generation 与�
 [daemon/state 关联](node-task-state-evidence-2026-09-09.md) 已用原始 socket peer
 pidfd、CRI Status 和 daemon 的文件系统视图验证 state 目录来源；复制的私有
 目录被拒绝，Node bind-mount 别名下的覆盖挂载不改变读到的真实 bundle。
-配置批准、runtime options、工作负载有效挂载、CLI 装配及一次性 grant 仍需完成。
+新增 [task runtime options/hook 内容检查](node-task-mechanism-evidence-2026-09-09.md)
+从实际 task/sandbox bundle 关联读取 runtime options 与 shim 路径。显式路径与
+state root 可匹配，隐式 binary、未批准选项、hook 声明及矛盾关联被拒绝。
+这仍是内容策略前置条件；批准策略的生产来源、executable/config/有效挂载批准、
+CLI 装配及一次性 grant 仍需完成。
 
 ## 依赖顺序与通过标准
 

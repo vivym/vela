@@ -568,6 +568,13 @@ aliases cannot redirect bundle reads through a shadow mount. Actual daemon
 replacement/exit and concurrent handle cleanup are covered. This closes the
 state-root source prerequisite, not configuration/mount approval or grant/Job
 assembly.
+The [task runtime mechanism checks](node-task-mechanism-evidence-2026-09-09.md)
+read actual runc options/runtime records and resolve the shared CRI v3 shim
+through protected sandbox/bootstrap records. A content policy requires explicit
+binary/state paths and matching cgroup mode, otherwise default options and no
+OCI hooks. Native CRI covers an implicit handler rejection and an explicit
+handler match plus 84 invalid-file cases. The policy is test-assembled; executable,
+effective mount and production grant approval are still separate prerequisites.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

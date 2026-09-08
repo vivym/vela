@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "39b80db4dd1ff12adc90dafe79306b0c262712a2",
+  "source_tree_sha256": "012bfb36b5cb36018472ce831bf047620de32336b70900a23907c81278562e52",
+  "source_file_count": 991,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "055483e8203ed9fe57f542ac097e39f2a5d51cf5320f869727b9f65c49040af0",
+  "production_gates": "0/9",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "native_main_tests": {
+    "TestRuntimeCallerContainerCRI": "16.78s",
+    "TestRuntimeContainerDaemonClosesHandles": "0.00s",
+    "TestRuntimeContainerdProcessEvidence": "6.40s",
+    "TestRuntimeTaskMechanismPolicy": "0.00s",
+    "TestRuntimeTaskOptionsCanonicalEncoding": "0.00s",
+    "TestRuntimeTaskBootstrapBinding": "0.00s",
+    "TestRuntimeDaemonStateDirectory": "0.00s"
+  },
+  "mechanism_file_negative_cases": 84,
+  "contradictory_mechanism_records": 6,
+  "actual_explicit_handler_policy_matches": 1,
+  "actual_implicit_handler_policy_rejections": 1,
+  "hook_declaration_rejections": 1,
+  "checks": [
+    {
+      "command": "bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/linux-integration-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/linux-integration-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-mechanism-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "claim_boundary": "Actual shared CRI v3 sandbox mechanism source and content-policy check with fixture-supplied policy. Explicit handler match and implicit handler rejection; protected files, sandbox/bootstrap equality, options consistency, hook rejection and copy isolation. No production policy source, daemon/shim/runc executable attestation, effective workload mounts, same-invocation grant, protected CLI/full Job, PostgreSQL/GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/binaries.sha256",
+      "bytes": 830,
+      "sha256": "78b4c8ea0715e3a2424f9d510741e5dc7602aacebe8181eec8756305d0d38dba"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/build.log",
+      "bytes": 1721,
+      "sha256": "0889cb0976894c33331b3c57aea7aee929308c68973086a46bbae27411861e20"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "91af521f7156f4a75a212cd5d7bd330a4591698739b22ed7b6e54925797ec207"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/initial-binaries.sha256",
+      "bytes": 830,
+      "sha256": "5e83b6a2ff6c1cc567d291433f2ab86b0f3b050cfc5592a54b633edb6ef31a93"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/initial-image.txt",
+      "bytes": 72,
+      "sha256": "3a496ab362f5d3f91f2980ad48d116e8cb29bf66aa3f647182f139fe85ffdcb5"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/initial-missing-shim.log",
+      "bytes": 46874,
+      "sha256": "6dddd94ed66b4aae6836ecd79ceda9cdcf0c811a736cc4133ec7e5f220a8cff4"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/initial-source.patch",
+      "bytes": 22461,
+      "sha256": "f54d9d21f1690093070659d6d678d6a37c4e30a0761b916bc08b223996f66437"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/linux-integration-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/linux-integration-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/native-runner.log",
+      "bytes": 98,
+      "sha256": "d136564c31ea1271bab3a8f38a7bc72501a8639bbdfe98b99387259ac3fd8c45"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/native.log",
+      "bytes": 28209,
+      "sha256": "5f07dac423c5ef9506bd658385df4ecaccc9269101b595271247d572736041b7"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/source-files.json",
+      "bytes": 117089,
+      "sha256": "237263ca1c1d0fca522a86d45f49101be5491141f666180db538b4b12a238269"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "70ee44f2cbfe5ca76b052dc52de67f09fb2416e195175cad9e13644c03151d25"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/source.patch",
+      "bytes": 30110,
+      "sha256": "b1455fe9a0987c94844117987db32ad9585c34443842570337457b7891559c71"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/source.txt",
+      "bytes": 368,
+      "sha256": "af9e0f32b11e7466e331398ae0d2eeb88c9d8fc8050eb1accb5ec774a46d652e"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/upstream-sources.json",
+      "bytes": 564,
+      "sha256": "7d883014d4f8541fafe6adb521cb29be1256bbc0d08d242b71d0b8458af5abd9"
+    },
+    {
+      "path": "docs/evidence/node-task-mechanism-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

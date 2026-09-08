@@ -1,0 +1,515 @@
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index 21c52f7..22b8153 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -58,9 +58,9 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
+ # paths/sockets, host PID namespace, network, model weights or GPU are used.
+ docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
+   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
+-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles)$' -test.count=1 -test.v -test.timeout=3m \
++  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles|TestRuntimeTaskMechanismPolicy|TestRuntimeTaskOptionsCanonicalEncoding)$' -test.count=1 -test.v -test.timeout=3m \
+   > "$launch_evidence/native.log" 2>&1
+-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles; do
++for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles TestRuntimeTaskMechanismPolicy TestRuntimeTaskOptionsCanonicalEncoding; do
+   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
+ done
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index 8f394bf..ae92384 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -49,6 +49,11 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+     sandbox = "docker.io/vela/caller-sandbox:cpu-fixture"
+ [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
+   runtime_type = "io.containerd.runc.v2"
++[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.explicit]
++  runtime_type = "io.containerd.runc.v2"
++  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.explicit.options]
++    BinaryName = "/usr/local/bin/runc"
++    Root = "/run/vela-approved-runc"
+ `)
+ 	fixture.importCRIImages(t)
+ 	client := runtimev1.NewRuntimeServiceClient(fixture.connection)
+@@ -109,6 +114,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 				target.ContainerID, target.SandboxID, target.PodUID, observation.Process.HostPID,
+ 				observation.Process.NamespacePID, observation.Container.ImageRef)
+ 			verifyRuntimeTaskLaunchBundle(t, fixture, observer, target, caller)
++			verifyRuntimeTaskMechanism(t, fixture, observer, target, caller, plan != nil)
+ 			var pods *runtimeLaunchPodFixture
+ 			if plan != nil {
+ 				// Pod API and Registry are fixtures; CRI, native task and caller are real.
+@@ -370,7 +376,11 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
+ 	if plan != nil {
+ 		config.Metadata.Name, config.Metadata.Namespace = plan.pod.Name, plan.pod.Namespace
+ 	}
+-	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: config, RuntimeHandler: "runc"})
++	handler := "runc"
++	if plan != nil {
++		handler = "explicit"
++	}
++	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: config, RuntimeHandler: handler})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/nodeagent/runtime_task_launch_linux.go b/internal/nodeagent/runtime_task_launch_linux.go
+index dfc1675..b86c355 100644
+--- a/internal/nodeagent/runtime_task_launch_linux.go
++++ b/internal/nodeagent/runtime_task_launch_linux.go
+@@ -24,17 +24,25 @@ var ErrRuntimeTaskLaunch = errors.New("runtime task launch bundle is missing, un
+ // It does not approve that content, loaded memory, effective mounts or a grant.
+ // Configuration returns a copy; the retained bytes cannot be changed by callers.
+ type RuntimeTaskLaunch struct {
+-	Caller          RuntimeContainerCallerObservation
+-	ConfigDigest    [sha256.Size]byte
+-	ConfigBytes     int64
+-	BundleDevice    uint64
+-	BundleInode     uint64
+-	ConfigDevice    uint64
+-	ConfigInode     uint64
+-	ObservedFrom    time.Time
+-	ObservedThrough time.Time
+-	DaemonStatePath string
+-	encoded         []byte
++	Caller            RuntimeContainerCallerObservation
++	ConfigDigest      [sha256.Size]byte
++	ConfigBytes       int64
++	BundleDevice      uint64
++	BundleInode       uint64
++	ConfigDevice      uint64
++	ConfigInode       uint64
++	ObservedFrom      time.Time
++	ObservedThrough   time.Time
++	DaemonStatePath   string
++	encoded           []byte
++	OptionsFile       RuntimeTaskFileObservation
++	RuntimeFile       RuntimeTaskFileObservation
++	ShimFile          RuntimeTaskFileObservation
++	RuntimeBinaryPath string
++	ShimBinaryPath    string
++	optionsEncoded    []byte
++	runtimeEncoded    []byte
++	shimEncoded       []byte
+ }
+ 
+ func (launch *RuntimeTaskLaunch) Configuration() (specs.Spec, error) {
+@@ -87,6 +95,27 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	if err != nil || pid == 0 || pid != uint64(first.Process.HostPID) {
+ 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+ 	}
++	mechanismFiles := []struct {
++		name             string
++		minimum, maximum int64
++		data             []byte
++		identity         runtimeTaskFileIdentity
++	}{
++		{name: "options.json", minimum: 1, maximum: 64 << 10},
++		{name: "runtime", minimum: 0, maximum: 4096},
++		{name: "shim-binary-path", minimum: 1, maximum: 4096},
++	}
++	for i := range mechanismFiles {
++		file := &mechanismFiles[i]
++		file.data, file.identity, err = readRuntimeTaskBundleFileBounds(ctx, bundle, file.name, file.minimum, file.maximum)
++		if err != nil {
++			return nil, err
++		}
++	}
++	options, err := parseRuntimeTaskOptions(mechanismFiles[0].data)
++	if err != nil || options.GetBinaryName() != string(mechanismFiles[1].data) {
++		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
++	}
+ 	var configuration specs.Spec
+ 	decoder := json.NewDecoder(bytes.NewReader(config))
+ 	decoder.DisallowUnknownFields()
+@@ -127,6 +156,12 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	if err != nil || pidIdentity != lastPIDIdentity || !bytes.Equal(pidBytes, lastPID) {
+ 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+ 	}
++	for _, file := range mechanismFiles {
++		last, identity, err := readRuntimeTaskBundleFileBounds(ctx, bundle, file.name, file.minimum, file.maximum)
++		if err != nil || identity != file.identity || !bytes.Equal(last, file.data) {
++			return nil, errors.Join(ErrRuntimeTaskLaunch, err)
++		}
++	}
+ 	if err := errors.Join(observer.check(), ctx.Err()); err != nil {
+ 		return nil, err
+ 	}
+@@ -138,7 +173,12 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	}
+ 	return &RuntimeTaskLaunch{Caller: last, ConfigDigest: sha256.Sum256(config), ConfigBytes: int64(len(config)),
+ 		BundleDevice: directory.Dev, BundleInode: directory.Ino, ConfigDevice: configIdentity.device, ConfigInode: configIdentity.inode,
+-		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config}, nil
++		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config,
++		OptionsFile:       runtimeTaskFileObservation(mechanismFiles[0].data, mechanismFiles[0].identity),
++		RuntimeFile:       runtimeTaskFileObservation(mechanismFiles[1].data, mechanismFiles[1].identity),
++		ShimFile:          runtimeTaskFileObservation(mechanismFiles[2].data, mechanismFiles[2].identity),
++		RuntimeBinaryPath: string(mechanismFiles[1].data), ShimBinaryPath: string(mechanismFiles[2].data),
++		optionsEncoded: mechanismFiles[0].data, runtimeEncoded: mechanismFiles[1].data, shimEncoded: mechanismFiles[2].data}, nil
+ }
+ 
+ type runtimeTaskFileIdentity struct {
+@@ -150,6 +190,10 @@ type runtimeTaskFileIdentity struct {
+ }
+ 
+ func readRuntimeTaskBundleFile(ctx context.Context, bundle *os.File, name string, limit int64) ([]byte, runtimeTaskFileIdentity, error) {
++	return readRuntimeTaskBundleFileBounds(ctx, bundle, name, 1, limit)
++}
++
++func readRuntimeTaskBundleFileBounds(ctx context.Context, bundle *os.File, name string, minimum, limit int64) ([]byte, runtimeTaskFileIdentity, error) {
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, runtimeTaskFileIdentity{}, err
+ 	}
+@@ -164,7 +208,7 @@ func readRuntimeTaskBundleFile(ctx context.Context, bundle *os.File, name string
+ 	identity := func() (runtimeTaskFileIdentity, error) {
+ 		var stat unix.Stat_t
+ 		if err := unix.Fstat(fd, &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != 0 || stat.Gid != 0 ||
+-			stat.Mode&0o7022 != 0 || stat.Nlink != 1 || stat.Size <= 0 || stat.Size > limit {
++			stat.Mode&0o7022 != 0 || stat.Nlink != 1 || stat.Size < minimum || stat.Size > limit {
+ 			return runtimeTaskFileIdentity{}, errors.Join(ErrRuntimeTaskLaunch, err)
+ 		}
+ 		return runtimeTaskFileIdentity{stat.Dev, stat.Ino, stat.Size, stat.Mode, stat.Mtim, stat.Ctim}, nil
+diff --git a/internal/nodeagent/runtime_task_mechanism_integration_linux_test.go b/internal/nodeagent/runtime_task_mechanism_integration_linux_test.go
+new file mode 100644
+index 0000000..0d2b855
+--- /dev/null
++++ b/internal/nodeagent/runtime_task_mechanism_integration_linux_test.go
+@@ -0,0 +1,133 @@
++//go:build integration && linux
++
++package nodeagent
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/opencontainers/runtime-spec/specs-go"
++	"golang.org/x/sys/unix"
++)
++
++func verifyRuntimeTaskMechanism(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, target RuntimeContainerTarget, caller *RuntimeCaller, explicit bool) {
++	t.Helper()
++	state := filepath.Join(fixture.root, "state")
++	bundle := filepath.Join(state, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID)
++	launch, err := observer.ObserveTaskLaunch(t.Context(), state, target, caller)
++	if err != nil {
++		t.Fatal(err)
++	}
++	policy := runtimeTaskPolicyFixture()
++	if err := launch.CheckRuntimeMechanism(policy); (err == nil) != explicit {
++		t.Fatalf("explicit=%v did not select the expected mechanism policy result: %v", explicit, err)
++	}
++	files := map[string]RuntimeTaskFileObservation{"options.json": launch.OptionsFile, "runtime": launch.RuntimeFile, "shim-binary-path": launch.ShimFile}
++	for name, observed := range files {
++		original, err := os.ReadFile(filepath.Join(bundle, name))
++		if err != nil || observed.Bytes != int64(len(original)) || observed.Digest != sha256.Sum256(original) {
++			t.Fatalf("%s is not the actual task-created file: %v", name, err)
++		}
++		for _, fault := range []string{"missing", "writable", "wrong-owner", "symlink", "hardlink", "fifo", "oversize"} {
++			t.Run("mechanism-"+name+"-"+fault, func(t *testing.T) {
++				path := filepath.Join(bundle, name)
++				defer func() {
++					_ = os.Remove(path)
++					if err := os.WriteFile(path, original, 0o600); err != nil {
++						t.Error(err)
++					}
++				}()
++				var err error
++				switch fault {
++				case "missing":
++					err = os.Remove(path)
++				case "writable":
++					err = os.Chmod(path, 0o666)
++				case "wrong-owner":
++					err = os.Chown(path, 65532, 65532)
++				case "oversize":
++					err = os.WriteFile(path, make([]byte, (64<<10)+1), 0o600)
++				default:
++					if err := os.Remove(path); err != nil {
++						t.Fatal(err)
++					}
++					switch fault {
++					case "symlink":
++						err = os.Symlink(filepath.Join(bundle, "init.pid"), path)
++					case "hardlink":
++						err = os.Link(filepath.Join(bundle, "init.pid"), path)
++					case "fifo":
++						err = unix.Mkfifo(path, 0o600)
++					}
++				}
++				if err != nil {
++					t.Fatal(err)
++				}
++				if result, err := observer.ObserveTaskLaunch(t.Context(), state, target, caller); err == nil || result != nil {
++					t.Fatal("untrusted runtime mechanism file produced a launch observation")
++				}
++			})
++		}
++	}
++	t.Run("mechanism-runtime-disagrees-with-options", func(t *testing.T) {
++		path := filepath.Join(bundle, "runtime")
++		original, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() {
++			if err := os.WriteFile(path, original, 0o600); err != nil {
++				t.Error(err)
++			}
++		}()
++		if err := os.WriteFile(path, []byte("/different/runc"), 0o600); err != nil {
++			t.Fatal(err)
++		}
++		if result, err := observer.ObserveTaskLaunch(t.Context(), state, target, caller); !errors.Is(err, ErrRuntimeTaskMechanism) || result != nil {
++			t.Fatal("runtime record contradicted options but produced an observation")
++		}
++	})
++	if explicit {
++		t.Run("mechanism-hook-rejected", func(t *testing.T) {
++			path := filepath.Join(bundle, "config.json")
++			original, err := os.ReadFile(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() {
++				if err := os.WriteFile(path, original, 0o644); err != nil {
++					t.Error(err)
++				}
++			}()
++			configuration, err := launch.Configuration()
++			if err != nil {
++				t.Fatal(err)
++			}
++			configuration.Hooks = &specs.Hooks{CreateRuntime: []specs.Hook{{Path: "/unapproved-hook"}}}
++			encoded, err := json.Marshal(configuration)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := os.WriteFile(path, encoded, 0o644); err != nil {
++				t.Fatal(err)
++			}
++			changed, err := observer.ObserveTaskLaunch(t.Context(), state, target, caller)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := changed.CheckRuntimeMechanism(policy); !errors.Is(err, ErrRuntimeTaskMechanism) {
++				t.Fatal("hook-bearing bundle passed the content policy")
++			}
++			if bytes.Equal(encoded, original) {
++				t.Fatal("hook counterexample did not change the bundle")
++			}
++		})
++	}
++	t.Logf("actual mechanism options=%x runtime=%q shim=%q explicit_policy_match=%v; 21 file negatives and contradictory runtime record rejected",
++		launch.OptionsFile.Digest, launch.RuntimeBinaryPath, launch.ShimBinaryPath, explicit)
++}
+diff --git a/internal/nodeagent/runtime_task_mechanism_linux.go b/internal/nodeagent/runtime_task_mechanism_linux.go
+new file mode 100644
+index 0000000..7eedc99
+--- /dev/null
++++ b/internal/nodeagent/runtime_task_mechanism_linux.go
+@@ -0,0 +1,87 @@
++package nodeagent
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"path/filepath"
++	"strings"
++
++	"github.com/containerd/containerd/api/types/runc/options"
++	"google.golang.org/protobuf/proto"
++)
++
++var ErrRuntimeTaskMechanism = errors.New("runtime task options or hooks do not match the supported launch policy")
++
++// RuntimeTaskRuntimePolicy is trusted Node deployment policy, never a workload
++// request. All three paths must be explicit; resolving an empty binary through
++// the shim's PATH is not an approved runtime selection.
++type RuntimeTaskRuntimePolicy struct {
++	ShimBinaryPath    string
++	RuntimeBinaryPath string
++	RuntimeStateRoot  string
++	SystemdCgroup     bool
++}
++
++type RuntimeTaskFileObservation struct {
++	Digest [sha256.Size]byte
++	Bytes  int64
++	Device uint64
++	Inode  uint64
++}
++
++// RuntimeOptions returns an independent copy of the actual bundle options.
++// The shim writes encoding/json, not protojson. Its canonical output also
++// excludes duplicate/case-folded keys, unknown fields, nulls and extra values.
++func (launch *RuntimeTaskLaunch) RuntimeOptions() (*options.Options, error) {
++	if launch == nil {
++		return nil, ErrRuntimeTaskMechanism
++	}
++	return parseRuntimeTaskOptions(launch.optionsEncoded)
++}
++
++func parseRuntimeTaskOptions(data []byte) (*options.Options, error) {
++	if len(data) == 0 || len(data) > 64<<10 {
++		return nil, ErrRuntimeTaskMechanism
++	}
++	var value options.Options
++	if err := json.Unmarshal(data, &value); err != nil {
++		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
++	}
++	encoded, err := json.Marshal(&value)
++	if err != nil || !bytes.Equal(data, encoded) {
++		return nil, errors.Join(ErrRuntimeTaskMechanism, err)
++	}
++	return &value, nil
++}
++
++// CheckRuntimeMechanism checks retained bytes, not mutable public observation
++// fields. This is a content-policy prerequisite, NOT executable attestation,
++// effective mount approval, current process authority or a startup grant.
++// Only explicit runc/shim paths, explicit runc state, cgroup mode and otherwise
++// default options are supported; all OCI hooks are rejected.
++func (launch *RuntimeTaskLaunch) CheckRuntimeMechanism(policy RuntimeTaskRuntimePolicy) error {
++	for _, path := range []string{policy.ShimBinaryPath, policy.RuntimeBinaryPath, policy.RuntimeStateRoot} {
++		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" || len(path) > 4096 || strings.ContainsRune(path, '\x00') {
++			return ErrRuntimeTaskMechanism
++		}
++	}
++	value, err := launch.RuntimeOptions()
++	if err != nil {
++		return err
++	}
++	expected := &options.Options{BinaryName: policy.RuntimeBinaryPath, Root: policy.RuntimeStateRoot, SystemdCgroup: policy.SystemdCgroup}
++	if !proto.Equal(value, expected) || string(launch.runtimeEncoded) != policy.RuntimeBinaryPath || string(launch.shimEncoded) != policy.ShimBinaryPath {
++		return ErrRuntimeTaskMechanism
++	}
++	configuration, err := launch.Configuration()
++	if err != nil || configuration.Hooks != nil {
++		return errors.Join(ErrRuntimeTaskMechanism, err)
++	}
++	return nil
++}
++
++func runtimeTaskFileObservation(data []byte, identity runtimeTaskFileIdentity) RuntimeTaskFileObservation {
++	return RuntimeTaskFileObservation{Digest: sha256.Sum256(data), Bytes: int64(len(data)), Device: identity.device, Inode: identity.inode}
++}
+diff --git a/internal/nodeagent/runtime_task_mechanism_linux_test.go b/internal/nodeagent/runtime_task_mechanism_linux_test.go
+new file mode 100644
+index 0000000..62b6cb3
+--- /dev/null
++++ b/internal/nodeagent/runtime_task_mechanism_linux_test.go
+@@ -0,0 +1,108 @@
++package nodeagent
++
++import (
++	"bytes"
++	"encoding/json"
++	"strings"
++	"testing"
++
++	"github.com/containerd/containerd/api/types/runc/options"
++	"github.com/opencontainers/runtime-spec/specs-go"
++)
++
++func runtimeTaskPolicyFixture() RuntimeTaskRuntimePolicy {
++	return RuntimeTaskRuntimePolicy{ShimBinaryPath: "/usr/local/bin/containerd-shim-runc-v2", RuntimeBinaryPath: "/usr/local/bin/runc", RuntimeStateRoot: "/run/vela-approved-runc"}
++}
++
++func TestRuntimeTaskMechanismPolicy(t *testing.T) {
++	policy := runtimeTaskPolicyFixture()
++	makeLaunch := func(value *options.Options, hooks *specs.Hooks) *RuntimeTaskLaunch {
++		t.Helper()
++		encoded, err := json.Marshal(value)
++		if err != nil {
++			t.Fatal(err)
++		}
++		configuration, err := json.Marshal(specs.Spec{Hooks: hooks})
++		if err != nil {
++			t.Fatal(err)
++		}
++		return &RuntimeTaskLaunch{encoded: configuration, optionsEncoded: encoded, runtimeEncoded: []byte(value.BinaryName), shimEncoded: []byte(policy.ShimBinaryPath)}
++	}
++	valid := func() *options.Options {
++		return &options.Options{BinaryName: policy.RuntimeBinaryPath, Root: policy.RuntimeStateRoot}
++	}
++	launch := makeLaunch(valid(), nil)
++	if err := launch.CheckRuntimeMechanism(policy); err != nil {
++		t.Fatal(err)
++	}
++	copy, err := launch.RuntimeOptions()
++	if err != nil {
++		t.Fatal(err)
++	}
++	copy.NoPivotRoot = true
++	launch.RuntimeBinaryPath, launch.ShimBinaryPath = "/changed-public-field", "/changed-public-field"
++	if err := launch.CheckRuntimeMechanism(policy); err != nil {
++		t.Fatal("public metadata or returned options mutated retained bytes")
++	}
++	for _, test := range []struct {
++		name   string
++		change func(*options.Options)
++	}{
++		{"implicit-binary", func(o *options.Options) { o.BinaryName = "" }},
++		{"different-binary", func(o *options.Options) { o.BinaryName = "/another/runc" }},
++		{"implicit-root", func(o *options.Options) { o.Root = "" }},
++		{"different-root", func(o *options.Options) { o.Root = "/another/root" }},
++		{"no-pivot", func(o *options.Options) { o.NoPivotRoot = true }},
++		{"no-keyring", func(o *options.Options) { o.NoNewKeyring = true }},
++		{"shim-cgroup", func(o *options.Options) { o.ShimCgroup = "unapproved" }},
++		{"io-uid", func(o *options.Options) { o.IoUid = 10001 }},
++		{"io-gid", func(o *options.Options) { o.IoGid = 10001 }},
++		{"cgroup-mode", func(o *options.Options) { o.SystemdCgroup = true }},
++		{"criu-image", func(o *options.Options) { o.CriuImagePath = "/checkpoint" }},
++		{"criu-work", func(o *options.Options) { o.CriuWorkPath = "/checkpoint" }},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			value := valid()
++			test.change(value)
++			changed := makeLaunch(value, nil)
++			changed.RuntimeBinaryPath = policy.RuntimeBinaryPath
++			if err := changed.CheckRuntimeMechanism(policy); err == nil {
++				t.Fatal("unsupported retained options were approved")
++			}
++		})
++	}
++	if err := makeLaunch(valid(), &specs.Hooks{}).CheckRuntimeMechanism(policy); err == nil {
++		t.Fatal("hook structure accepted")
++	}
++	for _, value := range []string{"", "relative", "/", "/run/../root", "/run/\x00/root"} {
++		changed := policy
++		changed.RuntimeStateRoot = value
++		if err := launch.CheckRuntimeMechanism(changed); err == nil {
++			t.Fatal("invalid trusted policy accepted")
++		}
++	}
++	if err := (&RuntimeTaskLaunch{RuntimeBinaryPath: policy.RuntimeBinaryPath, ShimBinaryPath: policy.ShimBinaryPath}).CheckRuntimeMechanism(policy); err == nil {
++		t.Fatal("public fields fabricated an observed mechanism")
++	}
++	if err := (*RuntimeTaskLaunch)(nil).CheckRuntimeMechanism(policy); err == nil {
++		t.Fatal("nil launch accepted")
++	}
++}
++
++func TestRuntimeTaskOptionsCanonicalEncoding(t *testing.T) {
++	for _, encoded := range []string{"", "null", "[]", `{} {}`, `{"unknown":true}`, `{"binary_name":null}`, `{"binary_name":"x","binary_name":"x"}`, `{"binary_name":"x","BINARY_NAME":"x"}`, `{"BinaryName":"x"}`, `{"no_pivot_root":false}`, `{"binary_name":"x"} `, strings.Repeat(" ", (64<<10)+1)} {
++		if value, err := parseRuntimeTaskOptions([]byte(encoded)); err == nil || value != nil {
++			t.Fatal("noncanonical options accepted")
++		}
++	}
++	for _, encoded := range [][]byte{[]byte(`{}`), []byte(`{"binary_name":"/usr/bin/runc","root":"/run/runc"}`)} {
++		value, err := parseRuntimeTaskOptions(encoded)
++		if err != nil {
++			t.Fatal(err)
++		}
++		fresh, err := json.Marshal(value)
++		if err != nil || !bytes.Equal(encoded, fresh) {
++			t.Fatal("canonical options changed")
++		}
++	}
++}

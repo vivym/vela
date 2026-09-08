@@ -49,6 +49,11 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
     sandbox = "docker.io/vela/caller-sandbox:cpu-fixture"
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
   runtime_type = "io.containerd.runc.v2"
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.explicit]
+  runtime_type = "io.containerd.runc.v2"
+  [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.explicit.options]
+    BinaryName = "/usr/local/bin/runc"
+    Root = "/run/vela-approved-runc"
 `)
 	fixture.importCRIImages(t)
 	client := runtimev1.NewRuntimeServiceClient(fixture.connection)
@@ -109,6 +114,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 				target.ContainerID, target.SandboxID, target.PodUID, observation.Process.HostPID,
 				observation.Process.NamespacePID, observation.Container.ImageRef)
 			verifyRuntimeTaskLaunchBundle(t, fixture, observer, target, caller)
+			verifyRuntimeTaskMechanism(t, fixture, observer, target, caller, plan != nil)
 			var pods *runtimeLaunchPodFixture
 			if plan != nil {
 				// Pod API and Registry are fixtures; CRI, native task and caller are real.
@@ -370,7 +376,11 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 	if plan != nil {
 		config.Metadata.Name, config.Metadata.Namespace = plan.pod.Name, plan.pod.Namespace
 	}
-	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: config, RuntimeHandler: "runc"})
+	handler := "runc"
+	if plan != nil {
+		handler = "explicit"
+	}
+	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: config, RuntimeHandler: handler})
 	if err != nil {
 		t.Fatal(err)
 	}

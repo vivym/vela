@@ -1,0 +1,5 @@
+10e66a1e7539529f8ad476fa8784513e990ab3f05a94fb60bd374b8f79fe46a7  /tmp/vela-startup-validation.syiSMk/task-mechanism/native-first/image/rootfs/nodeagent.test
+4359a8f94eb307b7903de403e96f943f3fb4e8141dd68e88d15b5146d5cb1d3c  /tmp/vela-startup-validation.syiSMk/task-mechanism/native-first/image/rootfs/usr/local/bin/containerd
+25054b5f00335361017c0d1e86671058a73d1445dfc2f1fabc3e19f2bd9fd98b  /tmp/vela-startup-validation.syiSMk/task-mechanism/native-first/image/rootfs/usr/local/bin/containerd-shim-runc-v2
+a1d0c0fd017b1290dd0613a83733d5a87b8affb133749040a2358fede5de32a6  /tmp/vela-startup-validation.syiSMk/task-mechanism/native-first/image/rootfs/usr/local/bin/ctr
+ea54032310588e115633aa2f4bba8bf9500257f657e1deca88df5778775138db  /tmp/vela-startup-validation.syiSMk/task-mechanism/native-first/image/rootfs/usr/local/bin/runc

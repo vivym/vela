@@ -83,6 +83,12 @@ socket-peer pidfd and reads bundles in that daemon's filesystem view. A copied
 private directory fails; a legitimate Node bind alias cannot redirect reads
 through a shadow mount below it. This closes the state-directory mapping
 prerequisite, not workload mount approval or trusted runtime/shim identity.
+The [runtime mechanism content checks](node-task-mechanism-evidence-2026-09-09.md)
+now include task options/runtime records, the task's sandbox marker and matching
+task/sandbox bootstrap records before reading the sandbox's shim path. Only an
+explicit binary/state policy with default ancillary options and no OCI hooks
+matches. This does not prove which executable bytes ran at those paths or supply
+the production policy/approval/grant assembly.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.
