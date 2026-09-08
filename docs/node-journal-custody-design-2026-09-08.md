@@ -43,6 +43,13 @@ durably consumes first-use epoch proposals for a Registry-retained member and
 journal pair. Only a committed insert is fresh; lookup cannot recreate a grant.
 It binds trusted owner/launch digests but does not attest their preimages or
 establish Node grant custody. Unresolved reservations block database quiescence.
+The next [Node reservation association](node-runtime-reservation-evidence-2026-09-09.md)
+persists the original pidfd association, root journal identity/digest and complete
+epoch proposal before a single Fleet call, then rechecks them before recording
+the receipt. Schema 2 histories never contain a permission bit; restart cannot
+reconstruct the original process handle. Native Fleet calls remain fixtures;
+effective launch approval, once-only grant issuance and protected command/mount
+assembly remain open.
 The next [authenticated reservation channel](runtime-startup-transport-evidence-2026-09-09.md)
 binds requests to registered Node Agent TLS principals at the Control listener.
 Real PostgreSQL/TLS response loss preserves one reservation and no new Fresh on

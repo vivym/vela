@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"sync"
@@ -123,6 +124,53 @@ func (owner *ExecutionJournalOwner) Status(ctx context.Context) (ExecutionJourna
 		return ExecutionJournalStatus{}, err
 	}
 	return owner.store.status(), nil
+}
+
+// InspectStartup compares the held journal and its actual routes with an
+// independently approved manifest and first-startup declaration. It grants no
+// startup permission and does not authenticate the process or filesystem owner.
+func (owner *ExecutionJournalOwner) InspectStartup(ctx context.Context, manifest LaunchManifest, request BackendStartupRequest) (ExecutionJournalSnapshot, error) {
+	if owner == nil || ctx == nil {
+		return ExecutionJournalSnapshot{}, ErrJournalCommand
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if err := owner.check(ctx); err != nil {
+		return ExecutionJournalSnapshot{}, err
+	}
+	expected, err := EncodeLaunchManifest(manifest)
+	if err != nil {
+		return ExecutionJournalSnapshot{}, err
+	}
+	actual, err := EncodeLaunchManifest(owner.manifest)
+	if err != nil || !bytes.Equal(actual, expected) {
+		return ExecutionJournalSnapshot{}, ErrBackendStartupDenied
+	}
+	bindings, err := RemoteStartupBindings(manifest)
+	if err != nil || len(bindings) != len(owner.routes) {
+		return ExecutionJournalSnapshot{}, ErrBackendStartupDenied
+	}
+	for i, binding := range bindings {
+		if !reflect.DeepEqual(binding, owner.routes[i].binding) {
+			return ExecutionJournalSnapshot{}, stageauthority.ErrRuntimeMismatch
+		}
+	}
+	state := owner.store.state
+	// Reuse full snapshot validation, including every signature/history invariant.
+	document, err := json.Marshal(state)
+	if err != nil {
+		return ExecutionJournalSnapshot{}, err
+	}
+	if sha256.Sum256(document) != owner.store.stateDigest {
+		return ExecutionJournalSnapshot{}, ErrExecutionStateRecovery
+	}
+	snapshot := ExecutionJournalSnapshot{status: owner.store.status(), digest: owner.store.stateDigest,
+		launchDigest: sha256.Sum256(expected), nonAdmissions: len(state.NonAdmissions),
+		terminalNonAdmissions: len(state.TerminalNonAdmissions), verified: true}
+	if err := errors.Join(owner.store.validateProofs(), snapshot.MatchStartup(request), context.Cause(ctx)); err != nil {
+		return ExecutionJournalSnapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func (owner *ExecutionJournalOwner) Apply(ctx context.Context, role JournalCallerRole, wire []byte) (JournalMutationReceipt, error) {

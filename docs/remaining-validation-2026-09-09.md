@@ -24,8 +24,12 @@ watchdog 仍发出停止。证据分别见
 owner 摘要，重放和回包丢失不产生新预留；未解决预留会阻止数据库静默证明。
 新增的 [认证预留通道](runtime-startup-transport-evidence-2026-09-09.md) 已接到
 Control 的 Fleet listener，Node/actor 由已注册的 mTLS principal 推导，真实
-PostgreSQL/TLS 回包丢失不会重新发放 Fresh。Node issuer、Node 端命令和 Fleet
-挂载尚未消费此预留，不能直接作为 backend 许可；`NewJournalWorkerClient`、
+PostgreSQL/TLS 回包丢失不会重新发放 Fresh。新增的
+[Node 持久关联](node-runtime-reservation-evidence-2026-09-09.md) 在 root journal
+和原始 pidfd 检查后先 fsync intent，再单次预留并持久记录回执；重启只恢复
+历史，不重建原 pidfd。Node 侧 native 使用 Fleet fixture，尚未与真实
+PostgreSQL/mTLS 在同一装配验证。有效 OCI/executable/config 批准、一次性
+Node grant、Node 端命令和 Fleet 挂载仍未完成；`NewJournalWorkerClient`、
 `NewJournalServer` 也尚无生产入口装配。
 CPU Job campaign 在
 `internal/integration/cpu_mock_load_campaign_test.go` 仍通过

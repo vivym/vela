@@ -52,7 +52,7 @@ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memo
 # creation and process inspection; its permit is explicitly mocked, not a new issuer.
 docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE \
   --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256 \
-  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupLedgerBeforeActualFactory|TestJournalEndpoint|TestJournalServer.*|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
+  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupReservation.*|TestRuntimeStartupLedger(BeforeActualFactory|RetainsExactOwnerExit|RestartDoesNotReconstructOwner|ReservesExitCapacity|RejectsUnboundRequests|UncertainAppendRemainsConsumed|RejectsMissingAndChangedState)|TestJournalEndpoint|TestJournalServer.*|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
   -test.count=1 -test.v -test.timeout=3m > "$owner_evidence/node-startup.log" 2>&1
 if rg -q -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
   echo 'Selected native checks unexpectedly skipped; inspect evidence' >&2

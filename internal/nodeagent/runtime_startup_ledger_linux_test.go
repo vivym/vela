@@ -389,7 +389,7 @@ func TestRuntimeStartupLedgerRejectsMissingAndChangedState(t *testing.T) {
 			case "partial":
 				faultErr = os.WriteFile(path, append(original, []byte(`{"startup":`)...), 0o600)
 			case "duplicate-key":
-				faultErr = os.WriteFile(path, bytes.Replace(original, []byte(`"schema_version":1`), []byte(`"schema_version":1,"schema_version":1`), 1), 0o600)
+				faultErr = os.WriteFile(path, bytes.Replace(original, []byte(`"schema_version":2`), []byte(`"schema_version":2,"schema_version":2`), 1), 0o600)
 			case "hardlink":
 				faultErr = os.Link(path, path+".alias")
 			case "file-mode":

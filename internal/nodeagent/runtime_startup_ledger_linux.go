@@ -48,6 +48,7 @@ type RuntimeStartupRecord struct {
 	PodResourceVersion string                             `json:"pod_resource_version"`
 	RetainedAt         time.Time                          `json:"retained_at"`
 	RecordedAt         time.Time                          `json:"recorded_at"`
+	Remote             *RuntimeStartupRemoteIntent        `json:"remote,omitempty"`
 }
 
 // RuntimeStartupExit retains exact-owner kernel exit across Node restart.
@@ -72,27 +73,29 @@ type runtimeStartupHeader struct {
 }
 
 type runtimeStartupEntry struct {
-	Startup *RuntimeStartupRecord `json:"startup,omitempty"`
-	Exit    *RuntimeStartupExit   `json:"exit,omitempty"`
+	Startup     *RuntimeStartupRecord            `json:"startup,omitempty"`
+	Exit        *RuntimeStartupExit              `json:"exit,omitempty"`
+	Reservation *RuntimeStartupReservationRecord `json:"reservation,omitempty"`
 }
 
 // RuntimeStartupLedger owns one root-only append journal and its lifetime lock.
 // Initialization is explicit and only accepts an empty pre-existing directory.
 // Lost files are never recreated on recovery. No method issues a startup grant.
 type RuntimeStartupLedger struct {
-	mu       sync.Mutex
-	path     string
-	root     *os.Root
-	file     *os.File
-	header   runtimeStartupHeader
-	digest   [sha256.Size]byte
-	size     int64
-	failed   error
-	closed   bool
-	starts   map[uuid.UUID]RuntimeStartupRecord
-	exits    map[uuid.UUID]RuntimeStartupExit
-	owners   map[uuid.UUID]*RuntimeNamespaceOwner
-	boundary func(string) error
+	mu           sync.Mutex
+	path         string
+	root         *os.Root
+	file         *os.File
+	header       runtimeStartupHeader
+	digest       [sha256.Size]byte
+	size         int64
+	failed       error
+	closed       bool
+	starts       map[uuid.UUID]RuntimeStartupRecord
+	exits        map[uuid.UUID]RuntimeStartupExit
+	owners       map[uuid.UUID]*RuntimeNamespaceOwner
+	reservations map[uuid.UUID]RuntimeStartupReservationRecord
+	boundary     func(string) error
 }
 
 func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity string, initialize bool) (*RuntimeStartupLedger, error) {
@@ -116,7 +119,8 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 		return nil, err
 	}
 	ledger := &RuntimeStartupLedger{path: directory, root: root,
-		starts: make(map[uuid.UUID]RuntimeStartupRecord), exits: make(map[uuid.UUID]RuntimeStartupExit), owners: make(map[uuid.UUID]*RuntimeNamespaceOwner)}
+		starts: make(map[uuid.UUID]RuntimeStartupRecord), exits: make(map[uuid.UUID]RuntimeStartupExit), owners: make(map[uuid.UUID]*RuntimeNamespaceOwner),
+		reservations: make(map[uuid.UUID]RuntimeStartupReservationRecord)}
 	success := false
 	defer func() {
 		if !success {
@@ -148,7 +152,7 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 		return nil, err
 	}
 	if initialize {
-		ledger.header = runtimeStartupHeader{SchemaVersion: 1, ID: uuid.New(), NodeIdentity: nodeIdentity,
+		ledger.header = runtimeStartupHeader{SchemaVersion: 2, ID: uuid.New(), NodeIdentity: nodeIdentity,
 			Root: runtimeStartupIdentity(info), File: runtimeStartupIdentity(fileInfo)}
 		wire, err := json.Marshal(ledger.header)
 		if err != nil {
@@ -164,7 +168,7 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 	}
 	lines := bufio.NewScanner(bytes.NewReader(document))
 	lines.Buffer(make([]byte, 4096), maxLedgerRecordBytes)
-	if !lines.Scan() || decodeRuntimeStartupLine(lines.Bytes(), &ledger.header) != nil || ledger.header.SchemaVersion != 1 || ledger.header.ID == uuid.Nil ||
+	if !lines.Scan() || decodeRuntimeStartupLine(lines.Bytes(), &ledger.header) != nil || (ledger.header.SchemaVersion != 1 && ledger.header.SchemaVersion != 2) || ledger.header.ID == uuid.Nil ||
 		ledger.header.NodeIdentity != nodeIdentity || ledger.header.Root != runtimeStartupIdentity(info) || ledger.header.File != runtimeStartupIdentity(fileInfo) {
 		return nil, ErrRuntimeStartupLedger
 	}
@@ -193,6 +197,10 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 // Exact replay and changed callers both reject. A returned record is evidence,
 // never a token that can be exchanged for permission by this API.
 func (ledger *RuntimeStartupLedger) Record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller) (RuntimeStartupRecord, error) {
+	return ledger.record(ctx, plan, pods, observer, caller, nil)
+}
+
+func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller, remote *RuntimeStartupRemoteIntent) (RuntimeStartupRecord, error) {
 	if err := contextError(ctx); err != nil {
 		return RuntimeStartupRecord{}, err
 	}
@@ -219,6 +227,9 @@ func (ledger *RuntimeStartupLedger) Record(ctx context.Context, plan *RuntimeLau
 	if request.NodeIdentity != ledger.header.NodeIdentity || len(ledger.starts) >= maxRuntimeStartupRecords {
 		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
 	}
+	if remote != nil && ledger.header.SchemaVersion != 2 {
+		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
+	}
 	if _, exists := ledger.starts[request.JournalID]; exists {
 		return RuntimeStartupRecord{}, ErrRuntimeStartupRecorded
 	}
@@ -243,6 +254,12 @@ func (ledger *RuntimeStartupLedger) Record(ctx context.Context, plan *RuntimeLau
 	}
 	record := RuntimeStartupRecord{OperationID: uuid.New(), Request: request, RegistryBinding: binding, Owner: owner.owner,
 		PodResourceVersion: observation.PodResourceVersion, RetainedAt: owner.retainedAt, RecordedAt: time.Now().UTC()}
+	if remote != nil {
+		copyRemote := *remote
+		copyRemote.Epochs = slices.Clone(remote.Epochs)
+		copyRemote.Executable = observation.Executable
+		record.Remote = &copyRemote
+	}
 	if err := ledger.append(ctx, runtimeStartupEntry{Startup: &record}); err != nil {
 		return RuntimeStartupRecord{}, err
 	}
@@ -304,6 +321,11 @@ func (ledger *RuntimeStartupLedger) RecordExit(ctx context.Context, journalID uu
 
 func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {
 	record.RegistryBinding = slices.Clone(record.RegistryBinding)
+	if record.Remote != nil {
+		copyRemote := *record.Remote
+		copyRemote.Epochs = slices.Clone(record.Remote.Epochs)
+		record.Remote = &copyRemote
+	}
 	return record
 }
 
@@ -365,6 +387,23 @@ func (ledger *RuntimeStartupLedger) reservedExitBytes(next runtimeStartupEntry) 
 			return errors.Join(ErrRuntimeStartupLedger, err)
 		}
 		total += int64(len(wire)) + 1
+		if record.Remote != nil {
+			_, recorded := ledger.reservations[record.Request.JournalID]
+			if !recorded && (next.Reservation == nil || next.Reservation.JournalID != record.Request.JournalID) {
+				reserved := RuntimeStartupReservationRecord{OperationID: record.OperationID, JournalID: record.Request.JournalID,
+					RequestDigest: [sha256.Size]byte{255}, ReservedAt: time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC),
+					RecordedAt: time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC)}
+				// Worst-case decimal JSON encoding for the fixed digest array.
+				for i := range reserved.RequestDigest {
+					reserved.RequestDigest[i] = 255
+				}
+				wire, err := json.Marshal(runtimeStartupEntry{Reservation: &reserved})
+				if err != nil || len(wire) >= maxLedgerRecordBytes {
+					return errors.Join(ErrRuntimeStartupLedger, err)
+				}
+				total += int64(len(wire)) + 1
+			}
+		}
 		return nil
 	}
 	for id, record := range ledger.starts {
@@ -502,10 +541,26 @@ func (ledger *RuntimeStartupLedger) Close() error {
 }
 
 func (ledger *RuntimeStartupLedger) apply(entry runtimeStartupEntry) error {
-	if (entry.Startup == nil) == (entry.Exit == nil) {
+	count := 0
+	if entry.Startup != nil {
+		count++
+	}
+	if entry.Exit != nil {
+		count++
+	}
+	if entry.Reservation != nil {
+		count++
+	}
+	if count != 1 {
 		return ErrRuntimeStartupLedger
 	}
+	if entry.Reservation != nil {
+		return ledger.applyReservation(*entry.Reservation)
+	}
 	if record := entry.Startup; record != nil {
+		if record.Remote != nil && ledger.header.SchemaVersion != 2 {
+			return ErrRuntimeStartupLedger
+		}
 		if err := validateRuntimeStartupRecord(*record, ledger.header.NodeIdentity); err != nil {
 			return err
 		}
@@ -549,6 +604,9 @@ func validateRuntimeStartupRecord(record RuntimeStartupRecord, node string) erro
 		record.Owner.Container.Target.Validate() != nil || record.Owner.Container.NodeIdentity != node || !supportedRuntimeCallerContainer(record.Owner.Container, record.Owner.Process) ||
 		!validText(record.PodResourceVersion, 253) || record.RetainedAt.IsZero() || record.RecordedAt.Before(record.RetainedAt) {
 		return fmt.Errorf("%w: invalid retained startup record", ErrRuntimeStartupLedger)
+	}
+	if record.Remote != nil {
+		return validateRemoteStartupRecord(record)
 	}
 	return nil
 }
