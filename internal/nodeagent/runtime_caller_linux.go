@@ -332,8 +332,8 @@ func checkRuntimePIDFD(fd int, expectedPID int32) error {
 	if fd < 0 || expectedPID <= 0 {
 		return ErrRuntimeCallerIdentity
 	}
-	if count, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 0); err != nil || count != 0 {
-		return ErrRuntimeCallerIdentity
+	if err := runtimechannel.PollLivePIDFD(fd); err != nil {
+		return errors.Join(ErrRuntimeCallerIdentity, err)
 	}
 	info, err := readBoundedSystemText(fmt.Sprintf("/proc/self/fdinfo/%d", fd), 4096)
 	if err != nil {

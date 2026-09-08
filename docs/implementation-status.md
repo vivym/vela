@@ -886,6 +886,11 @@ the remaining workload-writer trust boundary and proposes a Node-private typed
 journal authority for a measured CPU prototype. It is a candidate, not an
 accepted replacement ADR or a deployed ownership contract. Positive execution,
 restart, retirement and sustained-load evidence remain required.
+The custody prototype exposed [interrupted pidfd checks](runtime-channel-eintr-evidence-2026-09-08.md)
+rejecting live authenticated callers under CPU contention. Node and Runtime
+channel checks now retry only `EINTR`; exit/error events still reject. Full unit,
+cross-build, scoped Linux lint/vet and actual Linux race channel/namespace
+regressions pass. This repairs availability, not startup authorization.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

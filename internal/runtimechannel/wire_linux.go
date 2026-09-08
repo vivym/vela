@@ -113,8 +113,8 @@ func SameLiveProcess(original, message int) error {
 		if err := unix.Fstat(fd, &identity[i]); err != nil || identity[i].Ino == 0 {
 			return errors.Join(ErrIdentity, err)
 		}
-		if count, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 0); err != nil || count != 0 {
-			return errors.Join(ErrIdentity, err)
+		if err := PollLivePIDFD(fd); err != nil {
+			return err
 		}
 		if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil || flags&unix.FD_CLOEXEC == 0 {
 			return errors.Join(ErrIdentity, err)
