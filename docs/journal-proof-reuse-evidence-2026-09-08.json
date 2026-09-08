@@ -1,0 +1,1597 @@
+{
+  "schema_version": 1,
+  "base_commit": "5794259",
+  "production_gate": false,
+  "source_tree_sha256": "af09f3ee607cbfce15d960e3fa4e5bec15cd8ab6094fdcc998454dc3325373c9",
+  "comparison_evidence": "journal-transition-evidence-2026-09-08.json",
+  "receipts": {
+    "journal-proof-reuse-serial": [
+      {
+        "schema_version": 1,
+        "evidence_class": "LOCAL_CPU_MOCK_RUNTIME_LOAD",
+        "production_gate": false,
+        "started_at": "2026-09-08T07:10:16.024933Z",
+        "jobs": 32,
+        "waves": 4,
+        "concurrent_arrivals_per_wave": 8,
+        "persistent_workers": 4,
+        "project_running_limit": 2,
+        "initial_budget": {
+          "planned_jobs": 32,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 40000,
+          "currency": "CNY"
+        },
+        "elapsed_seconds": 97.07232,
+        "jobs_per_second": 0.3296511302088999,
+        "mean_queue_seconds": 9.13328446875,
+        "max_queue_seconds": 25.901204,
+        "mean_latency_seconds": 14.2119274375,
+        "sampled_peak": {
+          "queued_jobs": 8,
+          "running_jobs": 2,
+          "active_allocations": 2,
+          "active_leases": 2,
+          "reserved_storage": 8,
+          "reserved_storage_bytes": 17179869184,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 2,
+          "visible_completions": 32,
+          "acquire_intents": 139,
+          "database_bytes": 35250703,
+          "test_process_heap_bytes": 37681104,
+          "test_process_goroutines": 156,
+          "runtime_scratch_bytes": 26303,
+          "local_journal_bytes": 1527474,
+          "runtime_input_bytes": 13186,
+          "runtime_output_bytes": 13186,
+          "runtime_watchdog_goroutines": 2,
+          "reserved_credit_minor": 10000,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 18,
+          "active_execution_pins": 24,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128
+        },
+        "before_arrivals": {
+          "observed_at": "2026-09-08T07:10:15.903481Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26638003,
+          "test_process_heap_bytes": 10953896,
+          "test_process_goroutines": 127,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 6367,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 91544,
+              "name": "integration.test",
+              "rss_bytes": 209960960,
+              "open_fds": 131
+            },
+            {
+              "pid": 91601,
+              "name": "h3-encoder",
+              "rss_bytes": 16334848,
+              "open_fds": 12
+            },
+            {
+              "pid": 91602,
+              "name": "h3-dit",
+              "rss_bytes": 16171008,
+              "open_fds": 12
+            },
+            {
+              "pid": 91603,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16351232,
+              "open_fds": 12
+            },
+            {
+              "pid": 91604,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16367616,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_wave": [
+          {
+            "observed_at": "2026-09-08T07:10:30.690357Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30021299,
+            "test_process_heap_bytes": 23654768,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332615,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32,
+            "processes": [
+              {
+                "pid": 91544,
+                "name": "integration.test",
+                "rss_bytes": 259801088,
+                "open_fds": 151
+              },
+              {
+                "pid": 91601,
+                "name": "h3-encoder",
+                "rss_bytes": 19791872,
+                "open_fds": 12
+              },
+              {
+                "pid": 91602,
+                "name": "h3-dit",
+                "rss_bytes": 19628032,
+                "open_fds": 12
+              },
+              {
+                "pid": 91603,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 19873792,
+                "open_fds": 12
+              },
+              {
+                "pid": 91604,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 20037632,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:10:51.425157Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 32023055,
+            "test_process_heap_bytes": 22332976,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654853,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64,
+            "processes": [
+              {
+                "pid": 91544,
+                "name": "integration.test",
+                "rss_bytes": 265191424,
+                "open_fds": 151
+              },
+              {
+                "pid": 91601,
+                "name": "h3-encoder",
+                "rss_bytes": 20283392,
+                "open_fds": 12
+              },
+              {
+                "pid": 91602,
+                "name": "h3-dit",
+                "rss_bytes": 21151744,
+                "open_fds": 12
+              },
+              {
+                "pid": 91603,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 20987904,
+                "open_fds": 12
+              },
+              {
+                "pid": 91604,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21381120,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:11:18.847871Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 105,
+            "database_bytes": 33325583,
+            "test_process_heap_bytes": 29324864,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 976964,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96,
+            "processes": [
+              {
+                "pid": 91544,
+                "name": "integration.test",
+                "rss_bytes": 264601600,
+                "open_fds": 151
+              },
+              {
+                "pid": 91601,
+                "name": "h3-encoder",
+                "rss_bytes": 21184512,
+                "open_fds": 12
+              },
+              {
+                "pid": 91602,
+                "name": "h3-dit",
+                "rss_bytes": 21397504,
+                "open_fds": 12
+              },
+              {
+                "pid": 91603,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21331968,
+                "open_fds": 12
+              },
+              {
+                "pid": 91604,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21708800,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:11:52.971924Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 139,
+            "database_bytes": 35250703,
+            "test_process_heap_bytes": 26074568,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299117,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128,
+            "processes": [
+              {
+                "pid": 91544,
+                "name": "integration.test",
+                "rss_bytes": 269893632,
+                "open_fds": 151
+              },
+              {
+                "pid": 91601,
+                "name": "h3-encoder",
+                "rss_bytes": 21217280,
+                "open_fds": 12
+              },
+              {
+                "pid": 91602,
+                "name": "h3-dit",
+                "rss_bytes": 21561344,
+                "open_fds": 12
+              },
+              {
+                "pid": 91603,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21348352,
+                "open_fds": 12
+              },
+              {
+                "pid": 91604,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21839872,
+                "open_fds": 12
+              }
+            ]
+          }
+        ],
+        "after_maintenance": [
+          {
+            "observed_at": "2026-09-08T07:10:30.823363Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30021299,
+            "test_process_heap_bytes": 26479320,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332615,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32
+          },
+          {
+            "observed_at": "2026-09-08T07:10:51.532535Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 32055823,
+            "test_process_heap_bytes": 25060960,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654853,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64
+          },
+          {
+            "observed_at": "2026-09-08T07:11:18.956636Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 105,
+            "database_bytes": 33333775,
+            "test_process_heap_bytes": 15907256,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 976964,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96
+          },
+          {
+            "observed_at": "2026-09-08T07:11:53.087756Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 139,
+            "database_bytes": 35250703,
+            "test_process_heap_bytes": 28773184,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299117,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128
+          }
+        ],
+        "maintenance_results": [
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          }
+        ],
+        "after_idle": {
+          "observed_at": "2026-09-08T07:11:54.110918Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 0,
+          "visible_completions": 32,
+          "acquire_intents": 139,
+          "database_bytes": 35250703,
+          "test_process_heap_bytes": 16421216,
+          "test_process_goroutines": 149,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 1299117,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128,
+          "processes": [
+            {
+              "pid": 91544,
+              "name": "integration.test",
+              "rss_bytes": 270090240,
+              "open_fds": 151
+            },
+            {
+              "pid": 91601,
+              "name": "h3-encoder",
+              "rss_bytes": 21217280,
+              "open_fds": 12
+            },
+            {
+              "pid": 91602,
+              "name": "h3-dit",
+              "rss_bytes": 21561344,
+              "open_fds": 12
+            },
+            {
+              "pid": 91603,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 21348352,
+              "open_fds": 12
+            },
+            {
+              "pid": 91604,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 21839872,
+              "open_fds": 12
+            }
+          ]
+        },
+        "acquire_transaction_retries": 0,
+        "acquire_deadlock_retries": 0,
+        "acquire_serialization_retries": 0,
+        "capacity_reports_by_worker": {
+          "dit": 6,
+          "encoder": 6,
+          "thumbnail": 6,
+          "vae": 6
+        },
+        "source_tree_sha256": "af09f3ee607cbfce15d960e3fa4e5bec15cd8ab6094fdcc998454dc3325373c9",
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "go_version": "go1.26.7",
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "limitations": [
+          "bounded native CPU mock Job campaign; no GPU certification or Production Gate evidence",
+          "production Run, readiness, capacity, heartbeat, mTLS transport and durable stream execute in the test host process",
+          "Fleet membership and static native mock canary approval use fixture catalog setup; Node custody, protected mounts and production startup issuer remain separate",
+          "application acknowledgement loss occurs after the real mTLS client received ACCEPTED; resident processes and StreamAgent remain live during automatic retry",
+          "retained journal metadata is measured separately from payload scratch; history reclamation and sustained arrivals remain open",
+          "Runtime gRPC is loopback and artifact store is local exact-version storage; remote storage and process isolation are separate",
+          "race detector covers Go test-host components, not native model subprocesses; sampled resources omit Docker VM peaks"
+        ],
+        "durable_stream": true,
+        "replayed_materialization_commits": 4,
+        "durable_records_by_worker": {
+          "dit": 32,
+          "encoder": 32,
+          "thumbnail": 32,
+          "vae": 32
+        },
+        "production_loop": true,
+        "production_workers": {
+          "dit": {
+            "accepted_registrations": 19,
+            "accepted_capacity_reports": 6,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "encoder": {
+            "accepted_registrations": 19,
+            "accepted_capacity_reports": 6,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 11,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "thumbnail": {
+            "accepted_registrations": 20,
+            "accepted_capacity_reports": 6,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          },
+          "vae": {
+            "accepted_registrations": 19,
+            "accepted_capacity_reports": 6,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          }
+        }
+      }
+    ],
+    "journal-proof-reuse-cache": [
+      {
+        "admission": {
+          "AdmissionCandidates": 2,
+          "Admitted": 2,
+          "HitCandidates": 0,
+          "Hits": 0,
+          "Skipped": 0
+        },
+        "after_maintenance": {
+          "observed_at": "2026-09-08T07:13:16.012181Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 26638,
+          "held_buffers": 0,
+          "visible_completions": 2,
+          "acquire_intents": 6,
+          "database_bytes": 29030067,
+          "test_process_heap_bytes": 14490704,
+          "test_process_goroutines": 143,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 70452,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 2500,
+          "charges": 2,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 2,
+          "active_cache_carrying_references": 2,
+          "committed_stage_artifacts": 6
+        },
+        "after_source": {
+          "observed_at": "2026-09-08T07:13:14.634214Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 13521,
+          "held_buffers": 0,
+          "visible_completions": 1,
+          "acquire_intents": 4,
+          "database_bytes": 28686003,
+          "test_process_heap_bytes": 19468504,
+          "test_process_goroutines": 143,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 49742,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 1250,
+          "charges": 1,
+          "pool_active_counters": 0,
+          "active_execution_pins": 3,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 4,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 227753984,
+              "open_fds": 131
+            },
+            {
+              "pid": 92312,
+              "name": "h3-encoder",
+              "rss_bytes": 17104896,
+              "open_fds": 12
+            },
+            {
+              "pid": 92322,
+              "name": "h3-dit",
+              "rss_bytes": 17022976,
+              "open_fds": 12
+            },
+            {
+              "pid": 92323,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 17154048,
+              "open_fds": 12
+            },
+            {
+              "pid": 92324,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 17498112,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_target": {
+          "observed_at": "2026-09-08T07:13:15.880102Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 26638,
+          "held_buffers": 1,
+          "visible_completions": 2,
+          "acquire_intents": 6,
+          "database_bytes": 29030067,
+          "test_process_heap_bytes": 12012408,
+          "test_process_goroutines": 143,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 70452,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 2500,
+          "charges": 2,
+          "pool_active_counters": 0,
+          "active_execution_pins": 8,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 2,
+          "active_cache_carrying_references": 2,
+          "committed_stage_artifacts": 6,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 231636992,
+              "open_fds": 131
+            },
+            {
+              "pid": 92312,
+              "name": "h3-encoder",
+              "rss_bytes": 17104896,
+              "open_fds": 12
+            },
+            {
+              "pid": 92322,
+              "name": "h3-dit",
+              "rss_bytes": 17022976,
+              "open_fds": 12
+            },
+            {
+              "pid": 92323,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 17317888,
+              "open_fds": 12
+            },
+            {
+              "pid": 92324,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 17612800,
+              "open_fds": 12
+            }
+          ]
+        },
+        "before": {
+          "observed_at": "2026-09-08T07:13:11.817041Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26670771,
+          "test_process_heap_bytes": 13034280,
+          "test_process_goroutines": 102,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 4971,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 208388096,
+              "open_fds": 120
+            },
+            {
+              "pid": 92312,
+              "name": "h3-encoder",
+              "rss_bytes": 16302080,
+              "open_fds": 12
+            },
+            {
+              "pid": 92322,
+              "name": "h3-dit",
+              "rss_bytes": 16138240,
+              "open_fds": 12
+            },
+            {
+              "pid": 92323,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16302080,
+              "open_fds": 12
+            },
+            {
+              "pid": 92324,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16351232,
+              "open_fds": 12
+            }
+          ]
+        },
+        "capacity_reports_by_worker": {
+          "dit": 1,
+          "encoder": 1,
+          "thumbnail": 1,
+          "vae": 1
+        },
+        "consumed_transfers": 5,
+        "direct_allocation_receipts": 6,
+        "durable_records_by_worker": {
+          "dit": 1,
+          "encoder": 1,
+          "thumbnail": 2,
+          "vae": 2
+        },
+        "durable_stream": true,
+        "elapsed_seconds": 4.265987,
+        "evidence_class": "LOCAL_CPU_MOCK_EXACT_CACHE",
+        "exact_bindings_and_pins": [
+          {
+            "stage": "dit",
+            "source_artifact_id": "4d1b6c78-0c7b-5df4-9cd9-eacf723c4730",
+            "object_version": "local-v00000000000000000002",
+            "pin_id": "6e6f5eae-5cf1-5f7d-ae81-aa6a101db971"
+          },
+          {
+            "stage": "encoder",
+            "source_artifact_id": "e9efe8a8-4e95-5cc7-8195-f7746b6859c8",
+            "object_version": "local-v00000000000000000001",
+            "pin_id": "c6e90a8c-58b8-5c80-b5ec-8a221439fa29"
+          }
+        ],
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "go_version": "go1.26.7",
+        "hits": [
+          {
+            "AdmissionCandidates": 0,
+            "Admitted": 0,
+            "HitCandidates": 2,
+            "Hits": 1,
+            "Skipped": 0
+          },
+          {
+            "AdmissionCandidates": 0,
+            "Admitted": 0,
+            "HitCandidates": 2,
+            "Hits": 1,
+            "Skipped": 0
+          }
+        ],
+        "initial_budget": {
+          "planned_jobs": 2,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 2500,
+          "currency": "CNY"
+        },
+        "limitations": [
+          "bounded CPU mock Jobs, not sustained open-loop throughput or GPU certification",
+          "real mTLS Control stream and durable StreamAgent; Runtime gRPC and model processes are local CPU fixtures",
+          "Worker readiness/Registry setup uses fixture services; production Fleet activation, Node custody/startup and ProductionAgent orchestration are separate",
+          "lost committed responses reconstruct StreamAgent/file journal and replace mTLS transport in the same fixture session; processes remain live; production session reattachment is separate",
+          "bounded harness retries confirmed STALE Acquire results with new command IDs; production discovery orchestration is not exercised",
+          "input/output payload retirement is measured separately from retained journal metadata; history reclamation is not implemented",
+          "local exact-version object store, not remote S3; physical isolation and power-cut durability are separate",
+          "host race instrumentation does not instrument native mock subprocesses; sampled resources are not full VM peaks",
+          "BITWISE policy is a fixture declaration; native payloads, exact versions, ADMIT/HIT and billing are measured",
+          "Reconciler drives ADMIT/HIT before target Acquire; cache/scheduler races and organization isolation are separate tests"
+        ],
+        "maintenance_result": {
+          "RequestContentExpired": 0,
+          "ContentDeletionRequestsCreated": 0,
+          "Claimed": 0,
+          "Completed": 0,
+          "Failed": 0
+        },
+        "production_gate": false,
+        "replayed_commits": 4,
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "schema_version": 1,
+        "source_job_id": "2de2c05f-b729-4fad-a598-3d5c3c11d26b",
+        "source_physical_stages": 4,
+        "source_tree_sha256": "af09f3ee607cbfce15d960e3fa4e5bec15cd8ab6094fdcc998454dc3325373c9",
+        "started_at": "2026-09-08T07:13:11.817038Z",
+        "target_job_id": "697bac3c-9386-4898-8aef-a8b2527c1e52",
+        "target_physical_stages": 2,
+        "verified_public_copies": [
+          {
+            "job_id": "2de2c05f-b729-4fad-a598-3d5c3c11d26b",
+            "kind": "VIDEO",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/2de2c05f-b729-4fad-a598-3d5c3c11d26b/082ebbf2-d198-564a-be05-8193d7df1170",
+            "object_version": "local-v00000000000000000006",
+            "sha256": "0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01",
+            "size_bytes": 12953
+          },
+          {
+            "job_id": "697bac3c-9386-4898-8aef-a8b2527c1e52",
+            "kind": "VIDEO",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/697bac3c-9386-4898-8aef-a8b2527c1e52/db899290-7ad5-5781-809a-9da69b2182bc",
+            "object_version": "local-v00000000000000000010",
+            "sha256": "0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01",
+            "size_bytes": 12953
+          },
+          {
+            "job_id": "2de2c05f-b729-4fad-a598-3d5c3c11d26b",
+            "kind": "THUMBNAIL",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/2de2c05f-b729-4fad-a598-3d5c3c11d26b/0d54ed76-5f99-515a-862b-63e5ca4311ea",
+            "object_version": "local-v00000000000000000005",
+            "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58",
+            "size_bytes": 164
+          },
+          {
+            "job_id": "697bac3c-9386-4898-8aef-a8b2527c1e52",
+            "kind": "THUMBNAIL",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/697bac3c-9386-4898-8aef-a8b2527c1e52/4207bd8b-9f8c-5f63-839c-2530de4a24cc",
+            "object_version": "local-v00000000000000000009",
+            "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58",
+            "size_bytes": 164
+          }
+        ]
+      },
+      {
+        "admission": {
+          "AdmissionCandidates": 2,
+          "Admitted": 2,
+          "HitCandidates": 0,
+          "Hits": 0,
+          "Skipped": 0
+        },
+        "after_maintenance": {
+          "observed_at": "2026-09-08T07:13:24.784475Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 26638,
+          "held_buffers": 0,
+          "visible_completions": 2,
+          "acquire_intents": 6,
+          "database_bytes": 29021875,
+          "test_process_heap_bytes": 13144792,
+          "test_process_goroutines": 90,
+          "runtime_scratch_bytes": 0,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 2500,
+          "charges": 2,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 2,
+          "active_cache_carrying_references": 2,
+          "committed_stage_artifacts": 6
+        },
+        "after_source": {
+          "observed_at": "2026-09-08T07:13:24.13423Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 13521,
+          "held_buffers": 0,
+          "visible_completions": 1,
+          "acquire_intents": 4,
+          "database_bytes": 28686003,
+          "test_process_heap_bytes": 12746504,
+          "test_process_goroutines": 90,
+          "runtime_scratch_bytes": 0,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 1250,
+          "charges": 1,
+          "pool_active_counters": 0,
+          "active_execution_pins": 3,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 4,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 270565376,
+              "open_fds": 87
+            },
+            {
+              "pid": 92378,
+              "name": "h3-encoder",
+              "rss_bytes": 17235968,
+              "open_fds": 12
+            },
+            {
+              "pid": 92380,
+              "name": "h3-dit",
+              "rss_bytes": 17104896,
+              "open_fds": 12
+            },
+            {
+              "pid": 92381,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16809984,
+              "open_fds": 12
+            },
+            {
+              "pid": 92382,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 17301504,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_target": {
+          "observed_at": "2026-09-08T07:13:24.664903Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 26638,
+          "held_buffers": 1,
+          "visible_completions": 2,
+          "acquire_intents": 6,
+          "database_bytes": 29021875,
+          "test_process_heap_bytes": 10952824,
+          "test_process_goroutines": 90,
+          "runtime_scratch_bytes": 0,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 2500,
+          "charges": 2,
+          "pool_active_counters": 0,
+          "active_execution_pins": 8,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 2,
+          "active_cache_carrying_references": 2,
+          "committed_stage_artifacts": 6,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 270450688,
+              "open_fds": 87
+            },
+            {
+              "pid": 92378,
+              "name": "h3-encoder",
+              "rss_bytes": 17235968,
+              "open_fds": 12
+            },
+            {
+              "pid": 92380,
+              "name": "h3-dit",
+              "rss_bytes": 17104896,
+              "open_fds": 12
+            },
+            {
+              "pid": 92381,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16957440,
+              "open_fds": 12
+            },
+            {
+              "pid": 92382,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 17416192,
+              "open_fds": 12
+            }
+          ]
+        },
+        "before": {
+          "observed_at": "2026-09-08T07:13:23.098326Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26670771,
+          "test_process_heap_bytes": 10124128,
+          "test_process_goroutines": 66,
+          "runtime_scratch_bytes": 0,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 92282,
+              "name": "integration.test",
+              "rss_bytes": 270532608,
+              "open_fds": 76
+            },
+            {
+              "pid": 92378,
+              "name": "h3-encoder",
+              "rss_bytes": 16580608,
+              "open_fds": 12
+            },
+            {
+              "pid": 92380,
+              "name": "h3-dit",
+              "rss_bytes": 16367616,
+              "open_fds": 12
+            },
+            {
+              "pid": 92381,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16072704,
+              "open_fds": 12
+            },
+            {
+              "pid": 92382,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16547840,
+              "open_fds": 12
+            }
+          ]
+        },
+        "capacity_reports_by_worker": {
+          "dit": 1,
+          "encoder": 1,
+          "thumbnail": 1,
+          "vae": 1
+        },
+        "consumed_transfers": 5,
+        "direct_allocation_receipts": 6,
+        "elapsed_seconds": 1.756658,
+        "evidence_class": "LOCAL_CPU_MOCK_EXACT_CACHE",
+        "exact_bindings_and_pins": [
+          {
+            "stage": "dit",
+            "source_artifact_id": "a2ada416-f617-4c55-b115-57bb73d6758c",
+            "object_version": "local-v00000000000000000002",
+            "pin_id": "62f8803e-4e9f-55b9-b628-014a14eb3efb"
+          },
+          {
+            "stage": "encoder",
+            "source_artifact_id": "019db85a-a2da-4cb8-8c4e-046d12caaa95",
+            "object_version": "local-v00000000000000000001",
+            "pin_id": "4ec3f0d7-67ed-508c-a1f8-95089dd5cd33"
+          }
+        ],
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "go_version": "go1.26.7",
+        "hits": [
+          {
+            "AdmissionCandidates": 0,
+            "Admitted": 0,
+            "HitCandidates": 2,
+            "Hits": 1,
+            "Skipped": 0
+          },
+          {
+            "AdmissionCandidates": 0,
+            "Admitted": 0,
+            "HitCandidates": 2,
+            "Hits": 1,
+            "Skipped": 0
+          }
+        ],
+        "initial_budget": {
+          "planned_jobs": 2,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 2500,
+          "currency": "CNY"
+        },
+        "limitations": [
+          "CPU mock, local exact-version store and loopback Runtime gRPC; no real H3/GPU or Production Gate evidence",
+          "public Go control services and low-level agent; production stream handler/journal replay is covered by separate tests",
+          "BITWISE equivalence/policy are static fixture catalog declarations; native mock payloads and ADMIT/HIT outcomes are measured",
+          "Project cache remains enabled with two admitted entries; cache carrying history is retained",
+          "Reconciler drives real ADMIT/HIT before target physical Acquire; this does not benchmark a cache/scheduler race",
+          "real ffprobe verifies media; host execution does not prove Linux sandboxing; native subprocesses are not race-instrumented"
+        ],
+        "maintenance_result": {
+          "RequestContentExpired": 0,
+          "ContentDeletionRequestsCreated": 0,
+          "Claimed": 0,
+          "Completed": 0,
+          "Failed": 0
+        },
+        "production_gate": false,
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "schema_version": 1,
+        "source_job_id": "78cc2bdd-9f2b-401d-bba8-5942be1af132",
+        "source_physical_stages": 4,
+        "source_tree_sha256": "af09f3ee607cbfce15d960e3fa4e5bec15cd8ab6094fdcc998454dc3325373c9",
+        "started_at": "2026-09-08T07:13:23.098323Z",
+        "target_job_id": "b5586a9e-8533-48a4-9664-ba24229276a3",
+        "target_physical_stages": 2,
+        "verified_public_copies": [
+          {
+            "job_id": "78cc2bdd-9f2b-401d-bba8-5942be1af132",
+            "kind": "VIDEO",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/78cc2bdd-9f2b-401d-bba8-5942be1af132/41df9f2b-1e41-5903-bf1b-f0a1a2798680",
+            "object_version": "local-v00000000000000000006",
+            "sha256": "0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01",
+            "size_bytes": 12953
+          },
+          {
+            "job_id": "b5586a9e-8533-48a4-9664-ba24229276a3",
+            "kind": "VIDEO",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/b5586a9e-8533-48a4-9664-ba24229276a3/9896fc0c-28ec-50f1-ba92-34a983772cf5",
+            "object_version": "local-v00000000000000000010",
+            "sha256": "0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01",
+            "size_bytes": 12953
+          },
+          {
+            "job_id": "78cc2bdd-9f2b-401d-bba8-5942be1af132",
+            "kind": "THUMBNAIL",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/78cc2bdd-9f2b-401d-bba8-5942be1af132/9ff2df4d-1bd5-511e-a4b2-cbba0a5119ab",
+            "object_version": "local-v00000000000000000005",
+            "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58",
+            "size_bytes": 164
+          },
+          {
+            "job_id": "b5586a9e-8533-48a4-9664-ba24229276a3",
+            "kind": "THUMBNAIL",
+            "object_key": "artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/b5586a9e-8533-48a4-9664-ba24229276a3/e41866df-8542-5ced-99ab-dff1c91880ac",
+            "object_version": "local-v00000000000000000009",
+            "sha256": "4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58",
+            "size_bytes": 164
+          }
+        ]
+      }
+    ]
+  },
+  "validation_logs": {
+    "journal-proof-reuse-focused": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-focused.log",
+      "sha256": "9da1150917bb69743d98ca017a040ee3318a3d8d3e7ea717e89ab98b8e38a0b7",
+      "exit_code": 0,
+      "result_lines": [
+        "ok  \tgithub.com/vivym/vela/internal/modelruntime\t1.890s"
+      ]
+    },
+    "journal-proof-reuse-race": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-race.log",
+      "sha256": "ed923b6c3d4c854b6a03e96cd0478ebd9b9dfeb7292bc2ab5d9dd5dc13e2d015",
+      "exit_code": 0,
+      "result_lines": [
+        "ok  \tgithub.com/vivym/vela/internal/modelruntime\t100.158s"
+      ]
+    },
+    "journal-proof-reuse-all": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-all.log",
+      "sha256": "a2541705c0e06a65718fd8563d3ea7886d2c57dc9a9dc5d9bad97681405f2780",
+      "exit_code": 0,
+      "result_lines": [
+        "ok  \tgithub.com/vivym/vela/cmd/vela-assignment-history-migrate\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-capacity-sim\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-catalog-promoter\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-control\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-fleet-controller\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-evidence\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-member-campaign\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-reachability\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-stage-mock\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-assets\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-bootstrap\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-cpu-thumbnail-mock\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-smoke\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-model-runtime\t1.909s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-node-agent\t3.225s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-release-bundle\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-stage-cutover\t(cached)",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-stage-worker-agent\t11.037s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-verify-launch\t(cached)",
+        "ok  \tgithub.com/vivym/vela/hack\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/artifactcleanup\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/artifactreplication\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/artifactstore\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/artifactvalidator\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/authoritypolicy\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/billingexport\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/capacitysim\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/catalogpromotion\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/cpumedia\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/database\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/debugdump\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/deploymentcontract\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/driverdrain\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/driverinspection\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/eventstream\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/executiongraph\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/financereconciliation\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/fleetadmission\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/fleetcontroller\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/fleettransport\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3campaignevidence\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3campaignrunner\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3faultevidence\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3launchevidence\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3membercampaign\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3mockbackend\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3preflight\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3request\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3stage\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/h3stagemock\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/httpapi\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/identity\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/imageref\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/inbox\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/journalbinding\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/labv2contract\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/legacyh3reachability\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/legalhold\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/materializationauthority\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/modelruntime\t63.217s",
+        "ok  \tgithub.com/vivym/vela/internal/modelruntimetransport\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/natsauth\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/nodeagent\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/noncontentexpiry\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/productiongates\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/recovery\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/releaseartifacts\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/releasebundle\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/remediation\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/retention\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/securefile\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/slo\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/sloevidence\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageartifact\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageassignment\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageauthority\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stagecache\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageprotocol\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stagescheduler\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkeragent\t57.793s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkercontrol\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkermembertransport\t9.811s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkertransport\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/supplychain\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/telemetry\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/usagecostledger\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/webhook\t(cached)",
+        "ok  \tgithub.com/vivym/vela/internal/workerbootstrap\t26.696s"
+      ]
+    },
+    "journal-proof-reuse-vet": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "exit_code": 0,
+      "result_lines": []
+    },
+    "journal-proof-reuse-lint": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "exit_code": 0,
+      "result_lines": [
+        "0 issues."
+      ]
+    },
+    "journal-proof-reuse-cross": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-cross.log",
+      "sha256": "6ae868f606ba4f66fa21613fe9d9ece0a47ddc468746ff809e8b2789caf6d121",
+      "exit_code": 0,
+      "result_lines": [
+        "ok  \tgithub.com/vivym/vela/cmd/vela-assignment-history-migrate\t0.012s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-capacity-sim\t0.016s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-catalog-promoter\t0.009s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-control\t0.006s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-fleet-controller\t0.024s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-evidence\t0.028s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-member-campaign\t0.015s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-reachability\t0.012s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-h3-stage-mock\t0.006s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-assets\t0.005s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-bootstrap\t0.008s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-cpu-thumbnail-mock\t0.009s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-lab-smoke\t0.006s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-model-runtime\t0.008s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-node-agent\t0.007s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-release-bundle\t0.007s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-stage-cutover\t0.007s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-stage-worker-agent\t0.006s",
+        "ok  \tgithub.com/vivym/vela/cmd/vela-verify-launch\t0.007s",
+        "ok  \tgithub.com/vivym/vela/hack\t0.006s",
+        "ok  \tgithub.com/vivym/vela/internal/artifactcleanup\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/artifactreplication\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/artifactstore\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/artifactvalidator\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/authoritypolicy\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/billingexport\t0.008s",
+        "ok  \tgithub.com/vivym/vela/internal/capacitysim\t0.012s",
+        "ok  \tgithub.com/vivym/vela/internal/catalogpromotion\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/cpumedia\t0.039s",
+        "ok  \tgithub.com/vivym/vela/internal/database\t0.027s",
+        "ok  \tgithub.com/vivym/vela/internal/debugdump\t0.024s",
+        "ok  \tgithub.com/vivym/vela/internal/deploymentcontract\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/driverdrain\t0.008s",
+        "ok  \tgithub.com/vivym/vela/internal/driverinspection\t0.029s",
+        "ok  \tgithub.com/vivym/vela/internal/eventstream\t0.019s",
+        "ok  \tgithub.com/vivym/vela/internal/executiongraph\t0.010s",
+        "ok  \tgithub.com/vivym/vela/internal/financereconciliation\t0.031s",
+        "ok  \tgithub.com/vivym/vela/internal/fleetadmission\t0.012s",
+        "ok  \tgithub.com/vivym/vela/internal/fleetcontroller\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/fleettransport\t0.006s",
+        "ok  \tgithub.com/vivym/vela/internal/h3campaignevidence\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/h3campaignrunner\t0.006s",
+        "ok  \tgithub.com/vivym/vela/internal/h3faultevidence\t0.007s",
+        "ok  \tgithub.com/vivym/vela/internal/h3launchevidence\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/h3membercampaign\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/h3mockbackend\t0.028s",
+        "ok  \tgithub.com/vivym/vela/internal/h3preflight\t0.030s",
+        "ok  \tgithub.com/vivym/vela/internal/h3request\t0.028s",
+        "ok  \tgithub.com/vivym/vela/internal/h3stage\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/h3stagemock\t0.014s",
+        "ok  \tgithub.com/vivym/vela/internal/httpapi\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/identity\t0.008s",
+        "ok  \tgithub.com/vivym/vela/internal/imageref\t0.010s",
+        "ok  \tgithub.com/vivym/vela/internal/inbox\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/journalbinding\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/labv2contract\t0.018s",
+        "ok  \tgithub.com/vivym/vela/internal/legacyh3reachability\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/legalhold\t0.008s",
+        "ok  \tgithub.com/vivym/vela/internal/materializationauthority\t0.008s",
+        "ok  \tgithub.com/vivym/vela/internal/modelruntime\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/modelruntimetransport\t0.006s",
+        "ok  \tgithub.com/vivym/vela/internal/natsauth\t0.015s",
+        "ok  \tgithub.com/vivym/vela/internal/nodeagent\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/noncontentexpiry\t0.013s",
+        "ok  \tgithub.com/vivym/vela/internal/productiongates\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/recovery\t0.018s",
+        "ok  \tgithub.com/vivym/vela/internal/releaseartifacts\t0.019s",
+        "ok  \tgithub.com/vivym/vela/internal/releasebundle\t0.022s",
+        "ok  \tgithub.com/vivym/vela/internal/remediation\t0.034s",
+        "ok  \tgithub.com/vivym/vela/internal/retention\t0.022s",
+        "ok  \tgithub.com/vivym/vela/internal/runtimechannel\t0.027s",
+        "ok  \tgithub.com/vivym/vela/internal/securefile\t0.031s",
+        "ok  \tgithub.com/vivym/vela/internal/slo\t0.027s",
+        "ok  \tgithub.com/vivym/vela/internal/sloevidence\t0.015s",
+        "ok  \tgithub.com/vivym/vela/internal/stageartifact\t0.018s",
+        "ok  \tgithub.com/vivym/vela/internal/stageassignment\t0.020s",
+        "ok  \tgithub.com/vivym/vela/internal/stageauthority\t0.012s",
+        "ok  \tgithub.com/vivym/vela/internal/stagecache\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/stageprotocol\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/stagescheduler\t0.010s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkeragent\t0.009s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkercontrol\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkermembertransport\t0.019s",
+        "ok  \tgithub.com/vivym/vela/internal/stageworkertransport\t0.012s",
+        "ok  \tgithub.com/vivym/vela/internal/supplychain\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/telemetry\t0.015s",
+        "ok  \tgithub.com/vivym/vela/internal/usagecostledger\t0.014s",
+        "ok  \tgithub.com/vivym/vela/internal/webhook\t0.011s",
+        "ok  \tgithub.com/vivym/vela/internal/workerbootstrap\t0.013s"
+      ]
+    },
+    "journal-proof-reuse-serial": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-serial.log",
+      "sha256": "352029daab958dd0619df352bb98b27876f5bfffdd5789eb5e44596bb4f45174",
+      "exit_code": 0,
+      "result_lines": [
+        "--- PASS: TestCPUMockProductionLoopJobCampaign (107.51s)",
+        "PASS",
+        "ok  \tgithub.com/vivym/vela/internal/integration\t110.409s"
+      ]
+    },
+    "journal-proof-reuse-cache": {
+      "local_log": "/tmp/vela-startup-validation.syiSMk/journal-proof-reuse-cache.log",
+      "sha256": "f5971a5298280bfdab9b16ec5d800dbc80eff6eacfece40b39ba66f999dd852a",
+      "exit_code": 0,
+      "result_lines": [
+        "--- PASS: TestCPUMockDurableStreamExactCacheCampaign (13.28s)",
+        "--- PASS: TestCPUMockExactCacheSourceTargetCampaign (8.77s)",
+        "PASS",
+        "ok  \tgithub.com/vivym/vela/internal/integration\t24.790s"
+      ]
+    }
+  }
+}

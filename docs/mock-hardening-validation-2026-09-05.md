@@ -7,6 +7,14 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[local proof reuse](journal-proof-reuse-evidence-2026-09-08.md) avoids repeated
+verification of identical authority bytes within one complete journal check.
+New calls use fresh verifier/scope context. Current-source full ModelRuntime race,
+ordinary repository checks and the serial 32-Job production-loop campaign pass.
+The measured end-to-end improvement is modest; full-validation performance cost,
+protected custody and sustained operation remain open.
+
+The preceding
 [journal transition validation](journal-transition-evidence-2026-09-08.md)
 independently checks six typed mutations and validates the complete candidate
 before every file publication. New regressions cover forged inputs, rejected

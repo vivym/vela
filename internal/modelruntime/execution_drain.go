@@ -217,6 +217,9 @@ func (store *executionJournal) retainedAuthority(wire []byte) (stageauthority.Ve
 	if len(wire) == 0 || len(wire) > maxExecutionWireBytes {
 		return stageauthority.Verified{}, errors.New("retained execution authority exceeds its bound")
 	}
+	if verified, found := store.proofAuthorities[string(wire)]; found {
+		return verified, nil
+	}
 	authority := &velav1.StageAuthority{}
 	if err := proto.Unmarshal(wire, authority); err != nil {
 		return stageauthority.Verified{}, err
@@ -229,7 +232,13 @@ func (store *executionJournal) retainedAuthority(wire []byte) (stageauthority.Ve
 	if err != nil || !bytes.Equal(wire, canonical) || verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 {
 		return stageauthority.Verified{}, errors.New("retained execution authority is not canonical V2")
 	}
-	return verified, store.scope.matchRetainedExecutionScope(verified.Authority)
+	if err := store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+		return stageauthority.Verified{}, err
+	}
+	if store.proofAuthorities != nil {
+		store.proofAuthorities[string(wire)] = verified
+	}
+	return verified, nil
 }
 
 func (store *executionJournal) validateRetainedExecutions() error {

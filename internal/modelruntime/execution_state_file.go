@@ -209,6 +209,12 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 }
 
 func (store *executionJournal) validateProofs() error {
+	candidate := *store
+	candidate.proofAuthorities = make(map[string]stageauthority.Verified)
+	return candidate.validateProofsWithAuthorityCache()
+}
+
+func (store *executionJournal) validateProofsWithAuthorityCache() error {
 	if store.state.HealthHistoryUnknown && (store.state.SchemaVersion < 8 || len(store.state.Executions) == 0) {
 		return errors.New("unknown Worker health history requires retained current-schema executions")
 	}

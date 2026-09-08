@@ -1,6 +1,7 @@
 package modelruntime
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"time"
@@ -40,6 +41,20 @@ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMut
 		return store.saveHealth(mutation.Authority, mutation.Health)
 	case "drain":
 		return store.saveDrain(mutation.Authority, mutation.Drain, mutation.Observed)
+	case "revalidate":
+		return store.persist(store.state)
+	case "invalid-repeated-authority":
+		return store.transition(func(draft *executionJournalDraft) error {
+			if err := draft.recordCandidates(mutation.Authority, mutation.Confirmed); err != nil {
+				return err
+			}
+			// Original and accepted bytes already validate. The corrupt confirmed
+			// bytes must not inherit their proof merely by naming the same execution.
+			candidates := draft.state.Executions[0].Candidates
+			candidates.Confirmed = bytes.Clone(candidates.Confirmed)
+			candidates.Confirmed[len(candidates.Confirmed)-1] ^= 1
+			return nil
+		})
 	case "invalid-history", "abort-candidates":
 		return store.transition(func(draft *executionJournalDraft) error {
 			if err := draft.recordCandidates(mutation.Authority, mutation.Confirmed); err != nil {

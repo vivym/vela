@@ -18,6 +18,10 @@ import (
 type executionJournal struct {
 	scope executionJournalScope
 	state executionDiskState
+	// Only a private copy inside validateProofs owns this map. It deduplicates
+	// identical signed bytes within that one verification, never across writes,
+	// owners, verifier changes or execution freshness checks.
+	proofAuthorities map[string]stageauthority.Verified
 }
 
 // ExecutionJournalIdentity is an independent expectation, not data learned from

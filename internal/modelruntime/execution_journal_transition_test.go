@@ -171,7 +171,7 @@ func TestJournalTransitionRejectsForgedVerifiedMetadata(t *testing.T) {
 }
 
 func TestJournalTransitionRejectsWholeCandidateWithoutAliasing(t *testing.T) {
-	for _, kind := range []string{"invalid-history", "abort-candidates", "invalid-schema", "invalid-id", "invalid-scope", "invalid-root", "invalid-lock", "invalid-proof"} {
+	for _, kind := range []string{"invalid-history", "abort-candidates", "invalid-schema", "invalid-id", "invalid-scope", "invalid-root", "invalid-lock", "invalid-proof", "invalid-repeated-authority"} {
 		t.Run(kind, func(t *testing.T) {
 			f, directory := transitionFixture(t)
 			verified, err := f.validator.ValidateEnvelope(f.authorities[0])
@@ -185,6 +185,48 @@ func TestJournalTransitionRejectsWholeCandidateWithoutAliasing(t *testing.T) {
 			applyJournalMutation(t, f, mutation)
 		})
 	}
+}
+
+func TestJournalTransitionProofReuseDoesNotCrossValidationCalls(t *testing.T) {
+	f, directory := transitionFixture(t)
+	keys := map[string][]byte{"stage-key-9": bytes.Repeat([]byte{0x5a}, 32), "stage-key-10": bytes.Repeat([]byte{0x8b}, 32)}
+	both, err := stageauthority.NewValidator(keys, f.clock.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoreOriginal := modelruntime.SetExecutionJournalValidatorForTest(f.supervisor, both)
+	defer restoreOriginal()
+	verified, err := f.validator.ValidateEnvelope(f.authorities[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyJournalMutation(t, f, modelruntime.ExecutionMutationForTest{Kind: "admit", Authority: verified})
+	applyJournalMutation(t, f, modelruntime.ExecutionMutationForTest{Kind: "candidates", Authority: verified, Confirmed: &verified})
+	signer, err := stageauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := f.authority(t, 0, 12)
+	next.SigningKeyId = "stage-key-10"
+	next, err = signer.Sign(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyJournalMutation(t, f, modelruntime.ExecutionMutationForTest{Kind: "admit", Authority: stageauthority.Verified{Authority: next}})
+	validator, err := stageauthority.NewValidator(map[string][]byte{"stage-key-10": keys["stage-key-10"]}, f.clock.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The highest witness still validates. Only a fresh check of the older
+	// retained record can detect that its previously trusted key is now absent.
+	if _, err := validator.ValidateEnvelopeSignature(next); err != nil {
+		t.Fatal(err)
+	}
+	restore := modelruntime.SetExecutionJournalValidatorForTest(f.supervisor, validator)
+	mutation := modelruntime.ExecutionMutationForTest{Kind: "revalidate"}
+	assertJournalMutationRejected(t, f, directory, mutation)
+	restore()
+	applyJournalMutation(t, f, mutation)
 }
 
 func TestJournalTransitionExpiryBeforeWriteDoesNotPoisonAdmission(t *testing.T) {
