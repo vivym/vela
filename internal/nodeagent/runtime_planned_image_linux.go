@@ -20,6 +20,8 @@ type RuntimePlannedImageCallerConfig struct {
 	Images         *RuntimeImageObserver
 	StateDirectory string
 	RuntimePolicy  RuntimeTaskRuntimePolicy
+	remoteCLI      bool
+	publication    *RuntimeStartupPublicationConfig
 }
 
 // RuntimePlannedImageCallerObservation binds a sampled live executable and
@@ -28,9 +30,10 @@ type RuntimePlannedImageCallerConfig struct {
 // It does not approve env/config files, effective mounts, loaded memory,
 // descendants, current Fleet activation or a startup grant.
 type RuntimePlannedImageCallerObservation struct {
-	Planned RuntimePlannedCallerObservation
-	Image   RuntimeImageExecutableObservation
-	Task    *RuntimeTaskLaunch
+	Planned   RuntimePlannedCallerObservation
+	Image     RuntimeImageExecutableObservation
+	Task      *RuntimeTaskLaunch
+	RemoteCLI *RuntimeRemoteCLIObservation
 }
 
 func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
@@ -106,6 +109,20 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
 		return nil, ErrRuntimePlannedImage
 	}
+	var cli *RuntimeRemoteCLIObservation
+	if config.remoteCLI {
+		if config.publication == nil || plan.pod.Spec.Hostname != "" || plan.pod.Spec.Subdomain != "" {
+			return nil, ErrRuntimeRemoteCLI
+		}
+		if err := checkRemoteCLIConfiguration(imageConfiguration.Config, configuration.Process, config.publication.BootstrapPath, plan.pod.Name); err != nil {
+			return nil, err
+		}
+		observed, err := config.Caller.inspectRemoteCLIVectors(ctx, configuration.Process)
+		if err != nil {
+			return nil, err
+		}
+		cli = &observed
+	}
 	last, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
 	if err != nil {
 		return nil, err
@@ -121,7 +138,7 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 	if err := errors.Join(config.Images.sameDaemon(observer), observer.check(), config.Images.local.check(), ctx.Err()); err != nil {
 		return nil, err
 	}
-	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task}, nil
+	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task, RemoteCLI: cli}, nil
 }
 
 func samePlannedImageCaller(first, last RuntimePlannedCallerObservation) bool {

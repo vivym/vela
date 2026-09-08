@@ -1,0 +1,7 @@
+1ac5edae9447e258729844e928b2f667f155826eb3282aeaedcfc36704c4d33a  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/nodeagent.test
+3163bf3741ccddcc91319b1a83e82da9d42405fa82f314c15b633381d7932ec5  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/runtime-command.test
+e622e07921444234da60211072e37ed2c9598c4e6ee16631ef2e6a1234dd0d91  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/vela-model-runtime
+4359a8f94eb307b7903de403e96f943f3fb4e8141dd68e88d15b5146d5cb1d3c  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/usr/local/bin/containerd
+25054b5f00335361017c0d1e86671058a73d1445dfc2f1fabc3e19f2bd9fd98b  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/usr/local/bin/containerd-shim-runc-v2
+a1d0c0fd017b1290dd0613a83733d5a87b8affb133749040a2358fede5de32a6  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/usr/local/bin/ctr
+ea54032310588e115633aa2f4bba8bf9500257f657e1deca88df5778775138db  /tmp/vela-startup-validation.syiSMk/remote-cli-reservation/native-rootfs/image/rootfs/usr/local/bin/runc

@@ -18,6 +18,10 @@ case "$launch_scope" in
     launch_pattern='^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^publication-'
     launch_expected=(TestRuntimeCallerContainerCRI)
     ;;
+  remote-cli)
+    launch_pattern='^TestRuntimeCallerContainerCRI$/^remote-cli-reservation$'
+    launch_expected=(TestRuntimeCallerContainerCRI)
+    ;;
   *) echo "Unknown task launch scope: $launch_scope" >&2; exit 2 ;;
 esac
 [[ "$launch_evidence" = /* && "$launch_cache" = /* && "$launch_downloads" = /* ]] || exit 2
@@ -59,6 +63,17 @@ docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
   -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 \
   "$launch_builder" go test -race -tags=integration -c -ldflags '-linkmode external -extldflags=-static' \
   -o /evidence/image/rootfs/nodeagent.test ./internal/nodeagent > "$launch_evidence/build.log" 2>&1
+for launch_cli in runtime-command vela-model-runtime; do
+  launch_args=(test -race -c)
+  launch_output="$launch_cli.test"
+  if [[ "$launch_cli" == vela-model-runtime ]]; then launch_args=(build -race); launch_output=vela-model-runtime; fi
+  docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
+    -v "$launch_repo:/workspace:ro" -v "$launch_modules:/go/pkg/mod:ro" \
+    -v "$launch_evidence:/evidence" -v "$launch_cache:/build-cache" -w /workspace \
+    -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 "$launch_builder" \
+    go "${launch_args[@]}" -ldflags '-linkmode external -extldflags=-static' \
+    -o "/evidence/image/rootfs/$launch_output" ./cmd/vela-model-runtime > "$launch_evidence/build-$launch_cli.log" 2>&1
+done
 cat > "$launch_evidence/image/Dockerfile" <<'DOCKERFILE'
 FROM golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1
 COPY rootfs /
@@ -66,7 +81,7 @@ ENTRYPOINT ["/nodeagent.test"]
 DOCKERFILE
 launch_image="$(docker build --network none -q "$launch_evidence/image")"
 echo "$launch_image" > "$launch_evidence/image.txt"
-shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/image/rootfs/usr/local/bin/"* > "$launch_evidence/binaries.sha256"
+shasum -a 256 "$launch_evidence/image/rootfs/"*.test "$launch_evidence/image/rootfs/vela-model-runtime" "$launch_evidence/image/rootfs/usr/local/bin/"* > "$launch_evidence/binaries.sha256"
 # Privileges are confined to this disposable nested-runtime sandbox. No host
 # paths/sockets, host PID namespace, network, model weights or GPU are used.
 docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
@@ -79,6 +94,11 @@ done
 if [[ "$launch_scope" == startup-publication ]]; then
     for launch_case in valid missing copy writable-mount wrong-plan hardlink before-fleet-replaced after-fleet-replaced fleet-loss incarnation before-fleet-remounted after-fleet-remounted wrong-consumed-digest wrong-consumed-path legacy-request unbound-api unbound-record; do
     rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-$launch_case " "$launch_evidence/native.log" || exit 1
+  done
+fi
+if [[ "$launch_scope" == remote-cli || "$launch_scope" == full ]]; then
+  for launch_case in valid extra-env wrong-path-env wrong-hostname duplicate-argument hidden-env hidden-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
+    rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/$launch_case " "$launch_evidence/native.log" || exit 1
   done
 fi
 if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi

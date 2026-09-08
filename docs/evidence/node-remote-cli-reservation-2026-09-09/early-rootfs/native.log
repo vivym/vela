@@ -1,0 +1,132 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation
+    runtime_container_cri_linux_test.go:208: import actual CLI: unpacking docker.io/vela/remote-runtime:cpu-fixture (sha256:880e53ff2917874c5671e9ff712bf73cda690107ff5402adf24b5d6eb8c9998c)...ctr: mismatched image rootfs and manifest layers
+         exit status 1
+=== NAME  TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:200: private daemon log: time="2026-09-08T22:20:56Z" level=warning msg="Configuration migrated from version 3, use `containerd config migrate` to avoid migration" t="3.959µs"
+        time="2026-09-08T22:20:56.657950002Z" level=info msg="starting containerd" revision=64b425cf570b3b8dd1d4cc46da7c1fce65c6651a version=v2.3.1
+        time="2026-09-08T22:20:56.658013211Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+        time="2026-09-08T22:20:56.658129919Z" level=warning msg="failed check for fsverity support" error="enable fsverity failed: inappropriate ioctl for device" path=/run/vela-ctrd-1252822258/data/io.containerd.content.v1.content
+        time="2026-09-08T22:20:56.658139419Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+        time="2026-09-08T22:20:56.658145336Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+        time="2026-09-08T22:20:56.658901252Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+        time="2026-09-08T22:20:56.658911294Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+        time="2026-09-08T22:20:56.658940336Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+        time="2026-09-08T22:20:56.658943752Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.658979752Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.658983502Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659043252Z" level=info msg="skip loading plugin" error="path /run/vela-ctrd-1252822258/data/io.containerd.snapshotter.v1.btrfs (overlay) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659048169Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659052169Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659055419Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659161086Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659216669Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659315002Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659326044Z" level=info msg="skip loading plugin" error="lstat /run/vela-ctrd-1252822258/data/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:20:56.659329919Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+        time="2026-09-08T22:20:56.659459919Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+        time="2026-09-08T22:20:56.659494127Z" level=info msg="metadata content store policy set" policy=shared
+        time="2026-09-08T22:20:56.661146252Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+        time="2026-09-08T22:20:56.661167169Z" level=info msg="loading plugin" id=io.containerd.server.v1.metrics type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.661172711Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.metrics type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.661177919Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+        time="2026-09-08T22:20:56.661182586Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+        time="2026-09-08T22:20:56.661185336Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+        time="2026-09-08T22:20:56.661189794Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+        time="2026-09-08T22:20:56.661192169Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+        time="2026-09-08T22:20:56.661229044Z" level=info msg="built-in NRI default validator is disabled"
+        time="2026-09-08T22:20:56.661231544Z" level=info msg="runtime interface created"
+        time="2026-09-08T22:20:56.661233086Z" level=info msg="created NRI interface"
+        time="2026-09-08T22:20:56.661235044Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+        time="2026-09-08T22:20:56.661237752Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.661241336Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.661244252Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+        time="2026-09-08T22:20:56.661300211Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+        time="2026-09-08T22:20:56.661304127Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+        time="2026-09-08T22:20:56.662077752Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+        time="2026-09-08T22:20:56.662088627Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662094877Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662099461Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662102877Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662105836Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662108836Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+        time="2026-09-08T22:20:56.662112586Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+        time="2026-09-08T22:20:56.662191711Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+        time="2026-09-08T22:20:56.662198711Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662202419Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662205377Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662208086Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662210544Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662213127Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662216961Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+        time="2026-09-08T22:20:56.662221377Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662225086Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662228836Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662233377Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+        time="2026-09-08T22:20:56.662236086Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+        time="2026-09-08T22:20:56.662250836Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+        time="2026-09-08T22:20:56.662307419Z" level=info msg="Get image filesystem path \"/run/vela-ctrd-1252822258/data/io.containerd.snapshotter.v1.native\" for snapshotter \"native\""
+        time="2026-09-08T22:20:56.662312544Z" level=info msg="Start snapshots syncer"
+        time="2026-09-08T22:20:56.662328252Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+        time="2026-09-08T22:20:56.662447211Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"explicit\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"/usr/local/bin/runc\",\"Root\":\"/run/vela-approved-runc\"},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"},\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"statsCollectPeriod\":\"\",\"statsRetentionPeriod\":\"\",\"containerdRootDir\":\"/run/vela-ctrd-1252822258/data\",\"containerdEndpoint\":\"/run/vela-ctrd-1252822258/containerd.sock\",\"rootDir\":\"/run/vela-ctrd-1252822258/data/io.containerd.grpc.v1.cri\",\"stateDir\":\"/run/vela-ctrd-1252822258/state/io.containerd.grpc.v1.cri\"}"
+        time="2026-09-08T22:20:56.662466502Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+        time="2026-09-08T22:20:56.662486127Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+        time="2026-09-08T22:20:56.662569294Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662577002Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662579961Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662582336Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+        time="2026-09-08T22:20:56.662585711Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662588794Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662591252Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662595586Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662598002Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662600669Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.cri type=io.containerd.grpc.v1
+        time="2026-09-08T22:20:56.662605502Z" level=info msg="Connect containerd service"
+        time="2026-09-08T22:20:56.662613377Z" level=info msg="using experimental NRI integration - disable nri plugin to prevent this"
+        time="2026-09-08T22:20:56.663290877Z" level=warning msg="failed to load cni during init, please check CRI plugin status before setting up network for pods" error="cni config load failed: no network config found in /etc/cni/net.d: cni plugin not initialized: failed to load cni config"
+        time="2026-09-08T22:20:56.668803086Z" level=info msg="loading plugin" id=io.containerd.server.v1.ttrpc type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.668835794Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+        time="2026-09-08T22:20:56.668859377Z" level=info msg="loading plugin" id=io.containerd.metrics.v1.grpc-prometheus type=io.containerd.metrics.v1
+        time="2026-09-08T22:20:56.668883461Z" level=info msg="loading plugin" id=io.containerd.metrics.v1.grpc-otel type=io.containerd.metrics.v1
+        time="2026-09-08T22:20:56.668891711Z" level=info msg="loading plugin" id=io.containerd.server.v1.grpc type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.668920544Z" level=info msg="Start subscribing containerd event"
+        time="2026-09-08T22:20:56.668948836Z" level=info msg="Start stats collector"
+        time="2026-09-08T22:20:56.668952127Z" level=info msg="Start recovering state"
+        time="2026-09-08T22:20:56.668988377Z" level=info msg="Start event monitor"
+        time="2026-09-08T22:20:56.668993794Z" level=info msg="Start cni network conf syncer for default"
+        time="2026-09-08T22:20:56.668996169Z" level=info msg="Start streaming server"
+        time="2026-09-08T22:20:56.668999502Z" level=info msg="Registered namespace \"k8s.io\" with NRI"
+        time="2026-09-08T22:20:56.669002336Z" level=info msg="runtime interface starting up..."
+        time="2026-09-08T22:20:56.669003961Z" level=info msg="starting plugins..."
+        time="2026-09-08T22:20:56.669011169Z" level=info msg="Synchronizing NRI (plugin) with current runtime state"
+        time="2026-09-08T22:20:56.673127669Z" level=info msg="loading plugin" id=io.containerd.server.v1.grpc-tcp type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.673140252Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.grpc-tcp type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.673143211Z" level=info msg="loading plugin" id=io.containerd.http.v1.pprof type=io.containerd.http.v1
+        time="2026-09-08T22:20:56.673184711Z" level=info msg="loading plugin" id=io.containerd.server.v1.debug type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.673187919Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.debug type=io.containerd.server.v1
+        time="2026-09-08T22:20:56.673239086Z" level=info msg=serving... address=/run/vela-ctrd-1252822258/containerd.sock.ttrpc
+        time="2026-09-08T22:20:56.673244877Z" level=info msg="starting GRPC server" address=/run/vela-ctrd-1252822258/containerd.sock gid=0 uid=0
+        time="2026-09-08T22:20:56.673258919Z" level=info msg=serving... address=/run/vela-ctrd-1252822258/containerd.sock
+        time="2026-09-08T22:20:56.673266294Z" level=info msg="containerd successfully booted in 0.015914s"
+        time="2026-09-08T22:21:04.265179298Z" level=info msg="ImageCreate event name:\"docker.io/vela/caller-sandbox:cpu-fixture\""
+        time="2026-09-08T22:21:04.267439631Z" level=info msg="ImageCreate event name:\"sha256:f63b62fa3a49ec5dd5bb14f0cb72edaebbf0e0992da10d4ae989c3a955e59220\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"} labels:{key:\"io.cri-containerd.pinned\" value:\"pinned\"}"
+        time="2026-09-08T22:21:04.267515089Z" level=info msg="ImageCreate event name:\"docker.io/vela/caller-runtime:cpu-fixture\""
+        time="2026-09-08T22:21:04.269000256Z" level=info msg="ImageUpdate event name:\"docker.io/vela/caller-sandbox:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"} labels:{key:\"io.cri-containerd.pinned\" value:\"pinned\"}"
+        time="2026-09-08T22:21:04.269073006Z" level=info msg="ImageCreate event name:\"sha256:8c8b936947bde0beddad7705c1c5a7ba26312de34d7bdd5b6596a380eae7dd8b\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:21:04.269136381Z" level=info msg="ImageUpdate event name:\"docker.io/vela/caller-runtime:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:21:10.627614801Z" level=info msg="ImageCreate event name:\"docker.io/vela/remote-runtime:cpu-fixture\""
+        time="2026-09-08T22:21:10.628885176Z" level=info msg="ImageCreate event name:\"sha256:685325c1634e1e61abcea2241d0849bb37291a9eb09c7796aba1473c706439e1\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:21:10.628963967Z" level=info msg="ImageUpdate event name:\"docker.io/vela/remote-runtime:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:21:10.630359134Z" level=info msg="Stop CRI service"
+        time="2026-09-08T22:21:10.635305217Z" level=info msg="Stop CRI service"
+        time="2026-09-08T22:21:10.635332676Z" level=info msg="Event monitor stopped"
+        time="2026-09-08T22:21:10.635337717Z" level=info msg="Stream server stopped"
+--- FAIL: TestRuntimeCallerContainerCRI (14.02s)
+    --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation (6.16s)
+FAIL

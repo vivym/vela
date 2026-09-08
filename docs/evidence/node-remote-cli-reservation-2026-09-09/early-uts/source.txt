@@ -1,0 +1,11 @@
+8b4b18231c2f06cf5eef94aad2c678c9ee6021cc
+ M hack/run-task-launch-native.sh
+ M internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+ M internal/nodeagent/runtime_container_cri_linux_test.go
+ M internal/nodeagent/runtime_planned_image_linux.go
+ M internal/nodeagent/runtime_startup_image_linux.go
+ M internal/nodeagent/runtime_startup_ledger_linux.go
+ M internal/nodeagent/runtime_startup_reservation_linux.go
+?? internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+?? internal/nodeagent/runtime_remote_cli_linux.go
+?? internal/nodeagent/runtime_remote_cli_linux_test.go

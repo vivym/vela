@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/workspace/internal/nodeagent/runtime_remote_cli_linux.go": "/evidence/proc-vector-check-disabled.go.txt"
+  }
+}

@@ -110,11 +110,21 @@ RPC 暂停后替换配置，仍发送原摘要而被拒绝；同内容不同路�
 本轮首次全库测试的纯读超时重试失败已通过分离故意读取 deadline 与正常
 fsync 预算修正并留证；它不解释下表的历史 `11ce026` STALE 失败。
 
+后续 [实际 CLI/CRI 同次预留](node-remote-cli-reservation-evidence-2026-09-09.md)
+用严格入口把实际 CLI、Node journal、image/task、发布只读 mount 和 Fleet
+fixture 连接到同次调用。默认命令、固定 PATH/HOME、计划派生 HOSTNAME
+与原始进程 procfs argv/env 精确匹配；10 个原生场景覆盖正常初始化/关闭、
+task 隐藏真实参数/环境、预留前后修改及丢回包。关闭 procfs 比较的 overlay
+在两个隐藏反例上错误地产生预留，正式源码均提前拒绝。真实 PostgreSQL/TLS、
+生产 Pod→CRI 配置转换、Node 入口及一次性 grant 仍未合并。procfs 采样不是
+配置历史或代码执行连续性的证明。生产 journal enrollment 还必须落实
+grant 前只读、grant 后才能进行相应角色写入，避免先注册后无条件开放写权限。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
-| 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份、epoch、挂载与 Node owner 配置接到真实入口；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
+| 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
 | 2 | Worker 输入与 materialization journal 的独立保管 | 为 Worker input/transfer/materialization 状态明确写入角色与持久边界；验证 resolver/子进程不能篡改，Stop 后不能重新引入内容或绕过清理屏障 |
 | 3 | 同一装配下完整 remote-owner CPU Job | 真实 PostgreSQL、Control、ProductionAgent、Node、Runtime 完成四 Stage Job；同一路径覆盖 cache miss/admission/hit/reuse、transfer、终态清理与每 Job 一次 Charge；故障恢复由实际执行循环驱动 |
 | 4 | Node/Runtime/Worker 故障与替换 | 对各持久写入、回包、读回边界注入退出/丢包；验证不确定写不能重执行，同 owner 的对账规则明确；替换进程不能借用旧 pidfd/epoch，旧进程及后代停止证据完整 |

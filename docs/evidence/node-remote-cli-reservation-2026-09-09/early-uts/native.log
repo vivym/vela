@@ -1,0 +1,226 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/valid
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/extra-env
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-path-env
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-hostname
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/duplicate-argument
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/before-fleet-env-change
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/after-fleet-env-change
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/fleet-loss
+    runtime_remote_cli_integration_linux_test.go:146: rpc error: code = Unknown desc = failed to start sandbox "462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace
+=== NAME  TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:200: private daemon log: time="2026-09-08T22:22:19Z" level=warning msg="Configuration migrated from version 3, use `containerd config migrate` to avoid migration" t="3.625µs"
+        time="2026-09-08T22:22:19.319085471Z" level=info msg="starting containerd" revision=64b425cf570b3b8dd1d4cc46da7c1fce65c6651a version=v2.3.1
+        time="2026-09-08T22:22:19.319135596Z" level=info msg="loading plugin" id=io.containerd.content.v1.content type=io.containerd.content.v1
+        time="2026-09-08T22:22:19.319248388Z" level=warning msg="failed check for fsverity support" error="enable fsverity failed: inappropriate ioctl for device" path=/run/vela-ctrd-1853502847/data/io.containerd.content.v1.content
+        time="2026-09-08T22:22:19.319254221Z" level=info msg="loading plugin" id=io.containerd.image-verifier.v1.bindir type=io.containerd.image-verifier.v1
+        time="2026-09-08T22:22:19.319258180Z" level=info msg="loading plugin" id=io.containerd.internal.v1.opt type=io.containerd.internal.v1
+        time="2026-09-08T22:22:19.320255763Z" level=info msg="loading plugin" id=io.containerd.warning.v1.deprecations type=io.containerd.warning.v1
+        time="2026-09-08T22:22:19.320264138Z" level=info msg="loading plugin" id=io.containerd.event.v1.exchange type=io.containerd.event.v1
+        time="2026-09-08T22:22:19.320315930Z" level=info msg="loading plugin" id=io.containerd.mount-handler.v1.erofs type=io.containerd.mount-handler.v1
+        time="2026-09-08T22:22:19.320337013Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320436555Z" level=info msg="skip loading plugin" error="no scratch file generator: skip plugin" id=io.containerd.snapshotter.v1.blockfile type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320441305Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320514638Z" level=info msg="skip loading plugin" error="path /run/vela-ctrd-1853502847/data/io.containerd.snapshotter.v1.btrfs (overlay) must be a btrfs filesystem to be used with the btrfs snapshotter: skip plugin" id=io.containerd.snapshotter.v1.btrfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320518846Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320522221Z" level=info msg="skip loading plugin" error="devmapper not configured: skip plugin" id=io.containerd.snapshotter.v1.devmapper type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320524513Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.erofs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320629763Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.native type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320680763Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.overlayfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320766221Z" level=info msg="loading plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320774013Z" level=info msg="skip loading plugin" error="lstat /run/vela-ctrd-1853502847/data/io.containerd.snapshotter.v1.zfs: no such file or directory: skip plugin" id=io.containerd.snapshotter.v1.zfs type=io.containerd.snapshotter.v1
+        time="2026-09-08T22:22:19.320776471Z" level=info msg="loading plugin" id=io.containerd.monitor.task.v1.cgroups type=io.containerd.monitor.task.v1
+        time="2026-09-08T22:22:19.320873346Z" level=info msg="loading plugin" id=io.containerd.metadata.v1.bolt type=io.containerd.metadata.v1
+        time="2026-09-08T22:22:19.320907888Z" level=info msg="metadata content store policy set" policy=shared
+        time="2026-09-08T22:22:19.323136430Z" level=info msg="loading plugin" id=io.containerd.gc.v1.scheduler type=io.containerd.gc.v1
+        time="2026-09-08T22:22:19.323163013Z" level=info msg="loading plugin" id=io.containerd.server.v1.metrics type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.323169263Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.metrics type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.323175430Z" level=info msg="loading plugin" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+        time="2026-09-08T22:22:19.323180555Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.tracing.processor.v1.otlp type=io.containerd.tracing.processor.v1
+        time="2026-09-08T22:22:19.323183555Z" level=info msg="loading plugin" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+        time="2026-09-08T22:22:19.323186805Z" level=info msg="skip loading plugin" error="skip plugin: tracing endpoint not configured" id=io.containerd.internal.v1.tracing type=io.containerd.internal.v1
+        time="2026-09-08T22:22:19.323189221Z" level=info msg="loading plugin" id=io.containerd.nri.v1.nri type=io.containerd.nri.v1
+        time="2026-09-08T22:22:19.323240555Z" level=info msg="built-in NRI default validator is disabled"
+        time="2026-09-08T22:22:19.323243971Z" level=info msg="runtime interface created"
+        time="2026-09-08T22:22:19.323245721Z" level=info msg="created NRI interface"
+        time="2026-09-08T22:22:19.323248096Z" level=info msg="loading plugin" id=io.containerd.ttrpc.v1.otelttrpc type=io.containerd.ttrpc.v1
+        time="2026-09-08T22:22:19.323251555Z" level=info msg="loading plugin" id=io.containerd.service.v1.containers-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.323256513Z" level=info msg="loading plugin" id=io.containerd.service.v1.content-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.323259430Z" level=info msg="loading plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+        time="2026-09-08T22:22:19.323332596Z" level=info msg="skip loading plugin" error="failed to check mkfs.erofs availability: failed to run mkfs.erofs --help: exec: \"mkfs.erofs\": executable file not found in $PATH: skip plugin" id=io.containerd.differ.v1.erofs type=io.containerd.differ.v1
+        time="2026-09-08T22:22:19.323338680Z" level=info msg="loading plugin" id=io.containerd.mount-manager.v1.bolt type=io.containerd.mount-manager.v1
+        time="2026-09-08T22:22:19.324341305Z" level=info msg="loading plugin" id=io.containerd.differ.v1.walking type=io.containerd.differ.v1
+        time="2026-09-08T22:22:19.324349513Z" level=info msg="loading plugin" id=io.containerd.service.v1.diff-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324354346Z" level=info msg="loading plugin" id=io.containerd.service.v1.images-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324358555Z" level=info msg="loading plugin" id=io.containerd.service.v1.introspection-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324364180Z" level=info msg="loading plugin" id=io.containerd.service.v1.namespaces-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324367846Z" level=info msg="loading plugin" id=io.containerd.service.v1.snapshots-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324370596Z" level=info msg="loading plugin" id=io.containerd.shim.v1.manager type=io.containerd.shim.v1
+        time="2026-09-08T22:22:19.324375096Z" level=info msg="loading plugin" id=io.containerd.runtime.v2.task type=io.containerd.runtime.v2
+        time="2026-09-08T22:22:19.324455430Z" level=info msg="loading plugin" id=io.containerd.service.v1.tasks-service type=io.containerd.service.v1
+        time="2026-09-08T22:22:19.324463846Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.containers type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324468388Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.content type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324471138Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.diff type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324474638Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.events type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324477305Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.images type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324479930Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.introspection type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324484305Z" level=info msg="loading plugin" id=io.containerd.lease.v1.manager type=io.containerd.lease.v1
+        time="2026-09-08T22:22:19.324487971Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.leases type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324490971Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.mounts type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324493555Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.namespaces type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324496805Z" level=info msg="loading plugin" id=io.containerd.sandbox.store.v1.local type=io.containerd.sandbox.store.v1
+        time="2026-09-08T22:22:19.324499305Z" level=info msg="loading plugin" id=io.containerd.transfer.v1.local type=io.containerd.transfer.v1
+        time="2026-09-08T22:22:19.324515180Z" level=info msg="loading plugin" id=io.containerd.cri.v1.images type=io.containerd.cri.v1
+        time="2026-09-08T22:22:19.324576930Z" level=info msg="Get image filesystem path \"/run/vela-ctrd-1853502847/data/io.containerd.snapshotter.v1.native\" for snapshotter \"native\""
+        time="2026-09-08T22:22:19.324582471Z" level=info msg="Start snapshots syncer"
+        time="2026-09-08T22:22:19.324599096Z" level=info msg="loading plugin" id=io.containerd.cri.v1.runtime type=io.containerd.cri.v1
+        time="2026-09-08T22:22:19.324766930Z" level=info msg="starting cri plugin" config="{\"containerd\":{\"defaultRuntimeName\":\"runc\",\"runtimes\":{\"explicit\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"/usr/local/bin/runc\",\"Root\":\"/run/vela-approved-runc\"},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"},\"runc\":{\"runtimeType\":\"io.containerd.runc.v2\",\"runtimePath\":\"\",\"PodAnnotations\":null,\"ContainerAnnotations\":null,\"options\":{\"BinaryName\":\"\",\"CriuImagePath\":\"\",\"CriuWorkPath\":\"\",\"IoGid\":0,\"IoUid\":0,\"NoNewKeyring\":false,\"Root\":\"\",\"ShimCgroup\":\"\",\"SystemdCgroup\":false},\"privileged_without_host_devices\":false,\"privileged_without_host_devices_all_devices_allowed\":false,\"cgroupWritable\":false,\"baseRuntimeSpec\":\"\",\"cniConfDir\":\"\",\"cniMaxConfNum\":0,\"snapshotter\":\"\",\"sandboxer\":\"podsandbox\",\"io_type\":\"\"}},\"ignoreBlockIONotEnabledErrors\":false,\"ignoreRdtNotEnabledErrors\":false},\"cni\":{\"binDir\":\"\",\"binDirs\":[\"/opt/cni/bin\"],\"confDir\":\"/etc/cni/net.d\",\"maxConfNum\":1,\"setupSerially\":false,\"confTemplate\":\"\",\"ipPref\":\"\",\"useInternalLoopback\":false},\"enableSelinux\":false,\"selinuxCategoryRange\":1024,\"maxContainerLogLineSize\":16384,\"disableApparmor\":false,\"restrictOOMScoreAdj\":false,\"disableProcMount\":false,\"unsetSeccompProfile\":\"\",\"tolerateMissingHugetlbController\":true,\"disableHugetlbController\":true,\"device_ownership_from_security_context\":false,\"ignoreImageDefinedVolumes\":false,\"netnsMountsUnderStateDir\":false,\"enableUnprivilegedPorts\":true,\"enableUnprivilegedICMP\":true,\"enableCDI\":true,\"cdiSpecDirs\":[\"/etc/cdi\",\"/var/run/cdi\"],\"drainExecSyncIOTimeout\":\"0s\",\"ignoreDeprecationWarnings\":null,\"statsCollectPeriod\":\"\",\"statsRetentionPeriod\":\"\",\"containerdRootDir\":\"/run/vela-ctrd-1853502847/data\",\"containerdEndpoint\":\"/run/vela-ctrd-1853502847/containerd.sock\",\"rootDir\":\"/run/vela-ctrd-1853502847/data/io.containerd.grpc.v1.cri\",\"stateDir\":\"/run/vela-ctrd-1853502847/state/io.containerd.grpc.v1.cri\"}"
+        time="2026-09-08T22:22:19.324792430Z" level=info msg="loading plugin" id=io.containerd.podsandbox.controller.v1.podsandbox type=io.containerd.podsandbox.controller.v1
+        time="2026-09-08T22:22:19.324811846Z" level=info msg="loading plugin" id=io.containerd.sandbox.controller.v1.shim type=io.containerd.sandbox.controller.v1
+        time="2026-09-08T22:22:19.324879471Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandbox-controllers type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324885763Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.sandboxes type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324888555Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.snapshots type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324890888Z" level=info msg="loading plugin" id=io.containerd.streaming.v1.manager type=io.containerd.streaming.v1
+        time="2026-09-08T22:22:19.324893221Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.streaming type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324895513Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.tasks type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324897596Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.transfer type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324901388Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.version type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324904846Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.healthcheck type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324907930Z" level=info msg="loading plugin" id=io.containerd.grpc.v1.cri type=io.containerd.grpc.v1
+        time="2026-09-08T22:22:19.324912013Z" level=info msg="Connect containerd service"
+        time="2026-09-08T22:22:19.324918805Z" level=info msg="using experimental NRI integration - disable nri plugin to prevent this"
+        time="2026-09-08T22:22:19.330876305Z" level=warning msg="failed to load cni during init, please check CRI plugin status before setting up network for pods" error="cni config load failed: no network config found in /etc/cni/net.d: cni plugin not initialized: failed to load cni config"
+        time="2026-09-08T22:22:19.336452721Z" level=info msg="loading plugin" id=io.containerd.server.v1.ttrpc type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.336489263Z" level=info msg="loading plugin" id=io.containerd.monitor.container.v1.restart type=io.containerd.monitor.container.v1
+        time="2026-09-08T22:22:19.336513013Z" level=info msg="loading plugin" id=io.containerd.metrics.v1.grpc-prometheus type=io.containerd.metrics.v1
+        time="2026-09-08T22:22:19.336528971Z" level=info msg="loading plugin" id=io.containerd.metrics.v1.grpc-otel type=io.containerd.metrics.v1
+        time="2026-09-08T22:22:19.336537721Z" level=info msg="loading plugin" id=io.containerd.server.v1.grpc type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.337711096Z" level=info msg="Start subscribing containerd event"
+        time="2026-09-08T22:22:19.337762138Z" level=info msg="Start stats collector"
+        time="2026-09-08T22:22:19.337765846Z" level=info msg="Start recovering state"
+        time="2026-09-08T22:22:19.337816721Z" level=info msg="Start event monitor"
+        time="2026-09-08T22:22:19.337825471Z" level=info msg="Start cni network conf syncer for default"
+        time="2026-09-08T22:22:19.337828513Z" level=info msg="Start streaming server"
+        time="2026-09-08T22:22:19.337832638Z" level=info msg="Registered namespace \"k8s.io\" with NRI"
+        time="2026-09-08T22:22:19.337839430Z" level=info msg="runtime interface starting up..."
+        time="2026-09-08T22:22:19.337842096Z" level=info msg="starting plugins..."
+        time="2026-09-08T22:22:19.337851263Z" level=info msg="Synchronizing NRI (plugin) with current runtime state"
+        time="2026-09-08T22:22:19.340122763Z" level=info msg="loading plugin" id=io.containerd.server.v1.grpc-tcp type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.340136346Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.grpc-tcp type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.340139638Z" level=info msg="loading plugin" id=io.containerd.http.v1.pprof type=io.containerd.http.v1
+        time="2026-09-08T22:22:19.340167638Z" level=info msg="loading plugin" id=io.containerd.server.v1.debug type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.340170680Z" level=info msg="skip loading plugin" error="skip plugin" id=io.containerd.server.v1.debug type=io.containerd.server.v1
+        time="2026-09-08T22:22:19.340228388Z" level=info msg=serving... address=/run/vela-ctrd-1853502847/containerd.sock.ttrpc
+        time="2026-09-08T22:22:19.340233096Z" level=info msg="starting GRPC server" address=/run/vela-ctrd-1853502847/containerd.sock gid=0 uid=0
+        time="2026-09-08T22:22:19.340248138Z" level=info msg=serving... address=/run/vela-ctrd-1853502847/containerd.sock
+        time="2026-09-08T22:22:19.340255180Z" level=info msg="containerd successfully booted in 0.021659s"
+        time="2026-09-08T22:22:26.998430252Z" level=info msg="ImageCreate event name:\"docker.io/vela/caller-sandbox:cpu-fixture\""
+        time="2026-09-08T22:22:27.003028669Z" level=info msg="ImageCreate event name:\"sha256:4f13993bfb6b701f65f0bf02874261c2a21ccc41910c7a01bba1e5332ff8d007\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"} labels:{key:\"io.cri-containerd.pinned\" value:\"pinned\"}"
+        time="2026-09-08T22:22:27.003107877Z" level=info msg="ImageCreate event name:\"docker.io/vela/caller-runtime:cpu-fixture\""
+        time="2026-09-08T22:22:27.005339211Z" level=info msg="ImageUpdate event name:\"docker.io/vela/caller-sandbox:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"} labels:{key:\"io.cri-containerd.pinned\" value:\"pinned\"}"
+        time="2026-09-08T22:22:27.005412877Z" level=info msg="ImageCreate event name:\"sha256:6cd38f2f26ef66f7db8b8c3a9c1f1ca36bce5ae7fc2d631659554e70a907676d\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:22:27.005492127Z" level=info msg="ImageUpdate event name:\"docker.io/vela/caller-runtime:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:22:33.417736255Z" level=info msg="ImageCreate event name:\"docker.io/vela/remote-runtime:cpu-fixture\""
+        time="2026-09-08T22:22:33.419810755Z" level=info msg="ImageCreate event name:\"sha256:ffcf1288fe662cf836a91b8252f6404adb3c4f1aeba7a9d9dd9fb461fdd3c3a6\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:22:33.419891172Z" level=info msg="ImageUpdate event name:\"docker.io/vela/remote-runtime:cpu-fixture\" labels:{key:\"io.cri-containerd.image\" value:\"managed\"}"
+        time="2026-09-08T22:22:33.661845297Z" level=info msg="RunPodSandbox for name:\"wi-401b751ec6f94daf93d5e1946ec17229-ba3790e0\" uid:\"303c290c-b709-43fd-966d-e2603aba3bd4\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:33.756218631Z" level=info msg="connecting to shim eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d" address="unix:///run/containerd/s/21919a9233c36f5d4f68afb42c437de6dfa666d7c721b67ff7c04c5bbf813e56" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:33.770881797Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d
+        time="2026-09-08T22:22:33.770968047Z" level=info msg="shim disconnected" id=eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d namespace=k8s.io
+        time="2026-09-08T22:22:33.770974839Z" level=info msg="cleaning up after shim disconnected" id=eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d namespace=k8s.io
+        time="2026-09-08T22:22:33.770978089Z" level=info msg="cleaning up dead shim" id=eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d namespace=k8s.io
+        time="2026-09-08T22:22:33.776637797Z" level=warning msg="warnings while cleaning up dead shim" id=eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d namespace=k8s.io warnings="time=\"2026-09-08T22:22:33Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:33.776866256Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:33.778476131Z" level=error msg="RunPodSandbox for name:\"wi-401b751ec6f94daf93d5e1946ec17229-ba3790e0\" uid:\"303c290c-b709-43fd-966d-e2603aba3bd4\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"eecad6328fbee15097e0fb656521c8c8595b0b65635fe583838ba216856f853d\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:33.818534131Z" level=info msg="RunPodSandbox for name:\"wi-a4c3fa2bdbc64a1baf2fb14671f551c3-ba3790e0\" uid:\"c54b428c-e9da-4630-b53f-ef7a627c1472\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:33.924996297Z" level=info msg="connecting to shim c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0" address="unix:///run/containerd/s/dda660dbea7ca0df216a75b420cc10bba3f18ee9133411c8663bd28740034ea7" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:33.940756506Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0
+        time="2026-09-08T22:22:33.940852589Z" level=info msg="shim disconnected" id=c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0 namespace=k8s.io
+        time="2026-09-08T22:22:33.940860381Z" level=info msg="cleaning up after shim disconnected" id=c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0 namespace=k8s.io
+        time="2026-09-08T22:22:33.940872589Z" level=info msg="cleaning up dead shim" id=c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0 namespace=k8s.io
+        time="2026-09-08T22:22:33.943500381Z" level=warning msg="warnings while cleaning up dead shim" id=c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0 namespace=k8s.io warnings="time=\"2026-09-08T22:22:33Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:33.943662589Z" level=error msg="copy shim log" error="read /proc/self/fd/21: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:33.944796006Z" level=error msg="RunPodSandbox for name:\"wi-a4c3fa2bdbc64a1baf2fb14671f551c3-ba3790e0\" uid:\"c54b428c-e9da-4630-b53f-ef7a627c1472\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"c36d804f8e29a662520165f1972ed1e533d03f225ddad27147dbd082d5ea75c0\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:33.982535547Z" level=info msg="RunPodSandbox for name:\"wi-6cdbc909b69940008b21f9d75571e8cf-ba3790e0\" uid:\"efdb2481-fa2c-447e-b5ba-eee64af9d848\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.108588339Z" level=info msg="connecting to shim 0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a" address="unix:///run/containerd/s/12c7700b8fa445db1ad8a7b4cce9bc1784438d7e4c11e9d218da1543e0bbfc8f" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.113285839Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a
+        time="2026-09-08T22:22:34.113367964Z" level=info msg="shim disconnected" id=0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a namespace=k8s.io
+        time="2026-09-08T22:22:34.113375839Z" level=info msg="cleaning up after shim disconnected" id=0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a namespace=k8s.io
+        time="2026-09-08T22:22:34.113389089Z" level=info msg="cleaning up dead shim" id=0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a namespace=k8s.io
+        time="2026-09-08T22:22:34.116482839Z" level=warning msg="warnings while cleaning up dead shim" id=0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.116668422Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.117723547Z" level=error msg="RunPodSandbox for name:\"wi-6cdbc909b69940008b21f9d75571e8cf-ba3790e0\" uid:\"efdb2481-fa2c-447e-b5ba-eee64af9d848\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"0017b7795003f0c0604d537db5cce97b2c16c52acc712fd66fd5c1bff5d3349a\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.159289714Z" level=info msg="RunPodSandbox for name:\"wi-9b8471a904aa4bb6b73777140e175b77-ba3790e0\" uid:\"562d440f-4f10-4235-a2f8-14efec3d2773\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.241188172Z" level=info msg="connecting to shim dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157" address="unix:///run/containerd/s/8a63c5b5714e21fdea8ff57019d135c57333dec0de73bddd6b71b13c7f56dca0" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.248986422Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157
+        time="2026-09-08T22:22:34.249075464Z" level=info msg="shim disconnected" id=dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157 namespace=k8s.io
+        time="2026-09-08T22:22:34.249082506Z" level=info msg="cleaning up after shim disconnected" id=dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157 namespace=k8s.io
+        time="2026-09-08T22:22:34.249085547Z" level=info msg="cleaning up dead shim" id=dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157 namespace=k8s.io
+        time="2026-09-08T22:22:34.252538672Z" level=warning msg="warnings while cleaning up dead shim" id=dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157 namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.252752714Z" level=error msg="copy shim log" error="read /proc/self/fd/21: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.253907131Z" level=error msg="RunPodSandbox for name:\"wi-9b8471a904aa4bb6b73777140e175b77-ba3790e0\" uid:\"562d440f-4f10-4235-a2f8-14efec3d2773\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"dea9a25d1d94267a5a6bc99d9b52e8b959d0415e70461eba0ded4777a6762157\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.294439423Z" level=info msg="RunPodSandbox for name:\"wi-eb0fb4f54f21429bb74b96d86788b44b-ba3790e0\" uid:\"0636c47d-a8f0-405d-acb6-76824817f51b\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.339945256Z" level=info msg="connecting to shim d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe" address="unix:///run/containerd/s/52acad35749a85f8cdb13106a629290095d27330b4e89a65b0ae021d9b26cec2" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.345307506Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe
+        time="2026-09-08T22:22:34.345397673Z" level=info msg="shim disconnected" id=d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe namespace=k8s.io
+        time="2026-09-08T22:22:34.345406673Z" level=info msg="cleaning up after shim disconnected" id=d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe namespace=k8s.io
+        time="2026-09-08T22:22:34.345409506Z" level=info msg="cleaning up dead shim" id=d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe namespace=k8s.io
+        time="2026-09-08T22:22:34.348357256Z" level=warning msg="warnings while cleaning up dead shim" id=d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.348546548Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.349617298Z" level=error msg="RunPodSandbox for name:\"wi-eb0fb4f54f21429bb74b96d86788b44b-ba3790e0\" uid:\"0636c47d-a8f0-405d-acb6-76824817f51b\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"d5a6d27fd730236d6103778c7364097194175fdac94c6a69d6c928fb660a2bbe\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.387832881Z" level=info msg="RunPodSandbox for name:\"wi-4c981552029942e88db2f57f0bf25ee7-ba3790e0\" uid:\"7b6c997b-86b2-42b9-bbf4-73548f45f2b1\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.444705256Z" level=info msg="connecting to shim 55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7" address="unix:///run/containerd/s/4cca4e063fb983950c3c5c2fb4ac7934ac175b6394205f432cb5cd914e75580a" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.451959214Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7
+        time="2026-09-08T22:22:34.452041839Z" level=info msg="shim disconnected" id=55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7 namespace=k8s.io
+        time="2026-09-08T22:22:34.452049923Z" level=info msg="cleaning up after shim disconnected" id=55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7 namespace=k8s.io
+        time="2026-09-08T22:22:34.452053756Z" level=info msg="cleaning up dead shim" id=55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7 namespace=k8s.io
+        time="2026-09-08T22:22:34.455255464Z" level=warning msg="warnings while cleaning up dead shim" id=55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7 namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.455416506Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.456602464Z" level=error msg="RunPodSandbox for name:\"wi-4c981552029942e88db2f57f0bf25ee7-ba3790e0\" uid:\"7b6c997b-86b2-42b9-bbf4-73548f45f2b1\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"55ee62db3e81505d60248a3dbba09da869e72fcfe745dcd3f2617b6751f2f6d7\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.496936839Z" level=info msg="RunPodSandbox for name:\"wi-ff10b7fb50b4402cb114501b2d2d7c19-ba3790e0\" uid:\"6e7a6081-78eb-423f-8341-dd9712b51bc8\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.557706089Z" level=info msg="connecting to shim 2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083" address="unix:///run/containerd/s/21f5231f16da022a25d82e6dab73de14472ed3aeb40a1565851a62a34ee76893" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.562091381Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083
+        time="2026-09-08T22:22:34.562189006Z" level=info msg="shim disconnected" id=2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083 namespace=k8s.io
+        time="2026-09-08T22:22:34.562197839Z" level=info msg="cleaning up after shim disconnected" id=2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083 namespace=k8s.io
+        time="2026-09-08T22:22:34.562209964Z" level=info msg="cleaning up dead shim" id=2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083 namespace=k8s.io
+        time="2026-09-08T22:22:34.564909964Z" level=warning msg="warnings while cleaning up dead shim" id=2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083 namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.565089381Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.566169131Z" level=error msg="RunPodSandbox for name:\"wi-ff10b7fb50b4402cb114501b2d2d7c19-ba3790e0\" uid:\"6e7a6081-78eb-423f-8341-dd9712b51bc8\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"2ee48f118200744adce1af40fd8ca2a9ae65fc94a1e4e0702486c117e37d1083\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.605543006Z" level=info msg="RunPodSandbox for name:\"wi-f89ae5ab7e9b4c36ab42097d5871b6ea-ba3790e0\" uid:\"6331490b-2b5a-4809-8907-e5381c229311\" namespace:\"vela-system\" attempt:1"
+        time="2026-09-08T22:22:34.667318964Z" level=info msg="connecting to shim 462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625" address="unix:///run/containerd/s/a40cf06e2c8befbe0fba19f7f7ba4f3fbf68fcbe9b2feb2b8b020308c8ce1d4d" namespace=k8s.io protocol=ttrpc version=3
+        time="2026-09-08T22:22:34.672468423Z" level=error msg="failed to delete task" error="rpc error: code = NotFound desc = container not created: not found" id=462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625
+        time="2026-09-08T22:22:34.672575339Z" level=info msg="shim disconnected" id=462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625 namespace=k8s.io
+        time="2026-09-08T22:22:34.672580923Z" level=info msg="cleaning up after shim disconnected" id=462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625 namespace=k8s.io
+        time="2026-09-08T22:22:34.672583339Z" level=info msg="cleaning up dead shim" id=462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625 namespace=k8s.io
+        time="2026-09-08T22:22:34.675614006Z" level=warning msg="warnings while cleaning up dead shim" id=462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625 namespace=k8s.io warnings="time=\"2026-09-08T22:22:34Z\" level=warning msg=\"failed to read init pid file\" error=\"open /run/vela-ctrd-1853502847/state/io.containerd.runtime.v2.task/k8s.io/462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625/init.pid: no such file or directory\" runtime=io.containerd.runc.v2\n"
+        time="2026-09-08T22:22:34.675819048Z" level=error msg="copy shim log" error="read /proc/self/fd/19: file already closed" namespace=k8s.io
+        time="2026-09-08T22:22:34.676999964Z" level=error msg="RunPodSandbox for name:\"wi-f89ae5ab7e9b4c36ab42097d5871b6ea-ba3790e0\" uid:\"6331490b-2b5a-4809-8907-e5381c229311\" namespace:\"vela-system\" attempt:1 failed, error" error="rpc error: code = Unknown desc = failed to start sandbox \"462b4ef36f23078f1fbce3336d1ec7b3c5bda2acf8c22133961aa165d4e2c625\": failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to set hostname without a private UTS namespace"
+        time="2026-09-08T22:22:34.678750256Z" level=info msg="Stop CRI service"
+        time="2026-09-08T22:22:34.682920381Z" level=info msg="Stop CRI service"
+        time="2026-09-08T22:22:34.682958881Z" level=info msg="Event monitor stopped"
+        time="2026-09-08T22:22:34.682967214Z" level=info msg="Stream server stopped"
+--- FAIL: TestRuntimeCallerContainerCRI (15.42s)
+    --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation (7.47s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/valid (0.17s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/extra-env (0.17s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-path-env (0.17s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-hostname (0.14s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/duplicate-argument (0.10s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/before-fleet-env-change (0.11s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/after-fleet-env-change (0.11s)
+        --- FAIL: TestRuntimeCallerContainerCRI/remote-cli-reservation/fleet-loss (0.11s)
+FAIL

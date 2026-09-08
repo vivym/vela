@@ -1,0 +1,591 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "8b4b18231c2f06cf5eef94aad2c678c9ee6021cc",
+  "source_tree_sha256": "e455ca0f40773d9c7e9e03fdc44ea80b6faa7e404aee997cd86f14a65cdcda73",
+  "source_file_count": 1012,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "4da39861a276e890db0ba6246c68ec3689cafc968f2cdefabaa83c632b431247",
+  "native_image": "sha256:c618a7e2810e68a06627a73ef85a083f5df4740c159f247b0b51cfbb402e7f7e",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "production_gates": "0/9",
+  "cli_reservation_cases": {
+    "valid": "2.72s",
+    "extra-env": "0.27s",
+    "wrong-path-env": "0.28s",
+    "wrong-hostname": "0.28s",
+    "duplicate-argument": "0.32s",
+    "hidden-env": "0.31s",
+    "hidden-argument": "0.27s",
+    "before-fleet-env-change": "0.45s",
+    "after-fleet-env-change": "0.59s",
+    "fleet-loss": "0.59s"
+  },
+  "publication_cases": {
+    "publication-valid": "1.01s",
+    "publication-missing": "0.23s",
+    "publication-copy": "0.21s",
+    "publication-writable-mount": "0.20s",
+    "publication-wrong-plan": "0.22s",
+    "publication-hardlink": "0.19s",
+    "publication-before-fleet-replaced": "0.48s",
+    "publication-after-fleet-replaced": "0.68s",
+    "publication-fleet-loss": "0.82s",
+    "publication-incarnation": "0.19s",
+    "publication-before-fleet-remounted": "1.84s",
+    "publication-after-fleet-remounted": "2.03s",
+    "publication-wrong-consumed-digest": "0.22s",
+    "publication-wrong-consumed-path": "0.20s",
+    "publication-legacy-request": "0.21s",
+    "publication-unbound-api": "0.19s",
+    "publication-unbound-record": "0.20s"
+  },
+  "ledger_tests": {
+    "TestRuntimeStartupLedgerBeforeActualFactory": "4.43s",
+    "TestRuntimeStartupLedgerRetainsExactOwnerExit": "0.08s",
+    "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner": "0.06s",
+    "TestRuntimeStartupLedgerReservesExitCapacity": "20.51s",
+    "TestRuntimeStartupLedgerRejectsUnboundRequests": "0.14s",
+    "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed": "0.24s",
+    "TestRuntimeStartupLedgerRejectsMissingAndChangedState": "0.01s",
+    "TestRuntimeStartupReservationProcessCrashRecovery": "0.87s",
+    "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal": "0.14s",
+    "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter": "0.11s",
+    "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent": "1.38s"
+  },
+  "configuration_cases": {
+    "valid": "0.00s",
+    "image-path-default": "0.00s",
+    "environment-order": "0.00s",
+    "missing-path": "0.00s",
+    "wrong-path": "0.00s",
+    "wrong-mode": "0.00s",
+    "flag-alias": "0.00s",
+    "extra-arg": "0.00s",
+    "image-command": "0.00s",
+    "environment-missing": "0.00s",
+    "environment-extra": "0.00s",
+    "environment-duplicate": "0.00s",
+    "environment-hostname": "0.00s",
+    "environment-path": "0.00s",
+    "environment-home": "0.00s",
+    "image-environment": "0.00s",
+    "image-duplicate": "0.00s",
+    "tty": "0.00s",
+    "cwd": "0.00s",
+    "image-cwd": "0.00s"
+  },
+  "checks": [
+    {
+      "command": "VELA_TASK_LAUNCH_SCOPE=remote-cli bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/runner.log"
+    },
+    {
+      "command": "Final native image: docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 -e VELA_TEST_CONTAINERD_SANDBOX=1 <image> '-test.run=^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^publication-' -test.count=1 -test.v -test.timeout=2m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/publication-native.log"
+    },
+    {
+      "command": "Final native image: TestRuntimeRemoteCLIConfiguration and eleven explicit TestRuntimeStartupLedger/Reservation tests, -test.count=1 -test.v -test.timeout=2m; --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/ledger-native.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/linux-lint-final.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/linux-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -tags=integration -exec=true ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-remote-cli-reservation-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "regression": {
+    "change": "Disable original process cmdline/environ byte comparison against approved task vectors",
+    "native_exit_code": 1,
+    "runner_exit_code": 0,
+    "expected_failing_cases": [
+      "hidden-env",
+      "hidden-argument"
+    ],
+    "incorrect_side_effects_per_case": {
+      "intents": 1,
+      "fleet_calls": 1
+    },
+    "passing_control": "valid"
+  },
+  "initial_failures": [
+    {
+      "artifact": "early-rootfs/native.log",
+      "cause": "Fixture replaced RootFS metadata while constructing image config; preserve base ConfigFile and layer diff IDs."
+    },
+    {
+      "artifact": "early-uts/native.log",
+      "cause": "Network-isolated outer sandbox uses host-network, without private UTS for nested CRI; explicitly inject planned HOSTNAME environment without changing kernel hostname."
+    },
+    {
+      "artifacts": [
+        "early-env/native.log",
+        "early-proc-diagnostic/native.log"
+      ],
+      "cause": "runc appended HOME=/ to actual exec environment but task config had PATH/HOSTNAME only; explicitly set HOME=/ in image/task and retain byte-exact process comparison."
+    }
+  ],
+  "claim_boundary": "Same operation actual remote CLI, actual Node journal RPC, real CRI image/task, actual published readonly mount and single Fleet fixture reservation. Positive backend initialization/shutdown uses an explicit test Permit. Registry/Pod/Fleet remain fixtures; production renderer still uses local-journal environment. Procfs sampling is not historical consumption, live Go environment, loaded-code attestation or exec continuity. No real TLS/PostgreSQL in this operation, production pre-grant read-only journal enrollment, once-only grant, production Node wiring, protected complete Job, Worker business journal, descendants/device containment, sustained capacity, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/binaries.sha256",
+      "bytes": 1233,
+      "sha256": "9df2c72b5d8e512069d451011c143b0e5b52bbcf0423e7a68d69a02a3bb3f08c"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "1c12e7cd8f4a5d3cd7113ad45725b59026991e4c9a190f68ae9f5b105dd20788"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/build-vela-model-runtime.log",
+      "bytes": 492,
+      "sha256": "7d503f56088036cb1a9f1f8b977e3fe146a7128125c8f38aaefc0af512775aa5"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/build.log",
+      "bytes": 1721,
+      "sha256": "c32277424d9f2f70773783a7c692526be8363cce02472c619397ac63807012b6"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/image.txt",
+      "bytes": 72,
+      "sha256": "bf18e96624e3b84a6f0f8daad55b038a41297cb6d6ff05996f51fc18f4d06edd"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/native.log",
+      "bytes": 81744,
+      "sha256": "dcdfd0490fa7ad89f7e154c300a558f57ab38e3f1c14c5bafea4feeb907f3939"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "971ab763679f936e78af6daa6975f94fa097fda102ccface0e06c4a97f648516"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/source.patch",
+      "bytes": 40625,
+      "sha256": "092c2b9d3ddb8edcca79408c9b8c12b144652acfd92be393748c4a8d9ce14802"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-env/source.txt",
+      "bytes": 590,
+      "sha256": "bb6da172c776fbef37df18129a611c8303a54802eb80faf73ce740ceda4f5d4d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/binaries.sha256",
+      "bytes": 1226,
+      "sha256": "46a29f3bff954cf49bec40d30ad5dcc9d67fb8dc6e32c47a49dff9a35668ba21"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/build-runtime-command.log",
+      "bytes": 340,
+      "sha256": "5e39492e9ec7e542268a0be7ef83f779a11f73ef6dcc36bf0f7bbab76546e90a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "a5bf65b9abe9bd3b7a0d82235ebda3e608a882e8428afa7dcdcf2c2d092eac03"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/build.log",
+      "bytes": 1721,
+      "sha256": "8fc1ca8f2082f6d09da1571904d94677d7dc1dc57946bcd0c3620ce2fb097b09"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/image.txt",
+      "bytes": 72,
+      "sha256": "4e05e4f6d3ae75fea461378c27b8cb9a4256aa263644b07801d3d8cedc58d715"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/native.log",
+      "bytes": 84566,
+      "sha256": "f609ea4d71c818010356ae39ca125b8cb650205c285208b41c403c541700513f"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "70acf5db3b26504f13165128ef0aaf8efe030d594df88a791fba24616b658386"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/source.patch",
+      "bytes": 41291,
+      "sha256": "1b35a166288385115e88d553c80531ec38d3ee8d3705dc8aa2ff54eb1c1b2db8"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-proc-diagnostic/source.txt",
+      "bytes": 590,
+      "sha256": "bb6da172c776fbef37df18129a611c8303a54802eb80faf73ce740ceda4f5d4d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/binaries.sha256",
+      "bytes": 1212,
+      "sha256": "9833b8fe7d6ada5f9b8e39469965cfa2e40ab8e066ad7846ff537529fcedadbe"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "3a93b091223027b9eac2ce37c5a607c72ebc732711e7310b9f958608aca29fa0"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "f60fd576e42e6d4cc544c56f53e20170051f31e273064cac273b3d847c024573"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/build.log",
+      "bytes": 1721,
+      "sha256": "5d8b1fca2f85117430f62ea140b3a4dd20b1f4a4b49bdde013b7431fc4fae4ba"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/image.txt",
+      "bytes": 72,
+      "sha256": "7dffb2664b0cf4828b2350d930ed463a7ac95503316217b37a15f37e9fa1d1e8"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/native.log",
+      "bytes": 20680,
+      "sha256": "77a28921c5c74adc95a793adebf82f4e6d33ac5ea70ed4f152003662033f3356"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "fd4a69c4d5d38427e66b372ef4a8ecbddb996e85e1fcad1a85d3c1c21eb84fa4"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/source.patch",
+      "bytes": 39861,
+      "sha256": "93a87f8c3eea12dffb348ce34f4bad5b4645e29e5c06ac6e78da21d2e1dd9133"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-rootfs/source.txt",
+      "bytes": 590,
+      "sha256": "bb6da172c776fbef37df18129a611c8303a54802eb80faf73ce740ceda4f5d4d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/binaries.sha256",
+      "bytes": 1219,
+      "sha256": "9c247e2e4ae3d6cb1965e0d246332609a70d52cc943edef98d977700756cb9b8"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "68805691934105af30109ca2bd266b8ee87fe5f68c5ec7054d228929fe5c5b32"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/build-vela-model-runtime.log",
+      "bytes": 493,
+      "sha256": "b8788721ec8456140409275b0996c68c1fa5e5fa8b21af900003875d9a410f61"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/build.log",
+      "bytes": 1721,
+      "sha256": "9738f92bde155b8199fdee4a9644aa3a23435c2333d399d2b34d6b0290f18e76"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/image.txt",
+      "bytes": 72,
+      "sha256": "f5ac4dece6080263da93983e60dc0705752fd67772e5fab7317f8cb9c345248f"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/native.log",
+      "bytes": 43958,
+      "sha256": "0575d01912ed593f4c3a3444779253c5727c3064796c0d2cd6b1a13255490341"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/runner.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "387890799f1dcf78b64e76c5aa0b03359d9fbb15be608e535e1b0019a4a0866e"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/source.patch",
+      "bytes": 39986,
+      "sha256": "56730be3fd8c338eac1a4c21f9c5c9e2d7051e80f496275dd608e0a10dde081b"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/early-uts/source.txt",
+      "bytes": 590,
+      "sha256": "bb6da172c776fbef37df18129a611c8303a54802eb80faf73ce740ceda4f5d4d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/ledger-native.log",
+      "bytes": 14505,
+      "sha256": "29127a9c9f431cad25754992579077aa88f874b4e5bb1da723f0521cce0a6ccf"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/linux-lint-final.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/linux-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/binaries.sha256",
+      "bytes": 1268,
+      "sha256": "fb45ffb2807fa647e411e1ecf7a382100a51441b7bcbedbd1e3a750534d2e717"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/build-runtime-command.log",
+      "bytes": 341,
+      "sha256": "de1c0756639885d12a66dbcd87d726e22cf8d5b5fcbbdd63222bae75c9e6890b"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/build-vela-model-runtime.log",
+      "bytes": 491,
+      "sha256": "f4d982c316aabd48ee326691c49d4d904961694e7c70962521260934ac04949d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/build.log",
+      "bytes": 1721,
+      "sha256": "cb7c87ed24a76cdaa8b6e112fc7e44fae1394bf251f2ec3e4ac0729e1dde4c13"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/image.txt",
+      "bytes": 72,
+      "sha256": "309a96dc39fde7294022a34732e417f94578936b5226c87fa3b06187082d54e0"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/native.log",
+      "bytes": 5783,
+      "sha256": "da644761d3ed85e97ac38b5bd938cf1039f6dd3a1084ede93dbd1d301e73728a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/runner.log",
+      "bytes": 114,
+      "sha256": "d3061e9e07c3cf01a7559cb905f2b0ecd353e84152c4d1cf10e68da442141bb3"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/scope.txt",
+      "bytes": 11,
+      "sha256": "82f6cedf7c36fd36283ad7c1c91e4c45c91748787314a9ba8b23f982fcdf0a3a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "fff5dc829ec58eb4738d352dcd91a01e608ba77447e8a0da921b5a4872de0f92"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/source.patch",
+      "bytes": 41953,
+      "sha256": "77db5d0a359d662d2f3cc5a9a1903d22953b885369aee3b544b0f752be83edd0"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/native/source.txt",
+      "bytes": 590,
+      "sha256": "bb6da172c776fbef37df18129a611c8303a54802eb80faf73ce740ceda4f5d4d"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/package-evidence.py",
+      "bytes": 9155,
+      "sha256": "06cbe7842ac3bece63e5bff9c966405253128e8cbcf8c986478981c787c38cd0"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/publication-native.log",
+      "bytes": 7252,
+      "sha256": "0a65aa570af152cc38c32da6fc86485c72e3d06b426d77b3a6ffbf32b7ad1b97"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/Dockerfile",
+      "bytes": 76,
+      "sha256": "02488fe2419cd460be40743b283488bcdef758178874b80b87816f9152776991"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/binaries.sha256",
+      "bytes": 151,
+      "sha256": "cbc0a6c6771f85442d3d4957d618cda7a0470d92d3d03272317224d00f86a410"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/build.log",
+      "bytes": 1715,
+      "sha256": "b712cd8be3a757c352bc5f813bdba5853902a2a3d8cd38d2dd928612bdaa2601"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/image.txt",
+      "bytes": 72,
+      "sha256": "90ae4bbca28b610c5d5b59160168adbba377c5d4f868ee732aecf1c01515a1cf"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/native.log",
+      "bytes": 40866,
+      "sha256": "1876436eb21ce64683462b297ccbf38c85484301df490b0758da96b03e269e7e"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/overlay.json",
+      "bytes": 134,
+      "sha256": "d14849fff7c69f640a1776bcb497698b523e30205a118ca377015c3f4e47673e"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/prepare_regression.py",
+      "bytes": 640,
+      "sha256": "ffcade4af17daf64aa0989ea02f1daa15273d45a59b86fadb677a44bdaffe045"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/proc-vector-check-disabled.go.txt",
+      "bytes": 4719,
+      "sha256": "049e952bcacd409d91c6ec7a88b10a7d39a04f5550cb8559893559e8bc6bcf8f"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression/run-regression.sh",
+      "bytes": 2427,
+      "sha256": "87c2b6d611c03ff9d592d5be412c43a393783c4b8f403a0552d0df04bacf2e65"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/regression-runner.log",
+      "bytes": 79,
+      "sha256": "a81426f5a0017dd4f00cd01129daa0e8ef3e03a9a1afa2730d48862cac36529a"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/source-files.json",
+      "bytes": 160345,
+      "sha256": "d9259a6affdae60255d47a9d98bf77d18538302bce5d346328537a78c3203318"
+    },
+    {
+      "path": "docs/evidence/node-remote-cli-reservation-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -204,6 +204,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 	t.Run("startup-image-reservation", func(t *testing.T) {
 		verifyRuntimeStartupImageReservation(t, fixture, observer, runtimeImage)
 	})
+	t.Run("remote-cli-reservation", func(t *testing.T) {
+		verifyRemoteCLIReservation(t, fixture, observer)
+	})
 	t.Run("original-daemon-lifetime", func(t *testing.T) {
 		verifyRuntimeDaemonLifetime(t, fixture, observer)
 	})

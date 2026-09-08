@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func publicationFixture(t *testing.T, actualCLI bool) RuntimeBootstrapPublicationConfig {
+func publicationFixture(t *testing.T, actualCLI bool, image ...string) RuntimeBootstrapPublicationConfig {
 	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node in native Linux sandbox")
@@ -36,6 +36,9 @@ func publicationFixture(t *testing.T, actualCLI bool) RuntimeBootstrapPublicatio
 		t.Fatal(err)
 	}
 	launch := runtimeLaunchFixture(t)
+	if len(image) == 1 {
+		launch.bundle.RuntimeImage = image[0]
+	}
 	if actualCLI {
 		backend := &launch.bundle.WorkerInstances[0].ModelRuntimes[0]
 		backend.Command = []string{"/runtime-command.test", "-test.run=^TestModelRuntimeCommandDriverHelper$"}

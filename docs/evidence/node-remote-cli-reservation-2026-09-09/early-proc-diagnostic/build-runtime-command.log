@@ -1,0 +1,3 @@
+# github.com/vivym/vela/cmd/vela-model-runtime.test
+/usr/bin/ld: /tmp/go-link-817868089/000004.o: in function `_cgo_77133bf98b3a_C2func_getaddrinfo':
+/tmp/go-build/cgo-gcc-prolog:60:(.text+0x30): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking

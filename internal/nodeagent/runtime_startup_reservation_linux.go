@@ -46,6 +46,7 @@ type RuntimeStartupRemoteIntent struct {
 	Epochs          []fleet.RuntimeStartupEpoch           `json:"epochs"`
 	Executable      RuntimeExecutableObservation          `json:"executable"`
 	Bootstrap       *RuntimeStartupBootstrapObservation   `json:"bootstrap,omitempty"`
+	RemoteCLI       *RuntimeRemoteCLIObservation          `json:"remote_cli,omitempty"`
 }
 
 // RuntimeStartupReservationRecord records a committed Fleet reservation. It
@@ -84,6 +85,10 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 	}
 	if err := image.inspect(ctx, config); err != nil {
 		return RuntimeStartupReservationRecord{}, err
+	}
+	if image != nil && image.first.RemoteCLI != nil {
+		copy := *image.first.RemoteCLI
+		remote.RemoteCLI = &copy
 	}
 	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote)
 	if err != nil {
@@ -196,6 +201,8 @@ func (ledger *RuntimeStartupLedger) checkRemoteStartup(ctx context.Context, conf
 		return err
 	}
 	current.Executable = record.Remote.Executable
+	// image.check independently re-observes the CLI vectors before this check.
+	current.RemoteCLI = record.Remote.RemoteCLI
 	if !reflect.DeepEqual(current, *record.Remote) {
 		return ErrRuntimeStartupLedger
 	}
@@ -242,6 +249,9 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
 
 func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
 	remote := record.Remote
+	if remote.RemoteCLI != nil && (record.Request.SchemaVersion != 2 || remote.Bootstrap == nil || remote.RemoteCLI.SchemaVersion != 1 || remote.RemoteCLI.ArgumentsDigest == ([sha256.Size]byte{}) || remote.RemoteCLI.EnvironmentDigest == ([sha256.Size]byte{})) {
+		return ErrRuntimeStartupLedger
+	}
 	if record.Request.SchemaVersion == 2 && (remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != record.Request.BootstrapDigest || remote.Bootstrap.BootstrapPath != record.Request.BootstrapPath) {
 		return ErrRuntimeStartupLedger
 	}

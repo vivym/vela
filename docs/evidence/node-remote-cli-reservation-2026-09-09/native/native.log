@@ -1,0 +1,51 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/valid
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:3 Overloaded:0 Authenticated:3 Replied:3 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: valid calls=1 intents=1
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/extra-env
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: extra-env calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-path-env
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: wrong-path-env calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-hostname
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: wrong-hostname calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/duplicate-argument
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: duplicate-argument calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/hidden-env
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: hidden-env calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/hidden-argument
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: hidden-argument calls=0 intents=0
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/before-fleet-env-change
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: before-fleet-env-change calls=0 intents=1
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/after-fleet-env-change
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: after-fleet-env-change calls=1 intents=1
+=== RUN   TestRuntimeCallerContainerCRI/remote-cli-reservation/fleet-loss
+    runtime_remote_cli_integration_linux_test.go:349: joined Node journal server: {Accepted:1 Overloaded:0 Authenticated:1 Replied:1 Failed:0 InFlight:0 PeakInFlight:1}
+    runtime_remote_cli_integration_linux_test.go:353: actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: fleet-loss calls=1 intents=1
+--- PASS: TestRuntimeCallerContainerCRI (22.04s)
+    --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation (13.04s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/valid (2.72s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/extra-env (0.27s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-path-env (0.28s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/wrong-hostname (0.28s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/duplicate-argument (0.32s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/hidden-env (0.31s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/hidden-argument (0.27s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/before-fleet-env-change (0.45s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/after-fleet-env-change (0.59s)
+        --- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/fleet-loss (0.59s)
+PASS

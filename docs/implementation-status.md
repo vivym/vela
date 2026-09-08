@@ -607,6 +607,16 @@ bypass before intent/Fleet calls. Recovery retains digest/path consistency.
 The CLI and CRI tests still use separate assemblies and fixture permission/Fleet;
 effective argv/env, executable continuity, real Fleet and once-only grant must
 converge in the same operation before claiming protected startup or a full Job.
+The [actual CLI/CRI reservation assembly](node-remote-cli-reservation-evidence-2026-09-09.md)
+now combines the real CLI, Node journal, actual image/task and read-only published
+mount with one Fleet fixture reservation. A strict entry point approves the
+four-element remote command and fixed PATH/HOME/planned HOSTNAME, then compares
+the task vectors to the original process's procfs argv/environment and retains
+their digests. Ten native scenarios pass; disabling the process comparison makes
+two concealed-vector cases incorrectly reserve. Production Pod-to-CRI rendering,
+real Fleet/TLS/PostgreSQL, executable continuity, once-only grant and pre-grant
+read-only journal enrollment remain open. The explicit test Permit and procfs
+samples do not establish historical consumption or production launch authority.
 The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
 accepts the original canonical BackendStartupRequest and checks the Node-held
 Runtime journal, approved-image entrypoint and task mechanism in one reservation

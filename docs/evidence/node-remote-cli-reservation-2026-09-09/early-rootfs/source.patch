@@ -1,0 +1,840 @@
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index 4d48a62..3909732 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -18,6 +18,10 @@ case "$launch_scope" in
+     launch_pattern='^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^publication-'
+     launch_expected=(TestRuntimeCallerContainerCRI)
+     ;;
++  remote-cli)
++    launch_pattern='^TestRuntimeCallerContainerCRI$/^remote-cli-reservation$'
++    launch_expected=(TestRuntimeCallerContainerCRI)
++    ;;
+   *) echo "Unknown task launch scope: $launch_scope" >&2; exit 2 ;;
+ esac
+ [[ "$launch_evidence" = /* && "$launch_cache" = /* && "$launch_downloads" = /* ]] || exit 2
+@@ -59,6 +63,17 @@ docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
+   -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 \
+   "$launch_builder" go test -race -tags=integration -c -ldflags '-linkmode external -extldflags=-static' \
+   -o /evidence/image/rootfs/nodeagent.test ./internal/nodeagent > "$launch_evidence/build.log" 2>&1
++for launch_cli in runtime-command vela-model-runtime; do
++  launch_args=(test -race -c)
++  launch_output="$launch_cli.test"
++  if [[ "$launch_cli" == vela-model-runtime ]]; then launch_args=(build -race); launch_output=vela-model-runtime; fi
++  docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
++    -v "$launch_repo:/workspace:ro" -v "$launch_modules:/go/pkg/mod:ro" \
++    -v "$launch_evidence:/evidence" -v "$launch_cache:/build-cache" -w /workspace \
++    -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 "$launch_builder" \
++    go "${launch_args[@]}" -ldflags '-linkmode external -extldflags=-static' \
++    -o "/evidence/image/rootfs/$launch_output" ./cmd/vela-model-runtime > "$launch_evidence/build-$launch_cli.log" 2>&1
++done
+ cat > "$launch_evidence/image/Dockerfile" <<'DOCKERFILE'
+ FROM golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1
+ COPY rootfs /
+@@ -66,7 +81,7 @@ ENTRYPOINT ["/nodeagent.test"]
+ DOCKERFILE
+ launch_image="$(docker build --network none -q "$launch_evidence/image")"
+ echo "$launch_image" > "$launch_evidence/image.txt"
+-shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/image/rootfs/usr/local/bin/"* > "$launch_evidence/binaries.sha256"
++shasum -a 256 "$launch_evidence/image/rootfs/"*.test "$launch_evidence/image/rootfs/vela-model-runtime" "$launch_evidence/image/rootfs/usr/local/bin/"* > "$launch_evidence/binaries.sha256"
+ # Privileges are confined to this disposable nested-runtime sandbox. No host
+ # paths/sockets, host PID namespace, network, model weights or GPU are used.
+ docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
+@@ -81,5 +96,10 @@ if [[ "$launch_scope" == startup-publication ]]; then
+     rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/publication-$launch_case " "$launch_evidence/native.log" || exit 1
+   done
+ fi
++if [[ "$launch_scope" == remote-cli || "$launch_scope" == full ]]; then
++  for launch_case in valid extra-env wrong-path-env wrong-hostname duplicate-argument before-fleet-env-change after-fleet-env-change fleet-loss; do
++    rg -q -- "--- PASS: TestRuntimeCallerContainerCRI/remote-cli-reservation/$launch_case " "$launch_evidence/native.log" || exit 1
++  done
++fi
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
+ echo "Native task launch checks passed: $launch_evidence"
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+index ed13fba..361e191 100644
+--- a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+@@ -22,7 +22,7 @@ import (
+ 	"golang.org/x/sys/unix"
+ )
+ 
+-func publicationFixture(t *testing.T, actualCLI bool) RuntimeBootstrapPublicationConfig {
++func publicationFixture(t *testing.T, actualCLI bool, image ...string) RuntimeBootstrapPublicationConfig {
+ 	t.Helper()
+ 	if os.Geteuid() != 0 {
+ 		t.Skip("requires root Node in native Linux sandbox")
+@@ -36,6 +36,9 @@ func publicationFixture(t *testing.T, actualCLI bool) RuntimeBootstrapPublicatio
+ 		t.Fatal(err)
+ 	}
+ 	launch := runtimeLaunchFixture(t)
++	if len(image) == 1 {
++		launch.bundle.RuntimeImage = image[0]
++	}
+ 	if actualCLI {
+ 		backend := &launch.bundle.WorkerInstances[0].ModelRuntimes[0]
+ 		backend.Command = []string{"/runtime-command.test", "-test.run=^TestModelRuntimeCommandDriverHelper$"}
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index 7443b61..4c0058e 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -204,6 +204,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 	t.Run("startup-image-reservation", func(t *testing.T) {
+ 		verifyRuntimeStartupImageReservation(t, fixture, observer, runtimeImage)
+ 	})
++	t.Run("remote-cli-reservation", func(t *testing.T) {
++		verifyRemoteCLIReservation(t, fixture, observer)
++	})
+ 	t.Run("original-daemon-lifetime", func(t *testing.T) {
+ 		verifyRuntimeDaemonLifetime(t, fixture, observer)
+ 	})
+diff --git a/internal/nodeagent/runtime_planned_image_linux.go b/internal/nodeagent/runtime_planned_image_linux.go
+index 01cc921..26a4f94 100644
+--- a/internal/nodeagent/runtime_planned_image_linux.go
++++ b/internal/nodeagent/runtime_planned_image_linux.go
+@@ -20,6 +20,8 @@ type RuntimePlannedImageCallerConfig struct {
+ 	Images         *RuntimeImageObserver
+ 	StateDirectory string
+ 	RuntimePolicy  RuntimeTaskRuntimePolicy
++	remoteCLI      bool
++	publication    *RuntimeStartupPublicationConfig
+ }
+ 
+ // RuntimePlannedImageCallerObservation binds a sampled live executable and
+@@ -28,9 +30,10 @@ type RuntimePlannedImageCallerConfig struct {
+ // It does not approve env/config files, effective mounts, loaded memory,
+ // descendants, current Fleet activation or a startup grant.
+ type RuntimePlannedImageCallerObservation struct {
+-	Planned RuntimePlannedCallerObservation
+-	Image   RuntimeImageExecutableObservation
+-	Task    *RuntimeTaskLaunch
++	Planned   RuntimePlannedCallerObservation
++	Image     RuntimeImageExecutableObservation
++	Task      *RuntimeTaskLaunch
++	RemoteCLI *RuntimeRemoteCLIObservation
+ }
+ 
+ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
+@@ -106,6 +109,20 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
+ 		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
+ 		return nil, ErrRuntimePlannedImage
+ 	}
++	var cli *RuntimeRemoteCLIObservation
++	if config.remoteCLI {
++		if config.publication == nil || plan.pod.Spec.Hostname != "" || plan.pod.Spec.Subdomain != "" {
++			return nil, ErrRuntimeRemoteCLI
++		}
++		if err := checkRemoteCLIConfiguration(imageConfiguration.Config, configuration.Process, config.publication.BootstrapPath, plan.pod.Name); err != nil {
++			return nil, err
++		}
++		observed, err := config.Caller.inspectRemoteCLIVectors(ctx, configuration.Process)
++		if err != nil {
++			return nil, err
++		}
++		cli = &observed
++	}
+ 	last, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
+ 	if err != nil {
+ 		return nil, err
+@@ -121,7 +138,7 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
+ 	if err := errors.Join(config.Images.sameDaemon(observer), observer.check(), config.Images.local.check(), ctx.Err()); err != nil {
+ 		return nil, err
+ 	}
+-	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task}, nil
++	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task, RemoteCLI: cli}, nil
+ }
+ 
+ func samePlannedImageCaller(first, last RuntimePlannedCallerObservation) bool {
+diff --git a/internal/nodeagent/runtime_startup_image_linux.go b/internal/nodeagent/runtime_startup_image_linux.go
+index 4c05f5f..2a6bd1c 100644
+--- a/internal/nodeagent/runtime_startup_image_linux.go
++++ b/internal/nodeagent/runtime_startup_image_linux.go
+@@ -26,8 +26,9 @@ func (ledger *RuntimeStartupLedger) ReserveImageRemote(ctx context.Context, conf
+ }
+ 
+ type runtimeStartupImageCheck struct {
+-	config RuntimeStartupImageConfig
+-	first  *RuntimePlannedImageCallerObservation
++	config    RuntimeStartupImageConfig
++	first     *RuntimePlannedImageCallerObservation
++	remoteCLI bool
+ }
+ 
+ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config RuntimeStartupReservationConfig) error {
+@@ -37,6 +38,7 @@ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config Runti
+ 	current, err := config.Observer.ObserveStartupImageCaller(ctx, RuntimePlannedImageCallerConfig{
+ 		Plan: config.Plan, Pods: config.Pods, Caller: config.Caller, Images: check.config.Images,
+ 		StateDirectory: check.config.StateDirectory, RuntimePolicy: check.config.RuntimePolicy,
++		remoteCLI: check.remoteCLI, publication: config.publication,
+ 	})
+ 	if err != nil {
+ 		return err
+@@ -56,7 +58,7 @@ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config Runti
+ 	// Each task observation already matches its planned caller's original
+ 	// process. Compare all retained task bytes/file identities without timestamps.
+ 	firstTask.Caller, lastTask.Caller = RuntimeContainerCallerObservation{}, RuntimeContainerCallerObservation{}
+-	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) {
++	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) || !reflect.DeepEqual(check.first.RemoteCLI, current.RemoteCLI) {
+ 		return ErrRuntimePlannedImage
+ 	}
+ 	return nil
+@@ -70,6 +72,9 @@ func (check *runtimeStartupImageCheck) check(ctx context.Context, config Runtime
+ 		return err
+ 	}
+ 	observed := check.first.Planned
++	if !reflect.DeepEqual(check.first.RemoteCLI, record.Remote.RemoteCLI) {
++		return ErrRuntimeRemoteCLI
++	}
+ 	originalOwner, originalExecutable := record.Owner, record.Remote.Executable
+ 	originalOwner.ObservedFrom, originalOwner.ObservedThrough = observed.Caller.ObservedFrom, observed.Caller.ObservedThrough
+ 	originalOwner.Container.ObservedFrom, originalOwner.Container.ObservedThrough = observed.Caller.Container.ObservedFrom, observed.Caller.Container.ObservedThrough
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux.go b/internal/nodeagent/runtime_startup_ledger_linux.go
+index bf421fd..d0991ac 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux.go
+@@ -326,6 +326,10 @@ func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {
+ 			bootstrap := *record.Remote.Bootstrap
+ 			copyRemote.Bootstrap = &bootstrap
+ 		}
++		if record.Remote.RemoteCLI != nil {
++			cli := *record.Remote.RemoteCLI
++			copyRemote.RemoteCLI = &cli
++		}
+ 		record.Remote = &copyRemote
+ 	}
+ 	return record
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux.go b/internal/nodeagent/runtime_startup_reservation_linux.go
+index 35ff542..2029c45 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux.go
+@@ -46,6 +46,7 @@ type RuntimeStartupRemoteIntent struct {
+ 	Epochs          []fleet.RuntimeStartupEpoch           `json:"epochs"`
+ 	Executable      RuntimeExecutableObservation          `json:"executable"`
+ 	Bootstrap       *RuntimeStartupBootstrapObservation   `json:"bootstrap,omitempty"`
++	RemoteCLI       *RuntimeRemoteCLIObservation          `json:"remote_cli,omitempty"`
+ }
+ 
+ // RuntimeStartupReservationRecord records a committed Fleet reservation. It
+@@ -85,6 +86,10 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
+ 	if err := image.inspect(ctx, config); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
++	if image != nil && image.first.RemoteCLI != nil {
++		copy := *image.first.RemoteCLI
++		remote.RemoteCLI = &copy
++	}
+ 	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote)
+ 	if err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+@@ -196,6 +201,8 @@ func (ledger *RuntimeStartupLedger) checkRemoteStartup(ctx context.Context, conf
+ 		return err
+ 	}
+ 	current.Executable = record.Remote.Executable
++	// image.check independently re-observes the CLI vectors before this check.
++	current.RemoteCLI = record.Remote.RemoteCLI
+ 	if !reflect.DeepEqual(current, *record.Remote) {
+ 		return ErrRuntimeStartupLedger
+ 	}
+@@ -242,6 +249,9 @@ func remoteFleetRequest(record RuntimeStartupRecord) (fleet.RuntimeStartupReques
+ 
+ func validateRemoteStartupRecord(record RuntimeStartupRecord) error {
+ 	remote := record.Remote
++	if remote.RemoteCLI != nil && (record.Request.SchemaVersion != 2 || remote.Bootstrap == nil || remote.RemoteCLI.SchemaVersion != 1 || remote.RemoteCLI.ArgumentsDigest == ([sha256.Size]byte{}) || remote.RemoteCLI.EnvironmentDigest == ([sha256.Size]byte{})) {
++		return ErrRuntimeStartupLedger
++	}
+ 	if record.Request.SchemaVersion == 2 && (remote.Bootstrap == nil || remote.Bootstrap.Publication.BootstrapDigest != record.Request.BootstrapDigest || remote.Bootstrap.BootstrapPath != record.Request.BootstrapPath) {
+ 		return ErrRuntimeStartupLedger
+ 	}
+diff --git a/internal/nodeagent/runtime_remote_cli_integration_linux_test.go b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+new file mode 100644
+index 0000000..0b6fef7
+--- /dev/null
++++ b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+@@ -0,0 +1,407 @@
++//go:build integration && linux
++
++package nodeagent
++
++import (
++	"archive/tar"
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"runtime"
++	"testing"
++	"time"
++
++	"github.com/google/go-containerregistry/pkg/name"
++	v1 "github.com/google/go-containerregistry/pkg/v1"
++	"github.com/google/go-containerregistry/pkg/v1/empty"
++	"github.com/google/go-containerregistry/pkg/v1/layout"
++	"github.com/google/go-containerregistry/pkg/v1/mutate"
++	"github.com/google/go-containerregistry/pkg/v1/tarball"
++	"github.com/google/uuid"
++	"github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/fleetcontroller"
++	"github.com/vivym/vela/internal/modelruntime"
++	"google.golang.org/grpc/metadata"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/types"
++	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
++)
++
++const remoteCLITestImage = "docker.io/vela/remote-runtime:cpu-fixture"
++
++func (fixture *containerdProcessFixture) importRemoteCLIImage(t *testing.T) string {
++	t.Helper()
++	var buffer bytes.Buffer
++	writer := tar.NewWriter(&buffer)
++	for _, path := range []string{"/vela-model-runtime", "/runtime-command.test"} {
++		wire, err := os.ReadFile(path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := writer.WriteHeader(&tar.Header{Name: filepath.Base(path), Mode: 0o755, Size: int64(len(wire))}); err != nil {
++			t.Fatal(err)
++		}
++		if _, err := writer.Write(wire); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := writer.Close(); err != nil {
++		t.Fatal(err)
++	}
++	layer, err := tarball.LayerFromOpener(func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(buffer.Bytes())), nil })
++	if err != nil {
++		t.Fatal(err)
++	}
++	base, err := mutate.AppendLayers(empty.Image, layer)
++	if err != nil {
++		t.Fatal(err)
++	}
++	image, err := mutate.ConfigFile(base, &v1.ConfigFile{Architecture: runtime.GOARCH, OS: "linux", Config: v1.Config{
++		Entrypoint: []string{"/vela-model-runtime", "serve-remote", "--bootstrap-file", "/runtime-config/bootstrap.json"},
++		User:       "10001:10001", WorkingDir: "/", Env: []string{"PATH=" + runtimeRemoteCLIPath}}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	tag, err := name.NewTag(remoteCLITestImage)
++	if err != nil {
++		t.Fatal(err)
++	}
++	oci, err := layout.Write(filepath.Join(fixture.root, "remote-cli-oci"), empty.Index)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := oci.AppendImage(image, layout.WithAnnotations(map[string]string{"io.containerd.image.name": tag.String()})); err != nil {
++		t.Fatal(err)
++	}
++	archive := filepath.Join(fixture.root, "remote-cli.tar")
++	if output, err := exec.CommandContext(t.Context(), "tar", "--create", "--file", archive, "--directory", string(oci), ".").CombinedOutput(); err != nil {
++		t.Fatalf("archive actual CLI image: %s %v", output, err)
++	}
++	command := exec.CommandContext(fixture.ctx, "ctr", "--address", fixture.socket, "--namespace", "k8s.io", "images", "import", "--local", "--snapshotter", "native", archive)
++	if output, err := command.CombinedOutput(); err != nil {
++		t.Fatalf("import actual CLI: %s %v", output, err)
++	}
++	digest, err := image.Digest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	return "docker.io/vela/remote-runtime@" + digest.String()
++}
++
++func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver) {
++	t.Helper()
++	image := fixture.importRemoteCLIImage(t)
++	for _, scenario := range []string{"valid", "extra-env", "wrong-path-env", "wrong-hostname", "duplicate-argument", "before-fleet-env-change", "after-fleet-env-change", "fleet-loss"} {
++		t.Run(scenario, func(t *testing.T) {
++			config := publicationFixture(t, true, image)
++			var manifest modelruntime.LaunchManifest
++			if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
++				t.Fatal(err)
++			}
++			scratch := manifest.Runtimes[0].ScratchRoot
++			for _, path := range []string{scratch, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot} {
++				if err := os.MkdirAll(path, 0o755); err != nil {
++					t.Fatal(err)
++				}
++				if err := errors.Join(os.Chown(path, 10001, 10001), os.Chmod(path, 0o700)); err != nil {
++					t.Fatal(err)
++				}
++			}
++			t.Cleanup(func() { _ = os.RemoveAll(scratch) })
++			config.RuntimeSocket = filepath.Join(scratch, "runtime.sock")
++			publication, err := PublishRuntimeBootstrap(t.Context(), config)
++			if err != nil {
++				t.Fatal(err)
++			}
++			listen := func(path string) *net.UnixListener {
++				t.Helper()
++				listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
++				if err != nil {
++					t.Fatal(err)
++				}
++				t.Cleanup(func() { _ = listener.Close() })
++				if err := errors.Join(os.Chown(path, 0, 10001), os.Chmod(path, 0o660)); err != nil {
++					t.Fatal(err)
++				}
++				return listener
++			}
++			journalListener, startupListener := listen(config.JournalSocket), listen(config.StartupSocket)
++			credentials := RuntimeCallerCredentials{UID: 10001, GID: 10001}
++			worker := journalEndpointStartCredentials(t, journalListener, filepath.Join(filepath.Dir(config.Directory), "state"), credentials)
++			client := runtimev1.NewRuntimeServiceClient(fixture.connection)
++			target := createRemoteCLIContainer(t, client, fixture, config, scratch, scenario)
++			if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err != nil {
++				t.Fatal(err)
++			}
++			// Enroll the original actual CLI on its first real journal request.
++			first := journalEndpointAccept(t, journalListener)
++			defer func() { _ = first.Close() }()
++			firstCaller, err := ReceiveRuntimeCallerWithRequestLimit(t.Context(), first, credentials, modelruntime.MaximumJournalCommandBytes)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = firstCaller.Close() }()
++			runtimeOwner, err := observer.RetainNamespaceOwner(t.Context(), target, firstCaller)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = runtimeOwner.Close() }()
++			endpoint, err := NewJournalEndpoint(t.Context(), config.Journal, runtimeOwner, worker.owner)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = endpoint.Close() }()
++			reply, err := endpoint.Handle(t.Context(), firstCaller)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := firstCaller.Reply(t.Context(), reply); err != nil {
++				t.Fatal(err)
++			}
++			server, err := NewJournalServer(endpoint, JournalServerConfig{Credentials: []RuntimeCallerCredentials{credentials}, MaxConcurrent: 2, ExchangeTimeout: 30 * time.Second})
++			if err != nil {
++				t.Fatal(err)
++			}
++			done := make(chan error, 1)
++			go func() { done <- server.Serve(t.Context(), journalListener) }()
++			defer func() {
++				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++				defer cancel()
++				_ = server.Shutdown(ctx)
++			}()
++			connection := journalEndpointAccept(t, startupListener)
++			defer func() { _ = connection.Close() }()
++			caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = caller.Close() }()
++			request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
++			if err != nil || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != "/runtime-config/bootstrap.json" {
++				t.Fatalf("actual CLI consumption: %v", err)
++			}
++			pod := config.Plan.ExpectedPod()
++			pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
++			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: target.ContainerName, RestartCount: int32(target.ContainerAttempt), ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
++			pods := &runtimeLaunchPodFixture{pod: *pod, key: fleetcontroller.ResourceKey{Namespace: pod.Namespace, Name: pod.Name}}
++			images, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-node"}, Namespace: "k8s.io", Snapshotter: "native"})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = images.Close() }()
++			ledger, directory := startupTestLedger(t)
++			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: config.Plan.binding.Claim.ActorIdentity}
++			changeEnv := func() {
++				t.Helper()
++				path := filepath.Join(fixture.root, "state", "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
++				wire, err := os.ReadFile(path)
++				if err != nil {
++					t.Fatal(err)
++				}
++				var task specs.Spec
++				if err := json.Unmarshal(wire, &task); err != nil {
++					t.Fatal(err)
++				}
++				task.Process.Env = append(task.Process.Env, "UNAPPROVED=1")
++				wire, err = json.Marshal(task)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := os.WriteFile(path, wire, 0o600); err != nil {
++					t.Fatal(err)
++				}
++			}
++			if scenario == "before-fleet-env-change" {
++				ledger.boundary = func(phase string) error {
++					if phase == "after-sync" {
++						changeEnv()
++					}
++					return nil
++				}
++			}
++			registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++				if scenario == "after-fleet-env-change" {
++					changeEnv()
++				}
++				if scenario == "fleet-loss" {
++					return fleet.RuntimeStartupReservation{}, errors.New("lost committed fixture reply")
++				}
++				return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, ReservedAt: time.Now().UTC(), Fresh: true}, nil
++			}
++			reserve := func() (RuntimeStartupReservationRecord, error) {
++				return ledger.ReservePublishedRemoteCLI(t.Context(), RuntimeStartupReservationConfig{Plan: config.Plan, Pods: pods, Observer: observer, Caller: caller, Journal: config.Journal, Registry: registry},
++					RuntimeStartupImageConfig{Images: images, StateDirectory: filepath.Join(fixture.root, "state"), RuntimePolicy: runtimeTaskPolicyFixture()},
++					RuntimeStartupPublicationConfig{Directory: config.Directory, BootstrapPath: request.BootstrapPath})
++			}
++			result, reserveErr := reserve()
++			wantCalls, wantIntents := 0, 0
++			if scenario == "valid" || scenario == "after-fleet-env-change" || scenario == "fleet-loss" {
++				wantCalls, wantIntents = 1, 1
++			}
++			if scenario == "before-fleet-env-change" {
++				wantIntents = 1
++			}
++			if registry.calls != wantCalls || len(ledger.starts) != wantIntents || (reserveErr == nil) != (scenario == "valid") {
++				t.Fatalf("CLI reservation scenario=%s calls=%d intents=%d result=%+v err=%v", scenario, registry.calls, len(ledger.starts), result, reserveErr)
++			}
++			if scenario == "valid" {
++				record, err := ledger.Inspect(t.Context(), request.JournalID)
++				if err != nil || record.Remote.RemoteCLI == nil || record.Remote.RemoteCLI.ArgumentsDigest == ([sha256.Size]byte{}) {
++					t.Fatalf("CLI vectors missing from durable intent: %v", err)
++				}
++				expected := *record.Remote.RemoteCLI
++				record.Remote.RemoteCLI.ArgumentsDigest[0] ^= 1
++				again, err := ledger.Inspect(t.Context(), request.JournalID)
++				if err != nil || *again.Remote.RemoteCLI != expected {
++					t.Fatalf("returned CLI history aliases ledger: %v", err)
++				}
++			}
++			// Explicit test decision only: a Fleet reservation is not a grant.
++			permit := scenario == "valid"
++			decision, err := json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(caller.Payload()), Permit: permit})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := caller.Reply(t.Context(), decision); err != nil {
++				t.Fatal(err)
++			}
++			if permit {
++				awaitRemoteCLIBackend(t, scratch, "initialize\n")
++				if _, err := client.StopContainer(t.Context(), &runtimev1.StopContainerRequest{ContainerId: target.ContainerID, Timeout: 5}); err != nil {
++					t.Fatal(err)
++				}
++				awaitRemoteCLIBackend(t, scratch, "initialize\nshutdown\n")
++			} else {
++				awaitRemoteCLIExit(t, client, target)
++				if _, err := os.Stat(filepath.Join(scratch, "events.log")); !errors.Is(err, os.ErrNotExist) {
++					t.Fatal("denied CLI initialized backend")
++				}
++				if _, err := os.Stat(config.RuntimeSocket); !errors.Is(err, os.ErrNotExist) {
++					t.Fatal("denied CLI published Runtime socket")
++				}
++			}
++			if wantIntents != 0 {
++				if err := ledger.Close(); err != nil {
++					t.Fatal(err)
++				}
++				recovered, err := OpenRuntimeStartupLedger(t.Context(), directory, "cpu-node", false)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer func() { _ = recovered.Close() }()
++				ledger = recovered
++				if _, err := reserve(); err == nil || registry.calls != wantCalls {
++					t.Fatal("restart retried original CLI reservation")
++				}
++				if scenario == "valid" {
++					history, err := recovered.InspectReservation(t.Context(), request.JournalID)
++					if err != nil || history != result {
++						t.Fatalf("lost recovered CLI receipt: %v", err)
++					}
++				}
++			}
++			if err := server.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, server, done)
++			criFixture := *fixture
++			criFixture.ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
++			assertRuntimeImageResourcesReleased(t, &criFixture)
++			t.Logf("actual CLI + CRI image/task + published readonly mount + Node journal + same-call Fleet fixture: %s calls=%d intents=%d", scenario, registry.calls, wantIntents)
++		})
++	}
++}
++
++func createRemoteCLIContainer(t *testing.T, client runtimev1.RuntimeServiceClient, fixture *containerdProcessFixture, config RuntimeBootstrapPublicationConfig, scratch, scenario string) RuntimeContainerTarget {
++	t.Helper()
++	uid := uuid.New()
++	logs := filepath.Join(fixture.root, "remote-cli-"+uid.String())
++	if err := os.Mkdir(logs, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	namespaces := &runtimev1.NamespaceOption{Network: runtimev1.NamespaceMode_NODE, Pid: runtimev1.NamespaceMode_CONTAINER, Ipc: runtimev1.NamespaceMode_POD}
++	pod := &runtimev1.PodSandboxConfig{Metadata: &runtimev1.PodSandboxMetadata{Name: config.Plan.pod.Name, Namespace: config.Plan.pod.Namespace, Uid: uid.String(), Attempt: 1}, Hostname: config.Plan.pod.Name, LogDirectory: logs,
++		Linux: &runtimev1.LinuxPodSandboxConfig{CgroupParent: "/vela-remote-cli-" + uid.String(), SecurityContext: &runtimev1.LinuxSandboxSecurityContext{NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: 65532}, RunAsGroup: &runtimev1.Int64Value{Value: 65532}}}}
++	sandbox, err := client.RunPodSandbox(t.Context(), &runtimev1.RunPodSandboxRequest{Config: pod, RuntimeHandler: "explicit"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		_, _ = client.StopPodSandbox(ctx, &runtimev1.StopPodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
++		_, _ = client.RemovePodSandbox(ctx, &runtimev1.RemovePodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
++	})
++	container := &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "model-runtime", Attempt: 3}, Image: &runtimev1.ImageSpec{Image: remoteCLITestImage}, LogPath: "runtime.log",
++		Mounts: []*runtimev1.Mount{{ContainerPath: filepath.Dir(config.Directory), HostPath: filepath.Dir(config.Directory), Readonly: true}, {ContainerPath: "/runtime-config", HostPath: config.Directory, Readonly: true}, {ContainerPath: scratch, HostPath: scratch}},
++		Linux:  &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: 10001}, RunAsGroup: &runtimev1.Int64Value{Value: 10001}, ReadonlyRootfs: true, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}}}
++	switch scenario {
++	case "extra-env":
++		container.Envs = []*runtimev1.KeyValue{{Key: "UNAPPROVED", Value: "1"}}
++	case "wrong-path-env":
++		container.Envs = []*runtimev1.KeyValue{{Key: "PATH", Value: "/untrusted"}}
++	case "wrong-hostname":
++		container.Envs = []*runtimev1.KeyValue{{Key: "HOSTNAME", Value: "unapproved"}}
++	case "duplicate-argument":
++		container.Args = []string{"--bootstrap-file", "/runtime-config/bootstrap.json"}
++	}
++	created, err := client.CreateContainer(t.Context(), &runtimev1.CreateContainerRequest{PodSandboxId: sandbox.PodSandboxId, SandboxConfig: pod, Config: container})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if t.Failed() {
++			wire, _ := os.ReadFile(filepath.Join(logs, "runtime.log"))
++			t.Logf("actual CLI log: %s", wire)
++		}
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		_, _ = client.StopContainer(ctx, &runtimev1.StopContainerRequest{ContainerId: created.ContainerId})
++		_, _ = client.RemoveContainer(ctx, &runtimev1.RemoveContainerRequest{ContainerId: created.ContainerId})
++	})
++	return RuntimeContainerTarget{ContainerID: created.ContainerId, SandboxID: sandbox.PodSandboxId, PodUID: uid, PodNamespace: pod.Metadata.Namespace, PodName: pod.Metadata.Name, ContainerName: "model-runtime", ContainerAttempt: 3}
++}
++
++func awaitRemoteCLIBackend(t *testing.T, scratch, expected string) {
++	t.Helper()
++	deadline := time.Now().Add(10 * time.Second)
++	for {
++		wire, _ := os.ReadFile(filepath.Join(scratch, "events.log"))
++		if string(wire) == expected {
++			return
++		}
++		if time.Now().After(deadline) {
++			t.Fatalf("actual backend events: got=%q want=%q", wire, expected)
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++}
++
++func awaitRemoteCLIExit(t *testing.T, client runtimev1.RuntimeServiceClient, target RuntimeContainerTarget) {
++	t.Helper()
++	deadline := time.Now().Add(10 * time.Second)
++	for {
++		response, err := client.ContainerStatus(t.Context(), &runtimev1.ContainerStatusRequest{ContainerId: target.ContainerID})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if response.GetStatus().GetState() == runtimev1.ContainerState_CONTAINER_EXITED {
++			if response.GetStatus().GetExitCode() == 0 {
++				t.Fatal("denied CLI exited successfully")
++			}
++			return
++		}
++		if time.Now().After(deadline) {
++			t.Fatal("denied CLI did not exit")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++}
+diff --git a/internal/nodeagent/runtime_remote_cli_linux.go b/internal/nodeagent/runtime_remote_cli_linux.go
+new file mode 100644
+index 0000000..142b154
+--- /dev/null
++++ b/internal/nodeagent/runtime_remote_cli_linux.go
+@@ -0,0 +1,107 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"io"
++	"slices"
++	"strings"
++
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++	"github.com/opencontainers/runtime-spec/specs-go"
++)
++
++var ErrRuntimeRemoteCLI = errors.New("runtime remote CLI arguments or environment are not approved")
++
++const runtimeRemoteCLIPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
++
++// RuntimeRemoteCLIObservation binds the approved task vectors and their sampled
++// original-process procfs values. Digests avoid storing environment values in
++// the ledger. This does not attest loaded code or uninterrupted execution.
++type RuntimeRemoteCLIObservation struct {
++	SchemaVersion     int               `json:"schema_version"`
++	ArgumentsDigest   [sha256.Size]byte `json:"arguments_digest"`
++	EnvironmentDigest [sha256.Size]byte `json:"environment_digest"`
++}
++
++// ReservePublishedRemoteCLI additionally requires the image's default command
++// to be the actual remote CLI with the independently configured bootstrap path.
++// The narrow environment admits only a fixed PATH and planned Pod hostname.
++// Legacy Fleet environment injection is intentionally unsupported by this
++// entry point. Production rendering, execution continuity and once-only grant
++// are still required; a reservation never permits initialization by itself.
++func (ledger *RuntimeStartupLedger) ReservePublishedRemoteCLI(ctx context.Context, config RuntimeStartupReservationConfig, image RuntimeStartupImageConfig, publication RuntimeStartupPublicationConfig) (RuntimeStartupReservationRecord, error) {
++	if image.Images == nil || !validRuntimeBootstrapPath(publication.BootstrapPath) || publication.Directory == "" {
++		return RuntimeStartupReservationRecord{}, ErrRuntimeRemoteCLI
++	}
++	config.publication = &publication
++	return ledger.reserveRemote(ctx, config, &runtimeStartupImageCheck{config: image, remoteCLI: true})
++}
++
++func checkRemoteCLIConfiguration(image ocispec.ImageConfig, task *specs.Process, bootstrapPath, hostname string) error {
++	arguments, err := runtimeImageDefaultArguments(image)
++	if err != nil || task == nil || hostname == "" || task.Terminal || task.Cwd != "/" || image.WorkingDir != "" && image.WorkingDir != "/" ||
++		len(arguments) != 4 || arguments[1] != "serve-remote" || arguments[2] != "--bootstrap-file" || arguments[3] != bootstrapPath || !slices.Equal(task.Args, arguments) {
++		return ErrRuntimeRemoteCLI
++	}
++	// No ambient loader, Go runtime, inherited backend or local-journal knobs.
++	// Image defaults are signed inputs, but cannot broaden this CLI contract.
++	for _, item := range image.Env {
++		if item != "PATH="+runtimeRemoteCLIPath {
++			return ErrRuntimeRemoteCLI
++		}
++	}
++	if len(image.Env) > 1 || len(task.Env) != 2 {
++		return ErrRuntimeRemoteCLI
++	}
++	expected := []string{"HOSTNAME=" + hostname, "PATH=" + runtimeRemoteCLIPath}
++	environment := slices.Clone(task.Env)
++	slices.Sort(environment)
++	if !slices.Equal(environment, expected) {
++		return ErrRuntimeRemoteCLI
++	}
++	return nil
++}
++
++func (caller *RuntimeCaller) inspectRemoteCLIVectors(ctx context.Context, task *specs.Process) (RuntimeRemoteCLIObservation, error) {
++	if err := contextError(ctx); err != nil {
++		return RuntimeRemoteCLIObservation{}, err
++	}
++	if caller == nil || task == nil {
++		return RuntimeRemoteCLIObservation{}, ErrRuntimeRemoteCLI
++	}
++	caller.mu.Lock()
++	defer caller.mu.Unlock()
++	first, err := caller.inspectLocked(ctx)
++	if err != nil {
++		return RuntimeRemoteCLIObservation{}, err
++	}
++	read := func(name string, expected []string) error {
++		file, err := caller.process.Open(name)
++		if err != nil {
++			return err
++		}
++		defer func() { _ = file.Close() }()
++		wire, err := io.ReadAll(io.LimitReader(file, (64<<10)+1))
++		if err != nil || len(wire) > 64<<10 || !bytes.Equal(wire, []byte(strings.Join(expected, "\x00")+"\x00")) {
++			return errors.Join(ErrRuntimeRemoteCLI, err)
++		}
++		return ctx.Err()
++	}
++	for range 2 {
++		if err := errors.Join(read("cmdline", task.Args), read("environ", task.Env)); err != nil {
++			return RuntimeRemoteCLIObservation{}, err
++		}
++	}
++	last, err := caller.inspectLocked(ctx)
++	first.ObservedAt = last.ObservedAt
++	if err != nil || first != last {
++		return RuntimeRemoteCLIObservation{}, errors.Join(ErrRuntimeRemoteCLI, err)
++	}
++	arguments, _ := json.Marshal(task.Args)
++	environment, _ := json.Marshal(task.Env)
++	return RuntimeRemoteCLIObservation{SchemaVersion: 1, ArgumentsDigest: sha256.Sum256(arguments), EnvironmentDigest: sha256.Sum256(environment)}, nil
++}
+diff --git a/internal/nodeagent/runtime_remote_cli_linux_test.go b/internal/nodeagent/runtime_remote_cli_linux_test.go
+new file mode 100644
+index 0000000..0b9509b
+--- /dev/null
++++ b/internal/nodeagent/runtime_remote_cli_linux_test.go
+@@ -0,0 +1,61 @@
++package nodeagent
++
++import (
++	"slices"
++	"testing"
++
++	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
++	"github.com/opencontainers/runtime-spec/specs-go"
++)
++
++func TestRuntimeRemoteCLIConfiguration(t *testing.T) {
++	for _, scenario := range []string{"valid", "image-path-default", "environment-order", "missing-path", "wrong-path", "wrong-mode", "flag-alias", "extra-arg", "image-command", "environment-missing", "environment-extra", "environment-duplicate", "environment-hostname", "environment-path", "image-environment", "image-duplicate", "tty", "cwd", "image-cwd"} {
++		t.Run(scenario, func(t *testing.T) {
++			image := ocispec.ImageConfig{Entrypoint: []string{"/vela-model-runtime", "serve-remote", "--bootstrap-file", "/runtime-config/bootstrap.json"}}
++			task := &specs.Process{Args: slices.Clone(image.Entrypoint), Env: []string{"PATH=" + runtimeRemoteCLIPath, "HOSTNAME=planned-pod"}, Cwd: "/"}
++			switch scenario {
++			case "image-path-default":
++				image.Env = []string{"PATH=" + runtimeRemoteCLIPath}
++			case "environment-order":
++				slices.Reverse(task.Env)
++			case "missing-path":
++				task.Args = task.Args[:3]
++			case "wrong-path":
++				task.Args[3] = "/other/bootstrap.json"
++			case "wrong-mode":
++				task.Args[1] = "serve"
++			case "flag-alias":
++				task.Args[2] = "-bootstrap-file"
++			case "extra-arg":
++				task.Args = append(task.Args, "--bootstrap-file", task.Args[3])
++			case "image-command":
++				image.Entrypoint[1] = "serve"
++				task.Args = slices.Clone(image.Entrypoint)
++			case "environment-missing":
++				task.Env = task.Env[:1]
++			case "environment-extra":
++				task.Env = append(task.Env, "GODEBUG=asyncpreemptoff=1")
++			case "environment-duplicate":
++				task.Env[1] = task.Env[0]
++			case "environment-hostname":
++				task.Env[1] = "HOSTNAME=other-pod"
++			case "environment-path":
++				task.Env[0] = "PATH=/untrusted"
++			case "image-environment":
++				image.Env = []string{"LD_PRELOAD=/untrusted.so"}
++			case "image-duplicate":
++				image.Env = []string{task.Env[0], task.Env[0]}
++			case "tty":
++				task.Terminal = true
++			case "cwd":
++				task.Cwd = "/tmp"
++			case "image-cwd":
++				image.WorkingDir = "/tmp"
++			}
++			valid := scenario == "valid" || scenario == "image-path-default" || scenario == "environment-order"
++			if err := checkRemoteCLIConfiguration(image, task, "/runtime-config/bootstrap.json", "planned-pod"); (err == nil) != valid {
++				t.Fatalf("configuration acceptance=%v: %v", valid, err)
++			}
++		})
++	}
++}

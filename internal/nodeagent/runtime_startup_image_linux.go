@@ -26,8 +26,9 @@ func (ledger *RuntimeStartupLedger) ReserveImageRemote(ctx context.Context, conf
 }
 
 type runtimeStartupImageCheck struct {
-	config RuntimeStartupImageConfig
-	first  *RuntimePlannedImageCallerObservation
+	config    RuntimeStartupImageConfig
+	first     *RuntimePlannedImageCallerObservation
+	remoteCLI bool
 }
 
 func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config RuntimeStartupReservationConfig) error {
@@ -37,6 +38,7 @@ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config Runti
 	current, err := config.Observer.ObserveStartupImageCaller(ctx, RuntimePlannedImageCallerConfig{
 		Plan: config.Plan, Pods: config.Pods, Caller: config.Caller, Images: check.config.Images,
 		StateDirectory: check.config.StateDirectory, RuntimePolicy: check.config.RuntimePolicy,
+		remoteCLI: check.remoteCLI, publication: config.publication,
 	})
 	if err != nil {
 		return err
@@ -56,7 +58,7 @@ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config Runti
 	// Each task observation already matches its planned caller's original
 	// process. Compare all retained task bytes/file identities without timestamps.
 	firstTask.Caller, lastTask.Caller = RuntimeContainerCallerObservation{}, RuntimeContainerCallerObservation{}
-	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) {
+	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) || !reflect.DeepEqual(check.first.RemoteCLI, current.RemoteCLI) {
 		return ErrRuntimePlannedImage
 	}
 	return nil
@@ -70,6 +72,9 @@ func (check *runtimeStartupImageCheck) check(ctx context.Context, config Runtime
 		return err
 	}
 	observed := check.first.Planned
+	if !reflect.DeepEqual(check.first.RemoteCLI, record.Remote.RemoteCLI) {
+		return ErrRuntimeRemoteCLI
+	}
 	originalOwner, originalExecutable := record.Owner, record.Remote.Executable
 	originalOwner.ObservedFrom, originalOwner.ObservedThrough = observed.Caller.ObservedFrom, observed.Caller.ObservedThrough
 	originalOwner.Container.ObservedFrom, originalOwner.Container.ObservedThrough = observed.Caller.Container.ObservedFrom, observed.Caller.Container.ObservedThrough

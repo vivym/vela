@@ -326,6 +326,10 @@ func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {
 			bootstrap := *record.Remote.Bootstrap
 			copyRemote.Bootstrap = &bootstrap
 		}
+		if record.Remote.RemoteCLI != nil {
+			cli := *record.Remote.RemoteCLI
+			copyRemote.RemoteCLI = &cli
+		}
 		record.Remote = &copyRemote
 	}
 	return record
