@@ -19,6 +19,18 @@ type executionJournalDraft struct {
 	changed bool
 }
 
+// Rejected domain input has not reached persist and leaves the accepted state
+// intact. Storage/check/publication failures are deliberately not wrapped.
+type executionJournalRejection struct{ cause error }
+
+func (err *executionJournalRejection) Error() string { return err.cause.Error() }
+func (err *executionJournalRejection) Unwrap() error { return err.cause }
+
+func isExecutionJournalRejection(err error) bool {
+	var rejected *executionJournalRejection
+	return errors.As(err, &rejected)
+}
+
 func (draft *executionJournalDraft) replace(state executionDiskState) error {
 	draft.state, draft.changed = state, true
 	return nil
@@ -43,7 +55,7 @@ func (store *executionStateFile) transition(mutate func(*executionJournalDraft) 
 	}
 	draft := &executionJournalDraft{executionJournal: store.executionJournal}
 	if err := mutate(draft); err != nil {
-		return err
+		return &executionJournalRejection{cause: err}
 	}
 	if !draft.changed {
 		return nil

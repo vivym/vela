@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
@@ -13,14 +14,18 @@ import (
 // These test-only controls bypass Service validation to exercise the durable
 // owner's boundary using the signed fixtures in the external test package.
 type ExecutionMutationForTest struct {
-	Kind        string
-	Authority   stageauthority.Verified
-	Confirmed   *stageauthority.Verified
-	Disposition *velav1.StageTerminalDisposition
-	Receipt     *velav1.LocalMaterializationReceipt
-	Health      *FailureEvidence
-	Drain       BackendDrain
-	Observed    time.Time
+	Kind         string
+	Authority    stageauthority.Verified
+	Confirmed    *stageauthority.Verified
+	Disposition  *velav1.StageTerminalDisposition
+	Receipt      *velav1.LocalMaterializationReceipt
+	Health       *FailureEvidence
+	Drain        BackendDrain
+	Observed     time.Time
+	RouteIndex   int
+	AllocationID string
+	Manifest     LaunchManifest
+	Incarnation  uuid.UUID
 }
 
 func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMutationForTest) error {
@@ -41,6 +46,26 @@ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMut
 		return store.saveHealth(mutation.Authority, mutation.Health)
 	case "drain":
 		return store.saveDrain(mutation.Authority, mutation.Drain, mutation.Observed)
+	case "non-admission":
+		return store.saveNonAdmission(mutation.Authority, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
+	case "terminal-non-admission":
+		return store.saveTerminalNonAdmission(mutation.Disposition, mutation.AllocationID, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
+	case "startup", "abort-startup", "abort-non-admission", "abort-terminal-non-admission":
+		return store.transition(func(draft *executionJournalDraft) error {
+			var err error
+			switch mutation.Kind {
+			case "abort-non-admission":
+				err = draft.recordNonAdmission(mutation.Authority, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
+			case "abort-terminal-non-admission":
+				err = draft.recordTerminalNonAdmission(mutation.Disposition, mutation.AllocationID, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
+			default:
+				err = draft.recordBackendStartup(mutation.Manifest, mutation.Incarnation, mutation.Observed)
+			}
+			if err != nil || mutation.Kind == "startup" {
+				return err
+			}
+			return errors.New("injected abort after candidate construction")
+		})
 	case "revalidate":
 		return store.persist(store.state)
 	case "invalid-repeated-authority":

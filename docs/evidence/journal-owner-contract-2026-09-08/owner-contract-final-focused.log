@@ -1,0 +1,64 @@
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/signature
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/scope
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/wrong-route
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/old-epoch
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/missing-floor
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/admitted-intent
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/bad-time
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/conflicting-proof
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/abort
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/signature
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/scope
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/wrong-route
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/old-epoch
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/missing-floor
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/admitted-intent
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/bad-time
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/conflicting-proof
+=== RUN   TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/abort
+--- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing (0.99s)
+    --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission (0.51s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/signature (0.07s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/scope (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/wrong-route (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/old-epoch (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/missing-floor (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/admitted-intent (0.09s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/bad-time (0.04s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/conflicting-proof (0.06s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/non-admission/abort (0.05s)
+    --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission (0.47s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/signature (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/scope (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/wrong-route (0.04s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/old-epoch (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/missing-floor (0.05s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/admitted-intent (0.09s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/bad-time (0.04s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/conflicting-proof (0.06s)
+        --- PASS: TestJournalOwnerNonAdmissionRejectsWithoutPublishing/terminal-non-admission/abort (0.05s)
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/non-admission
+=== RUN   TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/terminal-non-admission
+--- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof (0.09s)
+    --- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/non-admission (0.05s)
+    --- PASS: TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof/terminal-non-admission (0.04s)
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/scope
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/incarnation
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/time
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/abort
+=== RUN   TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/none
+--- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent (0.14s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/scope (0.03s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/incarnation (0.03s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/time (0.03s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/abort (0.03s)
+    --- PASS: TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent/none (0.03s)
+=== RUN   TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint
+--- PASS: TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint (0.05s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	3.627s

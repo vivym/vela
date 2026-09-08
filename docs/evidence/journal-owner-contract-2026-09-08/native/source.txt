@@ -1,0 +1,9 @@
+5e86a0496728275329d0a9db8f6daf6d19bbcf40
+ M internal/modelruntime/backend_lifecycle.go
+ M internal/modelruntime/execution_journal_transition.go
+ M internal/modelruntime/execution_non_admission.go
+ M internal/modelruntime/execution_transition_export_test.go
+ M internal/modelruntime/terminal_non_admission.go
+?? hack/run-journal-owner-native.sh
+?? internal/modelruntime/execution_journal_non_admission.go
+?? internal/modelruntime/execution_journal_owner_test.go

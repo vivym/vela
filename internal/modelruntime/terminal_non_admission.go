@@ -2,11 +2,9 @@ package modelruntime
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/vivym/vela/internal/stageauthority"
@@ -93,48 +91,15 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
 		return nil, stageauthority.ErrRuntimeMismatch
 	}
 	sequence := allocation.GetExecutionSequence()
-	if store.state.Floor < sequence {
-		return nil, ErrExecutionNonAdmissionUnproven
-	}
-	if saved, err := store.terminalNonAdmissionCheckpoint(verified.Disposition, allocation); err != nil || saved != nil {
-		return saved, err
-	}
-	if err := store.requireUnadmittedSequence(sequence); err != nil {
-		return nil, err
-	}
 	for _, operation := range admission.active {
 		if operation.sequence == sequence {
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 	}
-	for _, record := range store.state.NonAdmissions {
-		if record.ExecutionSequence == sequence {
-			original, err := store.retainedAuthority(record.Authority)
-			if err != nil || stageauthority.ValidateTerminalAllocation(verified.Disposition, allocation, original.Authority) != nil {
-				return nil, ErrExecutionNonAdmissionUnproven
-			}
+	if err := store.saveTerminalNonAdmission(verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+		if isExecutionJournalRejection(err) {
+			return nil, err
 		}
-	}
-	if len(store.state.TerminalNonAdmissions) >= maxNonAdmissionCheckpoints {
-		return nil, ErrExecutionNonAdmissionHistoryFull
-	}
-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Disposition)
-	if err != nil {
-		return nil, err
-	}
-	observed := service.clock.Now().UTC()
-	if observed.IsZero() || observed.Before(verified.Disposition.GetObservedAt().AsTime()) {
-		return nil, ErrExecutionNonAdmissionUnproven
-	}
-	next := store.state
-	next.TerminalNonAdmissions = append(slices.Clone(next.TerminalNonAdmissions), terminalDiskNonAdmission{
-		Disposition: wire, DispositionDigest: verified.Digest, StageAllocationID: allocationID,
-		ExecutionSequence: sequence, InstalledCutoff: next.Floor, Contract: TerminalNonAdmissionContract, ObservedAt: observed,
-	})
-	slices.SortFunc(next.TerminalNonAdmissions, func(a, b terminalDiskNonAdmission) int {
-		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
-	})
-	if err := store.persist(next); err != nil {
 		return nil, admission.failStateLocked(err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -155,7 +120,7 @@ func (supervisor *Supervisor) terminalAllocationService(allocation *velav1.Stage
 	return nil
 }
 
-func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error) {
+func (store *executionJournal) terminalNonAdmissionCheckpoint(disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error) {
 	for _, record := range store.state.TerminalNonAdmissions {
 		if record.ExecutionSequence != allocation.GetExecutionSequence() {
 			continue

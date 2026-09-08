@@ -1,0 +1,31 @@
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/mock-permit
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=mock-permit factories=1 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.08s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/deny
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=deny factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.07s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/lost-response
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=lost-response factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.08s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/record-error
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=record-error factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.08s)
+        PASS
+        
+--- PASS: TestRuntimeStartupLedgerBeforeActualFactory (4.42s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/mock-permit (1.11s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/deny (1.10s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/lost-response (1.10s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/record-error (1.11s)
+PASS

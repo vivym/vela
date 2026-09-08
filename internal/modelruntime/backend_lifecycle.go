@@ -59,20 +59,43 @@ func (store *executionJournal) validateBackendLifecycle() error {
 // intent precedes the first factory, covering partial AUX startup and crashes.
 // Failure or normal Close never clears it; this process cannot attest its exit.
 func (store *executionStateFile) recordBackendStartup(manifest LaunchManifest) error {
-	if err := store.workerHealthError(); err != nil {
+	if store.recoveryDrain {
+		return ErrBackendIncarnationUnproven
+	}
+	return store.transition(func(draft *executionJournalDraft) error {
+		return draft.recordBackendStartup(manifest, uuid.New(), time.Now().UTC())
+	})
+}
+
+// Manifest, incarnation and time are owner-selected inputs. This records intent
+// only; it cannot approve launch configuration, prove process exit, or replace
+// the Registry/Node startup permission exchange.
+func (draft *executionJournalDraft) recordBackendStartup(manifest LaunchManifest, incarnation uuid.UUID, observed time.Time) error {
+	if err := draft.workerHealthError(); err != nil {
 		return err
 	}
-	if store.state.BackendLifecycle == nil || store.state.BackendLifecycle.State != BackendLifecycleUnstarted || store.recoveryDrain {
+	if draft.state.BackendLifecycle == nil || draft.state.BackendLifecycle.State != BackendLifecycleUnstarted {
 		return ErrBackendIncarnationUnproven
 	}
 	document, err := EncodeLaunchManifest(manifest)
 	if err != nil {
 		return err
 	}
-	next := store.state
+	scope, err := executionScopeForManifest(manifest, draft.scope.floor.validator)
+	if err != nil {
+		return err
+	}
+	digest, err := scope.digest()
+	if err != nil || digest != draft.state.Scope {
+		return ErrBackendIncarnationUnproven
+	}
+	if incarnation == uuid.Nil || incarnation.Version() != 4 || incarnation.Variant() != uuid.RFC4122 || observed.IsZero() || observed.Location() != time.UTC {
+		return ErrBackendIncarnationUnproven
+	}
+	next := draft.state
 	next.BackendLifecycle = &BackendLifecycleStatus{State: BackendLifecycleUnresolved,
-		IncarnationID: uuid.New(), LaunchDigest: sha256.Sum256(document), RecordedAt: time.Now().UTC()}
-	return store.persist(next)
+		IncarnationID: incarnation, LaunchDigest: sha256.Sum256(document), RecordedAt: observed}
+	return draft.replace(next)
 }
 
 func (store *executionStateFile) recoveryError() error {

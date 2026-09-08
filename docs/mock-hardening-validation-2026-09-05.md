@@ -7,6 +7,15 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[typed startup/non-admission owner contract](journal-owner-contract-evidence-2026-09-08.md)
+routes the remaining three ordinary Runtime journal mutations through owner
+validation. A deterministic baseline failure proves a terminal disposition could
+expire after ingress yet produce a new checkpoint; final-owner validation now
+rejects without poisoning legal retry. Host/native race, startup exchange,
+PostgreSQL recovery and current-source production-loop/cache checks pass.
+This completes internal mutation discipline, not Node-private custody or startup issuance.
+
+The preceding
 [production clock-policy validation](clock-policy-evidence-2026-09-08.md)
 aligns CPU campaign admission, Runtime, Control, transfer and materialization
 with the shared production skew bound. Deterministic tests reproduce zero-skew

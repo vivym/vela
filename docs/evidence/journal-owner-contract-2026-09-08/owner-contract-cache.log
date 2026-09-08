@@ -1,0 +1,239 @@
+=== RUN   TestCPUMockDurableStreamExactCacheCampaign
+2026/09/08 16:34:55 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 28.3.2
+  API Version: 1.51
+  Operating System: Docker Desktop
+  Total Memory: 32044 MB
+  Labels:
+    com.docker.desktop.address=unix:///Users/viv/Library/Containers/com.docker.docker/Data/docker-cli.sock
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 918ae3c8503c0c8a08b0516370e931a604745c5f24941fa8b446f8f0b428bc9d
+  Test ProcessID: d58b55ae-5233-46d6-adfb-b209cd8baaee
+2026/09/08 16:34:55 🐳 Creating container for image postgres:17-alpine
+2026/09/08 16:34:55 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/09/08 16:34:55 ✅ Container created: 4cfc64c98810
+2026/09/08 16:34:55 🐳 Starting container: 4cfc64c98810
+2026/09/08 16:34:55 ✅ Container started: 4cfc64c98810
+2026/09/08 16:34:55 ⏳ Waiting for container id 4cfc64c98810 image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/09/08 16:34:55 Shell not found in container
+2026/09/08 16:34:55 🔔 Container is ready: 4cfc64c98810
+2026/09/08 16:34:55 ✅ Container created: f6ed04db753f
+2026/09/08 16:34:55 🐳 Starting container: f6ed04db753f
+2026/09/08 16:34:55 ✅ Container started: f6ed04db753f
+2026/09/08 16:34:55 ⏳ Waiting for container id f6ed04db753f image: postgres:17-alpine. Waiting for: all of: [all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be mapped]]
+2026/09/08 16:34:56 🔔 Container is ready: f6ed04db753f
+2026/09/08 16:34:56 OK   00001_foundation.sql (58.92ms)
+2026/09/08 16:34:56 OK   00002_worker_assignment.sql (16.1ms)
+2026/09/08 16:34:56 OK   00003_worker_start.sql (3.33ms)
+2026/09/08 16:34:56 OK   00004_worker_heartbeat.sql (16.46ms)
+2026/09/08 16:34:56 OK   00005_execution_failure.sql (14.65ms)
+2026/09/08 16:34:56 OK   00006_customer_cancellation.sql (29.27ms)
+2026/09/08 16:34:56 OK   00007_artifact_finalization.sql (34.64ms)
+2026/09/08 16:34:56 OK   00008_hierarchical_scheduler.sql (51.62ms)
+2026/09/08 16:34:56 OK   00009_invoice_export.sql (14.11ms)
+2026/09/08 16:34:56 OK   00010_profile_certification_circuit.sql (21.25ms)
+2026/09/08 16:34:56 OK   00011_project_webhooks.sql (33.77ms)
+2026/09/08 16:34:56 OK   00012_human_oidc_fixed_rbac.sql (26.48ms)
+2026/09/08 16:34:56 OK   00013_service_principal_administration.sql (16.47ms)
+2026/09/08 16:34:56 OK   00014_human_membership_administration.sql (28.98ms)
+2026/09/08 16:34:56 OK   00015_organization_reporting.sql (19.74ms)
+2026/09/08 16:34:56 OK   00016_project_retention_content_deletion.sql (56.06ms)
+2026/09/08 16:34:56 OK   00017_platform_operator_break_glass.sql (36.36ms)
+2026/09/08 16:34:56 OK   00018_finance_reconciliation.sql (16.39ms)
+2026/09/08 16:34:57 OK   00019_certified_remediation.sql (22.63ms)
+2026/09/08 16:34:57 OK   00020_remediation_execution_claim.sql (5.9ms)
+2026/09/08 16:34:57 OK   00021_remediation_execution_dispatch.sql (2.39ms)
+2026/09/08 16:34:57 OK   00022_remediation_execution_claim_replay.sql (2.59ms)
+2026/09/08 16:34:57 OK   00023_fleet_controller_worker_readiness.sql (69.61ms)
+2026/09/08 16:34:57 OK   00024_staging_artifact_expiry.sql (4.09ms)
+2026/09/08 16:34:57 OK   00025_scheduler_inbox_receipt.sql (2.56ms)
+2026/09/08 16:34:57 OK   00026_synchronous_quorum_guard.sql (2.26ms)
+2026/09/08 16:34:57 OK   00027_authorized_debug_dump_lifecycle.sql (51.22ms)
+2026/09/08 16:34:57 OK   00028_off_cluster_backup_retention.sql (12.65ms)
+2026/09/08 16:34:57 OK   00029_artifact_backup_replication.sql (11.95ms)
+2026/09/08 16:34:57 OK   00030_non_content_legal_hold.sql (23.3ms)
+2026/09/08 16:34:57 OK   00031_non_content_record_expiry.sql (68.17ms)
+2026/09/08 16:34:57 OK   00032_catalog_promotion_production_gates.sql (33.31ms)
+2026/09/08 16:34:57 OK   00033_statistical_slo_measurement.sql (25.87ms)
+2026/09/08 16:34:57 OK   00034_stage_execution_catalog.sql (59.99ms)
+2026/09/08 16:34:57 OK   00035_worker_instance_residency.sql (69ms)
+2026/09/08 16:34:57 OK   00036_stage_attempt_authority.sql (95.79ms)
+2026/09/08 16:34:57 OK   00037_stage_scheduler.sql (47.95ms)
+2026/09/08 16:34:57 OK   00038_stage_artifact.sql (46.32ms)
+2026/09/08 16:34:57 OK   00039_stage_worker_control_authority.sql (3.82ms)
+2026/09/08 16:34:57 OK   00040_stage_worker_execution.sql (22.18ms)
+2026/09/08 16:34:57 OK   00041_stage_worker_operations.sql (14.38ms)
+2026/09/08 16:34:57 OK   00042_stage_worker_assignment.sql (16.02ms)
+2026/09/08 16:34:57 OK   00043_stage_graph_finalization.sql (7.32ms)
+2026/09/08 16:34:57 OK   00044_stage_cache.sql (31.7ms)
+2026/09/08 16:34:57 OK   00045_stage_graph_finalization_outputs.sql (10.05ms)
+2026/09/08 16:34:57 OK   00046_stage_graph_visible_completion.sql (12.29ms)
+2026/09/08 16:34:57 OK   00047_usage_cost_ledger.sql (24.7ms)
+2026/09/08 16:34:57 OK   00048_stage_run_output_binding.sql (25.66ms)
+2026/09/08 16:34:57 OK   00049_stage_cutover_control.sql (57.93ms)
+2026/09/08 16:34:57 OK   00050_stage_graph_instantiation_dispatch.sql (19.21ms)
+2026/09/08 16:34:57 OK   00051_atomic_stage_graph_admission.sql (9.26ms)
+2026/09/08 16:34:57 OK   00052_stage_cutover_zero_backlog_seal.sql (21.84ms)
+2026/09/08 16:34:57 OK   00053_legacy_h3_guarded_contraction.sql (15.26ms)
+2026/09/08 16:34:57 OK   00054_stage_transfer_consume_destination.sql (3.61ms)
+2026/09/08 16:34:57 OK   00055_h3_campaign_evidence_reader.sql (3.98ms)
+2026/09/08 16:34:57 OK   00056_stage_observability_reader.sql (1.1ms)
+2026/09/08 16:34:57 OK   00057_legacy_h3_release_contraction_gate.sql (10.23ms)
+2026/09/08 16:34:58 OK   00058_legacy_h3_schema_contraction.sql (180.15ms)
+2026/09/08 16:34:58 OK   00059_model_runtime_epoch_registration.sql (19.68ms)
+2026/09/08 16:34:58 OK   00060_model_runtime_gang_barrier.sql (17.46ms)
+2026/09/08 16:34:58 OK   00061_stage_worker_gang_authority.sql (5.94ms)
+2026/09/08 16:34:58 OK   00062_stage_authority_member_identity.sql (2.73ms)
+2026/09/08 16:34:58 OK   00063_h3_execution_snapshot.sql (3.58ms)
+2026/09/08 16:34:58 OK   00064_model_runtime_capacity_routes.sql (12.35ms)
+2026/09/08 16:34:58 OK   00065_h3_exact_cache_reconciliation.sql (11.06ms)
+2026/09/08 16:34:58 OK   00066_stage_worker_control_session_capacity.sql (23.49ms)
+2026/09/08 16:34:58 OK   00067_stage_scheduler_project_capacity.sql (2.61ms)
+2026/09/08 16:34:58 OK   00068_stage_assignment_connector_states.sql (1.98ms)
+2026/09/08 16:34:58 OK   00069_stage_transfer_server_clock.sql (5.36ms)
+2026/09/08 16:34:58 OK   00070_stage_lease_expiry_recovery.sql (11.56ms)
+2026/09/08 16:34:58 OK   00071_stage_artifact_lifecycle.sql (18.2ms)
+2026/09/08 16:34:58 OK   00072_recovery_quiescence.sql (13.96ms)
+2026/09/08 16:34:58 OK   00073_stage_cache_downstream_bindings.sql (5.78ms)
+2026/09/08 16:34:58 OK   00074_job_owned_public_artifact_copies.sql (3.63ms)
+2026/09/08 16:34:58 OK   00075_stage_graph_failure_terminalization.sql (19.82ms)
+2026/09/08 16:34:58 OK   00076_allocation_usage_unit.sql (822.63µs)
+2026/09/08 16:34:58 OK   00077_runtime_usage_receipts.sql (4.3ms)
+2026/09/08 16:34:58 OK   00078_idle_stage_worker_probe.sql (5.13ms)
+2026/09/08 16:34:58 OK   00079_stage_job_expiry.sql (6.51ms)
+2026/09/08 16:34:58 OK   00080_stage_scheduler_snapshot_lock_order.sql (3.16ms)
+2026/09/08 16:34:58 OK   00081_stage_assignment_quorum.sql (1.54ms)
+2026/09/08 16:34:58 OK   00082_stage_success_storage_completion.sql (3.23ms)
+2026/09/08 16:34:58 OK   00083_capacity_observation_lifecycle.sql (4.53ms)
+2026/09/08 16:34:58 OK   00084_blocked_stage_worker_probe.sql (4.37ms)
+2026/09/08 16:34:58 OK   00085_stage_materialization_terminal_replay.sql (2.73ms)
+2026/09/08 16:34:58 OK   00086_stage_failure_terminal_replay.sql (6.28ms)
+2026/09/08 16:34:58 OK   00087_stage_claim_finalization_lock_order.sql (2.3ms)
+2026/09/08 16:34:58 OK   00088_stage_allocation_execution_sequence.sql (4.21ms)
+2026/09/08 16:34:58 OK   00089_stage_terminal_history.sql (7.49ms)
+2026/09/08 16:34:58 OK   00090_stage_assignment_content_lifecycle.sql (17.48ms)
+2026/09/08 16:34:58 OK   00091_worker_journal_bootstrap.sql (22.76ms)
+2026/09/08 16:34:58 OK   00092_worker_bootstrap_history.sql (3.1ms)
+2026/09/08 16:34:58 OK   00093_worker_bootstrap_nonzero_scopes.sql (1.46ms)
+2026/09/08 16:34:58 OK   00094_worker_bootstrap_abandonment.sql (12.3ms)
+2026/09/08 16:34:58 goose: successfully migrated database to version: 94
+    cpu_mock_durable_stream_campaign_test.go:35: CPU_MOCK_CAMPAIGN_START {"durable_stream":true,"exact_cache":true,"go_version":"go1.26.7","initial_budget":{"planned_jobs":2,"fixed_price_per_job_minor":1250,"initial_credit_limit_minor":2500,"currency":"CNY"},"runtime_binary_sha256":{"vela-h3-stage-mock":"2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd","vela-lab-cpu-thumbnail-mock":"763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"},"source_tree_sha256":"9a95c7f754b5f76f73d7765f096109329f1b7200d3cd4e0cf10e8bd5f6a8c37b"}
+    cpu_mock_durable_stream_campaign_test.go:35: CPU_MOCK_EXACT_CACHE_RECEIPT {"admission":{"AdmissionCandidates":2,"Admitted":2,"HitCandidates":0,"Hits":0,"Skipped":0},"after_maintenance":{"observed_at":"2026-09-08T08:35:05.225268Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":26638,"held_buffers":0,"visible_completions":2,"acquire_intents":6,"database_bytes":29030067,"test_process_heap_bytes":14628568,"test_process_goroutines":145,"runtime_scratch_bytes":0,"local_journal_bytes":70487,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":2500,"charges":2,"pool_active_counters":0,"active_execution_pins":0,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":2,"active_cache_carrying_references":2,"committed_stage_artifacts":6},"after_source":{"observed_at":"2026-09-08T08:35:04.02157Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":13521,"held_buffers":0,"visible_completions":1,"acquire_intents":4,"database_bytes":28686003,"test_process_heap_bytes":14433960,"test_process_goroutines":145,"runtime_scratch_bytes":0,"local_journal_bytes":49771,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":1250,"charges":1,"pool_active_counters":0,"active_execution_pins":3,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":0,"active_cache_carrying_references":0,"committed_stage_artifacts":4,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":227721216,"open_fds":131},{"pid":17469,"name":"h3-encoder","rss_bytes":17416192,"open_fds":12},{"pid":17470,"name":"h3-dit","rss_bytes":17629184,"open_fds":12},{"pid":17471,"name":"h3-vae-decoder","rss_bytes":17612800,"open_fds":12},{"pid":17472,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":17661952,"open_fds":12}]},"after_target":{"observed_at":"2026-09-08T08:35:05.115853Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":26638,"held_buffers":1,"visible_completions":2,"acquire_intents":6,"database_bytes":29030067,"test_process_heap_bytes":12150424,"test_process_goroutines":145,"runtime_scratch_bytes":0,"local_journal_bytes":70487,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":2500,"charges":2,"pool_active_counters":0,"active_execution_pins":8,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":2,"active_cache_carrying_references":2,"committed_stage_artifacts":6,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":229638144,"open_fds":131},{"pid":17469,"name":"h3-encoder","rss_bytes":17416192,"open_fds":12},{"pid":17470,"name":"h3-dit","rss_bytes":17629184,"open_fds":12},{"pid":17471,"name":"h3-vae-decoder","rss_bytes":17743872,"open_fds":12},{"pid":17472,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":17842176,"open_fds":12}]},"before":{"observed_at":"2026-09-08T08:35:01.584344Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":0,"held_buffers":0,"visible_completions":0,"acquire_intents":0,"database_bytes":26670771,"test_process_heap_bytes":9959608,"test_process_goroutines":102,"runtime_scratch_bytes":0,"local_journal_bytes":4972,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":0,"charges":0,"pool_active_counters":0,"active_execution_pins":0,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":0,"active_cache_carrying_references":0,"committed_stage_artifacts":0,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":197853184,"open_fds":120},{"pid":17469,"name":"h3-encoder","rss_bytes":16465920,"open_fds":12},{"pid":17470,"name":"h3-dit","rss_bytes":16580608,"open_fds":12},{"pid":17471,"name":"h3-vae-decoder","rss_bytes":16531456,"open_fds":12},{"pid":17472,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":16580608,"open_fds":12}]},"capacity_reports_by_worker":{"dit":1,"encoder":1,"thumbnail":1,"vae":1},"consumed_transfers":5,"direct_allocation_receipts":6,"durable_records_by_worker":{"dit":1,"encoder":1,"thumbnail":2,"vae":2},"durable_stream":true,"elapsed_seconds":3.69631,"evidence_class":"LOCAL_CPU_MOCK_EXACT_CACHE","exact_bindings_and_pins":[{"stage":"dit","source_artifact_id":"20076c25-d78f-5d7e-b996-33fe87d78c77","object_version":"local-v00000000000000000002","pin_id":"35dfa2a3-ef3f-5e56-b5d8-a1f5de184b48"},{"stage":"encoder","source_artifact_id":"059d5356-9941-5c3d-b869-d5c74ea3e0bc","object_version":"local-v00000000000000000001","pin_id":"b6fe4993-253c-59bd-b2cd-058c8112f037"}],"ffprobe_version":"ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers","go_version":"go1.26.7","hits":[{"AdmissionCandidates":0,"Admitted":0,"HitCandidates":2,"Hits":1,"Skipped":0},{"AdmissionCandidates":0,"Admitted":0,"HitCandidates":2,"Hits":1,"Skipped":0}],"initial_budget":{"planned_jobs":2,"fixed_price_per_job_minor":1250,"initial_credit_limit_minor":2500,"currency":"CNY"},"limitations":["bounded CPU mock Jobs, not sustained open-loop throughput or GPU certification","real mTLS Control stream and durable StreamAgent; Runtime gRPC and model processes are local CPU fixtures","Worker readiness/Registry setup uses fixture services; production Fleet activation, Node custody/startup and ProductionAgent orchestration are separate","lost committed responses reconstruct StreamAgent/file journal and replace mTLS transport in the same fixture session; processes remain live; production session reattachment is separate","bounded harness retries confirmed STALE Acquire results with new command IDs; production discovery orchestration is not exercised","input/output payload retirement is measured separately from retained journal metadata; history reclamation is not implemented","local exact-version object store, not remote S3; physical isolation and power-cut durability are separate","host race instrumentation does not instrument native mock subprocesses; sampled resources are not full VM peaks","BITWISE policy is a fixture declaration; native payloads, exact versions, ADMIT/HIT and billing are measured","Reconciler drives ADMIT/HIT before target Acquire; cache/scheduler races and organization isolation are separate tests"],"maintenance_result":{"RequestContentExpired":0,"ContentDeletionRequestsCreated":0,"Claimed":0,"Completed":0,"Failed":0},"production_gate":false,"replayed_commits":4,"runtime_binary_sha256":{"vela-h3-stage-mock":"2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd","vela-lab-cpu-thumbnail-mock":"763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"},"schema_version":1,"source_job_id":"6421a322-7c37-42c1-bd29-a76ad55b648c","source_physical_stages":4,"source_tree_sha256":"9a95c7f754b5f76f73d7765f096109329f1b7200d3cd4e0cf10e8bd5f6a8c37b","started_at":"2026-09-08T08:35:01.584338Z","target_job_id":"3c214924-856d-41b7-a68e-f1ca455ee3d3","target_physical_stages":2,"verified_public_copies":[{"job_id":"3c214924-856d-41b7-a68e-f1ca455ee3d3","kind":"VIDEO","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/3c214924-856d-41b7-a68e-f1ca455ee3d3/c42132c2-4190-551c-b3df-a394efe801d0","object_version":"local-v00000000000000000010","sha256":"0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01","size_bytes":12953},{"job_id":"6421a322-7c37-42c1-bd29-a76ad55b648c","kind":"VIDEO","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/6421a322-7c37-42c1-bd29-a76ad55b648c/5ca11ef5-b726-58bd-8de4-600d4e97ea82","object_version":"local-v00000000000000000006","sha256":"0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01","size_bytes":12953},{"job_id":"3c214924-856d-41b7-a68e-f1ca455ee3d3","kind":"THUMBNAIL","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/3c214924-856d-41b7-a68e-f1ca455ee3d3/8d102973-7ff0-5536-a260-259a01431200","object_version":"local-v00000000000000000009","sha256":"4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58","size_bytes":164},{"job_id":"6421a322-7c37-42c1-bd29-a76ad55b648c","kind":"THUMBNAIL","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/6421a322-7c37-42c1-bd29-a76ad55b648c/35ba9163-ae32-5a41-9d65-620554190e59","object_version":"local-v00000000000000000005","sha256":"4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58","size_bytes":164}]}
+2026/09/08 16:35:05 🐳 Stopping container: f6ed04db753f
+2026/09/08 16:35:05 ✅ Container stopped: f6ed04db753f
+2026/09/08 16:35:05 🐳 Terminating container: f6ed04db753f
+2026/09/08 16:35:05 🚫 Container terminated: f6ed04db753f
+--- PASS: TestCPUMockDurableStreamExactCacheCampaign (11.03s)
+=== RUN   TestCPUMockExactCacheSourceTargetCampaign
+2026/09/08 16:35:06 🐳 Creating container for image postgres:17-alpine
+2026/09/08 16:35:06 ✅ Container created: f32acea0f874
+2026/09/08 16:35:06 🐳 Starting container: f32acea0f874
+2026/09/08 16:35:06 ✅ Container started: f32acea0f874
+2026/09/08 16:35:06 ⏳ Waiting for container id f32acea0f874 image: postgres:17-alpine. Waiting for: all of: [all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be mapped]]
+2026/09/08 16:35:07 🔔 Container is ready: f32acea0f874
+2026/09/08 16:35:07 OK   00001_foundation.sql (70.38ms)
+2026/09/08 16:35:07 OK   00002_worker_assignment.sql (16.53ms)
+2026/09/08 16:35:07 OK   00003_worker_start.sql (3.01ms)
+2026/09/08 16:35:07 OK   00004_worker_heartbeat.sql (17.86ms)
+2026/09/08 16:35:07 OK   00005_execution_failure.sql (15.25ms)
+2026/09/08 16:35:07 OK   00006_customer_cancellation.sql (31.58ms)
+2026/09/08 16:35:07 OK   00007_artifact_finalization.sql (36.29ms)
+2026/09/08 16:35:07 OK   00008_hierarchical_scheduler.sql (57.38ms)
+2026/09/08 16:35:07 OK   00009_invoice_export.sql (15.06ms)
+2026/09/08 16:35:07 OK   00010_profile_certification_circuit.sql (23.06ms)
+2026/09/08 16:35:07 OK   00011_project_webhooks.sql (37.9ms)
+2026/09/08 16:35:07 OK   00012_human_oidc_fixed_rbac.sql (28.45ms)
+2026/09/08 16:35:07 OK   00013_service_principal_administration.sql (17.58ms)
+2026/09/08 16:35:07 OK   00014_human_membership_administration.sql (31.95ms)
+2026/09/08 16:35:07 OK   00015_organization_reporting.sql (21.67ms)
+2026/09/08 16:35:07 OK   00016_project_retention_content_deletion.sql (59.91ms)
+2026/09/08 16:35:07 OK   00017_platform_operator_break_glass.sql (40.24ms)
+2026/09/08 16:35:07 OK   00018_finance_reconciliation.sql (18.56ms)
+2026/09/08 16:35:07 OK   00019_certified_remediation.sql (25.65ms)
+2026/09/08 16:35:07 OK   00020_remediation_execution_claim.sql (6.97ms)
+2026/09/08 16:35:07 OK   00021_remediation_execution_dispatch.sql (2.71ms)
+2026/09/08 16:35:07 OK   00022_remediation_execution_claim_replay.sql (2.39ms)
+2026/09/08 16:35:07 OK   00023_fleet_controller_worker_readiness.sql (77.17ms)
+2026/09/08 16:35:07 OK   00024_staging_artifact_expiry.sql (4.28ms)
+2026/09/08 16:35:07 OK   00025_scheduler_inbox_receipt.sql (2.58ms)
+2026/09/08 16:35:07 OK   00026_synchronous_quorum_guard.sql (2.03ms)
+2026/09/08 16:35:07 OK   00027_authorized_debug_dump_lifecycle.sql (54.11ms)
+2026/09/08 16:35:07 OK   00028_off_cluster_backup_retention.sql (13.09ms)
+2026/09/08 16:35:07 OK   00029_artifact_backup_replication.sql (12.58ms)
+2026/09/08 16:35:07 OK   00030_non_content_legal_hold.sql (25.6ms)
+2026/09/08 16:35:08 OK   00031_non_content_record_expiry.sql (72.73ms)
+2026/09/08 16:35:08 OK   00032_catalog_promotion_production_gates.sql (38.36ms)
+2026/09/08 16:35:08 OK   00033_statistical_slo_measurement.sql (29.07ms)
+2026/09/08 16:35:08 OK   00034_stage_execution_catalog.sql (64.96ms)
+2026/09/08 16:35:08 OK   00035_worker_instance_residency.sql (74.08ms)
+2026/09/08 16:35:08 OK   00036_stage_attempt_authority.sql (102.25ms)
+2026/09/08 16:35:08 OK   00037_stage_scheduler.sql (52.57ms)
+2026/09/08 16:35:08 OK   00038_stage_artifact.sql (51.7ms)
+2026/09/08 16:35:08 OK   00039_stage_worker_control_authority.sql (3.86ms)
+2026/09/08 16:35:08 OK   00040_stage_worker_execution.sql (23.88ms)
+2026/09/08 16:35:08 OK   00041_stage_worker_operations.sql (15.77ms)
+2026/09/08 16:35:08 OK   00042_stage_worker_assignment.sql (16.77ms)
+2026/09/08 16:35:08 OK   00043_stage_graph_finalization.sql (7.78ms)
+2026/09/08 16:35:08 OK   00044_stage_cache.sql (33.61ms)
+2026/09/08 16:35:08 OK   00045_stage_graph_finalization_outputs.sql (5.93ms)
+2026/09/08 16:35:08 OK   00046_stage_graph_visible_completion.sql (7.17ms)
+2026/09/08 16:35:08 OK   00047_usage_cost_ledger.sql (19.58ms)
+2026/09/08 16:35:08 OK   00048_stage_run_output_binding.sql (16.69ms)
+2026/09/08 16:35:08 OK   00049_stage_cutover_control.sql (60.13ms)
+2026/09/08 16:35:08 OK   00050_stage_graph_instantiation_dispatch.sql (25.93ms)
+2026/09/08 16:35:08 OK   00051_atomic_stage_graph_admission.sql (11.88ms)
+2026/09/08 16:35:08 OK   00052_stage_cutover_zero_backlog_seal.sql (21.09ms)
+2026/09/08 16:35:08 OK   00053_legacy_h3_guarded_contraction.sql (15.14ms)
+2026/09/08 16:35:08 OK   00054_stage_transfer_consume_destination.sql (3.86ms)
+2026/09/08 16:35:08 OK   00055_h3_campaign_evidence_reader.sql (3.73ms)
+2026/09/08 16:35:08 OK   00056_stage_observability_reader.sql (948.88µs)
+2026/09/08 16:35:08 OK   00057_legacy_h3_release_contraction_gate.sql (10.43ms)
+2026/09/08 16:35:08 OK   00058_legacy_h3_schema_contraction.sql (183.83ms)
+2026/09/08 16:35:08 OK   00059_model_runtime_epoch_registration.sql (22.24ms)
+2026/09/08 16:35:09 OK   00060_model_runtime_gang_barrier.sql (20.3ms)
+2026/09/08 16:35:09 OK   00061_stage_worker_gang_authority.sql (7.16ms)
+2026/09/08 16:35:09 OK   00062_stage_authority_member_identity.sql (3.01ms)
+2026/09/08 16:35:09 OK   00063_h3_execution_snapshot.sql (3.91ms)
+2026/09/08 16:35:09 OK   00064_model_runtime_capacity_routes.sql (13.79ms)
+2026/09/08 16:35:09 OK   00065_h3_exact_cache_reconciliation.sql (12.11ms)
+2026/09/08 16:35:09 OK   00066_stage_worker_control_session_capacity.sql (27.09ms)
+2026/09/08 16:35:09 OK   00067_stage_scheduler_project_capacity.sql (2.82ms)
+2026/09/08 16:35:09 OK   00068_stage_assignment_connector_states.sql (2.15ms)
+2026/09/08 16:35:09 OK   00069_stage_transfer_server_clock.sql (5.74ms)
+2026/09/08 16:35:09 OK   00070_stage_lease_expiry_recovery.sql (13.32ms)
+2026/09/08 16:35:09 OK   00071_stage_artifact_lifecycle.sql (20.18ms)
+2026/09/08 16:35:09 OK   00072_recovery_quiescence.sql (14.35ms)
+2026/09/08 16:35:09 OK   00073_stage_cache_downstream_bindings.sql (6.91ms)
+2026/09/08 16:35:09 OK   00074_job_owned_public_artifact_copies.sql (4.06ms)
+2026/09/08 16:35:09 OK   00075_stage_graph_failure_terminalization.sql (23.09ms)
+2026/09/08 16:35:09 OK   00076_allocation_usage_unit.sql (1.13ms)
+2026/09/08 16:35:09 OK   00077_runtime_usage_receipts.sql (4.87ms)
+2026/09/08 16:35:09 OK   00078_idle_stage_worker_probe.sql (5.79ms)
+2026/09/08 16:35:09 OK   00079_stage_job_expiry.sql (6.84ms)
+2026/09/08 16:35:09 OK   00080_stage_scheduler_snapshot_lock_order.sql (3.8ms)
+2026/09/08 16:35:09 OK   00081_stage_assignment_quorum.sql (1.59ms)
+2026/09/08 16:35:09 OK   00082_stage_success_storage_completion.sql (3.36ms)
+2026/09/08 16:35:09 OK   00083_capacity_observation_lifecycle.sql (4.58ms)
+2026/09/08 16:35:09 OK   00084_blocked_stage_worker_probe.sql (4.81ms)
+2026/09/08 16:35:09 OK   00085_stage_materialization_terminal_replay.sql (2.84ms)
+2026/09/08 16:35:09 OK   00086_stage_failure_terminal_replay.sql (6.54ms)
+2026/09/08 16:35:09 OK   00087_stage_claim_finalization_lock_order.sql (2.43ms)
+2026/09/08 16:35:09 OK   00088_stage_allocation_execution_sequence.sql (4.91ms)
+2026/09/08 16:35:09 OK   00089_stage_terminal_history.sql (9.14ms)
+2026/09/08 16:35:09 OK   00090_stage_assignment_content_lifecycle.sql (21.11ms)
+2026/09/08 16:35:09 OK   00091_worker_journal_bootstrap.sql (21.08ms)
+2026/09/08 16:35:09 OK   00092_worker_bootstrap_history.sql (3.01ms)
+2026/09/08 16:35:09 OK   00093_worker_bootstrap_nonzero_scopes.sql (1.22ms)
+2026/09/08 16:35:09 OK   00094_worker_bootstrap_abandonment.sql (12.52ms)
+2026/09/08 16:35:09 goose: successfully migrated database to version: 94
+    cpu_mock_exact_cache_campaign_test.go:24: CPU_MOCK_CAMPAIGN_START {"durable_stream":false,"exact_cache":true,"go_version":"go1.26.7","initial_budget":{"planned_jobs":2,"fixed_price_per_job_minor":1250,"initial_credit_limit_minor":2500,"currency":"CNY"},"runtime_binary_sha256":{"vela-h3-stage-mock":"2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd","vela-lab-cpu-thumbnail-mock":"763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"},"source_tree_sha256":"9a95c7f754b5f76f73d7765f096109329f1b7200d3cd4e0cf10e8bd5f6a8c37b"}
+    cpu_mock_exact_cache_campaign_test.go:24: CPU_MOCK_EXACT_CACHE_RECEIPT {"admission":{"AdmissionCandidates":2,"Admitted":2,"HitCandidates":0,"Hits":0,"Skipped":0},"after_maintenance":{"observed_at":"2026-09-08T08:35:12.663461Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":26638,"held_buffers":0,"visible_completions":2,"acquire_intents":6,"database_bytes":29021875,"test_process_heap_bytes":13239712,"test_process_goroutines":91,"runtime_scratch_bytes":0,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":2500,"charges":2,"pool_active_counters":0,"active_execution_pins":0,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":2,"active_cache_carrying_references":2,"committed_stage_artifacts":6},"after_source":{"observed_at":"2026-09-08T08:35:12.110221Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":13521,"held_buffers":0,"visible_completions":1,"acquire_intents":4,"database_bytes":28686003,"test_process_heap_bytes":14835104,"test_process_goroutines":91,"runtime_scratch_bytes":0,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":1250,"charges":1,"pool_active_counters":0,"active_execution_pins":3,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":0,"active_cache_carrying_references":0,"committed_stage_artifacts":4,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":265142272,"open_fds":87},{"pid":17544,"name":"h3-encoder","rss_bytes":17235968,"open_fds":12},{"pid":17547,"name":"h3-dit","rss_bytes":17039360,"open_fds":12},{"pid":17548,"name":"h3-vae-decoder","rss_bytes":17530880,"open_fds":12},{"pid":17549,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":17367040,"open_fds":12}]},"after_target":{"observed_at":"2026-09-08T08:35:12.562795Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":26638,"held_buffers":1,"visible_completions":2,"acquire_intents":6,"database_bytes":29021875,"test_process_heap_bytes":11022408,"test_process_goroutines":91,"runtime_scratch_bytes":0,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":2500,"charges":2,"pool_active_counters":0,"active_execution_pins":8,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":2,"active_cache_carrying_references":2,"committed_stage_artifacts":6,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":265207808,"open_fds":87},{"pid":17544,"name":"h3-encoder","rss_bytes":17235968,"open_fds":12},{"pid":17547,"name":"h3-dit","rss_bytes":17039360,"open_fds":12},{"pid":17548,"name":"h3-vae-decoder","rss_bytes":17629184,"open_fds":12},{"pid":17549,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":17448960,"open_fds":12}]},"before":{"observed_at":"2026-09-08T08:35:11.209515Z","queued_jobs":0,"running_jobs":0,"active_allocations":0,"active_leases":0,"reserved_storage":0,"reserved_storage_bytes":0,"materialized_stage_bytes":0,"held_buffers":0,"visible_completions":0,"acquire_intents":0,"database_bytes":26670771,"test_process_heap_bytes":11406096,"test_process_goroutines":67,"runtime_scratch_bytes":0,"runtime_input_bytes":0,"runtime_output_bytes":0,"runtime_watchdog_goroutines":0,"reserved_credit_minor":0,"posted_credit_minor":0,"charges":0,"pool_active_counters":0,"active_execution_pins":0,"active_finalization_pins":0,"active_cache_pins":0,"live_cache_entries":0,"active_cache_carrying_references":0,"committed_stage_artifacts":0,"processes":[{"pid":17454,"name":"integration.test","rss_bytes":264830976,"open_fds":76},{"pid":17544,"name":"h3-encoder","rss_bytes":16531456,"open_fds":12},{"pid":17547,"name":"h3-dit","rss_bytes":16269312,"open_fds":12},{"pid":17548,"name":"h3-vae-decoder","rss_bytes":16711680,"open_fds":12},{"pid":17549,"name":"vela-lab-cpu-thumbnail-mock","rss_bytes":16678912,"open_fds":12}]},"capacity_reports_by_worker":{"dit":1,"encoder":1,"thumbnail":1,"vae":1},"consumed_transfers":5,"direct_allocation_receipts":6,"elapsed_seconds":1.5076969999999998,"evidence_class":"LOCAL_CPU_MOCK_EXACT_CACHE","exact_bindings_and_pins":[{"stage":"dit","source_artifact_id":"cf88e614-25ed-4488-888c-7d9643560351","object_version":"local-v00000000000000000002","pin_id":"0ba0c117-0402-51a1-a9d5-2b5cf118691e"},{"stage":"encoder","source_artifact_id":"ffc1a445-ea04-49c4-9888-079e98c52d14","object_version":"local-v00000000000000000001","pin_id":"47912536-8548-5f3c-b05d-890a47783a8f"}],"ffprobe_version":"ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers","go_version":"go1.26.7","hits":[{"AdmissionCandidates":0,"Admitted":0,"HitCandidates":2,"Hits":1,"Skipped":0},{"AdmissionCandidates":0,"Admitted":0,"HitCandidates":2,"Hits":1,"Skipped":0}],"initial_budget":{"planned_jobs":2,"fixed_price_per_job_minor":1250,"initial_credit_limit_minor":2500,"currency":"CNY"},"limitations":["CPU mock, local exact-version store and loopback Runtime gRPC; no real H3/GPU or Production Gate evidence","public Go control services and low-level agent; production stream handler/journal replay is covered by separate tests","BITWISE equivalence/policy are static fixture catalog declarations; native mock payloads and ADMIT/HIT outcomes are measured","Project cache remains enabled with two admitted entries; cache carrying history is retained","Reconciler drives real ADMIT/HIT before target physical Acquire; this does not benchmark a cache/scheduler race","real ffprobe verifies media; host execution does not prove Linux sandboxing; native subprocesses are not race-instrumented"],"maintenance_result":{"RequestContentExpired":0,"ContentDeletionRequestsCreated":0,"Claimed":0,"Completed":0,"Failed":0},"production_gate":false,"runtime_binary_sha256":{"vela-h3-stage-mock":"2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd","vela-lab-cpu-thumbnail-mock":"763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"},"schema_version":1,"source_job_id":"28cd990f-c765-470c-89be-a737ddfc7f44","source_physical_stages":4,"source_tree_sha256":"9a95c7f754b5f76f73d7765f096109329f1b7200d3cd4e0cf10e8bd5f6a8c37b","started_at":"2026-09-08T08:35:11.209504Z","target_job_id":"33ab7c3e-8343-4074-a710-78b6e8bbc2fb","target_physical_stages":2,"verified_public_copies":[{"job_id":"28cd990f-c765-470c-89be-a737ddfc7f44","kind":"VIDEO","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/28cd990f-c765-470c-89be-a737ddfc7f44/911c98e0-0213-505f-b736-67e79b2dc8a2","object_version":"local-v00000000000000000006","sha256":"0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01","size_bytes":12953},{"job_id":"33ab7c3e-8343-4074-a710-78b6e8bbc2fb","kind":"VIDEO","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/33ab7c3e-8343-4074-a710-78b6e8bbc2fb/c5e273b0-96b3-59d2-93b5-fe56365375e5","object_version":"local-v00000000000000000010","sha256":"0c91cb7c0225493a7e7b0855484fd7a82baf277b9812d7954e2b8d0bb3f1ee01","size_bytes":12953},{"job_id":"28cd990f-c765-470c-89be-a737ddfc7f44","kind":"THUMBNAIL","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/28cd990f-c765-470c-89be-a737ddfc7f44/aa4d97fd-f427-595a-9606-283ce3642274","object_version":"local-v00000000000000000005","sha256":"4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58","size_bytes":164},{"job_id":"33ab7c3e-8343-4074-a710-78b6e8bbc2fb","kind":"THUMBNAIL","object_key":"artifacts/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/33ab7c3e-8343-4074-a710-78b6e8bbc2fb/f3542c7d-2314-5c32-bf3b-647312318fc7","object_version":"local-v00000000000000000009","sha256":"4a5bebd434087d98bcc98e7c7f52a81e842b740800acd5e212de905b12282a58","size_bytes":164}]}
+2026/09/08 16:35:12 🐳 Stopping container: f32acea0f874
+2026/09/08 16:35:12 ✅ Container stopped: f32acea0f874
+2026/09/08 16:35:12 🐳 Terminating container: f32acea0f874
+2026/09/08 16:35:12 🚫 Container terminated: f32acea0f874
+--- PASS: TestCPUMockExactCacheSourceTargetCampaign (7.40s)
+PASS
+ok  	github.com/vivym/vela/internal/integration	21.299s

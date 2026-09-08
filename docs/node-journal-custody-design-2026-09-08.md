@@ -2,6 +2,9 @@
 
 Status: preferred candidate for a CPU prototype, not an implemented deployment
 contract or an accepted replacement ADR. This assessment follows `df066cf`.
+The subsequent [Runtime owner contract](journal-owner-contract-evidence-2026-09-08.md)
+now covers all nine ordinary journal mutations; authenticated Node ownership,
+Worker custody and startup permission integration remain unimplemented.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

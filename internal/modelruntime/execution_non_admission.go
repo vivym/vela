@@ -1,11 +1,9 @@
 package modelruntime
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/vivym/vela/internal/stageauthority"
@@ -81,49 +79,16 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
 		return nil, ErrExecutionNonAdmissionUnproven
 	}
 	store := admission.store
-	if err := store.matchTerminalNonAdmissionAuthority(verified.Authority); err != nil {
-		return nil, err
-	}
-	if saved, err := store.nonAdmissionCheckpoint(verified); err != nil || saved != nil {
-		return saved, err
-	}
 	sequence := verified.Authority.GetExecutionSequence()
-	// Any persisted intent at this sequence, even for a conflicting identity or
-	// failed-before-entry operation, precludes an absence claim.
-	for _, record := range store.state.Executions {
-		original, err := store.retainedAuthority(record.Authority)
-		if err != nil {
-			return nil, err
-		}
-		if original.Authority.GetExecutionSequence() == sequence {
-			return nil, ErrExecutionNonAdmissionUnproven
-		}
-	}
 	for _, operation := range admission.active {
 		if operation.sequence == sequence {
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 	}
-	if len(store.state.NonAdmissions) >= maxNonAdmissionCheckpoints {
-		return nil, ErrExecutionNonAdmissionHistoryFull
-	}
-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Authority)
-	if err != nil {
-		return nil, err
-	}
-	observed := service.clock.Now().UTC()
-	if observed.IsZero() {
-		return nil, ErrExecutionNonAdmissionUnproven
-	}
-	next := store.state
-	next.NonAdmissions = append(slices.Clone(next.NonAdmissions), executionDiskNonAdmission{
-		Authority: wire, AuthorityDigest: verified.Digest, ExecutionSequence: sequence,
-		InstalledCutoff: next.Floor, Contract: ExecutionNonAdmissionContract, ObservedAt: observed,
-	})
-	slices.SortFunc(next.NonAdmissions, func(a, b executionDiskNonAdmission) int {
-		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
-	})
-	if err := store.persist(next); err != nil {
+	if err := store.saveNonAdmission(verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+		if isExecutionJournalRejection(err) {
+			return nil, err
+		}
 		return nil, admission.failStateLocked(err)
 	}
 	if err := ctx.Err(); err != nil {
@@ -163,7 +128,7 @@ func (supervisor *Supervisor) InspectNonAdmission(ctx context.Context, authority
 	return admission.store.nonAdmissionCheckpoint(verified)
 }
 
-func (store *executionStateFile) nonAdmissionCheckpoint(query stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error) {
+func (store *executionJournal) nonAdmissionCheckpoint(query stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error) {
 	for _, record := range store.state.NonAdmissions {
 		if record.ExecutionSequence != query.Authority.GetExecutionSequence() {
 			continue

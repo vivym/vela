@@ -1,0 +1,672 @@
+diff --git a/internal/modelruntime/backend_lifecycle.go b/internal/modelruntime/backend_lifecycle.go
+index fb9a308..458644e 100644
+--- a/internal/modelruntime/backend_lifecycle.go
++++ b/internal/modelruntime/backend_lifecycle.go
+@@ -59,20 +59,43 @@ func (store *executionJournal) validateBackendLifecycle() error {
+ // intent precedes the first factory, covering partial AUX startup and crashes.
+ // Failure or normal Close never clears it; this process cannot attest its exit.
+ func (store *executionStateFile) recordBackendStartup(manifest LaunchManifest) error {
+-	if err := store.workerHealthError(); err != nil {
++	if store.recoveryDrain {
++		return ErrBackendIncarnationUnproven
++	}
++	return store.transition(func(draft *executionJournalDraft) error {
++		return draft.recordBackendStartup(manifest, uuid.New(), time.Now().UTC())
++	})
++}
++
++// Manifest, incarnation and time are owner-selected inputs. This records intent
++// only; it cannot approve launch configuration, prove process exit, or replace
++// the Registry/Node startup permission exchange.
++func (draft *executionJournalDraft) recordBackendStartup(manifest LaunchManifest, incarnation uuid.UUID, observed time.Time) error {
++	if err := draft.workerHealthError(); err != nil {
+ 		return err
+ 	}
+-	if store.state.BackendLifecycle == nil || store.state.BackendLifecycle.State != BackendLifecycleUnstarted || store.recoveryDrain {
++	if draft.state.BackendLifecycle == nil || draft.state.BackendLifecycle.State != BackendLifecycleUnstarted {
+ 		return ErrBackendIncarnationUnproven
+ 	}
+ 	document, err := EncodeLaunchManifest(manifest)
+ 	if err != nil {
+ 		return err
+ 	}
+-	next := store.state
++	scope, err := executionScopeForManifest(manifest, draft.scope.floor.validator)
++	if err != nil {
++		return err
++	}
++	digest, err := scope.digest()
++	if err != nil || digest != draft.state.Scope {
++		return ErrBackendIncarnationUnproven
++	}
++	if incarnation == uuid.Nil || incarnation.Version() != 4 || incarnation.Variant() != uuid.RFC4122 || observed.IsZero() || observed.Location() != time.UTC {
++		return ErrBackendIncarnationUnproven
++	}
++	next := draft.state
+ 	next.BackendLifecycle = &BackendLifecycleStatus{State: BackendLifecycleUnresolved,
+-		IncarnationID: uuid.New(), LaunchDigest: sha256.Sum256(document), RecordedAt: time.Now().UTC()}
+-	return store.persist(next)
++		IncarnationID: incarnation, LaunchDigest: sha256.Sum256(document), RecordedAt: observed}
++	return draft.replace(next)
+ }
+ 
+ func (store *executionStateFile) recoveryError() error {
+diff --git a/internal/modelruntime/execution_journal_transition.go b/internal/modelruntime/execution_journal_transition.go
+index 83abb50..27e6818 100644
+--- a/internal/modelruntime/execution_journal_transition.go
++++ b/internal/modelruntime/execution_journal_transition.go
+@@ -19,6 +19,18 @@ type executionJournalDraft struct {
+ 	changed bool
+ }
+ 
++// Rejected domain input has not reached persist and leaves the accepted state
++// intact. Storage/check/publication failures are deliberately not wrapped.
++type executionJournalRejection struct{ cause error }
++
++func (err *executionJournalRejection) Error() string { return err.cause.Error() }
++func (err *executionJournalRejection) Unwrap() error { return err.cause }
++
++func isExecutionJournalRejection(err error) bool {
++	var rejected *executionJournalRejection
++	return errors.As(err, &rejected)
++}
++
+ func (draft *executionJournalDraft) replace(state executionDiskState) error {
+ 	draft.state, draft.changed = state, true
+ 	return nil
+@@ -43,7 +55,7 @@ func (store *executionStateFile) transition(mutate func(*executionJournalDraft)
+ 	}
+ 	draft := &executionJournalDraft{executionJournal: store.executionJournal}
+ 	if err := mutate(draft); err != nil {
+-		return err
++		return &executionJournalRejection{cause: err}
+ 	}
+ 	if !draft.changed {
+ 		return nil
+diff --git a/internal/modelruntime/execution_non_admission.go b/internal/modelruntime/execution_non_admission.go
+index b59411d..f7be20f 100644
+--- a/internal/modelruntime/execution_non_admission.go
++++ b/internal/modelruntime/execution_non_admission.go
+@@ -1,11 +1,9 @@
+ package modelruntime
+ 
+ import (
+-	"cmp"
+ 	"context"
+ 	"crypto/sha256"
+ 	"errors"
+-	"slices"
+ 	"time"
+ 
+ 	"github.com/vivym/vela/internal/stageauthority"
+@@ -81,49 +79,16 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
+ 		return nil, ErrExecutionNonAdmissionUnproven
+ 	}
+ 	store := admission.store
+-	if err := store.matchTerminalNonAdmissionAuthority(verified.Authority); err != nil {
+-		return nil, err
+-	}
+-	if saved, err := store.nonAdmissionCheckpoint(verified); err != nil || saved != nil {
+-		return saved, err
+-	}
+ 	sequence := verified.Authority.GetExecutionSequence()
+-	// Any persisted intent at this sequence, even for a conflicting identity or
+-	// failed-before-entry operation, precludes an absence claim.
+-	for _, record := range store.state.Executions {
+-		original, err := store.retainedAuthority(record.Authority)
+-		if err != nil {
+-			return nil, err
+-		}
+-		if original.Authority.GetExecutionSequence() == sequence {
+-			return nil, ErrExecutionNonAdmissionUnproven
+-		}
+-	}
+ 	for _, operation := range admission.active {
+ 		if operation.sequence == sequence {
+ 			return nil, ErrExecutionNonAdmissionUnproven
+ 		}
+ 	}
+-	if len(store.state.NonAdmissions) >= maxNonAdmissionCheckpoints {
+-		return nil, ErrExecutionNonAdmissionHistoryFull
+-	}
+-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Authority)
+-	if err != nil {
+-		return nil, err
+-	}
+-	observed := service.clock.Now().UTC()
+-	if observed.IsZero() {
+-		return nil, ErrExecutionNonAdmissionUnproven
+-	}
+-	next := store.state
+-	next.NonAdmissions = append(slices.Clone(next.NonAdmissions), executionDiskNonAdmission{
+-		Authority: wire, AuthorityDigest: verified.Digest, ExecutionSequence: sequence,
+-		InstalledCutoff: next.Floor, Contract: ExecutionNonAdmissionContract, ObservedAt: observed,
+-	})
+-	slices.SortFunc(next.NonAdmissions, func(a, b executionDiskNonAdmission) int {
+-		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
+-	})
+-	if err := store.persist(next); err != nil {
++	if err := store.saveNonAdmission(verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
++		if isExecutionJournalRejection(err) {
++			return nil, err
++		}
+ 		return nil, admission.failStateLocked(err)
+ 	}
+ 	if err := ctx.Err(); err != nil {
+@@ -163,7 +128,7 @@ func (supervisor *Supervisor) InspectNonAdmission(ctx context.Context, authority
+ 	return admission.store.nonAdmissionCheckpoint(verified)
+ }
+ 
+-func (store *executionStateFile) nonAdmissionCheckpoint(query stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error) {
++func (store *executionJournal) nonAdmissionCheckpoint(query stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error) {
+ 	for _, record := range store.state.NonAdmissions {
+ 		if record.ExecutionSequence != query.Authority.GetExecutionSequence() {
+ 			continue
+diff --git a/internal/modelruntime/execution_transition_export_test.go b/internal/modelruntime/execution_transition_export_test.go
+index 6d5db62..889b3fd 100644
+--- a/internal/modelruntime/execution_transition_export_test.go
++++ b/internal/modelruntime/execution_transition_export_test.go
+@@ -6,6 +6,7 @@ import (
+ 	"errors"
+ 	"time"
+ 
++	"github.com/google/uuid"
+ 	"github.com/vivym/vela/internal/stageauthority"
+ 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+ )
+@@ -13,14 +14,18 @@ import (
+ // These test-only controls bypass Service validation to exercise the durable
+ // owner's boundary using the signed fixtures in the external test package.
+ type ExecutionMutationForTest struct {
+-	Kind        string
+-	Authority   stageauthority.Verified
+-	Confirmed   *stageauthority.Verified
+-	Disposition *velav1.StageTerminalDisposition
+-	Receipt     *velav1.LocalMaterializationReceipt
+-	Health      *FailureEvidence
+-	Drain       BackendDrain
+-	Observed    time.Time
++	Kind         string
++	Authority    stageauthority.Verified
++	Confirmed    *stageauthority.Verified
++	Disposition  *velav1.StageTerminalDisposition
++	Receipt      *velav1.LocalMaterializationReceipt
++	Health       *FailureEvidence
++	Drain        BackendDrain
++	Observed     time.Time
++	RouteIndex   int
++	AllocationID string
++	Manifest     LaunchManifest
++	Incarnation  uuid.UUID
+ }
+ 
+ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMutationForTest) error {
+@@ -41,6 +46,26 @@ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMut
+ 		return store.saveHealth(mutation.Authority, mutation.Health)
+ 	case "drain":
+ 		return store.saveDrain(mutation.Authority, mutation.Drain, mutation.Observed)
++	case "non-admission":
++		return store.saveNonAdmission(mutation.Authority, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
++	case "terminal-non-admission":
++		return store.saveTerminalNonAdmission(mutation.Disposition, mutation.AllocationID, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
++	case "startup", "abort-startup", "abort-non-admission", "abort-terminal-non-admission":
++		return store.transition(func(draft *executionJournalDraft) error {
++			var err error
++			switch mutation.Kind {
++			case "abort-non-admission":
++				err = draft.recordNonAdmission(mutation.Authority, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
++			case "abort-terminal-non-admission":
++				err = draft.recordTerminalNonAdmission(mutation.Disposition, mutation.AllocationID, supervisor.services[mutation.RouteIndex].journalRoute(), mutation.Observed)
++			default:
++				err = draft.recordBackendStartup(mutation.Manifest, mutation.Incarnation, mutation.Observed)
++			}
++			if err != nil || mutation.Kind == "startup" {
++				return err
++			}
++			return errors.New("injected abort after candidate construction")
++		})
+ 	case "revalidate":
+ 		return store.persist(store.state)
+ 	case "invalid-repeated-authority":
+diff --git a/internal/modelruntime/terminal_non_admission.go b/internal/modelruntime/terminal_non_admission.go
+index 4be68fb..df98b7b 100644
+--- a/internal/modelruntime/terminal_non_admission.go
++++ b/internal/modelruntime/terminal_non_admission.go
+@@ -2,11 +2,9 @@ package modelruntime
+ 
+ import (
+ 	"bytes"
+-	"cmp"
+ 	"context"
+ 	"crypto/sha256"
+ 	"errors"
+-	"slices"
+ 	"time"
+ 
+ 	"github.com/vivym/vela/internal/stageauthority"
+@@ -93,48 +91,15 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
+ 		return nil, stageauthority.ErrRuntimeMismatch
+ 	}
+ 	sequence := allocation.GetExecutionSequence()
+-	if store.state.Floor < sequence {
+-		return nil, ErrExecutionNonAdmissionUnproven
+-	}
+-	if saved, err := store.terminalNonAdmissionCheckpoint(verified.Disposition, allocation); err != nil || saved != nil {
+-		return saved, err
+-	}
+-	if err := store.requireUnadmittedSequence(sequence); err != nil {
+-		return nil, err
+-	}
+ 	for _, operation := range admission.active {
+ 		if operation.sequence == sequence {
+ 			return nil, ErrExecutionNonAdmissionUnproven
+ 		}
+ 	}
+-	for _, record := range store.state.NonAdmissions {
+-		if record.ExecutionSequence == sequence {
+-			original, err := store.retainedAuthority(record.Authority)
+-			if err != nil || stageauthority.ValidateTerminalAllocation(verified.Disposition, allocation, original.Authority) != nil {
+-				return nil, ErrExecutionNonAdmissionUnproven
+-			}
++	if err := store.saveTerminalNonAdmission(verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
++		if isExecutionJournalRejection(err) {
++			return nil, err
+ 		}
+-	}
+-	if len(store.state.TerminalNonAdmissions) >= maxNonAdmissionCheckpoints {
+-		return nil, ErrExecutionNonAdmissionHistoryFull
+-	}
+-	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Disposition)
+-	if err != nil {
+-		return nil, err
+-	}
+-	observed := service.clock.Now().UTC()
+-	if observed.IsZero() || observed.Before(verified.Disposition.GetObservedAt().AsTime()) {
+-		return nil, ErrExecutionNonAdmissionUnproven
+-	}
+-	next := store.state
+-	next.TerminalNonAdmissions = append(slices.Clone(next.TerminalNonAdmissions), terminalDiskNonAdmission{
+-		Disposition: wire, DispositionDigest: verified.Digest, StageAllocationID: allocationID,
+-		ExecutionSequence: sequence, InstalledCutoff: next.Floor, Contract: TerminalNonAdmissionContract, ObservedAt: observed,
+-	})
+-	slices.SortFunc(next.TerminalNonAdmissions, func(a, b terminalDiskNonAdmission) int {
+-		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
+-	})
+-	if err := store.persist(next); err != nil {
+ 		return nil, admission.failStateLocked(err)
+ 	}
+ 	if err := ctx.Err(); err != nil {
+@@ -155,7 +120,7 @@ func (supervisor *Supervisor) terminalAllocationService(allocation *velav1.Stage
+ 	return nil
+ }
+ 
+-func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error) {
++func (store *executionJournal) terminalNonAdmissionCheckpoint(disposition *velav1.StageTerminalDisposition, allocation *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error) {
+ 	for _, record := range store.state.TerminalNonAdmissions {
+ 		if record.ExecutionSequence != allocation.GetExecutionSequence() {
+ 			continue
+diff --git a/internal/modelruntime/execution_journal_non_admission.go b/internal/modelruntime/execution_journal_non_admission.go
+new file mode 100644
+index 0000000..f09aeb8
+--- /dev/null
++++ b/internal/modelruntime/execution_journal_non_admission.go
+@@ -0,0 +1,153 @@
++package modelruntime
++
++import (
++	"cmp"
++	"slices"
++	"time"
++
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++// This is trusted owner assembly, not part of a client request. A future remote
++// owner must select the approved live route independently of the signed history.
++// Historical journal scope deliberately does not establish current residency.
++type executionJournalRoute struct {
++	binding      stageauthority.RuntimeBinding
++	maxClockSkew time.Duration
++}
++
++func (service *Service) journalRoute() executionJournalRoute {
++	return executionJournalRoute{binding: cloneBinding(service.binding), maxClockSkew: service.maxClockSkew}
++}
++
++func (store *executionStateFile) saveNonAdmission(authority stageauthority.Verified, route executionJournalRoute, observed time.Time) error {
++	return store.transition(func(draft *executionJournalDraft) error {
++		return draft.recordNonAdmission(authority, route, observed)
++	})
++}
++
++func (draft *executionJournalDraft) recordNonAdmission(value stageauthority.Verified, route executionJournalRoute, observed time.Time) error {
++	verified, err := draft.verifyMutationAuthority(value)
++	if err != nil {
++		return err
++	}
++	if _, err := draft.scope.floor.validator.ValidateEnvelopeForReplay(verified.Authority, route.maxClockSkew); err != nil {
++		return err
++	}
++	if _, err := draft.scope.floor.validator.ValidateSignature(verified.Authority, route.binding); err != nil {
++		return err
++	}
++	sequence := verified.Authority.GetExecutionSequence()
++	if draft.state.Floor < sequence {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	if err := draft.matchTerminalNonAdmissionAuthority(verified.Authority); err != nil {
++		return err
++	}
++	if saved, err := draft.nonAdmissionCheckpoint(verified); err != nil || saved != nil {
++		return err
++	}
++	if err := draft.requireUnadmittedSequence(sequence); err != nil {
++		return err
++	}
++	if len(draft.state.NonAdmissions) >= maxNonAdmissionCheckpoints {
++		return ErrExecutionNonAdmissionHistoryFull
++	}
++	if observed.IsZero() || observed.Location() != time.UTC {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Authority)
++	if err != nil {
++		return err
++	}
++	next := draft.state
++	next.NonAdmissions = append(slices.Clone(next.NonAdmissions), executionDiskNonAdmission{
++		Authority: wire, AuthorityDigest: verified.Digest, ExecutionSequence: sequence,
++		InstalledCutoff: next.Floor, Contract: ExecutionNonAdmissionContract, ObservedAt: observed,
++	})
++	slices.SortFunc(next.NonAdmissions, func(a, b executionDiskNonAdmission) int {
++		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
++	})
++	return draft.replace(next)
++}
++
++func (store *executionStateFile) saveTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, allocationID string, route executionJournalRoute, observed time.Time) error {
++	return store.transition(func(draft *executionJournalDraft) error {
++		return draft.recordTerminalNonAdmission(disposition, allocationID, route, observed)
++	})
++}
++
++func (draft *executionJournalDraft) recordTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, allocationID string, route executionJournalRoute, observed time.Time) error {
++	if disposition == nil || proto.Size(disposition) > maxExecutionWireBytes {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	verified, err := draft.scope.floor.validator.ValidateTerminalDispositionEnvelope(disposition)
++	if err != nil {
++		return err
++	}
++	if err := draft.scope.matchExecutionFloorScope(verified.Disposition); err != nil {
++		return err
++	}
++	allocation := stageauthority.FindTerminalAllocation(verified.Disposition, allocationID)
++	if allocation == nil {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	if !route.matchesTerminalAllocation(draft.scope.binding, allocation) {
++		return stageauthority.ErrRuntimeMismatch
++	}
++	sequence := allocation.GetExecutionSequence()
++	if draft.state.Floor < sequence {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	if saved, err := draft.terminalNonAdmissionCheckpoint(verified.Disposition, allocation); err != nil || saved != nil {
++		return err
++	}
++	if err := draft.requireUnadmittedSequence(sequence); err != nil {
++		return err
++	}
++	for _, record := range draft.state.NonAdmissions {
++		if record.ExecutionSequence == sequence {
++			original, err := draft.retainedAuthority(record.Authority)
++			if err != nil || stageauthority.ValidateTerminalAllocation(verified.Disposition, allocation, original.Authority) != nil {
++				return ErrExecutionNonAdmissionUnproven
++			}
++		}
++	}
++	if len(draft.state.TerminalNonAdmissions) >= maxNonAdmissionCheckpoints {
++		return ErrExecutionNonAdmissionHistoryFull
++	}
++	if observed.IsZero() || observed.Location() != time.UTC || observed.Before(verified.Disposition.GetObservedAt().AsTime()) {
++		return ErrExecutionNonAdmissionUnproven
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Disposition)
++	if err != nil {
++		return err
++	}
++	next := draft.state
++	next.TerminalNonAdmissions = append(slices.Clone(next.TerminalNonAdmissions), terminalDiskNonAdmission{
++		Disposition: wire, DispositionDigest: verified.Digest, StageAllocationID: allocationID,
++		ExecutionSequence: sequence, InstalledCutoff: next.Floor, Contract: TerminalNonAdmissionContract, ObservedAt: observed,
++	})
++	slices.SortFunc(next.TerminalNonAdmissions, func(a, b terminalDiskNonAdmission) int {
++		return cmp.Compare(a.ExecutionSequence, b.ExecutionSequence)
++	})
++	return draft.replace(next)
++}
++
++func (route executionJournalRoute) matchesTerminalAllocation(scope stageauthority.RuntimeBinding, allocation *velav1.StageTerminalAllocation) bool {
++	binding := route.binding
++	if binding.WorkerInstanceID != scope.WorkerInstanceID || binding.WorkerInstanceEpoch != scope.WorkerInstanceEpoch ||
++		binding.WorkerMemberID != scope.WorkerMemberID || binding.WorkerMemberEpoch != scope.WorkerMemberEpoch ||
++		binding.ModelResidencyID != allocation.GetModelResidencyId() || binding.ModelRuntimeIdentity != allocation.GetModelRuntimeIdentity() ||
++		binding.StageProfileRevisionID != allocation.GetStageProfileRevisionId() {
++		return false
++	}
++	for _, member := range allocation.GetMembers() {
++		if member.GetWorkerMemberId() == binding.WorkerMemberID {
++			return member.GetMemberEpoch() == binding.WorkerMemberEpoch && member.GetModelRuntimeEpoch() == binding.ModelRuntimeEpoch
++		}
++	}
++	return false
++}
+diff --git a/internal/modelruntime/execution_journal_owner_test.go b/internal/modelruntime/execution_journal_owner_test.go
+new file mode 100644
+index 0000000..3b81e46
+--- /dev/null
++++ b/internal/modelruntime/execution_journal_owner_test.go
+@@ -0,0 +1,200 @@
++package modelruntime_test
++
++import (
++	"bytes"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++	"google.golang.org/protobuf/types/known/timestamppb"
++)
++
++func TestJournalOwnerNonAdmissionRejectsWithoutPublishing(t *testing.T) {
++	for _, kind := range []string{"non-admission", "terminal-non-admission"} {
++		t.Run(kind, func(t *testing.T) {
++			for _, fault := range []string{"signature", "scope", "wrong-route", "old-epoch", "missing-floor", "admitted-intent", "bad-time", "conflicting-proof", "abort"} {
++				t.Run(fault, func(t *testing.T) {
++					f, directory := transitionFixture(t)
++					disposition := unsignedTerminalAllocation(t, f)
++					if fault == "admitted-intent" {
++						prepareFloorRuntime(t, f.supervisor, f.authorities[1])
++					}
++					if fault != "missing-floor" {
++						if _, err := f.supervisor.InstallExecutionFloor(t.Context(), disposition); err != nil {
++							t.Fatal(err)
++						}
++					}
++					id := disposition.GetAllocations()[1].GetStageAllocationId()
++					if fault == "conflicting-proof" {
++						if kind == "non-admission" {
++							if _, err := f.supervisor.CheckpointTerminalNonAdmission(t.Context(), disposition, id); err != nil {
++								t.Fatal(err)
++							}
++						} else if _, err := f.supervisor.CheckpointNonAdmission(t.Context(), f.authorities[1]); err != nil {
++							t.Fatal(err)
++						}
++					}
++					authority := proto.Clone(f.authorities[1]).(*velav1.StageAuthority)
++					mutation := modelruntime.ExecutionMutationForTest{Kind: kind, RouteIndex: 1, AllocationID: id,
++						Authority: stageauthority.Verified{Authority: authority}, Disposition: disposition, Observed: f.clock.Now()}
++					switch fault {
++					case "signature":
++						authority.Signature[0] ^= 1
++						disposition.Signature[0] ^= 1
++					case "scope":
++						authority.WorkerInstanceEpoch++
++						disposition.WorkerInstanceEpoch++
++					case "old-epoch":
++						authority.Members[0].ModelRuntimeEpoch++
++						disposition.Allocations[1].Members[0].ModelRuntimeEpoch++
++					case "wrong-route":
++						mutation.RouteIndex = 0
++					case "bad-time":
++						mutation.Observed = time.Time{}
++					case "abort":
++						mutation.Kind = "abort-" + kind
++					}
++					if fault == "scope" || fault == "old-epoch" {
++						var err error
++						mutation.Authority.Authority, err = f.signer.Sign(authority)
++						if err != nil {
++							t.Fatal(err)
++						}
++						mutation.Disposition = signTerminalNonAdmission(t, f, disposition)
++					}
++					assertJournalMutationRejected(t, f, directory, mutation)
++					if fault == "missing-floor" {
++						if _, err := f.supervisor.InstallExecutionFloor(t.Context(), f.disposition(t)); err != nil {
++							t.Fatal(err)
++						}
++					}
++					// A distinct, never-admitted current route remains usable after
++					// every rejected draft, including conflicts in the other profile.
++					if _, err := f.supervisor.CheckpointNonAdmission(t.Context(), f.authorities[0]); err != nil {
++						t.Fatalf("rejection poisoned a legal checkpoint: %v", err)
++					}
++				})
++			}
++		})
++	}
++}
++
++func TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof(t *testing.T) {
++	for _, kind := range []string{"non-admission", "terminal-non-admission"} {
++		t.Run(kind, func(t *testing.T) {
++			f, directory := transitionFixture(t)
++			disposition := unsignedTerminalAllocation(t, f)
++			if _, err := f.supervisor.InstallExecutionFloor(t.Context(), disposition); err != nil {
++				t.Fatal(err)
++			}
++			mutation := modelruntime.ExecutionMutationForTest{Kind: kind, RouteIndex: 1,
++				Authority:   stageauthority.Verified{Authority: f.authorities[1], Digest: [32]byte{0xff}},
++				Disposition: disposition, AllocationID: disposition.Allocations[1].StageAllocationId, Observed: f.clock.Now()}
++			applyJournalMutation(t, f, mutation)
++			path := filepath.Join(directory, durableStateFileName)
++			before, err := os.ReadFile(path)
++			if err != nil {
++				t.Fatal(err)
++			}
++			syncs := 0
++			restore := modelruntime.SetExecutionStateSyncHookForTest(f.supervisor, func(sync func() error) error { syncs++; return sync() })
++			mutation.Observed = mutation.Observed.Add(time.Second)
++			applyJournalMutation(t, f, mutation)
++			restore()
++			after, err := os.ReadFile(path)
++			if err != nil || !bytes.Equal(before, after) || syncs != 0 || f.backend.calls.Load() != 0 {
++				t.Fatalf("exact replay rewrote history or entered backend: %v syncs=%d", err, syncs)
++			}
++			if kind == "non-admission" {
++				proof, err := f.supervisor.InspectNonAdmission(t.Context(), f.authorities[1])
++				digest, digestErr := stageauthority.Digest(f.authorities[1])
++				if err != nil || digestErr != nil || proof == nil || proof.AuthorityDigest != digest {
++					t.Fatalf("caller-supplied digest became durable proof: %+v %v %v", proof, err, digestErr)
++				}
++			}
++		})
++	}
++}
++
++func TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent(t *testing.T) {
++	for _, fault := range []string{"scope", "incarnation", "time", "abort", "none"} {
++		t.Run(fault, func(t *testing.T) {
++			f, directory := transitionFixture(t)
++			manifest := recoveredRuntimeServerConfig(t, f, directory).Manifest
++			mutation := modelruntime.ExecutionMutationForTest{Kind: "startup", Manifest: manifest, Incarnation: uuid.New(), Observed: f.clock.Now()}
++			switch fault {
++			case "scope":
++				mutation.Manifest.WorkerInstanceEpoch++
++			case "incarnation":
++				mutation.Incarnation = uuid.Nil
++			case "time":
++				mutation.Observed = time.Time{}
++			case "abort":
++				mutation.Kind = "abort-startup"
++			}
++			if fault != "none" {
++				assertJournalMutationRejected(t, f, directory, mutation)
++			}
++			mutation.Kind, mutation.Manifest, mutation.Incarnation, mutation.Observed = "startup", manifest, uuid.New(), f.clock.Now()
++			applyJournalMutation(t, f, mutation)
++			state := readDurableExecutionState(t, directory)
++			if state.BackendLifecycle == nil || state.BackendLifecycle.IncarnationID != mutation.Incarnation || f.backend.calls.Load() != 0 {
++				t.Fatal("startup mutation lost intent or granted backend execution")
++			}
++			mutation.Incarnation = uuid.New()
++			assertJournalMutationRejected(t, f, directory, mutation)
++		})
++	}
++}
++
++func TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint(t *testing.T) {
++	f, directory := transitionFixture(t)
++	disposition := unsignedTerminalAllocation(t, f)
++	id := disposition.Allocations[1].StageAllocationId
++	if _, err := f.supervisor.InstallExecutionFloor(t.Context(), disposition); err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(directory, durableStateFileName)
++	before, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	calls := 0
++	validator, err := stageauthority.NewValidator(map[string][]byte{"stage-key-9": bytes.Repeat([]byte{0x5a}, 32)}, func() time.Time {
++		calls++
++		now := f.clock.Now()
++		if calls == 2 {
++			// The ingress read observes validity; the independent Service clock
++			// then advances before checkpoint construction and publication.
++			f.clock.Advance(time.Hour)
++		}
++		return now
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	restore := modelruntime.SetExecutionJournalValidatorForTest(f.supervisor, validator)
++	proof, err := f.supervisor.CheckpointTerminalNonAdmission(t.Context(), disposition, id)
++	restore()
++	if proof != nil || !errors.Is(err, stageauthority.ErrStale) || calls != 3 || f.clock.Now().Before(disposition.ExpiresAt.AsTime()) {
++		t.Fatalf("expiry at final owner check = %+v %v calls=%d", proof, err, calls)
++	}
++	after, readErr := os.ReadFile(path)
++	if readErr != nil || !bytes.Equal(before, after) {
++		t.Fatalf("expired request changed durable history: %v", readErr)
++	}
++	refreshed := proto.Clone(disposition).(*velav1.StageTerminalDisposition)
++	refreshed.ObservedAt, refreshed.ExpiresAt = timestamppb.New(f.clock.Now()), timestamppb.New(f.clock.Now().Add(time.Minute))
++	refreshed.ControlSessionEpoch++
++	refreshed = signTerminalNonAdmission(t, f, refreshed)
++	if proof, err := f.supervisor.CheckpointTerminalNonAdmission(t.Context(), refreshed, id); err != nil || proof == nil {
++		t.Fatalf("expiry poisoned legal retry: %+v %v", proof, err)
++	}
++}
