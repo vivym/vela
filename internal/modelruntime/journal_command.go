@@ -48,6 +48,13 @@ type JournalTerminalNonAdmissionCommand struct {
 	Allocation  string `json:"allocation"`
 }
 
+// JournalReadCommand selects a bounded page of the current owner document.
+// A nonzero digest pins subsequent pages; a changed document is refused.
+type JournalReadCommand struct {
+	StateDigest [32]byte `json:"state_digest"`
+	Offset      int      `json:"offset"`
+}
+
 // Exactly one operation is required. Role, route, clock, storage, initialization
 // and replacement state are resolved by the owner, never accepted on the wire.
 type JournalCommand struct {
@@ -60,6 +67,7 @@ type JournalCommand struct {
 	Floor                *JournalFloorCommand                `json:"floor,omitempty"`
 	NonAdmission         *JournalAuthorityCommand            `json:"non_admission,omitempty"`
 	TerminalNonAdmission *JournalTerminalNonAdmissionCommand `json:"terminal_non_admission,omitempty"`
+	Read                 *JournalReadCommand                 `json:"read,omitempty"`
 }
 
 func EncodeJournalCommand(command JournalCommand) ([]byte, error) {
@@ -96,7 +104,7 @@ func (command JournalCommand) validate() error {
 	}
 	count := 0
 	for _, selected := range []bool{command.Admit != nil, command.Candidates != nil, command.Seal != nil, command.Drain != nil,
-		command.Health != nil, command.Floor != nil, command.NonAdmission != nil, command.TerminalNonAdmission != nil} {
+		command.Health != nil, command.Floor != nil, command.NonAdmission != nil, command.TerminalNonAdmission != nil, command.Read != nil} {
 		if selected {
 			count++
 		}

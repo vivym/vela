@@ -1,0 +1,227 @@
+package modelruntime
+
+import (
+	"context"
+	"crypto/sha256"
+	"errors"
+	"reflect"
+	"time"
+
+	"github.com/vivym/vela/internal/stageauthority"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
+)
+
+var ErrJournalRejected = errors.New("execution journal owner rejected the mutation")
+
+// RuntimeJournalTransport is supplied by trusted assembly. Implementations must
+// authenticate the owner; implementing this interface is not startup permission.
+type RuntimeJournalTransport interface {
+	Apply(context.Context, JournalCommand) (JournalMutationReceipt, error)
+	Read(context.Context) (JournalDocument, error)
+}
+
+type RemoteExecutionJournalConfig struct {
+	Manifest  LaunchManifest
+	Validator *stageauthority.Validator
+	Identity  ExecutionJournalIdentity
+	Startup   BackendLifecycleStatus
+	Transport RuntimeJournalTransport
+	Timeout   time.Duration
+}
+
+type remoteExecutionJournal struct {
+	executionJournal
+	config RemoteExecutionJournalConfig
+	ctx    context.Context
+	closed bool
+}
+
+// NewSupervisorWithRemoteExecutionJournal attaches unused Services to an
+// already-started, independently approved original incarnation. It creates no
+// local journal and cannot start a backend, allocate an epoch, authorize first
+// use or adopt a replacement. Trusted startup assembly must precede this call.
+func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig, services ...*Service) (*Supervisor, error) {
+	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
+		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
+		return nil, ErrExecutionStateRecovery
+	}
+	config.Manifest = cloneLaunchManifest(config.Manifest)
+	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
+	if err != nil {
+		return nil, err
+	}
+	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
+	if err := remote.check(); err != nil {
+		return nil, err
+	}
+	state := remote.state
+	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
+		return nil, ErrBackendIncarnationUnproven
+	}
+	bindings, err := config.Manifest.RuntimeBindings()
+	if err != nil || len(bindings) != len(services) {
+		return nil, ErrExecutionStateRecovery
+	}
+	for i, binding := range bindings {
+		found := false
+		for _, service := range services {
+			if service == nil {
+				continue
+			}
+			binding.ModelRuntimeEpoch = service.binding.ModelRuntimeEpoch
+			if binding.ModelRuntimeEpoch >= config.Manifest.Runtimes[i].ModelRuntimeEpochFloor && reflect.DeepEqual(binding, service.binding) {
+				found = true
+			}
+		}
+		if !found {
+			return nil, stageauthority.ErrRuntimeMismatch
+		}
+	}
+	floor, err := config.Manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, config.Validator)
+	if err != nil {
+		return nil, err
+	}
+	return newSupervisorWithStores(floor, nil, remote, services...)
+}
+
+func (store *remoteExecutionJournal) view() *executionJournal { return &store.executionJournal }
+func (store *remoteExecutionJournal) close() error            { store.closed = true; return nil }
+func (store *remoteExecutionJournal) recoveryError() error    { return store.workerHealthError() }
+
+func (store *remoteExecutionJournal) check() error {
+	if store.closed {
+		return ErrExecutionStateRecovery
+	}
+	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
+	defer cancel()
+	var document JournalDocument
+	var err error
+	for range 3 {
+		document, err = store.config.Transport.Read(ctx)
+		if !errors.Is(err, ErrJournalChanged) {
+			break
+		}
+		if cause := context.Cause(ctx); cause != nil {
+			return errors.Join(ErrExecutionStateRecovery, cause)
+		}
+	}
+	if errors.Is(err, ErrJournalChanged) {
+		return ErrJournalChanged
+	}
+	if err != nil {
+		return errors.Join(ErrExecutionStateRecovery, err)
+	}
+	snapshot, err := VerifyExecutionJournalSnapshot(document.Document, document.LockDocument, store.config.Manifest, store.config.Validator, store.config.Identity)
+	if err != nil {
+		return errors.Join(ErrExecutionStateRecovery, err)
+	}
+	if snapshot.status.BackendLifecycle != store.config.Startup || snapshot.status.BackendLifecycle.LaunchDigest != snapshot.launchDigest || snapshot.status.Highest < store.state.Highest || snapshot.status.Floor < store.state.Floor {
+		return ErrExecutionStateRecovery
+	}
+	state, err := decodeExecutionJournal(document.Document)
+	if err != nil {
+		return errors.Join(ErrExecutionStateRecovery, err)
+	}
+	if err := context.Cause(ctx); err != nil {
+		return errors.Join(ErrExecutionStateRecovery, err)
+	}
+	store.state = state
+	return nil
+}
+
+func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutationReceipt, error) {
+	command.SchemaVersion = 1
+	wire, err := EncodeJournalCommand(command)
+	if err != nil {
+		return JournalMutationReceipt{}, err
+	}
+	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
+	defer cancel()
+	receipt, err := store.config.Transport.Apply(ctx, command)
+	if err != nil {
+		if errors.Is(err, ErrJournalRejected) {
+			return JournalMutationReceipt{}, &executionJournalRejection{cause: err}
+		}
+		return JournalMutationReceipt{}, err
+	}
+	if receipt.SchemaVersion != 1 || receipt.RequestDigest != sha256.Sum256(wire) || receipt.JournalID != store.config.Identity.JournalID ||
+		receipt.JournalScope != store.config.Identity.Scope || receipt.StateDigest == ([32]byte{}) || receipt.Highest < 0 || receipt.Floor < 0 {
+		return JournalMutationReceipt{}, ErrExecutionStateRecovery
+	}
+	if err := context.Cause(ctx); err != nil {
+		return JournalMutationReceipt{}, errors.Join(ErrExecutionStateRecovery, err)
+	}
+	if err := store.check(); err != nil {
+		return JournalMutationReceipt{}, err
+	}
+	if store.state.Highest < receipt.Highest || store.state.Floor < receipt.Floor {
+		return JournalMutationReceipt{}, ErrExecutionStateRecovery
+	}
+	return receipt, nil
+}
+
+func journalAuthorityWire(authority *velav1.StageAuthority) []byte {
+	wire, _ := proto.MarshalOptions{Deterministic: true}.Marshal(authority)
+	return wire
+}
+
+func (store *remoteExecutionJournal) saveHighest(authority *velav1.StageAuthority, _ time.Duration) error {
+	receipt, err := store.apply(JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
+	if err == nil && receipt.Replayed {
+		return ErrExecutionStateRecovery
+	}
+	return err
+}
+func (store *remoteExecutionJournal) saveCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+	command := &JournalCandidatesCommand{Authority: journalAuthorityWire(accepted.Authority)}
+	if confirmed != nil {
+		command.Confirmed = journalAuthorityWire(confirmed.Authority)
+	}
+	_, err := store.apply(JournalCommand{Candidates: command})
+	return err
+}
+func (store *remoteExecutionJournal) saveSeal(authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(receipt)
+	if err != nil {
+		return err
+	}
+	_, err = store.apply(JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
+	return err
+}
+func (store *remoteExecutionJournal) saveHealth(authority stageauthority.Verified, evidence *FailureEvidence) error {
+	_, err := store.apply(JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
+	return err
+}
+func (store *remoteExecutionJournal) saveDrain(authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
+	_, err := store.apply(JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
+	return err
+}
+
+// Worker mutations must already be durably recorded by the independently bound
+// Worker. Runtime checks that history under its admission lock; it cannot borrow
+// the Worker role or attest absence based only on a private cache.
+func (store *remoteExecutionJournal) saveFloor(disposition *velav1.StageTerminalDisposition) error {
+	if store.state.Floor < disposition.GetCutoff() {
+		return &executionJournalRejection{cause: ErrJournalRejected}
+	}
+	return nil
+}
+func (store *remoteExecutionJournal) saveNonAdmission(authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
+	proof, err := store.nonAdmissionCheckpoint(authority)
+	if err != nil || proof == nil {
+		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
+	}
+	return nil
+}
+func (store *remoteExecutionJournal) saveTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
+	allocation := stageauthority.FindTerminalAllocation(disposition, id)
+	if allocation == nil {
+		return &executionJournalRejection{cause: ErrExecutionNonAdmissionUnproven}
+	}
+	proof, err := store.terminalNonAdmissionCheckpoint(disposition, allocation)
+	if err != nil || proof == nil {
+		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
+	}
+	return nil
+}

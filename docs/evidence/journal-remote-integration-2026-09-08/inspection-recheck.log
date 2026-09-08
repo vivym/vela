@@ -1,0 +1,38 @@
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout
+--- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations (0.45s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error (0.09s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout (0.11s)
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout
+--- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations (0.43s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout (0.11s)
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid
+=== RUN   TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout
+--- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations (0.42s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/error (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/unknown (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/both-known (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid (0.08s)
+    --- PASS: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/timeout (0.11s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	3.293s

@@ -19,15 +19,15 @@ func StartRuntimeServerWithStateSyncHookForTest(ctx context.Context, config Runt
 func SetExecutionStateSyncHookForTest(supervisor *Supervisor, hook func(func() error) error) func() {
 	admission := supervisor.admission
 	admission.mu.Lock()
-	previous := admission.store.syncDirectory
-	admission.store.syncDirectory = func(root *os.Root) error {
+	previous := admission.store.(*executionStateFile).syncDirectory
+	admission.store.(*executionStateFile).syncDirectory = func(root *os.Root) error {
 		return hook(func() error { return previous(root) })
 	}
 	admission.mu.Unlock()
 	return func() {
 		admission.mu.Lock()
 		defer admission.mu.Unlock()
-		admission.store.syncDirectory = previous
+		admission.store.(*executionStateFile).syncDirectory = previous
 	}
 }
 

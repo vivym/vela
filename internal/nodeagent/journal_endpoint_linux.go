@@ -101,11 +101,26 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
 		return nil, err
 	}
 	payload := caller.Payload()
-	if role == modelruntime.JournalWorkerRole {
-		command, err := modelruntime.ParseJournalCommand(payload)
-		if err != nil {
-			return nil, err
+	command, err := modelruntime.ParseJournalCommand(payload)
+	if err != nil {
+		return nil, err
+	}
+	if command.Read != nil {
+		page, err := endpoint.owner.Read(ctx, *command.Read)
+		response := modelruntime.JournalEndpointResponse{SchemaVersion: 1, RequestDigest: sha256.Sum256(payload)}
+		switch {
+		case err == nil:
+			response.Page = &page
+		case errors.Is(err, modelruntime.ErrJournalChanged):
+			response.Error = "CHANGED"
+		case errors.Is(err, modelruntime.ErrExecutionStateRecovery) || context.Cause(ctx) != nil:
+			response.Error = "UNCERTAIN"
+		default:
+			response.Error = "REJECTED"
 		}
+		return json.Marshal(response)
+	}
+	if role == modelruntime.JournalWorkerRole {
 		// A signed floor only restricts future admission. New non-admission
 		// evidence requires the originally approved Runtime to remain live;
 		// process replacement must go through independent Node reconciliation.

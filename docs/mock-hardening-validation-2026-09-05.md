@@ -7,6 +7,14 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[remote Supervisor and Worker integration](journal-remote-integration-evidence-2026-09-08.md)
+connects actual Supervisor operations to the authenticated Node journal and
+adds the Worker RPC wrapper for its distinct mutation role. Native non-root
+PID-1 Prepare/Start/Seal/Drain crosses 33 authenticated exchanges; uncertain
+admission prevents backend entry. Production startup/mount assembly, complete
+Worker custody, recovery and sustained history remain open.
+
+The preceding
 [authenticated journal endpoint](journal-endpoint-evidence-2026-09-08.md)
 adds a standalone owner and eight typed operations, bound to separate original
 Runtime/Worker pidfds. Real Linux root/non-root IPC, role and filesystem denial,

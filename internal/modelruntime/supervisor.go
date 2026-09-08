@@ -46,6 +46,10 @@ func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervis
 }
 
 func newSupervisorWithState(floor *ExecutionFloorConfig, opened *executionStateFile, services ...*Service) (*Supervisor, error) {
+	return newSupervisorWithStores(floor, opened, nil, services...)
+}
+
+func newSupervisorWithStores(floor *ExecutionFloorConfig, opened *executionStateFile, remote *remoteExecutionJournal, services ...*Service) (*Supervisor, error) {
 	if len(services) == 0 || len(services) > maxLaunchRuntimes {
 		return nil, errors.New("ModelRuntime supervisor service set is invalid")
 	}
@@ -95,6 +99,17 @@ func newSupervisorWithState(floor *ExecutionFloorConfig, opened *executionStateF
 		}
 	}
 	supervisor.admission = newExecutionAdmission(ordered)
+	if remote != nil {
+		if opened != nil || floor == nil || floor.State != nil {
+			return nil, ErrExecutionStateRecovery
+		}
+		scope, err := supervisor.journalScope().digest()
+		if err != nil || scope != remote.state.Scope {
+			return nil, ErrExecutionStateRecovery
+		}
+		supervisor.admission.store = remote
+		supervisor.admission.highest, supervisor.admission.floor = remote.state.Highest, remote.state.Floor
+	}
 	if floor != nil && floor.State != nil {
 		store := opened
 		if store == nil {
@@ -183,7 +198,7 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
 		if err := supervisor.registryVerifier.VerifyJournal(supervisor.registryBinding, journalbinding.RuntimeJournal, journalbinding.Journal{
 			WorkerInstanceID: baseline.GetWorkerInstanceId(), WorkerInstanceEpoch: baseline.GetWorkerInstanceEpoch(),
 			WorkerMemberID: baseline.GetWorkerMemberId(), WorkerMemberEpoch: baseline.GetWorkerMemberEpoch(),
-			JournalID: admission.store.state.ID, Scope: admission.store.state.Scope,
+			JournalID: admission.store.view().state.ID, Scope: admission.store.view().state.Scope,
 		}); err != nil {
 			return nil, status.Error(codes.FailedPrecondition, admission.failStateLocked(err).Error())
 		}

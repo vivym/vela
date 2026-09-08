@@ -43,7 +43,7 @@ DOCKERFILE
 owner_image="$(docker build --network none -q "$owner_evidence/image")"
 echo "$owner_image" > "$owner_evidence/image.txt"
 shasum -a 256 "$owner_evidence/image/rootfs/"*.test > "$owner_evidence/binaries.sha256"
-owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
+owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestJournalRemote|TestJournalRead|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
 docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memory 4g --pids-limit 256 \
   "$owner_image" /modelruntime.test -test.run "$owner_selected" -test.count=1 -test.v -test.timeout=3m \
   > "$owner_evidence/modelruntime.log" 2>&1

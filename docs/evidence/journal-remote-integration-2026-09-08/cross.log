@@ -1,0 +1,115 @@
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -exec=/usr/bin/true ./...
+?   	github.com/vivym/vela/api/gen	[no test files]
+?   	github.com/vivym/vela/cmd/vela-artifact-validator	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-assignment-history-migrate	0.022s
+ok  	github.com/vivym/vela/cmd/vela-capacity-sim	0.011s
+ok  	github.com/vivym/vela/cmd/vela-catalog-promoter	0.010s
+ok  	github.com/vivym/vela/cmd/vela-control	0.075s
+ok  	github.com/vivym/vela/cmd/vela-fleet-controller	0.041s
+ok  	github.com/vivym/vela/cmd/vela-h3-evidence	0.041s
+ok  	github.com/vivym/vela/cmd/vela-h3-member-campaign	0.032s
+?   	github.com/vivym/vela/cmd/vela-h3-mock-backend	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-h3-reachability	0.038s
+ok  	github.com/vivym/vela/cmd/vela-h3-stage-mock	0.030s
+ok  	github.com/vivym/vela/cmd/vela-lab-assets	0.023s
+ok  	github.com/vivym/vela/cmd/vela-lab-bootstrap	0.027s
+ok  	github.com/vivym/vela/cmd/vela-lab-cpu-thumbnail-mock	0.014s
+?   	github.com/vivym/vela/cmd/vela-lab-recovery	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-lab-smoke	0.008s
+ok  	github.com/vivym/vela/cmd/vela-model-runtime	0.007s
+ok  	github.com/vivym/vela/cmd/vela-node-agent	0.009s
+?   	github.com/vivym/vela/cmd/vela-release-artifacts	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-release-bundle	0.008s
+ok  	github.com/vivym/vela/cmd/vela-stage-cutover	0.012s
+ok  	github.com/vivym/vela/cmd/vela-stage-worker-agent	0.014s
+ok  	github.com/vivym/vela/cmd/vela-verify-launch	0.019s
+ok  	github.com/vivym/vela/hack	0.018s
+?   	github.com/vivym/vela/internal/admission	[no test files]
+?   	github.com/vivym/vela/internal/artifactaccess	[no test files]
+ok  	github.com/vivym/vela/internal/artifactcleanup	0.018s
+ok  	github.com/vivym/vela/internal/artifactreplication	0.014s
+ok  	github.com/vivym/vela/internal/artifactstore	0.025s
+ok  	github.com/vivym/vela/internal/artifactvalidator	0.021s
+?   	github.com/vivym/vela/internal/attemptcoordinator	[no test files]
+ok  	github.com/vivym/vela/internal/authoritypolicy	0.017s
+ok  	github.com/vivym/vela/internal/billingexport	0.016s
+?   	github.com/vivym/vela/internal/breakglass	[no test files]
+?   	github.com/vivym/vela/internal/cancellation	[no test files]
+ok  	github.com/vivym/vela/internal/capacitysim	0.013s
+ok  	github.com/vivym/vela/internal/catalogpromotion	0.012s
+ok  	github.com/vivym/vela/internal/cpumedia	0.035s
+ok  	github.com/vivym/vela/internal/database	0.007s
+ok  	github.com/vivym/vela/internal/debugdump	0.012s
+?   	github.com/vivym/vela/internal/debugdumpcontract	[no test files]
+ok  	github.com/vivym/vela/internal/deploymentcontract	0.012s
+?   	github.com/vivym/vela/internal/driverchannel	[no test files]
+ok  	github.com/vivym/vela/internal/driverdrain	0.016s
+ok  	github.com/vivym/vela/internal/driverinspection	0.013s
+ok  	github.com/vivym/vela/internal/eventstream	0.017s
+?   	github.com/vivym/vela/internal/execution	[no test files]
+ok  	github.com/vivym/vela/internal/executiongraph	0.014s
+?   	github.com/vivym/vela/internal/executionprogress	[no test files]
+ok  	github.com/vivym/vela/internal/financereconciliation	0.017s
+?   	github.com/vivym/vela/internal/fleet	[no test files]
+ok  	github.com/vivym/vela/internal/fleetadmission	0.010s
+?   	github.com/vivym/vela/internal/fleetcontract	[no test files]
+ok  	github.com/vivym/vela/internal/fleetcontroller	0.013s
+ok  	github.com/vivym/vela/internal/fleettransport	0.013s
+ok  	github.com/vivym/vela/internal/h3campaignevidence	0.018s
+ok  	github.com/vivym/vela/internal/h3campaignrunner	0.013s
+ok  	github.com/vivym/vela/internal/h3faultevidence	0.012s
+ok  	github.com/vivym/vela/internal/h3launchevidence	0.014s
+ok  	github.com/vivym/vela/internal/h3membercampaign	0.013s
+ok  	github.com/vivym/vela/internal/h3mockbackend	0.023s
+ok  	github.com/vivym/vela/internal/h3preflight	0.013s
+ok  	github.com/vivym/vela/internal/h3request	0.009s
+ok  	github.com/vivym/vela/internal/h3stage	0.006s
+ok  	github.com/vivym/vela/internal/h3stagemock	0.007s
+ok  	github.com/vivym/vela/internal/httpapi	0.014s
+ok  	github.com/vivym/vela/internal/identity	0.012s
+ok  	github.com/vivym/vela/internal/imageref	0.012s
+ok  	github.com/vivym/vela/internal/inbox	0.026s
+ok  	github.com/vivym/vela/internal/journalbinding	0.012s
+ok  	github.com/vivym/vela/internal/labv2contract	0.009s
+ok  	github.com/vivym/vela/internal/legacyh3reachability	0.013s
+ok  	github.com/vivym/vela/internal/legalhold	0.011s
+ok  	github.com/vivym/vela/internal/materializationauthority	0.061s
+ok  	github.com/vivym/vela/internal/modelruntime	0.035s
+ok  	github.com/vivym/vela/internal/modelruntimetransport	0.009s
+ok  	github.com/vivym/vela/internal/natsauth	0.018s
+ok  	github.com/vivym/vela/internal/nodeagent	0.014s
+ok  	github.com/vivym/vela/internal/noncontentexpiry	0.018s
+?   	github.com/vivym/vela/internal/organizationreporting	[no test files]
+?   	github.com/vivym/vela/internal/outbox	[no test files]
+?   	github.com/vivym/vela/internal/privilegedlistener	[no test files]
+ok  	github.com/vivym/vela/internal/productiongates	0.011s
+ok  	github.com/vivym/vela/internal/recovery	0.031s
+ok  	github.com/vivym/vela/internal/releaseartifacts	0.023s
+ok  	github.com/vivym/vela/internal/releasebundle	0.032s
+ok  	github.com/vivym/vela/internal/remediation	0.041s
+ok  	github.com/vivym/vela/internal/retention	0.011s
+ok  	github.com/vivym/vela/internal/runtimechannel	0.030s
+ok  	github.com/vivym/vela/internal/securefile	0.041s
+ok  	github.com/vivym/vela/internal/slo	0.041s
+ok  	github.com/vivym/vela/internal/sloevidence	0.033s
+ok  	github.com/vivym/vela/internal/stageartifact	0.040s
+ok  	github.com/vivym/vela/internal/stageassignment	0.055s
+ok  	github.com/vivym/vela/internal/stageauthority	0.021s
+ok  	github.com/vivym/vela/internal/stagecache	0.016s
+?   	github.com/vivym/vela/internal/stagecutover	[no test files]
+?   	github.com/vivym/vela/internal/stagefinalization	[no test files]
+ok  	github.com/vivym/vela/internal/stageprotocol	0.028s
+ok  	github.com/vivym/vela/internal/stagescheduler	0.024s
+ok  	github.com/vivym/vela/internal/stageworkeragent	0.028s
+ok  	github.com/vivym/vela/internal/stageworkercontrol	0.029s
+ok  	github.com/vivym/vela/internal/stageworkermembertransport	0.030s
+ok  	github.com/vivym/vela/internal/stageworkertransport	0.035s
+?   	github.com/vivym/vela/internal/store/sqlc	[no test files]
+?   	github.com/vivym/vela/internal/strictjson	[no test files]
+ok  	github.com/vivym/vela/internal/supplychain	0.022s
+ok  	github.com/vivym/vela/internal/telemetry	0.028s
+ok  	github.com/vivym/vela/internal/usagecostledger	0.020s
+ok  	github.com/vivym/vela/internal/webhook	0.014s
+ok  	github.com/vivym/vela/internal/workerbootstrap	0.012s
+?   	github.com/vivym/vela/internal/workerjournal	[no test files]
+?   	github.com/vivym/vela/proto/gen/vela/v1	[no test files]

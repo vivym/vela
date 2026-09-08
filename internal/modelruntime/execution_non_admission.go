@@ -75,7 +75,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
 		return nil, err
 	}
 	if admission.store == nil || verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 ||
-		proto.Size(verified.Authority) > maxExecutionWireBytes || admission.store.state.Floor < verified.Authority.GetExecutionSequence() {
+		proto.Size(verified.Authority) > maxExecutionWireBytes || admission.store.view().state.Floor < verified.Authority.GetExecutionSequence() {
 		return nil, ErrExecutionNonAdmissionUnproven
 	}
 	store := admission.store

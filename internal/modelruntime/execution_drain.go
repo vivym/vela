@@ -71,7 +71,7 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
 		admission.mu.Unlock()
 		return err
 	}
-	if saved := admission.store.state.Executions[index].Drain; saved != nil {
+	if saved := admission.store.view().state.Executions[index].Drain; saved != nil {
 		err := validateBackendDrain(saved.Result, verified)
 		admission.mu.Unlock()
 		return err
@@ -195,7 +195,7 @@ func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authori
 	if admission.store == nil {
 		return nil, ErrExecutionDrainUnproven
 	}
-	for _, record := range admission.store.state.Executions {
+	for _, record := range admission.store.view().state.Executions {
 		if record.Drain == nil {
 			continue
 		}

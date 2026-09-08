@@ -133,6 +133,9 @@ func (owner *ExecutionJournalOwner) Apply(ctx context.Context, role JournalCalle
 	if err != nil {
 		return JournalMutationReceipt{}, err
 	}
+	if command.Read != nil {
+		return JournalMutationReceipt{}, ErrJournalCommand
+	}
 	workerOperation := command.Floor != nil || command.NonAdmission != nil || command.TerminalNonAdmission != nil
 	if workerOperation && role != JournalWorkerRole || !workerOperation && role != JournalRuntimeRole {
 		return JournalMutationReceipt{}, ErrJournalCommand

@@ -32,7 +32,7 @@ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMut
 	admission := supervisor.admission
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	store := admission.store
+	store := admission.store.(*executionStateFile)
 	switch mutation.Kind {
 	case "admit":
 		return store.saveHighest(mutation.Authority.Authority, supervisor.services[0].maxClockSkew)
@@ -117,18 +117,18 @@ func ExecutionJournalDocumentForTest(supervisor *Supervisor) ([]byte, error) {
 	admission := supervisor.admission
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	return json.Marshal(admission.store.state)
+	return json.Marshal(admission.store.(*executionStateFile).state)
 }
 
 func SetExecutionJournalValidatorForTest(supervisor *Supervisor, validator *stageauthority.Validator) func() {
 	admission := supervisor.admission
 	admission.mu.Lock()
-	previous := admission.store.scope.floor.validator
-	admission.store.scope.floor.validator = validator
+	previous := admission.store.(*executionStateFile).scope.floor.validator
+	admission.store.(*executionStateFile).scope.floor.validator = validator
 	admission.mu.Unlock()
 	return func() {
 		admission.mu.Lock()
 		defer admission.mu.Unlock()
-		admission.store.scope.floor.validator = previous
+		admission.store.(*executionStateFile).scope.floor.validator = previous
 	}
 }

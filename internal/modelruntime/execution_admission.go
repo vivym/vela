@@ -23,7 +23,7 @@ type executionAdmission struct {
 	highest       int64
 	floor         int64
 	active        map[*Service]*admittedOperation
-	store         *executionStateFile
+	store         executionJournalStore
 	failed        error
 	closing       bool
 	shutdownReady bool
@@ -65,7 +65,7 @@ func (service *Service) checkReadinessAdmission() error {
 			return err
 		}
 	}
-	if admission.store != nil && len(admission.store.state.Executions) >= maxRetainedExecutions {
+	if admission.store != nil && len(admission.store.view().state.Executions) >= maxRetainedExecutions {
 		return ErrExecutionHistoryFull
 	}
 	for _, resident := range admission.services {
@@ -95,10 +95,10 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		return false, nil, err
 	}
 	if admission.store != nil {
-		if _, err := admission.store.scope.floor.validator.ValidateEnvelopeSignature(verified.Authority); err != nil {
+		if _, err := admission.store.view().scope.floor.validator.ValidateEnvelopeSignature(verified.Authority); err != nil {
 			return false, nil, err
 		}
-		if err := admission.store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+		if err := admission.store.view().scope.matchRetainedExecutionScope(verified.Authority); err != nil {
 			return false, nil, err
 		}
 	}
@@ -128,7 +128,7 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		// A backend failure cannot reopen an allocation, including on another profile.
 		if admission.store != nil {
 			if err := admission.store.saveHighest(verified.Authority, service.maxClockSkew); err != nil {
-				if errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
+				if isExecutionJournalRejection(err) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
 					return false, nil, err
 				}
 				return false, nil, admission.failStateLocked(err)
@@ -235,8 +235,13 @@ func (admission *executionAdmission) checkStateLocked() error {
 	}
 	if admission.store != nil {
 		if err := admission.store.check(); err != nil {
+			if errors.Is(err, ErrJournalChanged) {
+				return err
+			}
 			return admission.failStateLocked(err)
 		}
+		state := admission.store.view().state
+		admission.highest, admission.floor = max(admission.highest, state.Highest), max(admission.floor, state.Floor)
 	}
 	return nil
 }

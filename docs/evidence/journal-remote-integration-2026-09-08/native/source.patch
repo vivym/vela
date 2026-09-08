@@ -1,0 +1,1426 @@
+diff --git a/hack/run-journal-owner-native.sh b/hack/run-journal-owner-native.sh
+index da5336b..c028c9b 100755
+--- a/hack/run-journal-owner-native.sh
++++ b/hack/run-journal-owner-native.sh
+@@ -43,7 +43,7 @@ DOCKERFILE
+ owner_image="$(docker build --network none -q "$owner_evidence/image")"
+ echo "$owner_image" > "$owner_evidence/image.txt"
+ shasum -a 256 "$owner_evidence/image/rootfs/"*.test > "$owner_evidence/binaries.sha256"
+-owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
++owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestJournalRemote|TestJournalRead|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
+ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memory 4g --pids-limit 256 \
+   "$owner_image" /modelruntime.test -test.run "$owner_selected" -test.count=1 -test.v -test.timeout=3m \
+   > "$owner_evidence/modelruntime.log" 2>&1
+diff --git a/internal/modelruntime/execution_admission.go b/internal/modelruntime/execution_admission.go
+index d1a70d2..2ba5ece 100644
+--- a/internal/modelruntime/execution_admission.go
++++ b/internal/modelruntime/execution_admission.go
+@@ -23,7 +23,7 @@ type executionAdmission struct {
+ 	highest       int64
+ 	floor         int64
+ 	active        map[*Service]*admittedOperation
+-	store         *executionStateFile
++	store         executionJournalStore
+ 	failed        error
+ 	closing       bool
+ 	shutdownReady bool
+@@ -65,7 +65,7 @@ func (service *Service) checkReadinessAdmission() error {
+ 			return err
+ 		}
+ 	}
+-	if admission.store != nil && len(admission.store.state.Executions) >= maxRetainedExecutions {
++	if admission.store != nil && len(admission.store.view().state.Executions) >= maxRetainedExecutions {
+ 		return ErrExecutionHistoryFull
+ 	}
+ 	for _, resident := range admission.services {
+@@ -95,10 +95,10 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
+ 		return false, nil, err
+ 	}
+ 	if admission.store != nil {
+-		if _, err := admission.store.scope.floor.validator.ValidateEnvelopeSignature(verified.Authority); err != nil {
++		if _, err := admission.store.view().scope.floor.validator.ValidateEnvelopeSignature(verified.Authority); err != nil {
+ 			return false, nil, err
+ 		}
+-		if err := admission.store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
++		if err := admission.store.view().scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+ 			return false, nil, err
+ 		}
+ 	}
+@@ -128,7 +128,7 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
+ 		// A backend failure cannot reopen an allocation, including on another profile.
+ 		if admission.store != nil {
+ 			if err := admission.store.saveHighest(verified.Authority, service.maxClockSkew); err != nil {
+-				if errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
++				if isExecutionJournalRejection(err) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
+ 					return false, nil, err
+ 				}
+ 				return false, nil, admission.failStateLocked(err)
+@@ -235,8 +235,13 @@ func (admission *executionAdmission) checkStateLocked() error {
+ 	}
+ 	if admission.store != nil {
+ 		if err := admission.store.check(); err != nil {
++			if errors.Is(err, ErrJournalChanged) {
++				return err
++			}
+ 			return admission.failStateLocked(err)
+ 		}
++		state := admission.store.view().state
++		admission.highest, admission.floor = max(admission.highest, state.Highest), max(admission.floor, state.Floor)
+ 	}
+ 	return nil
+ }
+diff --git a/internal/modelruntime/execution_candidates.go b/internal/modelruntime/execution_candidates.go
+index 28774f4..0d690bc 100644
+--- a/internal/modelruntime/execution_candidates.go
++++ b/internal/modelruntime/execution_candidates.go
+@@ -42,7 +42,7 @@ func (supervisor *Supervisor) InspectRetainedAllocationAuthorities(ctx context.C
+ 	if admission.store == nil {
+ 		return nil, ErrExecutionStateRecovery
+ 	}
+-	for _, record := range admission.store.state.Executions {
++	for _, record := range admission.store.view().state.Executions {
+ 		original, err := admission.store.retainedAuthority(record.Authority)
+ 		if err != nil {
+ 			return nil, err
+diff --git a/internal/modelruntime/execution_drain.go b/internal/modelruntime/execution_drain.go
+index 9689513..5dd6ad8 100644
+--- a/internal/modelruntime/execution_drain.go
++++ b/internal/modelruntime/execution_drain.go
+@@ -71,7 +71,7 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
+ 		admission.mu.Unlock()
+ 		return err
+ 	}
+-	if saved := admission.store.state.Executions[index].Drain; saved != nil {
++	if saved := admission.store.view().state.Executions[index].Drain; saved != nil {
+ 		err := validateBackendDrain(saved.Result, verified)
+ 		admission.mu.Unlock()
+ 		return err
+@@ -195,7 +195,7 @@ func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authori
+ 	if admission.store == nil {
+ 		return nil, ErrExecutionDrainUnproven
+ 	}
+-	for _, record := range admission.store.state.Executions {
++	for _, record := range admission.store.view().state.Executions {
+ 		if record.Drain == nil {
+ 			continue
+ 		}
+diff --git a/internal/modelruntime/execution_floor.go b/internal/modelruntime/execution_floor.go
+index 657c1cc..7e04449 100644
+--- a/internal/modelruntime/execution_floor.go
++++ b/internal/modelruntime/execution_floor.go
+@@ -152,7 +152,7 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
+ 	}
+ 	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {
+ 		if err := admission.store.saveFloor(verified.Disposition); err != nil {
+-			if errors.Is(err, stageauthority.ErrStale) {
++			if isExecutionJournalRejection(err) || errors.Is(err, stageauthority.ErrStale) {
+ 				return nil, err
+ 			}
+ 			return nil, admission.failStateLocked(err)
+diff --git a/internal/modelruntime/execution_non_admission.go b/internal/modelruntime/execution_non_admission.go
+index f7be20f..29871fb 100644
+--- a/internal/modelruntime/execution_non_admission.go
++++ b/internal/modelruntime/execution_non_admission.go
+@@ -75,7 +75,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
+ 		return nil, err
+ 	}
+ 	if admission.store == nil || verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 ||
+-		proto.Size(verified.Authority) > maxExecutionWireBytes || admission.store.state.Floor < verified.Authority.GetExecutionSequence() {
++		proto.Size(verified.Authority) > maxExecutionWireBytes || admission.store.view().state.Floor < verified.Authority.GetExecutionSequence() {
+ 		return nil, ErrExecutionNonAdmissionUnproven
+ 	}
+ 	store := admission.store
+diff --git a/internal/modelruntime/execution_seal.go b/internal/modelruntime/execution_seal.go
+index b7a54cd..95a5acd 100644
+--- a/internal/modelruntime/execution_seal.go
++++ b/internal/modelruntime/execution_seal.go
+@@ -148,10 +148,10 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority
+ 		return nil, err
+ 	}
+ 	store := admission.store
+-	if err := store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
++	if err := store.view().scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+ 		return nil, err
+ 	}
+-	for _, record := range store.state.Executions {
++	for _, record := range store.view().state.Executions {
+ 		if record.Seal == nil || record.Drain == nil || record.Drain.Result.AuthorityDigest != verified.Digest {
+ 			continue
+ 		}
+@@ -159,7 +159,7 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		binding := cloneBinding(store.scope.binding)
++		binding := cloneBinding(store.view().scope.binding)
+ 		binding.ModelResidencyID, binding.ModelRuntimeIdentity = verified.Authority.GetModelResidencyId(), verified.Authority.GetModelRuntimeIdentity()
+ 		binding.StageProfileRevisionID = verified.Authority.GetStageProfileRevisionId()
+ 		for _, member := range verified.Authority.GetMembers() {
+diff --git a/internal/modelruntime/execution_state_export_test.go b/internal/modelruntime/execution_state_export_test.go
+index 8b48cb1..ef32575 100644
+--- a/internal/modelruntime/execution_state_export_test.go
++++ b/internal/modelruntime/execution_state_export_test.go
+@@ -19,15 +19,15 @@ func StartRuntimeServerWithStateSyncHookForTest(ctx context.Context, config Runt
+ func SetExecutionStateSyncHookForTest(supervisor *Supervisor, hook func(func() error) error) func() {
+ 	admission := supervisor.admission
+ 	admission.mu.Lock()
+-	previous := admission.store.syncDirectory
+-	admission.store.syncDirectory = func(root *os.Root) error {
++	previous := admission.store.(*executionStateFile).syncDirectory
++	admission.store.(*executionStateFile).syncDirectory = func(root *os.Root) error {
+ 		return hook(func() error { return previous(root) })
+ 	}
+ 	admission.mu.Unlock()
+ 	return func() {
+ 		admission.mu.Lock()
+ 		defer admission.mu.Unlock()
+-		admission.store.syncDirectory = previous
++		admission.store.(*executionStateFile).syncDirectory = previous
+ 	}
+ }
+ 
+diff --git a/internal/modelruntime/execution_transition_export_test.go b/internal/modelruntime/execution_transition_export_test.go
+index 889b3fd..d7898fa 100644
+--- a/internal/modelruntime/execution_transition_export_test.go
++++ b/internal/modelruntime/execution_transition_export_test.go
+@@ -32,7 +32,7 @@ func ApplyExecutionMutationForTest(supervisor *Supervisor, mutation ExecutionMut
+ 	admission := supervisor.admission
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	store := admission.store
++	store := admission.store.(*executionStateFile)
+ 	switch mutation.Kind {
+ 	case "admit":
+ 		return store.saveHighest(mutation.Authority.Authority, supervisor.services[0].maxClockSkew)
+@@ -117,18 +117,18 @@ func ExecutionJournalDocumentForTest(supervisor *Supervisor) ([]byte, error) {
+ 	admission := supervisor.admission
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	return json.Marshal(admission.store.state)
++	return json.Marshal(admission.store.(*executionStateFile).state)
+ }
+ 
+ func SetExecutionJournalValidatorForTest(supervisor *Supervisor, validator *stageauthority.Validator) func() {
+ 	admission := supervisor.admission
+ 	admission.mu.Lock()
+-	previous := admission.store.scope.floor.validator
+-	admission.store.scope.floor.validator = validator
++	previous := admission.store.(*executionStateFile).scope.floor.validator
++	admission.store.(*executionStateFile).scope.floor.validator = validator
+ 	admission.mu.Unlock()
+ 	return func() {
+ 		admission.mu.Lock()
+ 		defer admission.mu.Unlock()
+-		admission.store.scope.floor.validator = previous
++		admission.store.(*executionStateFile).scope.floor.validator = previous
+ 	}
+ }
+diff --git a/internal/modelruntime/journal_client_linux.go b/internal/modelruntime/journal_client_linux.go
+index b272c58..a22c6bb 100644
+--- a/internal/modelruntime/journal_client_linux.go
++++ b/internal/modelruntime/journal_client_linux.go
+@@ -17,6 +17,7 @@ type JournalEndpointResponse struct {
+ 	SchemaVersion int                     `json:"schema_version"`
+ 	RequestDigest [sha256.Size]byte       `json:"request_digest"`
+ 	Receipt       *JournalMutationReceipt `json:"receipt,omitempty"`
++	Page          *JournalPage            `json:"page,omitempty"`
+ 	Error         string                  `json:"error,omitempty"`
+ }
+ 
+@@ -39,23 +40,20 @@ func ExchangeJournalCommand(ctx context.Context, socket string, identity Executi
+ }
+ 
+ func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity ExecutionJournalIdentity) (JournalMutationReceipt, error) {
+-	var response JournalEndpointResponse
+-	if strictjson.RejectDuplicateKeys(wire) != nil {
+-		return JournalMutationReceipt{}, ErrJournalCommand
++	response, err := decodeJournalEndpointResponse(wire, request)
++	if err != nil {
++		return JournalMutationReceipt{}, err
+ 	}
+-	decoder := json.NewDecoder(bytes.NewReader(wire))
+-	decoder.DisallowUnknownFields()
+-	if decoder.Decode(&response) != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) {
+-		return JournalMutationReceipt{}, ErrJournalCommand
+-	}
+-	canonical, err := json.Marshal(response)
+-	if err != nil || !bytes.Equal(canonical, wire) || response.SchemaVersion != 1 || response.RequestDigest != request {
++	if response.Page != nil {
+ 		return JournalMutationReceipt{}, ErrJournalCommand
+ 	}
+ 	if response.Receipt == nil {
+ 		if response.Error == "UNCERTAIN" {
+ 			return JournalMutationReceipt{}, ErrExecutionStateRecovery
+ 		}
++		if response.Error == "REJECTED" {
++			return JournalMutationReceipt{}, ErrJournalRejected
++		}
+ 		return JournalMutationReceipt{}, ErrJournalCommand
+ 	}
+ 	receipt := response.Receipt
+@@ -66,3 +64,68 @@ func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity Execu
+ 	}
+ 	return *receipt, nil
+ }
++
++// UnixRuntimeJournalTransport uses the authenticated Node channel for every
++// mutation and read. It retains no local files and performs no mutation retries.
++type UnixRuntimeJournalTransport struct {
++	Socket   string
++	Identity ExecutionJournalIdentity
++}
++
++func (transport UnixRuntimeJournalTransport) Apply(ctx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
++	return ExchangeJournalCommand(ctx, transport.Socket, transport.Identity, command)
++}
++func (transport UnixRuntimeJournalTransport) Read(ctx context.Context) (JournalDocument, error) {
++	return ReadJournalDocument(ctx, transport.Identity, func(ctx context.Context, request JournalReadCommand) (JournalPage, error) {
++		return ExchangeJournalRead(ctx, transport.Socket, request)
++	})
++}
++
++func decodeJournalEndpointResponse(wire []byte, request [sha256.Size]byte) (JournalEndpointResponse, error) {
++	var response JournalEndpointResponse
++	if strictjson.RejectDuplicateKeys(wire) != nil {
++		return response, ErrJournalCommand
++	}
++	decoder := json.NewDecoder(bytes.NewReader(wire))
++	decoder.DisallowUnknownFields()
++	if decoder.Decode(&response) != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) {
++		return JournalEndpointResponse{}, ErrJournalCommand
++	}
++	canonical, err := json.Marshal(response)
++	if err != nil || !bytes.Equal(canonical, wire) || response.SchemaVersion != 1 || response.RequestDigest != request {
++		return JournalEndpointResponse{}, ErrJournalCommand
++	}
++	return response, nil
++}
++
++func ExchangeJournalRead(ctx context.Context, socket string, request JournalReadCommand) (JournalPage, error) {
++	wire, err := EncodeJournalCommand(JournalCommand{SchemaVersion: 1, Read: &request})
++	if err != nil {
++		return JournalPage{}, err
++	}
++	reply, err := runtimechannel.Exchange(ctx, socket, wire)
++	if err != nil {
++		return JournalPage{}, err
++	}
++	response, err := decodeJournalEndpointResponse(reply, sha256.Sum256(wire))
++	if err != nil {
++		return JournalPage{}, err
++	}
++	if response.Receipt != nil {
++		return JournalPage{}, ErrJournalCommand
++	}
++	if response.Page == nil {
++		switch response.Error {
++		case "CHANGED":
++			return JournalPage{}, ErrJournalChanged
++		case "UNCERTAIN":
++			return JournalPage{}, ErrExecutionStateRecovery
++		default:
++			return JournalPage{}, ErrJournalCommand
++		}
++	}
++	if response.Error != "" {
++		return JournalPage{}, ErrJournalCommand
++	}
++	return *response.Page, nil
++}
+diff --git a/internal/modelruntime/journal_command.go b/internal/modelruntime/journal_command.go
+index 61ac499..cf47243 100644
+--- a/internal/modelruntime/journal_command.go
++++ b/internal/modelruntime/journal_command.go
+@@ -48,6 +48,13 @@ type JournalTerminalNonAdmissionCommand struct {
+ 	Allocation  string `json:"allocation"`
+ }
+ 
++// JournalReadCommand selects a bounded page of the current owner document.
++// A nonzero digest pins subsequent pages; a changed document is refused.
++type JournalReadCommand struct {
++	StateDigest [32]byte `json:"state_digest"`
++	Offset      int      `json:"offset"`
++}
++
+ // Exactly one operation is required. Role, route, clock, storage, initialization
+ // and replacement state are resolved by the owner, never accepted on the wire.
+ type JournalCommand struct {
+@@ -60,6 +67,7 @@ type JournalCommand struct {
+ 	Floor                *JournalFloorCommand                `json:"floor,omitempty"`
+ 	NonAdmission         *JournalAuthorityCommand            `json:"non_admission,omitempty"`
+ 	TerminalNonAdmission *JournalTerminalNonAdmissionCommand `json:"terminal_non_admission,omitempty"`
++	Read                 *JournalReadCommand                 `json:"read,omitempty"`
+ }
+ 
+ func EncodeJournalCommand(command JournalCommand) ([]byte, error) {
+@@ -96,7 +104,7 @@ func (command JournalCommand) validate() error {
+ 	}
+ 	count := 0
+ 	for _, selected := range []bool{command.Admit != nil, command.Candidates != nil, command.Seal != nil, command.Drain != nil,
+-		command.Health != nil, command.Floor != nil, command.NonAdmission != nil, command.TerminalNonAdmission != nil} {
++		command.Health != nil, command.Floor != nil, command.NonAdmission != nil, command.TerminalNonAdmission != nil, command.Read != nil} {
+ 		if selected {
+ 			count++
+ 		}
+diff --git a/internal/modelruntime/journal_owner.go b/internal/modelruntime/journal_owner.go
+index acf822b..c6fca4d 100644
+--- a/internal/modelruntime/journal_owner.go
++++ b/internal/modelruntime/journal_owner.go
+@@ -133,6 +133,9 @@ func (owner *ExecutionJournalOwner) Apply(ctx context.Context, role JournalCalle
+ 	if err != nil {
+ 		return JournalMutationReceipt{}, err
+ 	}
++	if command.Read != nil {
++		return JournalMutationReceipt{}, ErrJournalCommand
++	}
+ 	workerOperation := command.Floor != nil || command.NonAdmission != nil || command.TerminalNonAdmission != nil
+ 	if workerOperation && role != JournalWorkerRole || !workerOperation && role != JournalRuntimeRole {
+ 		return JournalMutationReceipt{}, ErrJournalCommand
+diff --git a/internal/modelruntime/supervisor.go b/internal/modelruntime/supervisor.go
+index d1caed0..3dda41b 100644
+--- a/internal/modelruntime/supervisor.go
++++ b/internal/modelruntime/supervisor.go
+@@ -46,6 +46,10 @@ func newSupervisor(floor *ExecutionFloorConfig, services ...*Service) (*Supervis
+ }
+ 
+ func newSupervisorWithState(floor *ExecutionFloorConfig, opened *executionStateFile, services ...*Service) (*Supervisor, error) {
++	return newSupervisorWithStores(floor, opened, nil, services...)
++}
++
++func newSupervisorWithStores(floor *ExecutionFloorConfig, opened *executionStateFile, remote *remoteExecutionJournal, services ...*Service) (*Supervisor, error) {
+ 	if len(services) == 0 || len(services) > maxLaunchRuntimes {
+ 		return nil, errors.New("ModelRuntime supervisor service set is invalid")
+ 	}
+@@ -95,6 +99,17 @@ func newSupervisorWithState(floor *ExecutionFloorConfig, opened *executionStateF
+ 		}
+ 	}
+ 	supervisor.admission = newExecutionAdmission(ordered)
++	if remote != nil {
++		if opened != nil || floor == nil || floor.State != nil {
++			return nil, ErrExecutionStateRecovery
++		}
++		scope, err := supervisor.journalScope().digest()
++		if err != nil || scope != remote.state.Scope {
++			return nil, ErrExecutionStateRecovery
++		}
++		supervisor.admission.store = remote
++		supervisor.admission.highest, supervisor.admission.floor = remote.state.Highest, remote.state.Floor
++	}
+ 	if floor != nil && floor.State != nil {
+ 		store := opened
+ 		if store == nil {
+@@ -183,7 +198,7 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
+ 		if err := supervisor.registryVerifier.VerifyJournal(supervisor.registryBinding, journalbinding.RuntimeJournal, journalbinding.Journal{
+ 			WorkerInstanceID: baseline.GetWorkerInstanceId(), WorkerInstanceEpoch: baseline.GetWorkerInstanceEpoch(),
+ 			WorkerMemberID: baseline.GetWorkerMemberId(), WorkerMemberEpoch: baseline.GetWorkerMemberEpoch(),
+-			JournalID: admission.store.state.ID, Scope: admission.store.state.Scope,
++			JournalID: admission.store.view().state.ID, Scope: admission.store.view().state.Scope,
+ 		}); err != nil {
+ 			return nil, status.Error(codes.FailedPrecondition, admission.failStateLocked(err).Error())
+ 		}
+diff --git a/internal/nodeagent/journal_endpoint_linux.go b/internal/nodeagent/journal_endpoint_linux.go
+index 971d13d..31d21d8 100644
+--- a/internal/nodeagent/journal_endpoint_linux.go
++++ b/internal/nodeagent/journal_endpoint_linux.go
+@@ -101,11 +101,26 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
+ 		return nil, err
+ 	}
+ 	payload := caller.Payload()
+-	if role == modelruntime.JournalWorkerRole {
+-		command, err := modelruntime.ParseJournalCommand(payload)
+-		if err != nil {
+-			return nil, err
++	command, err := modelruntime.ParseJournalCommand(payload)
++	if err != nil {
++		return nil, err
++	}
++	if command.Read != nil {
++		page, err := endpoint.owner.Read(ctx, *command.Read)
++		response := modelruntime.JournalEndpointResponse{SchemaVersion: 1, RequestDigest: sha256.Sum256(payload)}
++		switch {
++		case err == nil:
++			response.Page = &page
++		case errors.Is(err, modelruntime.ErrJournalChanged):
++			response.Error = "CHANGED"
++		case errors.Is(err, modelruntime.ErrExecutionStateRecovery) || context.Cause(ctx) != nil:
++			response.Error = "UNCERTAIN"
++		default:
++			response.Error = "REJECTED"
+ 		}
++		return json.Marshal(response)
++	}
++	if role == modelruntime.JournalWorkerRole {
+ 		// A signed floor only restricts future admission. New non-admission
+ 		// evidence requires the originally approved Runtime to remain live;
+ 		// process replacement must go through independent Node reconciliation.
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index d29cc1a..3567d0e 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -28,14 +28,18 @@ import (
+ )
+ 
+ type journalEndpointControl struct {
+-	Identity modelruntime.ExecutionJournalIdentity
+-	Command  modelruntime.JournalCommand
++	Identity  modelruntime.ExecutionJournalIdentity
++	Command   modelruntime.JournalCommand
++	Manifest  *modelruntime.LaunchManifest
++	Startup   modelruntime.BackendLifecycleStatus
++	Authority []byte
+ }
+ 
+ type journalEndpointReport struct {
+-	Receipt    modelruntime.JournalMutationReceipt
+-	Error      string
+-	OwnerError string
++	Receipt             modelruntime.JournalMutationReceipt
++	Error               string
++	OwnerError          string
++	SupervisorCompleted bool
+ }
+ 
+ type journalEndpointChild struct {
+@@ -77,6 +81,13 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 		} else if err != nil {
+ 			t.Fatal(err)
+ 		}
++		if request.Manifest != nil {
++			journalEndpointRunSupervisor(t, socket, request)
++			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
++				t.Fatal(err)
++			}
++			continue
++		}
+ 		receipt, err := modelruntime.ExchangeJournalCommand(t.Context(), socket, request.Identity, request.Command)
+ 		report := journalEndpointReport{Receipt: receipt}
+ 		if err != nil {
+@@ -226,14 +237,15 @@ func TestJournalEndpoint(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	defer func() { _ = owner.Close() }()
+-	if _, err := owner.RecordBackendStartupIntent(t.Context()); err != nil {
++	startup, err := owner.RecordBackendStartupIntent(t.Context())
++	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	status, err := owner.Status(t.Context())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope}
++	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}
+ 	socket := filepath.Join(root, "node.sock")
+ 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socket, Net: "unixpacket"})
+ 	if err != nil {
+@@ -259,6 +271,10 @@ func TestJournalEndpoint(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	authority, floor := journalEndpointCommands(t, fixture.launch, routes[0], signer, now)
++	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &fixture.launch, Startup: startup, Authority: authority})
++	if status, err := owner.Status(t.Context()); err != nil || status.Highest != 1 || status.PendingExecutions != 0 {
++		t.Fatalf("Supervisor did not persist sealed/drained execution: %+v %v", status, err)
++	}
+ 	admit := modelruntime.JournalCommand{Admit: &modelruntime.JournalAuthorityCommand{Authority: authority}}
+ 	for _, child := range []*journalEndpointChild{worker, sibling} {
+ 		if report := journalEndpointExchange(t, endpoint, listener, child, identity, admit, false); report.Error == "" {
+@@ -324,7 +340,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
+ 		WorkerInstanceId: binding.WorkerInstanceID, WorkerInstanceEpoch: binding.WorkerInstanceEpoch, DeviceSetDigest: binding.DeviceSetDigest,
+ 		MembershipDigest: binding.MembershipDigest, ModelResidencyId: binding.ModelResidencyID, ModelRuntimeIdentity: binding.ModelRuntimeIdentity,
+ 		StageProfileRevisionId: binding.StageProfileRevisionID, ModelRuntimeBarrierGeneration: 1, CapacityObservationSequence: 1,
+-		LeaseToken: digest, ExecutionNonce: digest, ExecutionSpecDigest: digest, ExecutionSequence: 1,
++		LeaseToken: digest, ExecutionNonce: digest, ExecutionSequence: 1,
+ 		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: "journal-test", IssuedAt: timestamppb.New(now),
+ 		ExpiresAt: timestamppb.New(now.Add(time.Minute)), MonotonicValidFor: durationpb.New(time.Minute),
+ 		Members: []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch,
+@@ -332,6 +348,11 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
+ 	for _, device := range binding.Devices {
+ 		a.Devices = append(a.Devices, &velav1.StageAuthorityDeviceEpoch{DeviceId: device.ID, DeviceEpoch: device.Epoch})
+ 	}
++	specDigest, err := stageauthority.ExecutionSpecDigest(journalEndpointSpec())
++	if err != nil {
++		t.Fatal(err)
++	}
++	a.ExecutionSpecDigest = specDigest[:]
+ 	a, err = signer.Sign(a)
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -366,3 +387,108 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
+ 	}
+ 	return wire, floor
+ }
++
++func journalEndpointSpec() *velav1.StageExecutionSpec {
++	return &velav1.StageExecutionSpec{ParametersJson: []byte(`{}`), ExpectedOutputManifestJson: []byte(`{"kind":"LATENT"}`)}
++}
++
++func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl) {
++	t.Helper()
++	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bindings, err := request.Manifest.RuntimeBindings()
++	if err != nil {
++		t.Fatal(err)
++	}
++	var services []*modelruntime.Service
++	var backends []*modelruntime.FakeRuntime
++	for i, binding := range bindings {
++		backend := modelruntime.NewFakeDiTRuntime()
++		epoch := request.Manifest.Runtimes[i].ModelRuntimeEpochFloor
++		service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return epoch, nil }),
++			Validator: validator, Backend: backend, CancelTimeout: time.Second})
++		if err != nil {
++			t.Fatal(err)
++		}
++		services = append(services, service)
++		backends = append(backends, backend)
++	}
++	supervisor, err := modelruntime.NewSupervisorWithRemoteExecutionJournal(t.Context(), modelruntime.RemoteExecutionJournalConfig{
++		Manifest: *request.Manifest, Validator: validator, Identity: request.Identity, Startup: request.Startup,
++		Transport: modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity}, Timeout: 5 * time.Second}, services...)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer supervisor.Close()
++	var authority velav1.StageAuthority
++	if err := proto.Unmarshal(request.Authority, &authority); err != nil {
++		t.Fatal(err)
++	}
++	prepared, err := supervisor.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: &authority, ExecutionSpec: journalEndpointSpec()})
++	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
++		t.Fatalf("native remote Prepare: %v %v", prepared, err)
++	}
++	started, err := supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: &authority})
++	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
++		t.Fatalf("native remote Start: %v %v", started, err)
++	}
++	backends[0].MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
++	sealed, err := supervisor.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: &authority})
++	if err != nil || sealed.GetReceipt() == nil {
++		t.Fatalf("native remote seal/drain: %v %v", sealed, err)
++	}
++	if err := supervisor.Shutdown(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func journalEndpointDriveSupervisor(t *testing.T, endpoint *JournalEndpoint, listener *net.UnixListener, child *journalEndpointChild, request journalEndpointControl) {
++	t.Helper()
++	if err := child.reader.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	if err := listener.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan journalEndpointReport, 1)
++	go func() {
++		var report journalEndpointReport
++		if err := child.reports.Decode(&report); err != nil {
++			report.Error = err.Error()
++		}
++		done <- report
++		_ = listener.SetDeadline(time.Now())
++	}()
++	if err := child.input.Encode(request); err != nil {
++		t.Fatal(err)
++	}
++	exchanges := 0
++	for {
++		connection, err := listener.AcceptUnix()
++		if err != nil {
++			break
++		}
++		caller, err := ReceiveRuntimeCallerWithRequestLimit(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532}, modelruntime.MaximumJournalCommandBytes)
++		if err != nil {
++			_ = connection.Close()
++			t.Fatal(err)
++		}
++		reply, err := endpoint.Handle(t.Context(), caller)
++		if err == nil {
++			err = caller.Reply(t.Context(), reply)
++		}
++		_ = caller.Close()
++		_ = connection.Close()
++		if err != nil {
++			t.Fatal(err)
++		}
++		exchanges++
++	}
++	report := <-done
++	if report.Error != "" || !report.SupervisorCompleted || exchanges < 10 {
++		t.Fatalf("native Supervisor drive: %+v exchanges=%d", report, exchanges)
++	}
++	t.Logf("actual Supervisor prepare/start/seal/drain across %d authenticated Node exchanges; Runtime opened no journal files", exchanges)
++}
+diff --git a/internal/modelruntime/execution_journal_store.go b/internal/modelruntime/execution_journal_store.go
+new file mode 100644
+index 0000000..cbd8b71
+--- /dev/null
++++ b/internal/modelruntime/execution_journal_store.go
+@@ -0,0 +1,31 @@
++package modelruntime
++
++import (
++	"time"
++
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++)
++
++// The admission mutex owns this access. view is a verified read view, not a
++// mutation handle. All durable changes use the typed methods below.
++type executionJournalStore interface {
++	view() *executionJournal
++	check() error
++	close() error
++	recoveryError() error
++	saveHighest(*velav1.StageAuthority, time.Duration) error
++	saveFloor(*velav1.StageTerminalDisposition) error
++	saveCandidates(stageauthority.Verified, *stageauthority.Verified) error
++	saveSeal(stageauthority.Verified, *velav1.LocalMaterializationReceipt) error
++	saveHealth(stageauthority.Verified, *FailureEvidence) error
++	saveDrain(stageauthority.Verified, BackendDrain, time.Time) error
++	saveNonAdmission(stageauthority.Verified, executionJournalRoute, time.Time) error
++	saveTerminalNonAdmission(*velav1.StageTerminalDisposition, string, executionJournalRoute, time.Time) error
++	retainedAuthority([]byte) (stageauthority.Verified, error)
++	retainedExecutionIndex(stageauthority.Verified) (int, error)
++	nonAdmissionCheckpoint(stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error)
++	terminalNonAdmissionCheckpoint(*velav1.StageTerminalDisposition, *velav1.StageTerminalAllocation) (*TerminalNonAdmissionCheckpoint, error)
++}
++
++func (store *executionStateFile) view() *executionJournal { return &store.executionJournal }
+diff --git a/internal/modelruntime/journal_read.go b/internal/modelruntime/journal_read.go
+new file mode 100644
+index 0000000..2a65288
+--- /dev/null
++++ b/internal/modelruntime/journal_read.go
+@@ -0,0 +1,104 @@
++package modelruntime
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++
++	"github.com/google/uuid"
++)
++
++const JournalPageBytes = 16 << 10
++
++var ErrJournalChanged = errors.New("execution journal changed during paged read")
++
++type JournalPage struct {
++	JournalID    uuid.UUID         `json:"journal_id"`
++	JournalScope [sha256.Size]byte `json:"journal_scope"`
++	StateDigest  [sha256.Size]byte `json:"state_digest"`
++	TotalBytes   int               `json:"total_bytes"`
++	Offset       int               `json:"offset"`
++	Document     []byte            `json:"document"`
++	LockDocument []byte            `json:"lock_document"`
++}
++
++// JournalDocument comes from a separately authenticated owner. It is not
++// accepted as a mutation and does not by itself establish launch permission.
++type JournalDocument struct {
++	Document     []byte
++	LockDocument []byte
++}
++
++func (owner *ExecutionJournalOwner) Read(ctx context.Context, request JournalReadCommand) (JournalPage, error) {
++	if owner == nil || ctx == nil || request.Offset < 0 || request.Offset%JournalPageBytes != 0 ||
++		(request.StateDigest == ([sha256.Size]byte{}) && request.Offset != 0) {
++		return JournalPage{}, ErrJournalCommand
++	}
++	owner.mu.Lock()
++	defer owner.mu.Unlock()
++	if err := owner.check(ctx); err != nil {
++		return JournalPage{}, err
++	}
++	if request.StateDigest != ([sha256.Size]byte{}) && request.StateDigest != owner.store.stateDigest {
++		return JournalPage{}, ErrJournalChanged
++	}
++	document, err := json.Marshal(owner.store.state)
++	if err != nil || sha256.Sum256(document) != owner.store.stateDigest || request.Offset >= len(document) {
++		return JournalPage{}, ErrJournalCommand
++	}
++	lock, err := owner.store.root.ReadFile(executionStateLockName)
++	if err != nil {
++		return JournalPage{}, owner.mutationError(err)
++	}
++	if err := context.Cause(ctx); err != nil {
++		return JournalPage{}, err
++	}
++	return JournalPage{JournalID: owner.store.state.ID, JournalScope: owner.store.state.Scope, StateDigest: owner.store.stateDigest,
++		TotalBytes: len(document), Offset: request.Offset, Document: bytes.Clone(document[request.Offset:min(len(document), request.Offset+JournalPageBytes)]),
++		LockDocument: lock}, nil
++}
++
++// ReadJournalDocument assembles one digest-bound document. It does not restart
++// automatically after changes or return a partial/mixed snapshot on failure.
++func ReadJournalDocument(ctx context.Context, expected ExecutionJournalIdentity, read func(context.Context, JournalReadCommand) (JournalPage, error)) (JournalDocument, error) {
++	if ctx == nil || expected.JournalID == uuid.Nil || expected.Scope == ([sha256.Size]byte{}) || read == nil {
++		return JournalDocument{}, ErrJournalCommand
++	}
++	var result JournalDocument
++	var digest [sha256.Size]byte
++	total := 0
++	for offset := 0; ; offset += JournalPageBytes {
++		if err := context.Cause(ctx); err != nil {
++			return JournalDocument{}, err
++		}
++		page, err := read(ctx, JournalReadCommand{StateDigest: digest, Offset: offset})
++		if err != nil {
++			return JournalDocument{}, err
++		}
++		if page.JournalID != expected.JournalID || page.JournalScope != expected.Scope || page.Offset != offset ||
++			page.TotalBytes <= 0 || page.TotalBytes > maxExecutionStateBytes || page.TotalBytes <= offset ||
++			len(page.Document) != min(JournalPageBytes, page.TotalBytes-offset) || page.StateDigest == ([sha256.Size]byte{}) ||
++			string(page.LockDocument) != expected.JournalID.String() {
++			return JournalDocument{}, ErrJournalCommand
++		}
++		if offset == 0 {
++			digest, total = page.StateDigest, page.TotalBytes
++			result.Document = make([]byte, 0, total)
++			result.LockDocument = bytes.Clone(page.LockDocument)
++		} else if page.StateDigest != digest || page.TotalBytes != total {
++			return JournalDocument{}, ErrJournalChanged
++		}
++		result.Document = append(result.Document, page.Document...)
++		if len(result.Document) == total {
++			if sha256.Sum256(result.Document) != digest {
++				return JournalDocument{}, ErrJournalCommand
++			}
++			if err := context.Cause(ctx); err != nil {
++				return JournalDocument{}, err
++			}
++			return result, nil
++		}
++	}
++}
+diff --git a/internal/modelruntime/journal_remote.go b/internal/modelruntime/journal_remote.go
+new file mode 100644
+index 0000000..fd6b105
+--- /dev/null
++++ b/internal/modelruntime/journal_remote.go
+@@ -0,0 +1,227 @@
++package modelruntime
++
++import (
++	"context"
++	"crypto/sha256"
++	"errors"
++	"reflect"
++	"time"
++
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++var ErrJournalRejected = errors.New("execution journal owner rejected the mutation")
++
++// RuntimeJournalTransport is supplied by trusted assembly. Implementations must
++// authenticate the owner; implementing this interface is not startup permission.
++type RuntimeJournalTransport interface {
++	Apply(context.Context, JournalCommand) (JournalMutationReceipt, error)
++	Read(context.Context) (JournalDocument, error)
++}
++
++type RemoteExecutionJournalConfig struct {
++	Manifest  LaunchManifest
++	Validator *stageauthority.Validator
++	Identity  ExecutionJournalIdentity
++	Startup   BackendLifecycleStatus
++	Transport RuntimeJournalTransport
++	Timeout   time.Duration
++}
++
++type remoteExecutionJournal struct {
++	executionJournal
++	config RemoteExecutionJournalConfig
++	ctx    context.Context
++	closed bool
++}
++
++// NewSupervisorWithRemoteExecutionJournal attaches unused Services to an
++// already-started, independently approved original incarnation. It creates no
++// local journal and cannot start a backend, allocate an epoch, authorize first
++// use or adopt a replacement. Trusted startup assembly must precede this call.
++func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig, services ...*Service) (*Supervisor, error) {
++	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
++		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
++		return nil, ErrExecutionStateRecovery
++	}
++	config.Manifest = cloneLaunchManifest(config.Manifest)
++	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
++	if err != nil {
++		return nil, err
++	}
++	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
++	if err := remote.check(); err != nil {
++		return nil, err
++	}
++	state := remote.state
++	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
++		return nil, ErrBackendIncarnationUnproven
++	}
++	bindings, err := config.Manifest.RuntimeBindings()
++	if err != nil || len(bindings) != len(services) {
++		return nil, ErrExecutionStateRecovery
++	}
++	for i, binding := range bindings {
++		found := false
++		for _, service := range services {
++			if service == nil {
++				continue
++			}
++			binding.ModelRuntimeEpoch = service.binding.ModelRuntimeEpoch
++			if binding.ModelRuntimeEpoch >= config.Manifest.Runtimes[i].ModelRuntimeEpochFloor && reflect.DeepEqual(binding, service.binding) {
++				found = true
++			}
++		}
++		if !found {
++			return nil, stageauthority.ErrRuntimeMismatch
++		}
++	}
++	floor, err := config.Manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, config.Validator)
++	if err != nil {
++		return nil, err
++	}
++	return newSupervisorWithStores(floor, nil, remote, services...)
++}
++
++func (store *remoteExecutionJournal) view() *executionJournal { return &store.executionJournal }
++func (store *remoteExecutionJournal) close() error            { store.closed = true; return nil }
++func (store *remoteExecutionJournal) recoveryError() error    { return store.workerHealthError() }
++
++func (store *remoteExecutionJournal) check() error {
++	if store.closed {
++		return ErrExecutionStateRecovery
++	}
++	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
++	defer cancel()
++	var document JournalDocument
++	var err error
++	for range 3 {
++		document, err = store.config.Transport.Read(ctx)
++		if !errors.Is(err, ErrJournalChanged) {
++			break
++		}
++		if cause := context.Cause(ctx); cause != nil {
++			return errors.Join(ErrExecutionStateRecovery, cause)
++		}
++	}
++	if errors.Is(err, ErrJournalChanged) {
++		return ErrJournalChanged
++	}
++	if err != nil {
++		return errors.Join(ErrExecutionStateRecovery, err)
++	}
++	snapshot, err := VerifyExecutionJournalSnapshot(document.Document, document.LockDocument, store.config.Manifest, store.config.Validator, store.config.Identity)
++	if err != nil {
++		return errors.Join(ErrExecutionStateRecovery, err)
++	}
++	if snapshot.status.BackendLifecycle != store.config.Startup || snapshot.status.BackendLifecycle.LaunchDigest != snapshot.launchDigest || snapshot.status.Highest < store.state.Highest || snapshot.status.Floor < store.state.Floor {
++		return ErrExecutionStateRecovery
++	}
++	state, err := decodeExecutionJournal(document.Document)
++	if err != nil {
++		return errors.Join(ErrExecutionStateRecovery, err)
++	}
++	if err := context.Cause(ctx); err != nil {
++		return errors.Join(ErrExecutionStateRecovery, err)
++	}
++	store.state = state
++	return nil
++}
++
++func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutationReceipt, error) {
++	command.SchemaVersion = 1
++	wire, err := EncodeJournalCommand(command)
++	if err != nil {
++		return JournalMutationReceipt{}, err
++	}
++	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
++	defer cancel()
++	receipt, err := store.config.Transport.Apply(ctx, command)
++	if err != nil {
++		if errors.Is(err, ErrJournalRejected) {
++			return JournalMutationReceipt{}, &executionJournalRejection{cause: err}
++		}
++		return JournalMutationReceipt{}, err
++	}
++	if receipt.SchemaVersion != 1 || receipt.RequestDigest != sha256.Sum256(wire) || receipt.JournalID != store.config.Identity.JournalID ||
++		receipt.JournalScope != store.config.Identity.Scope || receipt.StateDigest == ([32]byte{}) || receipt.Highest < 0 || receipt.Floor < 0 {
++		return JournalMutationReceipt{}, ErrExecutionStateRecovery
++	}
++	if err := context.Cause(ctx); err != nil {
++		return JournalMutationReceipt{}, errors.Join(ErrExecutionStateRecovery, err)
++	}
++	if err := store.check(); err != nil {
++		return JournalMutationReceipt{}, err
++	}
++	if store.state.Highest < receipt.Highest || store.state.Floor < receipt.Floor {
++		return JournalMutationReceipt{}, ErrExecutionStateRecovery
++	}
++	return receipt, nil
++}
++
++func journalAuthorityWire(authority *velav1.StageAuthority) []byte {
++	wire, _ := proto.MarshalOptions{Deterministic: true}.Marshal(authority)
++	return wire
++}
++
++func (store *remoteExecutionJournal) saveHighest(authority *velav1.StageAuthority, _ time.Duration) error {
++	receipt, err := store.apply(JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
++	if err == nil && receipt.Replayed {
++		return ErrExecutionStateRecovery
++	}
++	return err
++}
++func (store *remoteExecutionJournal) saveCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
++	command := &JournalCandidatesCommand{Authority: journalAuthorityWire(accepted.Authority)}
++	if confirmed != nil {
++		command.Confirmed = journalAuthorityWire(confirmed.Authority)
++	}
++	_, err := store.apply(JournalCommand{Candidates: command})
++	return err
++}
++func (store *remoteExecutionJournal) saveSeal(authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(receipt)
++	if err != nil {
++		return err
++	}
++	_, err = store.apply(JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
++	return err
++}
++func (store *remoteExecutionJournal) saveHealth(authority stageauthority.Verified, evidence *FailureEvidence) error {
++	_, err := store.apply(JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
++	return err
++}
++func (store *remoteExecutionJournal) saveDrain(authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
++	_, err := store.apply(JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
++	return err
++}
++
++// Worker mutations must already be durably recorded by the independently bound
++// Worker. Runtime checks that history under its admission lock; it cannot borrow
++// the Worker role or attest absence based only on a private cache.
++func (store *remoteExecutionJournal) saveFloor(disposition *velav1.StageTerminalDisposition) error {
++	if store.state.Floor < disposition.GetCutoff() {
++		return &executionJournalRejection{cause: ErrJournalRejected}
++	}
++	return nil
++}
++func (store *remoteExecutionJournal) saveNonAdmission(authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
++	proof, err := store.nonAdmissionCheckpoint(authority)
++	if err != nil || proof == nil {
++		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
++	}
++	return nil
++}
++func (store *remoteExecutionJournal) saveTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
++	allocation := stageauthority.FindTerminalAllocation(disposition, id)
++	if allocation == nil {
++		return &executionJournalRejection{cause: ErrExecutionNonAdmissionUnproven}
++	}
++	proof, err := store.terminalNonAdmissionCheckpoint(disposition, allocation)
++	if err != nil || proof == nil {
++		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
++	}
++	return nil
++}
+diff --git a/internal/modelruntime/journal_remote_test.go b/internal/modelruntime/journal_remote_test.go
+new file mode 100644
+index 0000000..3ca7175
+--- /dev/null
++++ b/internal/modelruntime/journal_remote_test.go
+@@ -0,0 +1,311 @@
++package modelruntime_test
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++type directJournalTransport struct {
++	owner       *modelruntime.ExecutionJournalOwner
++	identity    modelruntime.ExecutionJournalIdentity
++	role        modelruntime.JournalCallerRole
++	mu          sync.Mutex
++	fault       string
++	mutations   int
++	frozen      *modelruntime.JournalDocument
++	readChanges int
++}
++
++func (transport *directJournalTransport) Apply(ctx context.Context, command modelruntime.JournalCommand) (modelruntime.JournalMutationReceipt, error) {
++	transport.mu.Lock()
++	defer transport.mu.Unlock()
++	transport.mutations++
++	if transport.fault == "unavailable" {
++		return modelruntime.JournalMutationReceipt{}, errors.New("owner unavailable")
++	}
++	wire, err := modelruntime.EncodeJournalCommand(command)
++	if err != nil {
++		return modelruntime.JournalMutationReceipt{}, err
++	}
++	receipt, err := transport.owner.Apply(ctx, transport.role, wire)
++	if err == nil && transport.fault == "lost-reply" {
++		return modelruntime.JournalMutationReceipt{}, errors.New("lost durable reply")
++	}
++	if transport.fault == "replayed" {
++		receipt.Replayed = true
++	}
++	if transport.fault == "foreign-receipt" {
++		receipt.JournalID[0]++
++	}
++	return receipt, err
++}
++func (transport *directJournalTransport) Read(ctx context.Context) (modelruntime.JournalDocument, error) {
++	transport.mu.Lock()
++	if transport.readChanges > 0 {
++		transport.readChanges--
++		transport.mu.Unlock()
++		return modelruntime.JournalDocument{}, modelruntime.ErrJournalChanged
++	}
++	frozen := transport.frozen
++	transport.mu.Unlock()
++	if frozen != nil {
++		return *frozen, nil
++	}
++	return modelruntime.ReadJournalDocument(ctx, transport.identity, transport.owner.Read)
++}
++
++func TestJournalRemoteReadContentionDoesNotPoisonAdmission(t *testing.T) {
++	for _, changes := range []int{2, 3} {
++		t.Run(fmt.Sprint(changes), func(t *testing.T) {
++			f, _, transport, _ := remoteSupervisorFixture(t)
++			transport.readChanges = changes
++			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
++			response, err := f.supervisor.PrepareStage(t.Context(), request)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if changes == 3 {
++				if response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || transport.mutations != 0 || f.backend.calls.Load() != 0 {
++					t.Fatal("exhausted reads entered backend or mutated journal")
++				}
++				response, err = f.supervisor.PrepareStage(t.Context(), request)
++			}
++			if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 1 {
++				t.Fatalf("read-only contention poisoned legal admission: %v %v", response, err)
++			}
++		})
++	}
++}
++
++func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntime.ExecutionJournalOwner, *directJournalTransport, string) {
++	t.Helper()
++	f, owner, config := journalOwnerFixture(t)
++	startup, err := owner.RecordBackendStartupIntent(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	status, err := owner.Status(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	transport := &directJournalTransport{owner: owner, identity: modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}, role: modelruntime.JournalRuntimeRole}
++	f.backend = &floorBlockingBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime(), entered: make(chan struct{}), resume: make(chan struct{})}
++	f.otherBackend = modelruntime.NewFakeVAERuntime()
++	f.services = []*modelruntime.Service{newRuntimeService(t, f.clock, f.validator, f.bindings[0], f.backend), newRuntimeService(t, f.clock, f.validator, f.bindings[1], f.otherBackend)}
++	f.supervisor, err = modelruntime.NewSupervisorWithRemoteExecutionJournal(t.Context(), modelruntime.RemoteExecutionJournalConfig{
++		Manifest: config.Manifest, Validator: f.validator, Identity: transport.identity, Startup: startup, Transport: transport, Timeout: time.Second}, f.services...)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(f.supervisor.Close)
++	return f, owner, transport, config.State.Directory
++}
++
++func TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory(t *testing.T) {
++	f, owner, transport, directory := remoteSupervisorFixture(t)
++	readyDrainOutput(t, f, f.backend.FakeRuntime, f.authorities[0])
++	response, err := f.supervisor.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: f.authorities[0]})
++	if err != nil || response.GetReceipt() == nil {
++		t.Fatalf("remote-backed seal: %v %v", response, err)
++	}
++	if records := readSealedHistory(t, directory); len(records) != 1 || records[0].Seal == nil || records[0].Drain == nil {
++		t.Fatal("backend result acknowledged before durable seal/drain")
++	}
++	before, err := os.ReadFile(filepath.Join(directory, durableStateFileName))
++	if err != nil {
++		t.Fatal(err)
++	}
++	client, _ := serveRuntimeServer(t, f.supervisor)
++	again, err := client.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: f.authorities[0]})
++	if err != nil || !proto.Equal(response.GetReceipt(), again.GetReceipt()) {
++		t.Fatalf("remote RPC receipt replay: %v %v", again, err)
++	}
++	after, err := os.ReadFile(filepath.Join(directory, durableStateFileName))
++	if err != nil || !bytes.Equal(before, after) || transport.mutations < 5 {
++		t.Fatal("receipt replay changed journal or bypassed owner")
++	}
++	if err := f.supervisor.Shutdown(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := owner.Status(t.Context()); err != nil {
++		t.Fatalf("Runtime shutdown closed Node journal: %v", err)
++	}
++}
++
++func TestJournalRemoteUncertainAdmissionNeverEntersBackend(t *testing.T) {
++	for _, fault := range []string{"unavailable", "lost-reply", "replayed", "foreign-receipt", "stale-read"} {
++		t.Run(fault, func(t *testing.T) {
++			f, owner, transport, _ := remoteSupervisorFixture(t)
++			transport.fault = fault
++			if fault == "stale-read" {
++				frozen, err := transport.Read(t.Context())
++				if err != nil {
++					t.Fatal(err)
++				}
++				transport.frozen = &frozen
++			}
++			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
++			response, err := f.supervisor.PrepareStage(t.Context(), request)
++			if err != nil || response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 0 {
++				t.Fatalf("uncertain admission entered backend: %v %v", response, err)
++			}
++			transport.fault = ""
++			response, err = f.supervisor.PrepareStage(t.Context(), request)
++			if err != nil || response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 0 || transport.mutations != 1 {
++				t.Fatalf("uncertainty automatically redispatched: %v %v mutations=%d", response, err, transport.mutations)
++			}
++			status, err := owner.Status(t.Context())
++			if err != nil || (fault != "unavailable" && status.Highest != 10) || (fault == "unavailable" && status.Highest != 0) {
++				t.Fatalf("wrong durable outcome: %+v %v", status, err)
++			}
++		})
++	}
++}
++
++func TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation(t *testing.T) {
++	f, owner, _, _ := remoteSupervisorFixture(t)
++	f.backend.blocked = "prepare"
++	t.Cleanup(f.backend.unblock)
++	done := make(chan error, 1)
++	go func() {
++		_, err := f.supervisor.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()})
++		done <- err
++	}()
++	select {
++	case <-f.backend.entered:
++	case <-time.After(3 * time.Second):
++		t.Fatal("Prepare did not enter backend after remote persistence")
++	}
++	disposition := f.disposition(t)
++	applyOwnerCommand(t, owner, modelruntime.JournalWorkerRole, modelruntime.JournalCommand{Floor: &modelruntime.JournalFloorCommand{Disposition: journalProto(t, disposition)}})
++	installation, err := f.supervisor.InstallExecutionFloor(t.Context(), disposition)
++	if err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
++	defer cancel()
++	if err := installation.WaitAcceptedOperations(ctx); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("remote floor forgot in-flight operation: %v", err)
++	}
++	f.backend.unblock()
++	if err := <-done; err != nil {
++		t.Fatal(err)
++	}
++	if err := installation.WaitAcceptedOperations(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	started, err := f.supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: f.authorities[0]})
++	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
++		t.Fatalf("new call crossed installed floor: %v %v", started, err)
++	}
++}
++
++func TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole(t *testing.T) {
++	f, owner, transport, _ := remoteSupervisorFixture(t)
++	client, _ := serveRuntimeServer(t, f.supervisor)
++	worker := &directJournalTransport{owner: owner, identity: transport.identity, role: modelruntime.JournalWorkerRole}
++	wrapped, err := modelruntime.NewJournalWorkerClient(client, worker)
++	if err != nil {
++		t.Fatal(err)
++	}
++	disposition := unsignedTerminalAllocation(t, f)
++	request := &velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest{SchemaVersion: 1, Identity: inspectionIdentity(f.authorities[0]), Disposition: disposition}
++	// A direct Runtime request cannot write as Worker, and refusal does not poison it.
++	if result, err := client.InstallStageExecutionFloor(t.Context(), request); err != nil || result.GetDurable() {
++		t.Fatalf("Runtime borrowed Worker role: %v %v", result, err)
++	}
++	installed, err := wrapped.InstallStageExecutionFloor(t.Context(), request)
++	if err != nil || !installed.GetDurable() || installed.GetInstalledCutoff() != 11 {
++		t.Fatalf("Worker durable floor: %v %v", installed, err)
++	}
++	proof, err := wrapped.CheckpointStageNonAdmission(t.Context(), &velav1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest{
++		Scope: &velav1.ModelRuntimeExecutionDrainScope{SchemaVersion: 1, Identity: inspectionIdentity(f.authorities[0]), Authority: f.authorities[0]}})
++	if err != nil || proof.GetResult().GetCheckpoint() == nil {
++		t.Fatalf("Runtime could not inspect Worker proof: %+v %v", proof, err)
++	}
++	terminal, err := wrapped.CheckpointStageTerminalNonAdmission(t.Context(), &velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest{
++		Scope: &velav1.ModelRuntimeTerminalAllocationScope{SchemaVersion: 1, Identity: inspectionIdentity(f.authorities[1]), Disposition: disposition, StageAllocationId: disposition.Allocations[1].StageAllocationId}})
++	if err != nil || terminal.GetResult().GetCheckpoint() == nil {
++		t.Fatalf("Runtime could not inspect terminal Worker proof: %+v %v", terminal, err)
++	}
++	assertFloorCommandsRejected(t, f.supervisor, f.authorities[0])
++	if transport.mutations != 0 || worker.mutations != 3 || f.backend.calls.Load() != 0 {
++		t.Fatal("role separation or floor fencing failed")
++	}
++}
++
++func TestJournalReadRejectsMixedPagesAndPreservesSnapshot(t *testing.T) {
++	f, owner, config := journalOwnerFixture(t)
++	if _, err := owner.RecordBackendStartupIntent(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	for i := range 8 {
++		applyOwnerCommand(t, owner, modelruntime.JournalRuntimeRole, modelruntime.JournalCommand{Admit: &modelruntime.JournalAuthorityCommand{Authority: journalProto(t, f.authority(t, 0, int64(i+10)))}})
++	}
++	status, err := owner.Status(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}
++	first, err := owner.Read(t.Context(), modelruntime.JournalReadCommand{})
++	if err != nil || first.TotalBytes <= modelruntime.JournalPageBytes {
++		t.Fatalf("fixture must span multiple pages: %+v %v", first, err)
++	}
++	document, err := modelruntime.ReadJournalDocument(t.Context(), identity, owner.Read)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := modelruntime.VerifyExecutionJournalSnapshot(document.Document, document.LockDocument, config.Manifest, f.validator, identity); err != nil {
++		t.Fatal(err)
++	}
++	calls := 0
++	_, err = modelruntime.ReadJournalDocument(t.Context(), identity, func(ctx context.Context, request modelruntime.JournalReadCommand) (modelruntime.JournalPage, error) {
++		calls++
++		if calls == 2 {
++			applyOwnerCommand(t, owner, modelruntime.JournalRuntimeRole, modelruntime.JournalCommand{Admit: &modelruntime.JournalAuthorityCommand{Authority: journalProto(t, f.authority(t, 0, 30))}})
++		}
++		return owner.Read(ctx, request)
++	})
++	if !errors.Is(err, modelruntime.ErrJournalChanged) {
++		t.Fatalf("mixed versions formed snapshot: %v", err)
++	}
++	for _, fault := range []string{"offset", "digest", "size", "lock", "journal", "bytes"} {
++		t.Run(fault, func(t *testing.T) {
++			result, err := modelruntime.ReadJournalDocument(t.Context(), identity, func(ctx context.Context, request modelruntime.JournalReadCommand) (modelruntime.JournalPage, error) {
++				page, err := owner.Read(ctx, request)
++				if err != nil {
++					return page, err
++				}
++				switch fault {
++				case "offset":
++					page.Offset++
++				case "digest":
++					page.StateDigest[0]++
++				case "size":
++					page.TotalBytes = 1 << 30
++				case "lock":
++					page.LockDocument = []byte("wrong")
++				case "journal":
++					page.JournalID[0]++
++				case "bytes":
++					page.Document[0] ^= 1
++				}
++				return page, nil
++			})
++			if err == nil || len(result.Document) != 0 {
++				t.Fatalf("invalid page produced usable partial result: %v", err)
++			}
++		})
++	}
++}
+diff --git a/internal/modelruntime/journal_worker_client.go b/internal/modelruntime/journal_worker_client.go
+new file mode 100644
+index 0000000..2c84456
+--- /dev/null
++++ b/internal/modelruntime/journal_worker_client.go
+@@ -0,0 +1,67 @@
++package modelruntime
++
++import (
++	"context"
++
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/grpc"
++	"google.golang.org/protobuf/proto"
++)
++
++type JournalCommandWriter interface {
++	Apply(context.Context, JournalCommand) (JournalMutationReceipt, error)
++}
++
++type journalWorkerClient struct {
++	velav1.ModelRuntimeServiceClient
++	writer JournalCommandWriter
++}
++
++// NewJournalWorkerClient preserves the existing Worker/Runtime RPC protocol,
++// recording Worker-owned restrictions first through its own authenticated Node
++// identity. An uncertain journal result stops the RPC; no mutation is retried.
++func NewJournalWorkerClient(client velav1.ModelRuntimeServiceClient, writer JournalCommandWriter) (velav1.ModelRuntimeServiceClient, error) {
++	if client == nil || writer == nil {
++		return nil, ErrJournalCommand
++	}
++	return &journalWorkerClient{ModelRuntimeServiceClient: client, writer: writer}, nil
++}
++
++func (client *journalWorkerClient) InstallStageExecutionFloor(ctx context.Context, request *velav1.ModelRuntimeServiceInstallStageExecutionFloorRequest, opts ...grpc.CallOption) (*velav1.ModelRuntimeServiceInstallStageExecutionFloorResponse, error) {
++	if request == nil || request.GetDisposition() == nil {
++		return nil, ErrJournalCommand
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(request.GetDisposition())
++	if err != nil {
++		return nil, err
++	}
++	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, Floor: &JournalFloorCommand{Disposition: wire}}); err != nil {
++		return nil, err
++	}
++	return client.ModelRuntimeServiceClient.InstallStageExecutionFloor(ctx, request, opts...)
++}
++
++func (client *journalWorkerClient) CheckpointStageNonAdmission(ctx context.Context, request *velav1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest, opts ...grpc.CallOption) (*velav1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error) {
++	if request == nil || request.GetScope().GetAuthority() == nil {
++		return nil, ErrJournalCommand
++	}
++	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, NonAdmission: &JournalAuthorityCommand{Authority: journalAuthorityWire(request.GetScope().GetAuthority())}}); err != nil {
++		return nil, err
++	}
++	return client.ModelRuntimeServiceClient.CheckpointStageNonAdmission(ctx, request, opts...)
++}
++
++func (client *journalWorkerClient) CheckpointStageTerminalNonAdmission(ctx context.Context, request *velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse, error) {
++	if request == nil || request.GetScope().GetDisposition() == nil {
++		return nil, ErrJournalCommand
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(request.GetScope().GetDisposition())
++	if err != nil {
++		return nil, err
++	}
++	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, TerminalNonAdmission: &JournalTerminalNonAdmissionCommand{
++		Disposition: wire, Allocation: request.GetScope().GetStageAllocationId()}}); err != nil {
++		return nil, err
++	}
++	return client.ModelRuntimeServiceClient.CheckpointStageTerminalNonAdmission(ctx, request, opts...)
++}

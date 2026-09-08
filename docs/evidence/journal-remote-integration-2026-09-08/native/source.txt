@@ -1,0 +1,21 @@
+d61cd70f12f767f720cea5f7323775e626ac9015
+ M hack/run-journal-owner-native.sh
+ M internal/modelruntime/execution_admission.go
+ M internal/modelruntime/execution_candidates.go
+ M internal/modelruntime/execution_drain.go
+ M internal/modelruntime/execution_floor.go
+ M internal/modelruntime/execution_non_admission.go
+ M internal/modelruntime/execution_seal.go
+ M internal/modelruntime/execution_state_export_test.go
+ M internal/modelruntime/execution_transition_export_test.go
+ M internal/modelruntime/journal_client_linux.go
+ M internal/modelruntime/journal_command.go
+ M internal/modelruntime/journal_owner.go
+ M internal/modelruntime/supervisor.go
+ M internal/nodeagent/journal_endpoint_linux.go
+ M internal/nodeagent/journal_endpoint_linux_test.go
+?? internal/modelruntime/execution_journal_store.go
+?? internal/modelruntime/journal_read.go
+?? internal/modelruntime/journal_remote.go
+?? internal/modelruntime/journal_remote_test.go
+?? internal/modelruntime/journal_worker_client.go

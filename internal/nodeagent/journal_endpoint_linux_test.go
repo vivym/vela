@@ -28,14 +28,18 @@ import (
 )
 
 type journalEndpointControl struct {
-	Identity modelruntime.ExecutionJournalIdentity
-	Command  modelruntime.JournalCommand
+	Identity  modelruntime.ExecutionJournalIdentity
+	Command   modelruntime.JournalCommand
+	Manifest  *modelruntime.LaunchManifest
+	Startup   modelruntime.BackendLifecycleStatus
+	Authority []byte
 }
 
 type journalEndpointReport struct {
-	Receipt    modelruntime.JournalMutationReceipt
-	Error      string
-	OwnerError string
+	Receipt             modelruntime.JournalMutationReceipt
+	Error               string
+	OwnerError          string
+	SupervisorCompleted bool
 }
 
 type journalEndpointChild struct {
@@ -76,6 +80,13 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 			return
 		} else if err != nil {
 			t.Fatal(err)
+		}
+		if request.Manifest != nil {
+			journalEndpointRunSupervisor(t, socket, request)
+			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
+				t.Fatal(err)
+			}
+			continue
 		}
 		receipt, err := modelruntime.ExchangeJournalCommand(t.Context(), socket, request.Identity, request.Command)
 		report := journalEndpointReport{Receipt: receipt}
@@ -226,14 +237,15 @@ func TestJournalEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = owner.Close() }()
-	if _, err := owner.RecordBackendStartupIntent(t.Context()); err != nil {
+	startup, err := owner.RecordBackendStartupIntent(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
 	status, err := owner.Status(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope}
+	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}
 	socket := filepath.Join(root, "node.sock")
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socket, Net: "unixpacket"})
 	if err != nil {
@@ -259,6 +271,10 @@ func TestJournalEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	authority, floor := journalEndpointCommands(t, fixture.launch, routes[0], signer, now)
+	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &fixture.launch, Startup: startup, Authority: authority})
+	if status, err := owner.Status(t.Context()); err != nil || status.Highest != 1 || status.PendingExecutions != 0 {
+		t.Fatalf("Supervisor did not persist sealed/drained execution: %+v %v", status, err)
+	}
 	admit := modelruntime.JournalCommand{Admit: &modelruntime.JournalAuthorityCommand{Authority: authority}}
 	for _, child := range []*journalEndpointChild{worker, sibling} {
 		if report := journalEndpointExchange(t, endpoint, listener, child, identity, admit, false); report.Error == "" {
@@ -324,7 +340,7 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
 		WorkerInstanceId: binding.WorkerInstanceID, WorkerInstanceEpoch: binding.WorkerInstanceEpoch, DeviceSetDigest: binding.DeviceSetDigest,
 		MembershipDigest: binding.MembershipDigest, ModelResidencyId: binding.ModelResidencyID, ModelRuntimeIdentity: binding.ModelRuntimeIdentity,
 		StageProfileRevisionId: binding.StageProfileRevisionID, ModelRuntimeBarrierGeneration: 1, CapacityObservationSequence: 1,
-		LeaseToken: digest, ExecutionNonce: digest, ExecutionSpecDigest: digest, ExecutionSequence: 1,
+		LeaseToken: digest, ExecutionNonce: digest, ExecutionSequence: 1,
 		CapacityVector: map[string]int64{"slots": 1}, SigningKeyId: "journal-test", IssuedAt: timestamppb.New(now),
 		ExpiresAt: timestamppb.New(now.Add(time.Minute)), MonotonicValidFor: durationpb.New(time.Minute),
 		Members: []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch,
@@ -332,6 +348,11 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
 	for _, device := range binding.Devices {
 		a.Devices = append(a.Devices, &velav1.StageAuthorityDeviceEpoch{DeviceId: device.ID, DeviceEpoch: device.Epoch})
 	}
+	specDigest, err := stageauthority.ExecutionSpecDigest(journalEndpointSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ExecutionSpecDigest = specDigest[:]
 	a, err = signer.Sign(a)
 	if err != nil {
 		t.Fatal(err)
@@ -365,4 +386,109 @@ func journalEndpointCommands(t *testing.T, manifest modelruntime.LaunchManifest,
 		t.Fatal(err)
 	}
 	return wire, floor
+}
+
+func journalEndpointSpec() *velav1.StageExecutionSpec {
+	return &velav1.StageExecutionSpec{ParametersJson: []byte(`{}`), ExpectedOutputManifestJson: []byte(`{"kind":"LATENT"}`)}
+}
+
+func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEndpointControl) {
+	t.Helper()
+	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := request.Manifest.RuntimeBindings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var services []*modelruntime.Service
+	var backends []*modelruntime.FakeRuntime
+	for i, binding := range bindings {
+		backend := modelruntime.NewFakeDiTRuntime()
+		epoch := request.Manifest.Runtimes[i].ModelRuntimeEpochFloor
+		service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return epoch, nil }),
+			Validator: validator, Backend: backend, CancelTimeout: time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		services = append(services, service)
+		backends = append(backends, backend)
+	}
+	supervisor, err := modelruntime.NewSupervisorWithRemoteExecutionJournal(t.Context(), modelruntime.RemoteExecutionJournalConfig{
+		Manifest: *request.Manifest, Validator: validator, Identity: request.Identity, Startup: request.Startup,
+		Transport: modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity}, Timeout: 5 * time.Second}, services...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer supervisor.Close()
+	var authority velav1.StageAuthority
+	if err := proto.Unmarshal(request.Authority, &authority); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := supervisor.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: &authority, ExecutionSpec: journalEndpointSpec()})
+	if err != nil || prepared.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("native remote Prepare: %v %v", prepared, err)
+	}
+	started, err := supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: &authority})
+	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("native remote Start: %v %v", started, err)
+	}
+	backends[0].MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
+	sealed, err := supervisor.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: &authority})
+	if err != nil || sealed.GetReceipt() == nil {
+		t.Fatalf("native remote seal/drain: %v %v", sealed, err)
+	}
+	if err := supervisor.Shutdown(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func journalEndpointDriveSupervisor(t *testing.T, endpoint *JournalEndpoint, listener *net.UnixListener, child *journalEndpointChild, request journalEndpointControl) {
+	t.Helper()
+	if err := child.reader.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan journalEndpointReport, 1)
+	go func() {
+		var report journalEndpointReport
+		if err := child.reports.Decode(&report); err != nil {
+			report.Error = err.Error()
+		}
+		done <- report
+		_ = listener.SetDeadline(time.Now())
+	}()
+	if err := child.input.Encode(request); err != nil {
+		t.Fatal(err)
+	}
+	exchanges := 0
+	for {
+		connection, err := listener.AcceptUnix()
+		if err != nil {
+			break
+		}
+		caller, err := ReceiveRuntimeCallerWithRequestLimit(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532}, modelruntime.MaximumJournalCommandBytes)
+		if err != nil {
+			_ = connection.Close()
+			t.Fatal(err)
+		}
+		reply, err := endpoint.Handle(t.Context(), caller)
+		if err == nil {
+			err = caller.Reply(t.Context(), reply)
+		}
+		_ = caller.Close()
+		_ = connection.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		exchanges++
+	}
+	report := <-done
+	if report.Error != "" || !report.SupervisorCompleted || exchanges < 10 {
+		t.Fatalf("native Supervisor drive: %+v exchanges=%d", report, exchanges)
+	}
+	t.Logf("actual Supervisor prepare/start/seal/drain across %d authenticated Node exchanges; Runtime opened no journal files", exchanges)
 }

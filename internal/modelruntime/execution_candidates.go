@@ -42,7 +42,7 @@ func (supervisor *Supervisor) InspectRetainedAllocationAuthorities(ctx context.C
 	if admission.store == nil {
 		return nil, ErrExecutionStateRecovery
 	}
-	for _, record := range admission.store.state.Executions {
+	for _, record := range admission.store.view().state.Executions {
 		original, err := admission.store.retainedAuthority(record.Authority)
 		if err != nil {
 			return nil, err

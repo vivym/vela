@@ -148,10 +148,10 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority 
 		return nil, err
 	}
 	store := admission.store
-	if err := store.scope.matchRetainedExecutionScope(verified.Authority); err != nil {
+	if err := store.view().scope.matchRetainedExecutionScope(verified.Authority); err != nil {
 		return nil, err
 	}
-	for _, record := range store.state.Executions {
+	for _, record := range store.view().state.Executions {
 		if record.Seal == nil || record.Drain == nil || record.Drain.Result.AuthorityDigest != verified.Digest {
 			continue
 		}
@@ -159,7 +159,7 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority 
 		if err != nil {
 			return nil, err
 		}
-		binding := cloneBinding(store.scope.binding)
+		binding := cloneBinding(store.view().scope.binding)
 		binding.ModelResidencyID, binding.ModelRuntimeIdentity = verified.Authority.GetModelResidencyId(), verified.Authority.GetModelRuntimeIdentity()
 		binding.StageProfileRevisionID = verified.Authority.GetStageProfileRevisionId()
 		for _, member := range verified.Authority.GetMembers() {

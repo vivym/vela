@@ -1,0 +1,6 @@
+--- FAIL: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations (4.25s)
+    --- FAIL: TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations/invalid (0.62s)
+        allocation_execution_test.go:90: inspection fault was accepted: <nil> context deadline exceeded
+FAIL
+FAIL	github.com/vivym/vela/internal/modelruntime	161.851s
+FAIL

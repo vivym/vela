@@ -17,6 +17,7 @@ type JournalEndpointResponse struct {
 	SchemaVersion int                     `json:"schema_version"`
 	RequestDigest [sha256.Size]byte       `json:"request_digest"`
 	Receipt       *JournalMutationReceipt `json:"receipt,omitempty"`
+	Page          *JournalPage            `json:"page,omitempty"`
 	Error         string                  `json:"error,omitempty"`
 }
 
@@ -39,22 +40,19 @@ func ExchangeJournalCommand(ctx context.Context, socket string, identity Executi
 }
 
 func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity ExecutionJournalIdentity) (JournalMutationReceipt, error) {
-	var response JournalEndpointResponse
-	if strictjson.RejectDuplicateKeys(wire) != nil {
-		return JournalMutationReceipt{}, ErrJournalCommand
+	response, err := decodeJournalEndpointResponse(wire, request)
+	if err != nil {
+		return JournalMutationReceipt{}, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(wire))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&response) != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) {
-		return JournalMutationReceipt{}, ErrJournalCommand
-	}
-	canonical, err := json.Marshal(response)
-	if err != nil || !bytes.Equal(canonical, wire) || response.SchemaVersion != 1 || response.RequestDigest != request {
+	if response.Page != nil {
 		return JournalMutationReceipt{}, ErrJournalCommand
 	}
 	if response.Receipt == nil {
 		if response.Error == "UNCERTAIN" {
 			return JournalMutationReceipt{}, ErrExecutionStateRecovery
+		}
+		if response.Error == "REJECTED" {
+			return JournalMutationReceipt{}, ErrJournalRejected
 		}
 		return JournalMutationReceipt{}, ErrJournalCommand
 	}
@@ -65,4 +63,69 @@ func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity Execu
 		return JournalMutationReceipt{}, ErrJournalCommand
 	}
 	return *receipt, nil
+}
+
+// UnixRuntimeJournalTransport uses the authenticated Node channel for every
+// mutation and read. It retains no local files and performs no mutation retries.
+type UnixRuntimeJournalTransport struct {
+	Socket   string
+	Identity ExecutionJournalIdentity
+}
+
+func (transport UnixRuntimeJournalTransport) Apply(ctx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
+	return ExchangeJournalCommand(ctx, transport.Socket, transport.Identity, command)
+}
+func (transport UnixRuntimeJournalTransport) Read(ctx context.Context) (JournalDocument, error) {
+	return ReadJournalDocument(ctx, transport.Identity, func(ctx context.Context, request JournalReadCommand) (JournalPage, error) {
+		return ExchangeJournalRead(ctx, transport.Socket, request)
+	})
+}
+
+func decodeJournalEndpointResponse(wire []byte, request [sha256.Size]byte) (JournalEndpointResponse, error) {
+	var response JournalEndpointResponse
+	if strictjson.RejectDuplicateKeys(wire) != nil {
+		return response, ErrJournalCommand
+	}
+	decoder := json.NewDecoder(bytes.NewReader(wire))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&response) != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) {
+		return JournalEndpointResponse{}, ErrJournalCommand
+	}
+	canonical, err := json.Marshal(response)
+	if err != nil || !bytes.Equal(canonical, wire) || response.SchemaVersion != 1 || response.RequestDigest != request {
+		return JournalEndpointResponse{}, ErrJournalCommand
+	}
+	return response, nil
+}
+
+func ExchangeJournalRead(ctx context.Context, socket string, request JournalReadCommand) (JournalPage, error) {
+	wire, err := EncodeJournalCommand(JournalCommand{SchemaVersion: 1, Read: &request})
+	if err != nil {
+		return JournalPage{}, err
+	}
+	reply, err := runtimechannel.Exchange(ctx, socket, wire)
+	if err != nil {
+		return JournalPage{}, err
+	}
+	response, err := decodeJournalEndpointResponse(reply, sha256.Sum256(wire))
+	if err != nil {
+		return JournalPage{}, err
+	}
+	if response.Receipt != nil {
+		return JournalPage{}, ErrJournalCommand
+	}
+	if response.Page == nil {
+		switch response.Error {
+		case "CHANGED":
+			return JournalPage{}, ErrJournalChanged
+		case "UNCERTAIN":
+			return JournalPage{}, ErrExecutionStateRecovery
+		default:
+			return JournalPage{}, ErrJournalCommand
+		}
+	}
+	if response.Error != "" {
+		return JournalPage{}, ErrJournalCommand
+	}
+	return *response.Page, nil
 }
