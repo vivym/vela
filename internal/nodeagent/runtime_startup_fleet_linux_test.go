@@ -1,7 +1,6 @@
 package nodeagent
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -21,6 +20,8 @@ import (
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/workerjournal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -41,6 +42,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 		CA, Certificate, Key        []byte
 		PublicKeys                  map[string][]byte
 		LoseResponse                bool
+		MissingPtrace               bool
 	}
 	if err := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20)).Decode(&input); err != nil {
 		t.Fatal(err)
@@ -107,107 +109,143 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Worker journal is explicitly a fixture. Runtime journal identity is read
-	// from the actual root-owned locked storage created above.
-	_, err = registry.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{RequestID: claim.RequestID, ActorIdentity: registry.ActorIdentity(), WorkerJournalID: uuid.New(), WorkerScope: bytes.Repeat([]byte{0x31}, 32), RuntimeJournalID: journal.JournalID, RuntimeScope: journal.Scope[:]})
-	if err != nil {
-		t.Fatal(err)
-	}
-	verifier, err := journalbinding.NewVerifier(input.PublicKeys)
-	if err != nil {
-		t.Fatal(err)
-	}
-	binding, err := registry.LookupWorkerBootstrapBinding(ctx, claim.RequestID, verifier)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan, err := VerifyRuntimeLaunchPlan(registry.NodeIdentity(), verifier, binding, input.Request.BundleManifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: registry.NodeIdentity(), RegistryBindingDigest: sha256.Sum256(bindingWire), JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
-	wire, err := modelruntime.EncodeBackendStartupRequest(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
-	connection, _, _ := runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
-	caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = caller.Close() }()
-	observer, pods := startupPlanObserverFixture(t, plan, caller)
-	ledgerPath := filepath.Join(root, "ledger")
-	if err := os.Mkdir(ledgerPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ledger, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ledger.Close() }()
-	config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
-	result, err := ledger.ReserveRemote(ctx, config)
-	if input.LoseResponse {
-		if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
-			t.Fatalf("lost response became result: %v", err)
+	workerPath := filepath.Join(root, "worker-journal")
+	for _, path := range []string{workerPath, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
 		}
-	} else if err != nil || result.OperationID == uuid.Nil {
-		t.Fatalf("real reservation: %v", err)
 	}
-	if _, err := ledger.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
-		t.Fatalf("live retry: %v", err)
-	}
-	record, err := ledger.Inspect(ctx, journal.JournalID)
+	workerConfig, err := workerjournal.AssignmentConfig(manifest, stageworkeragent.AssignmentAdmissionConfig{
+		Directory: workerPath, Initialize: true, Validator: validator, DeferRuntimeRoutes: true,
+		MaxRecords: 32,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected, err := remoteFleetRequest(record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	history, err := registry.LookupRuntimeStartup(ctx, record.OperationID)
-	if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
-		t.Fatalf("database history differs from original Node record: %v", err)
-	}
-	if err := ledger.Close(); err != nil {
-		t.Fatal(err)
-	}
-	recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = recovered.Close() }()
-	if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
-		t.Fatalf("reopen retry: %v", err)
-	}
-	if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
-		t.Fatalf("reopen recreated pidfd: %v", err)
-	}
-	receipt, err := recovered.InspectReservation(ctx, journal.JournalID)
-	if input.LoseResponse {
-		if !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("lost response created receipt: %v", err)
+	err = stageworkeragent.WithPreparedAssignmentJournal(ctx, workerConfig, func(worker stageworkeragent.AssignmentJournalStatus) error {
+		if !worker.Storage.Valid() || worker.SchemaVersion != 5 || worker.JournalID == uuid.Nil {
+			t.Fatal("invalid actual Worker journal identity")
 		}
-	} else if err != nil || receipt != result {
-		t.Fatalf("lost local receipt: %v", err)
-	}
-	recordWire, err := json.Marshal(record)
+		competing := workerConfig
+		competing.Initialize = false
+		if _, err := stageworkeragent.PrepareAssignmentJournal(ctx, competing); err == nil {
+			t.Fatal("Worker journal lock not held through startup")
+		}
+		_, err = registry.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{RequestID: claim.RequestID, ActorIdentity: registry.ActorIdentity(), WorkerJournalID: worker.JournalID, WorkerScope: worker.Scope[:], RuntimeJournalID: journal.JournalID, RuntimeScope: journal.Scope[:]})
+		if err != nil {
+			t.Fatal(err)
+		}
+		verifier, err := journalbinding.NewVerifier(input.PublicKeys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		binding, err := registry.LookupWorkerBootstrapBinding(ctx, claim.RequestID, verifier)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := VerifyRuntimeLaunchPlan(registry.NodeIdentity(), verifier, binding, input.Request.BundleManifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: registry.NodeIdentity(), RegistryBindingDigest: sha256.Sum256(bindingWire), JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
+		wire, err := modelruntime.EncodeBackendStartupRequest(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
+		connection, _, _ := runtimeCallerConfiguredConnection(t, "protected-hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
+		caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
+		if input.MissingPtrace {
+			if err == nil || caller != nil {
+				if caller != nil {
+					_ = caller.Close()
+				}
+				t.Fatal("Node without CAP_SYS_PTRACE accepted protected Runtime")
+			}
+			fmt.Println("VELA_PROTECTED_CALLER_REJECTED_BEFORE_RESERVATION")
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = caller.Close() }()
+		observer, pods := startupPlanObserverFixture(t, plan, caller)
+		ledgerPath := filepath.Join(root, "ledger")
+		if err := os.Mkdir(ledgerPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		ledger, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = ledger.Close() }()
+		config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
+		result, err := ledger.ReserveRemote(ctx, config)
+		if input.LoseResponse {
+			if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
+				t.Fatalf("lost response became result: %v", err)
+			}
+		} else if err != nil || result.OperationID == uuid.Nil {
+			t.Fatalf("real reservation: %v", err)
+		}
+		if _, err := ledger.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
+			t.Fatalf("live retry: %v", err)
+		}
+		record, err := ledger.Inspect(ctx, journal.JournalID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected, err := remoteFleetRequest(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history, err := registry.LookupRuntimeStartup(ctx, record.OperationID)
+		if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
+			t.Fatalf("database history differs from original Node record: %v", err)
+		}
+		if err := ledger.Close(); err != nil {
+			t.Fatal(err)
+		}
+		recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = recovered.Close() }()
+		if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
+			t.Fatalf("reopen retry: %v", err)
+		}
+		if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
+			t.Fatalf("reopen recreated pidfd: %v", err)
+		}
+		receipt, err := recovered.InspectReservation(ctx, journal.JournalID)
+		if input.LoseResponse {
+			if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("lost response created receipt: %v", err)
+			}
+		} else if err != nil || receipt != result {
+			t.Fatalf("lost local receipt: %v", err)
+		}
+		recordWire, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := json.Marshal(struct {
+			Request       fleet.RuntimeStartupRequest
+			Record        json.RawMessage
+			HasReceipt    bool
+			WorkerJournal stageworkeragent.AssignmentJournalStatus
+		}{expected, recordWire, !input.LoseResponse, worker})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("VELA_RESERVATION_REPORT=%s\n", report)
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := json.Marshal(struct {
-		Request    fleet.RuntimeStartupRequest
-		Record     json.RawMessage
-		HasReceipt bool
-	}{expected, recordWire, !input.LoseResponse})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Printf("VELA_RESERVATION_REPORT=%s\n", report)
 }

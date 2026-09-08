@@ -67,6 +67,11 @@ or factory dispatch. Native same-UID exec-child probes show memory-open/ptrace
 access before protection and denial after it. This removes one nonprivileged
 memory-access path; it does not authenticate launch provenance or protect
 shared writable files, signals and descendant/device lifetimes.
+The [protected-caller / held-pair validation](node-protected-pair-evidence-2026-09-09.md)
+now uses actual held Worker and Runtime journals during the Fleet reservation,
+and demonstrates that non-dumpable Runtime inspection succeeds with Node
+SYS_PTRACE but rejects without it. Worker business operations still need their
+own protected owner API; Pod/CRI remain fixtures.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

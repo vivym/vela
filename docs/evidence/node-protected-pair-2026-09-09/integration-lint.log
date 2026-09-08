@@ -1,0 +1,250 @@
+internal/integration/admission_test.go:92:27: Error return value of `response.Body.Close` is not checked (errcheck)
+	defer response.Body.Close()
+	                         ^
+internal/integration/admission_test.go:129:30: Error return value of `getResponse.Body.Close` is not checked (errcheck)
+	defer getResponse.Body.Close()
+	                            ^
+internal/integration/admission_test.go:220:34: Error return value of `invalidResponse.Body.Close` is not checked (errcheck)
+	defer invalidResponse.Body.Close()
+	                                ^
+internal/integration/admission_test.go:254:27: Error return value of `response.Body.Close` is not checked (errcheck)
+	defer response.Body.Close()
+	                         ^
+internal/integration/admission_test.go:313:27: Error return value of `response.Body.Close` is not checked (errcheck)
+	defer response.Body.Close()
+	                         ^
+internal/integration/admission_test.go:828:30: Error return value of `getResponse.Body.Close` is not checked (errcheck)
+	defer getResponse.Body.Close()
+	                            ^
+internal/integration/attempt_coordinator_test.go:969:18: Error return value of `rows.Close` is not checked (errcheck)
+	defer rows.Close()
+	                ^
+internal/integration/attempt_coordinator_test.go:2476:18: Error return value of `rows.Close` is not checked (errcheck)
+	defer rows.Close()
+	                ^
+internal/integration/cancellation_test.go:314:23: Error return value of `blocker.Close` is not checked (errcheck)
+			defer blocker.Close()
+			                   ^
+internal/integration/human_identity_test.go:441:33: Error return value of `createResponse.Body.Close` is not checked (errcheck)
+	defer createResponse.Body.Close()
+	                               ^
+internal/integration/human_identity_test.go:468:31: Error return value of `listResponse.Body.Close` is not checked (errcheck)
+	defer listResponse.Body.Close()
+	                             ^
+internal/integration/human_membership_administration_test.go:807:31: Error return value of `listResponse.Body.Close` is not checked (errcheck)
+	defer listResponse.Body.Close()
+	                             ^
+internal/integration/human_membership_administration_test.go:849:34: Error return value of `assignResponse.Body.Close` is not checked (errcheck)
+		defer assignResponse.Body.Close()
+		                               ^
+internal/integration/human_membership_administration_test.go:858:28: Error return value of `assignResponse.Body.Close` is not checked (errcheck)
+		assignResponse.Body.Close()
+		                         ^
+internal/integration/human_membership_administration_test.go:861:27: Error return value of `assignResponse.Body.Close` is not checked (errcheck)
+	assignResponse.Body.Close()
+	                         ^
+internal/integration/human_membership_administration_test.go:880:33: Error return value of `revokeResponse.Body.Close` is not checked (errcheck)
+	defer revokeResponse.Body.Close()
+	                               ^
+internal/integration/human_membership_administration_test.go:914:41: Error return value of `assignProjectResponse.Body.Close` is not checked (errcheck)
+		defer assignProjectResponse.Body.Close()
+		                                      ^
+internal/integration/human_membership_administration_test.go:924:35: Error return value of `assignProjectResponse.Body.Close` is not checked (errcheck)
+		assignProjectResponse.Body.Close()
+		                                ^
+internal/integration/human_membership_administration_test.go:927:34: Error return value of `assignProjectResponse.Body.Close` is not checked (errcheck)
+	assignProjectResponse.Body.Close()
+	                                ^
+internal/integration/human_membership_administration_test.go:948:39: Error return value of `projectListResponse.Body.Close` is not checked (errcheck)
+		defer projectListResponse.Body.Close()
+		                                    ^
+internal/integration/human_membership_administration_test.go:958:33: Error return value of `projectListResponse.Body.Close` is not checked (errcheck)
+		projectListResponse.Body.Close()
+		                              ^
+internal/integration/human_membership_administration_test.go:961:32: Error return value of `projectListResponse.Body.Close` is not checked (errcheck)
+	projectListResponse.Body.Close()
+	                              ^
+internal/integration/human_membership_administration_test.go:988:48: Error return value of `crossOrganizationListResponse.Body.Close` is not checked (errcheck)
+	defer crossOrganizationListResponse.Body.Close()
+	                                              ^
+internal/integration/human_membership_administration_test.go:1023:40: Error return value of `revokeProjectResponse.Body.Close` is not checked (errcheck)
+	defer revokeProjectResponse.Body.Close()
+	                                      ^
+internal/integration/human_membership_administration_test.go:1053:35: Error return value of `disableResponse.Body.Close` is not checked (errcheck)
+		defer disableResponse.Body.Close()
+		                                ^
+internal/integration/human_membership_administration_test.go:1515:18: Error return value of `rows.Close` is not checked (errcheck)
+	defer rows.Close()
+	                ^
+internal/integration/identity_administration_test.go:143:33: Error return value of `issueResponse.Body.Close` is not checked (errcheck)
+		defer issueResponse.Body.Close()
+		                              ^
+internal/integration/identity_administration_test.go:152:27: Error return value of `issueResponse.Body.Close` is not checked (errcheck)
+		issueResponse.Body.Close()
+		                        ^
+internal/integration/identity_administration_test.go:155:26: Error return value of `issueResponse.Body.Close` is not checked (errcheck)
+	issueResponse.Body.Close()
+	                        ^
+internal/integration/identity_administration_test.go:168:41: Error return value of `principalListResponse.Body.Close` is not checked (errcheck)
+		defer principalListResponse.Body.Close()
+		                                      ^
+internal/integration/identity_administration_test.go:173:35: Error return value of `principalListResponse.Body.Close` is not checked (errcheck)
+		principalListResponse.Body.Close()
+		                                ^
+internal/integration/identity_administration_test.go:176:34: Error return value of `principalListResponse.Body.Close` is not checked (errcheck)
+	principalListResponse.Body.Close()
+	                                ^
+internal/integration/identity_administration_test.go:183:42: Error return value of `credentialListResponse.Body.Close` is not checked (errcheck)
+		defer credentialListResponse.Body.Close()
+		                                       ^
+internal/integration/identity_administration_test.go:190:36: Error return value of `credentialListResponse.Body.Close` is not checked (errcheck)
+		credentialListResponse.Body.Close()
+		                                 ^
+internal/integration/identity_administration_test.go:193:35: Error return value of `credentialListResponse.Body.Close` is not checked (errcheck)
+	credentialListResponse.Body.Close()
+	                                 ^
+internal/integration/identity_administration_test.go:211:34: Error return value of `revokeResponse.Body.Close` is not checked (errcheck)
+		defer revokeResponse.Body.Close()
+		                               ^
+internal/integration/identity_administration_test.go:218:28: Error return value of `revokeResponse.Body.Close` is not checked (errcheck)
+		revokeResponse.Body.Close()
+		                         ^
+internal/integration/identity_administration_test.go:228:35: Error return value of `disableResponse.Body.Close` is not checked (errcheck)
+		defer disableResponse.Body.Close()
+		                                ^
+internal/integration/identity_administration_test.go:235:29: Error return value of `disableResponse.Body.Close` is not checked (errcheck)
+		disableResponse.Body.Close()
+		                          ^
+internal/integration/nats_workload_identity_test.go:560:20: Error return value of `client.Close` is not checked (errcheck)
+	defer client.Close()
+	                  ^
+internal/integration/nats_workload_identity_test.go:561:22: Error return value of `upstream.Close` is not checked (errcheck)
+	defer upstream.Close()
+	                    ^
+internal/integration/retention_test.go:424:29: Error return value of `artifactResponse.Body.Close` is not checked (errcheck)
+	artifactResponse.Body.Close()
+	                           ^
+internal/integration/retention_test.go:505:30: Error return value of `getResponse.Body.Close` is not checked (errcheck)
+	defer getResponse.Body.Close()
+	                            ^
+internal/integration/retention_test.go:560:39: Error return value of `crossProjectResponse.Body.Close` is not checked (errcheck)
+	defer crossProjectResponse.Body.Close()
+	                                     ^
+internal/integration/stage_allocation_execution_sequence_test.go:114:19: Error return value of `tx.Rollback` is not checked (errcheck)
+	defer tx.Rollback()
+	                 ^
+internal/integration/stage_allocation_execution_sequence_test.go:210:19: Error return value of `tx.Rollback` is not checked (errcheck)
+	defer tx.Rollback()
+	                 ^
+internal/integration/stage_allocation_execution_sequence_test.go:334:22: Error return value of `first.Rollback` is not checked (errcheck)
+	defer first.Rollback()
+	                    ^
+internal/integration/stage_allocation_execution_sequence_test.go:410:19: Error return value of `tx.Rollback` is not checked (errcheck)
+	defer tx.Rollback()
+	                 ^
+internal/integration/stage_execution_catalog_test.go:508:34: Error return value of `activationConnection.Close` is not checked (errcheck)
+	defer activationConnection.Close()
+	                                ^
+internal/integration/stage_worker_control_test.go:1049:22: Error return value of `blocker.Close` is not checked (errcheck)
+		defer blocker.Close()
+		                   ^
+internal/integration/postgres_restore_test.go:85:4: S1025: the argument's underlying type is a slice of bytes, should use a simple conversion instead of fmt.Sprintf (staticcheck)
+			fmt.Sprintf("%s", contents),
+			^
+internal/integration/stage_graph_failure_test.go:186:4: QF1003: could use tagged switch on kind (staticcheck)
+			if kind == "HEARTBEAT" {
+			^
+internal/integration/stage_materialization_replay_test.go:317:100: S1024: should use time.Until instead of t.Sub(time.Now()) (staticcheck)
+	fixture := &materializationReplayFixture{database: database, assignment: assignment, clockOffset: now.Sub(time.Now())}
+	                                                                                                  ^
+internal/integration/stage_stream_materialization_replay_test.go:45:19: S1024: should use time.Until instead of t.Sub(time.Now()) (staticcheck)
+			clockOffset := now.Sub(time.Now())
+			               ^
+internal/integration/break_glass_test.go:1935:6: type grantBoundedSignerCall is unused (unused)
+type grantBoundedSignerCall struct {
+     ^
+internal/integration/break_glass_test.go:1941:6: type grantBoundedArtifactSigner is unused (unused)
+type grantBoundedArtifactSigner struct {
+     ^
+internal/integration/break_glass_test.go:1948:6: type failingArtifactSigner is unused (unused)
+type failingArtifactSigner struct {
+     ^
+internal/integration/break_glass_test.go:1952:37: func failingArtifactSigner.PresignExactVersionUntil is unused (unused)
+func (signer failingArtifactSigner) PresignExactVersionUntil(
+                                    ^
+internal/integration/break_glass_test.go:1961:43: func (*grantBoundedArtifactSigner).PresignExactVersionUntil is unused (unused)
+func (signer *grantBoundedArtifactSigner) PresignExactVersionUntil(
+                                          ^
+internal/integration/catalog_promotion_test.go:1800:6: func sha256Sum is unused (unused)
+func sha256Sum(value []byte) []byte {
+     ^
+internal/integration/foundation_test.go:735:6: func assertArtifactFinalizationMigrationRefused is unused (unused)
+func assertArtifactFinalizationMigrationRefused(t *testing.T, database *sql.DB, err error) {
+     ^
+internal/integration/human_identity_test.go:30:7: const humanProjectViewerPrincipalID is unused (unused)
+const humanProjectViewerPrincipalID = "00000000-0000-0000-0000-000000000083"
+      ^
+internal/integration/invoice_export_test.go:28:6: func assertRejectedInvoiceChargeEffects is unused (unused)
+func assertRejectedInvoiceChargeEffects(t *testing.T, fixture startFixture, label string) {
+     ^
+internal/integration/non_content_expiry_test.go:26:6: func migrateToSchema30BeforeTerminalEvidence is unused (unused)
+func migrateToSchema30BeforeTerminalEvidence(t *testing.T, database testDatabase) {
+     ^
+internal/integration/non_content_expiry_test.go:1382:6: func assertNonContentTerminalClocks is unused (unused)
+func assertNonContentTerminalClocks(
+     ^
+internal/integration/postgres_restore_test.go:14:6: func capturePostgresDatabaseSnapshot is unused (unused)
+func capturePostgresDatabaseSnapshot(t *testing.T, database testDatabase, path string) string {
+     ^
+internal/integration/postgres_restore_test.go:26:6: func restorePostgresDatabaseSnapshot is unused (unused)
+func restorePostgresDatabaseSnapshot(
+     ^
+internal/integration/postgres_restore_test.go:67:6: func runPostgresContainerCommand is unused (unused)
+func runPostgresContainerCommand(t *testing.T, database testDatabase, command []string) {
+     ^
+internal/integration/release_bundle_fixture_test.go:478:6: func catalogReleaseConfigMap is unused (unused)
+func catalogReleaseConfigMap(namespace, name, key, value string) string {
+     ^
+internal/integration/retention_test.go:800:6: func newAdditionalMinIOStore is unused (unused)
+func newAdditionalMinIOStore(
+     ^
+internal/integration/retention_test.go:2063:6: type recordingBackupRetentionStore is unused (unused)
+type recordingBackupRetentionStore struct {
+     ^
+internal/integration/retention_test.go:2067:45: func (*recordingBackupRetentionStore).PurgeObjectVersions is unused (unused)
+func (store *recordingBackupRetentionStore) PurgeObjectVersions(
+                                            ^
+internal/integration/retention_test.go:2082:6: type failFirstRetentionStore is unused (unused)
+type failFirstRetentionStore struct {
+     ^
+internal/integration/retention_test.go:2089:39: func (*failFirstRetentionStore).DeleteExactVersion is unused (unused)
+func (store *failFirstRetentionStore) DeleteExactVersion(
+                                      ^
+internal/integration/retention_test.go:2099:39: func (*failFirstRetentionStore).ResolveCurrentVersion is unused (unused)
+func (store *failFirstRetentionStore) ResolveCurrentVersion(
+                                      ^
+internal/integration/retention_test.go:2109:39: func (*failFirstRetentionStore).ListIncompleteMultipartUploads is unused (unused)
+func (store *failFirstRetentionStore) ListIncompleteMultipartUploads(
+                                      ^
+internal/integration/retention_test.go:2119:39: func (*failFirstRetentionStore).AbortMultipartUpload is unused (unused)
+func (store *failFirstRetentionStore) AbortMultipartUpload(
+                                      ^
+internal/integration/retention_test.go:2129:39: func (*failFirstRetentionStore).takeFailure is unused (unused)
+func (store *failFirstRetentionStore) takeFailure() error {
+                                      ^
+internal/integration/retention_test.go:2512:6: func assertRequestContentTombstoneImmutable is unused (unused)
+func assertRequestContentTombstoneImmutable(t *testing.T, admin *sql.DB, jobID uuid.UUID) {
+     ^
+internal/integration/terminal_job_fixture_test.go:47:6: func insertCanonicalTerminalJobEvent is unused (unused)
+func insertCanonicalTerminalJobEvent(
+     ^
+internal/integration/webhook_test.go:3177:6: func createTerminalWebhookSubscription is unused (unused)
+func createTerminalWebhookSubscription(
+     ^
+internal/integration/webhook_test.go:3217:6: func assertTerminalWebhookDelivery is unused (unused)
+func assertTerminalWebhookDelivery(
+     ^
+82 issues:
+* errcheck: 50
+* staticcheck: 4
+* unused: 28

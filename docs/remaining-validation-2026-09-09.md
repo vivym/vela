@@ -29,7 +29,11 @@ PostgreSQL/TLS 回包丢失不会重新发放 Fresh。新增的
 和原始 pidfd 检查后先 fsync intent，再单次预留并持久记录回执；重启只恢复
 历史，不重建原 pidfd。新增 [Node/Fleet 同链验证](node-fleet-reservation-evidence-2026-09-09.md)
 已将 root Node 与原始非 root Runtime 通过真实 TLS1.3/Fleet 连接 PostgreSQL；
-正常和提交后丢回包均只预留一次。Pod/CRI 与 Worker journal 仍是 fixture。
+正常和提交后丢回包均只预留一次。后续
+[受保护 Runtime 与实际 journal pair](node-protected-pair-evidence-2026-09-09.md)
+验证了不可 dump caller 的 Node 检查权限，并将 Worker journal 替换为实际
+Node 创建且持锁的状态；Pod/CRI 仍是 fixture，Worker 输入与 materialization
+业务尚未通过 Node 独立保管接口执行。
 Node helper 已由外层 parent 在另一组 7 个精确
 持久化/回包边界实际 SIGKILL 并重开检查；这不证明掉电恢复或生产后代隔离。
 有效 OCI/executable/config 批准、一次性

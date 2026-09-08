@@ -544,6 +544,12 @@ configuration or creates backends. Native non-root race tests demonstrate the
 same-UID memory/ptrace baseline and protected denial, plus fail-closed syscall
 errors. Linux core dumps/nonprivileged attach are disabled; effective launch
 approval, shared-file isolation and once-only Node grants remain open.
+The [protected Runtime / actual journal pair integration](node-protected-pair-evidence-2026-09-09.md)
+checks non-dumpable original Runtime callers against Node's real inspection
+capability and replaces the synthetic Worker journal ID with held root-owned
+Worker storage throughout the Fleet operation. Normal/lost-response cases each
+reserve once; a Node without SYS_PTRACE rejects before reservation. Pod/CRI,
+Worker business mutations and the full Job/grant assembly remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

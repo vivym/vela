@@ -21,6 +21,7 @@ import (
 
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/journalbinding"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -39,8 +40,9 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(image) {
 		t.Fatal("requires exact local image ID")
 	}
-	for _, lose := range []bool{false, true} {
-		t.Run(map[bool]string{false: "normal", true: "committed-response-lost"}[lose], func(t *testing.T) {
+	for _, scenario := range []string{"normal", "committed-response-lost", "missing-ptrace"} {
+		t.Run(scenario, func(t *testing.T) {
+			lose, missingPtrace := scenario == "committed-response-lost", scenario == "missing-ptrace"
 			database, service, request := newWorkerBootstrapFixture(t)
 			seed := bytes.Repeat([]byte{27}, ed25519.SeedSize)
 			signer, err := journalbinding.NewSigner("registry", seed)
@@ -89,7 +91,8 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				CA, Certificate, Key        []byte
 				PublicKeys                  map[string][]byte
 				LoseResponse                bool
-			}{request, net.JoinHostPort("host.docker.internal", port), args["--fleet-server-name"], spiffe, read("--fleet-ca-file"), read("--client-cert-file"), read("--client-key-file"), map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)}, lose}
+				MissingPtrace               bool
+			}{request, net.JoinHostPort("host.docker.internal", port), args["--fleet-server-name"], spiffe, read("--fleet-ca-file"), read("--client-cert-file"), read("--client-key-file"), map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)}, lose, missingPtrace}
 			wire, err := json.Marshal(input)
 			if err != nil {
 				t.Fatal(err)
@@ -102,7 +105,14 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				defer cancel()
 				_ = exec.CommandContext(cleanup, "docker", "rm", "-f", name).Run()
 			})
-			command := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull", "never", "--name", name, "-i", "--add-host", "host.docker.internal:host-gateway", "--cap-add", "SYS_ADMIN", "--cap-add", "SYS_PTRACE", "--security-opt", "seccomp=unconfined", "--cpus", "4", "--memory", "4g", "--pids-limit", "256", "-e", "VELA_RUNTIME_STARTUP_FLEET_HELPER=1", image, "/nodeagent.test", "-test.run=^TestRuntimeStartupFleetProcessHelper$", "-test.v", "-test.timeout=45s")
+			dockerArgs := []string{"run", "--rm", "--pull", "never", "--name", name, "-i", "--add-host", "host.docker.internal:host-gateway", "--cap-add", "SYS_ADMIN", "--security-opt", "seccomp=unconfined", "--cpus", "4", "--memory", "4g", "--pids-limit", "256", "-e", "VELA_RUNTIME_STARTUP_FLEET_HELPER=1"}
+			if !missingPtrace {
+				dockerArgs = append(dockerArgs, "--cap-add", "SYS_PTRACE")
+			} else {
+				dockerArgs = append(dockerArgs, "--cap-drop", "SYS_PTRACE")
+			}
+			dockerArgs = append(dockerArgs, image, "/nodeagent.test", "-test.run=^TestRuntimeStartupFleetProcessHelper$", "-test.v", "-test.timeout=45s")
+			command := exec.CommandContext(ctx, "docker", dockerArgs...)
 			command.Stdin = bytes.NewReader(wire)
 			output, err := command.CombinedOutput()
 			if err != nil {
@@ -112,10 +122,18 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				t.Fatalf("missing native test success: %s", output)
 			}
 			t.Logf("native process evidence (no TLS private keys):\n%s", output)
+			if missingPtrace {
+				var count int
+				if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 || calls.Load() != 0 || !bytes.Contains(output, []byte("VELA_PROTECTED_CALLER_REJECTED_BEFORE_RESERVATION")) {
+					t.Fatalf("missing Node capability reached reservation: rows=%d calls=%d err=%v", count, calls.Load(), err)
+				}
+				return
+			}
 			var report struct {
-				Request    fleet.RuntimeStartupRequest
-				Record     json.RawMessage
-				HasReceipt bool
+				Request       fleet.RuntimeStartupRequest
+				Record        json.RawMessage
+				HasReceipt    bool
+				WorkerJournal stageworkeragent.AssignmentJournalStatus
 			}
 			found := false
 			for _, line := range strings.Split(string(output), "\n") {
@@ -131,6 +149,10 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 			}
 			if !found || report.HasReceipt == lose || calls.Load() != 1 || tlsVersion.Load() != tls.VersionTLS13 || dropped.Load() != lose {
 				t.Fatalf("Node result/call count/TLS/loss mismatch: found=%v calls=%d TLS=%x", found, calls.Load(), tlsVersion.Load())
+			}
+			bootstrapHistory, err := clients[0].bootstrap.LookupWorkerBootstrap(t.Context(), request.RequestID)
+			if err != nil || bootstrapHistory.Receipt == nil || bootstrapHistory.Receipt.WorkerJournalID != report.WorkerJournal.JournalID || !bytes.Equal(bootstrapHistory.Receipt.WorkerScope, report.WorkerJournal.Scope[:]) || !report.WorkerJournal.Storage.Valid() || report.WorkerJournal.SchemaVersion != 5 {
+				t.Fatalf("Registry pair is not bound to actual held Worker journal: %v", err)
 			}
 			digest := sha256.Sum256(report.Record)
 			if !bytes.Equal(digest[:], report.Request.OwnerObservationDigest) {

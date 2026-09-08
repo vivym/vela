@@ -257,6 +257,15 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 	if mode == "" {
 		t.Skip("Runtime caller subprocess helper")
 	}
+	if mode == "protected-hold-after-disconnect" {
+		if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if value, err := unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0, 0, 0, 0); err != nil || value != 0 {
+			t.Fatalf("Runtime protection not active: %d %v", value, err)
+		}
+		mode = "hold-after-disconnect"
+	}
 	if mode == "exec-target" {
 		time.Sleep(30 * time.Second)
 		return

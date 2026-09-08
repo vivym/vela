@@ -1,0 +1,370 @@
+diff --git a/internal/nodeagent/runtime_caller_linux_test.go b/internal/nodeagent/runtime_caller_linux_test.go
+index d9bed1d..1724067 100644
+--- a/internal/nodeagent/runtime_caller_linux_test.go
++++ b/internal/nodeagent/runtime_caller_linux_test.go
+@@ -257,6 +257,15 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
+ 	if mode == "" {
+ 		t.Skip("Runtime caller subprocess helper")
+ 	}
++	if mode == "protected-hold-after-disconnect" {
++		if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
++			t.Fatal(err)
++		}
++		if value, err := unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0, 0, 0, 0); err != nil || value != 0 {
++			t.Fatalf("Runtime protection not active: %d %v", value, err)
++		}
++		mode = "hold-after-disconnect"
++	}
+ 	if mode == "exec-target" {
+ 		time.Sleep(30 * time.Second)
+ 		return
+diff --git a/internal/nodeagent/runtime_startup_fleet_linux_test.go b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+index 35312f4..b03d6f6 100644
+--- a/internal/nodeagent/runtime_startup_fleet_linux_test.go
++++ b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+@@ -1,7 +1,6 @@
+ package nodeagent
+ 
+ import (
+-	"bytes"
+ 	"context"
+ 	"crypto/sha256"
+ 	"encoding/json"
+@@ -21,6 +20,8 @@ import (
+ 	"github.com/vivym/vela/internal/journalbinding"
+ 	"github.com/vivym/vela/internal/modelruntime"
+ 	"github.com/vivym/vela/internal/stageauthority"
++	"github.com/vivym/vela/internal/stageworkeragent"
++	"github.com/vivym/vela/internal/workerjournal"
+ 	"google.golang.org/grpc/codes"
+ 	"google.golang.org/grpc/status"
+ 	"google.golang.org/protobuf/proto"
+@@ -41,6 +42,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 		CA, Certificate, Key        []byte
+ 		PublicKeys                  map[string][]byte
+ 		LoseResponse                bool
++		MissingPtrace               bool
+ 	}
+ 	if err := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20)).Decode(&input); err != nil {
+ 		t.Fatal(err)
+@@ -107,107 +109,143 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	// Worker journal is explicitly a fixture. Runtime journal identity is read
+-	// from the actual root-owned locked storage created above.
+-	_, err = registry.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{RequestID: claim.RequestID, ActorIdentity: registry.ActorIdentity(), WorkerJournalID: uuid.New(), WorkerScope: bytes.Repeat([]byte{0x31}, 32), RuntimeJournalID: journal.JournalID, RuntimeScope: journal.Scope[:]})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	verifier, err := journalbinding.NewVerifier(input.PublicKeys)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	binding, err := registry.LookupWorkerBootstrapBinding(ctx, claim.RequestID, verifier)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	plan, err := VerifyRuntimeLaunchPlan(registry.NodeIdentity(), verifier, binding, input.Request.BundleManifest)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: registry.NodeIdentity(), RegistryBindingDigest: sha256.Sum256(bindingWire), JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
+-	wire, err := modelruntime.EncodeBackendStartupRequest(request)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
+-	connection, _, _ := runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
+-	caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	defer func() { _ = caller.Close() }()
+-	observer, pods := startupPlanObserverFixture(t, plan, caller)
+-	ledgerPath := filepath.Join(root, "ledger")
+-	if err := os.Mkdir(ledgerPath, 0o700); err != nil {
+-		t.Fatal(err)
+-	}
+-	ledger, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), true)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	defer func() { _ = ledger.Close() }()
+-	config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
+-	result, err := ledger.ReserveRemote(ctx, config)
+-	if input.LoseResponse {
+-		if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
+-			t.Fatalf("lost response became result: %v", err)
++	workerPath := filepath.Join(root, "worker-journal")
++	for _, path := range []string{workerPath, manifest.Runtimes[0].InputRoot, manifest.Runtimes[0].OutputRoot} {
++		if err := os.MkdirAll(path, 0o700); err != nil {
++			t.Fatal(err)
+ 		}
+-	} else if err != nil || result.OperationID == uuid.Nil {
+-		t.Fatalf("real reservation: %v", err)
+-	}
+-	if _, err := ledger.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
+-		t.Fatalf("live retry: %v", err)
+-	}
+-	record, err := ledger.Inspect(ctx, journal.JournalID)
+-	if err != nil {
+-		t.Fatal(err)
+ 	}
+-	expected, err := remoteFleetRequest(record)
++	workerConfig, err := workerjournal.AssignmentConfig(manifest, stageworkeragent.AssignmentAdmissionConfig{
++		Directory: workerPath, Initialize: true, Validator: validator, DeferRuntimeRoutes: true,
++		MaxRecords: 32,
++	})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	history, err := registry.LookupRuntimeStartup(ctx, record.OperationID)
+-	if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
+-		t.Fatalf("database history differs from original Node record: %v", err)
+-	}
+-	if err := ledger.Close(); err != nil {
+-		t.Fatal(err)
+-	}
+-	recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	defer func() { _ = recovered.Close() }()
+-	if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
+-		t.Fatalf("reopen retry: %v", err)
+-	}
+-	if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
+-		t.Fatalf("reopen recreated pidfd: %v", err)
+-	}
+-	receipt, err := recovered.InspectReservation(ctx, journal.JournalID)
+-	if input.LoseResponse {
+-		if !errors.Is(err, os.ErrNotExist) {
+-			t.Fatalf("lost response created receipt: %v", err)
++	err = stageworkeragent.WithPreparedAssignmentJournal(ctx, workerConfig, func(worker stageworkeragent.AssignmentJournalStatus) error {
++		if !worker.Storage.Valid() || worker.SchemaVersion != 5 || worker.JournalID == uuid.Nil {
++			t.Fatal("invalid actual Worker journal identity")
+ 		}
+-	} else if err != nil || receipt != result {
+-		t.Fatalf("lost local receipt: %v", err)
+-	}
+-	recordWire, err := json.Marshal(record)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	report, err := json.Marshal(struct {
+-		Request    fleet.RuntimeStartupRequest
+-		Record     json.RawMessage
+-		HasReceipt bool
+-	}{expected, recordWire, !input.LoseResponse})
++		competing := workerConfig
++		competing.Initialize = false
++		if _, err := stageworkeragent.PrepareAssignmentJournal(ctx, competing); err == nil {
++			t.Fatal("Worker journal lock not held through startup")
++		}
++		_, err = registry.RecordWorkerBootstrapReceipt(ctx, fleet.WorkerBootstrapReceipt{RequestID: claim.RequestID, ActorIdentity: registry.ActorIdentity(), WorkerJournalID: worker.JournalID, WorkerScope: worker.Scope[:], RuntimeJournalID: journal.JournalID, RuntimeScope: journal.Scope[:]})
++		if err != nil {
++			t.Fatal(err)
++		}
++		verifier, err := journalbinding.NewVerifier(input.PublicKeys)
++		if err != nil {
++			t.Fatal(err)
++		}
++		binding, err := registry.LookupWorkerBootstrapBinding(ctx, claim.RequestID, verifier)
++		if err != nil {
++			t.Fatal(err)
++		}
++		plan, err := VerifyRuntimeLaunchPlan(registry.NodeIdentity(), verifier, binding, input.Request.BundleManifest)
++		if err != nil {
++			t.Fatal(err)
++		}
++		bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
++		if err != nil {
++			t.Fatal(err)
++		}
++		request := modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: registry.NodeIdentity(), RegistryBindingDigest: sha256.Sum256(bindingWire), JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
++		wire, err := modelruntime.EncodeBackendStartupRequest(request)
++		if err != nil {
++			t.Fatal(err)
++		}
++		callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
++		connection, _, _ := runtimeCallerConfiguredConnection(t, "protected-hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
++		caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
++		if input.MissingPtrace {
++			if err == nil || caller != nil {
++				if caller != nil {
++					_ = caller.Close()
++				}
++				t.Fatal("Node without CAP_SYS_PTRACE accepted protected Runtime")
++			}
++			fmt.Println("VELA_PROTECTED_CALLER_REJECTED_BEFORE_RESERVATION")
++			return nil
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = caller.Close() }()
++		observer, pods := startupPlanObserverFixture(t, plan, caller)
++		ledgerPath := filepath.Join(root, "ledger")
++		if err := os.Mkdir(ledgerPath, 0o700); err != nil {
++			t.Fatal(err)
++		}
++		ledger, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), true)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = ledger.Close() }()
++		config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
++		result, err := ledger.ReserveRemote(ctx, config)
++		if input.LoseResponse {
++			if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
++				t.Fatalf("lost response became result: %v", err)
++			}
++		} else if err != nil || result.OperationID == uuid.Nil {
++			t.Fatalf("real reservation: %v", err)
++		}
++		if _, err := ledger.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
++			t.Fatalf("live retry: %v", err)
++		}
++		record, err := ledger.Inspect(ctx, journal.JournalID)
++		if err != nil {
++			t.Fatal(err)
++		}
++		expected, err := remoteFleetRequest(record)
++		if err != nil {
++			t.Fatal(err)
++		}
++		history, err := registry.LookupRuntimeStartup(ctx, record.OperationID)
++		if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
++			t.Fatalf("database history differs from original Node record: %v", err)
++		}
++		if err := ledger.Close(); err != nil {
++			t.Fatal(err)
++		}
++		recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer func() { _ = recovered.Close() }()
++		if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
++			t.Fatalf("reopen retry: %v", err)
++		}
++		if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
++			t.Fatalf("reopen recreated pidfd: %v", err)
++		}
++		receipt, err := recovered.InspectReservation(ctx, journal.JournalID)
++		if input.LoseResponse {
++			if !errors.Is(err, os.ErrNotExist) {
++				t.Fatalf("lost response created receipt: %v", err)
++			}
++		} else if err != nil || receipt != result {
++			t.Fatalf("lost local receipt: %v", err)
++		}
++		recordWire, err := json.Marshal(record)
++		if err != nil {
++			t.Fatal(err)
++		}
++		report, err := json.Marshal(struct {
++			Request       fleet.RuntimeStartupRequest
++			Record        json.RawMessage
++			HasReceipt    bool
++			WorkerJournal stageworkeragent.AssignmentJournalStatus
++		}{expected, recordWire, !input.LoseResponse, worker})
++		if err != nil {
++			t.Fatal(err)
++		}
++		fmt.Printf("VELA_RESERVATION_REPORT=%s\n", report)
++		return nil
++	})
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	fmt.Printf("VELA_RESERVATION_REPORT=%s\n", report)
+ }
+diff --git a/internal/integration/runtime_startup_node_process_test.go b/internal/integration/runtime_startup_node_process_test.go
+index bafa2b5..2ce797b 100644
+--- a/internal/integration/runtime_startup_node_process_test.go
++++ b/internal/integration/runtime_startup_node_process_test.go
+@@ -21,6 +21,7 @@ import (
+ 
+ 	"github.com/vivym/vela/internal/fleet"
+ 	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/stageworkeragent"
+ 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+ 	"google.golang.org/grpc"
+ 	"google.golang.org/grpc/codes"
+@@ -39,8 +40,9 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
+ 	if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(image) {
+ 		t.Fatal("requires exact local image ID")
+ 	}
+-	for _, lose := range []bool{false, true} {
+-		t.Run(map[bool]string{false: "normal", true: "committed-response-lost"}[lose], func(t *testing.T) {
++	for _, scenario := range []string{"normal", "committed-response-lost", "missing-ptrace"} {
++		t.Run(scenario, func(t *testing.T) {
++			lose, missingPtrace := scenario == "committed-response-lost", scenario == "missing-ptrace"
+ 			database, service, request := newWorkerBootstrapFixture(t)
+ 			seed := bytes.Repeat([]byte{27}, ed25519.SeedSize)
+ 			signer, err := journalbinding.NewSigner("registry", seed)
+@@ -89,7 +91,8 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
+ 				CA, Certificate, Key        []byte
+ 				PublicKeys                  map[string][]byte
+ 				LoseResponse                bool
+-			}{request, net.JoinHostPort("host.docker.internal", port), args["--fleet-server-name"], spiffe, read("--fleet-ca-file"), read("--client-cert-file"), read("--client-key-file"), map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)}, lose}
++				MissingPtrace               bool
++			}{request, net.JoinHostPort("host.docker.internal", port), args["--fleet-server-name"], spiffe, read("--fleet-ca-file"), read("--client-cert-file"), read("--client-key-file"), map[string][]byte{"registry": ed25519.NewKeyFromSeed(seed).Public().(ed25519.PublicKey)}, lose, missingPtrace}
+ 			wire, err := json.Marshal(input)
+ 			if err != nil {
+ 				t.Fatal(err)
+@@ -102,7 +105,14 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
+ 				defer cancel()
+ 				_ = exec.CommandContext(cleanup, "docker", "rm", "-f", name).Run()
+ 			})
+-			command := exec.CommandContext(ctx, "docker", "run", "--rm", "--pull", "never", "--name", name, "-i", "--add-host", "host.docker.internal:host-gateway", "--cap-add", "SYS_ADMIN", "--cap-add", "SYS_PTRACE", "--security-opt", "seccomp=unconfined", "--cpus", "4", "--memory", "4g", "--pids-limit", "256", "-e", "VELA_RUNTIME_STARTUP_FLEET_HELPER=1", image, "/nodeagent.test", "-test.run=^TestRuntimeStartupFleetProcessHelper$", "-test.v", "-test.timeout=45s")
++			dockerArgs := []string{"run", "--rm", "--pull", "never", "--name", name, "-i", "--add-host", "host.docker.internal:host-gateway", "--cap-add", "SYS_ADMIN", "--security-opt", "seccomp=unconfined", "--cpus", "4", "--memory", "4g", "--pids-limit", "256", "-e", "VELA_RUNTIME_STARTUP_FLEET_HELPER=1"}
++			if !missingPtrace {
++				dockerArgs = append(dockerArgs, "--cap-add", "SYS_PTRACE")
++			} else {
++				dockerArgs = append(dockerArgs, "--cap-drop", "SYS_PTRACE")
++			}
++			dockerArgs = append(dockerArgs, image, "/nodeagent.test", "-test.run=^TestRuntimeStartupFleetProcessHelper$", "-test.v", "-test.timeout=45s")
++			command := exec.CommandContext(ctx, "docker", dockerArgs...)
+ 			command.Stdin = bytes.NewReader(wire)
+ 			output, err := command.CombinedOutput()
+ 			if err != nil {
+@@ -112,10 +122,18 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
+ 				t.Fatalf("missing native test success: %s", output)
+ 			}
+ 			t.Logf("native process evidence (no TLS private keys):\n%s", output)
++			if missingPtrace {
++				var count int
++				if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 || calls.Load() != 0 || !bytes.Contains(output, []byte("VELA_PROTECTED_CALLER_REJECTED_BEFORE_RESERVATION")) {
++					t.Fatalf("missing Node capability reached reservation: rows=%d calls=%d err=%v", count, calls.Load(), err)
++				}
++				return
++			}
+ 			var report struct {
+-				Request    fleet.RuntimeStartupRequest
+-				Record     json.RawMessage
+-				HasReceipt bool
++				Request       fleet.RuntimeStartupRequest
++				Record        json.RawMessage
++				HasReceipt    bool
++				WorkerJournal stageworkeragent.AssignmentJournalStatus
+ 			}
+ 			found := false
+ 			for _, line := range strings.Split(string(output), "\n") {
+@@ -132,6 +150,10 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
+ 			if !found || report.HasReceipt == lose || calls.Load() != 1 || tlsVersion.Load() != tls.VersionTLS13 || dropped.Load() != lose {
+ 				t.Fatalf("Node result/call count/TLS/loss mismatch: found=%v calls=%d TLS=%x", found, calls.Load(), tlsVersion.Load())
+ 			}
++			bootstrapHistory, err := clients[0].bootstrap.LookupWorkerBootstrap(t.Context(), request.RequestID)
++			if err != nil || bootstrapHistory.Receipt == nil || bootstrapHistory.Receipt.WorkerJournalID != report.WorkerJournal.JournalID || !bytes.Equal(bootstrapHistory.Receipt.WorkerScope, report.WorkerJournal.Scope[:]) || !report.WorkerJournal.Storage.Valid() || report.WorkerJournal.SchemaVersion != 5 {
++				t.Fatalf("Registry pair is not bound to actual held Worker journal: %v", err)
++			}
+ 			digest := sha256.Sum256(report.Record)
+ 			if !bytes.Equal(digest[:], report.Request.OwnerObservationDigest) {
+ 				t.Fatal("database owner digest does not bind the full original Node record")
