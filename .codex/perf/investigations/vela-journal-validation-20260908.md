@@ -45,3 +45,10 @@ The 32-record retention limit is already explicit; safe reclamation and sustaine
 ## Decision after profiling
 
 One production change to test: search validated retained history newest-first while still verifying every examined envelope and the selected exact identity. Full pre-publication history validation stays unchanged. Older-history lookup remains linear. Extend the unprofiled 581d832 baseline to three serial runs, using the already captured same-source run plus two new runs; aggregate median. No performance conclusion from the diagnostic profile alone.
+## Repeated baseline
+
+User quote: 请彻底完善并验证 vela，可以先 mock 验证，暂时不用 gpu 验证。要全面的验证 vela 的正确性、科学性。如果发现更优的架构，也要去优化架构。
+
+Three successful sequential 32-Job runs of source af09f3ee607cbfce15d960e3fa4e5bec15cd8ab6094fdcc998454dc3325373c9, median aggregation. Runs: 97.072320, 96.634700, 100.898655 wave seconds. Median 97.07232 seconds. Same binary hashes and workload/toolchain checked by hack/summarize-cpu-mock-perf.py; duplicate/mixed inputs are rejected. Prior profile run excluded. Raw receipts and per-log hashes: .codex/perf/baselines/journal-lookup-baseline.json.
+
+Decision: proceed with newest-first retained-execution lookup only. No other performance changes; require oldest/middle/latest and same-sequence conflict regression plus three unprofiled serial campaigns.

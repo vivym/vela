@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "vela-journal-validation-20260908",
   "status": "in_progress",
-  "phase": "baseline",
+  "phase": "optimization",
   "createdAt": "2026-09-08T07:18:36.493Z",
-  "updatedAt": "2026-09-08T07:22:02.063Z",
+  "updatedAt": "2026-09-08T07:25:53.529Z",
   "scenario": {
     "description": "Profile the remaining CPU-mock journal validation cost at 32 retained records; preserve complete validation.",
     "metrics": [
@@ -15,7 +15,9 @@
     "successCriteria": "Identify measured hotspots and validate any one-at-a-time optimization without weakening journal semantics.",
     "scenarios": []
   },
-  "baselines": [],
+  "baselines": [
+    ".codex/perf/baselines/journal-lookup-baseline.json"
+  ],
   "hypotheses": [],
   "codePaths": [],
   "experiments": [],
@@ -43,5 +45,5 @@
     }
   ],
   "decision": null,
-  "_version": 2
+  "_version": 3
 }
