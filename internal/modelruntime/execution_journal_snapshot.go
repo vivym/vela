@@ -86,7 +86,7 @@ func VerifyExecutionJournalSnapshot(document, lockDocument []byte, manifest Laun
 	if err != nil {
 		return ExecutionJournalSnapshot{}, err
 	}
-	if state.SchemaVersion != 7 || state.ID != expected.JournalID || state.Scope != expected.Scope ||
+	if state.SchemaVersion != 8 || state.ID != expected.JournalID || state.Scope != expected.Scope ||
 		state.Root != executionFileIdentity(expected.Storage.Root) || state.Lock != executionFileIdentity(expected.Storage.Lock) {
 		return ExecutionJournalSnapshot{}, errors.New("execution journal snapshot ownership or schema changed")
 	}
@@ -149,6 +149,8 @@ func (journal *executionJournal) status() ExecutionJournalStatus {
 	result := ExecutionJournalStatus{Storage: journalbinding.StorageIdentity{Root: journalbinding.FileIdentity(state.Root), Lock: journalbinding.FileIdentity(state.Lock)},
 		JournalID: state.ID, SchemaVersion: state.SchemaVersion, Scope: state.Scope, Highest: state.Highest, Floor: state.Floor,
 		RetainedExecutions: len(state.Executions), BackendLifecycle: *state.BackendLifecycle}
+	result.WorkerReuseDenied = journal.workerHealthDenied()
+	result.HealthHistoryUnknown = state.HealthHistoryUnknown
 	for _, record := range state.Executions {
 		if record.Drain == nil {
 			result.PendingExecutions++

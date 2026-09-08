@@ -3,8 +3,15 @@
 Date: 2026-09-05
 Baseline: `1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2`
 Work branch: `feature/vela-mock-hardening`
-Current local migration: `90`
+Current local migration: `94`
 Status: In progress
+
+Latest local checkpoint (2026-09-08): Runtime journal schema 8 retains explicit
+Worker health across drain and replacement. The
+[health durability report](worker-health-durability-evidence-2026-09-08.md)
+records current verification, migration constraints and the remaining custody,
+replacement, retirement and complete CPU/open-loop campaign work. Earlier
+measurements below remain bound to their original revisions.
 
 ## Objective and evidence boundary
 

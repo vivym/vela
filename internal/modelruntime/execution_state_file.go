@@ -48,6 +48,7 @@ type executionDiskState struct {
 	NonAdmissions         []executionDiskNonAdmission `json:"non_admissions,omitempty"`
 	TerminalNonAdmissions []terminalDiskNonAdmission  `json:"terminal_non_admissions,omitempty"`
 	BackendLifecycle      *BackendLifecycleStatus     `json:"backend_lifecycle,omitempty"`
+	HealthHistoryUnknown  bool                        `json:"health_history_unknown,omitempty"`
 }
 
 type retainedExecution struct {
@@ -55,6 +56,7 @@ type retainedExecution struct {
 	Drain      *executionDiskDrain      `json:"drain"`
 	Candidates *executionDiskCandidates `json:"candidates,omitempty"`
 	Seal       *executionDiskSeal       `json:"seal,omitempty"`
+	Health     *executionDiskHealth     `json:"health,omitempty"`
 }
 
 type executionDiskCandidates struct {
@@ -86,7 +88,7 @@ type executionStateFile struct {
 
 func openExecutionState(config ExecutionFloorStateConfig, journalScope executionJournalScope) (*executionStateFile, error) {
 	selected := 0
-	for _, enabled := range []bool{config.Initialize, config.UpgradeV2, config.UpgradeV3, config.UpgradeV4, config.UpgradeV5, config.UpgradeV6} {
+	for _, enabled := range []bool{config.Initialize, config.UpgradeV2, config.UpgradeV3, config.UpgradeV4, config.UpgradeV5, config.UpgradeV6, config.UpgradeV7} {
 		if enabled {
 			selected++
 		}
@@ -139,7 +141,7 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		if err := executionStateDirectoryEmpty(root); err != nil {
 			return nil, err
 		}
-		state := executionDiskState{SchemaVersion: 7, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo),
+		state := executionDiskState{SchemaVersion: 8, ID: uuid.New(), Scope: scope, Root: executionIdentity(info), Lock: executionIdentity(store.lockInfo),
 			BackendLifecycle: &BackendLifecycleStatus{State: BackendLifecycleUnstarted}}
 		store.lockID = state.ID
 		if _, err := store.lock.WriteString(state.ID.String()); err != nil {
@@ -166,9 +168,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
-	upgrade := !config.Initialize && (config.UpgradeV6 && store.state.SchemaVersion == 6 || config.UpgradeV5 && store.state.SchemaVersion == 5 || config.UpgradeV4 && store.state.SchemaVersion == 4 || len(store.state.TerminalNonAdmissions) == 0 &&
+	upgrade := !config.Initialize && (config.UpgradeV7 && store.state.SchemaVersion == 7 || config.UpgradeV6 && store.state.SchemaVersion == 6 || config.UpgradeV5 && store.state.SchemaVersion == 5 || config.UpgradeV4 && store.state.SchemaVersion == 4 || len(store.state.TerminalNonAdmissions) == 0 &&
 		(config.UpgradeV2 && store.state.SchemaVersion == 2 && len(store.state.NonAdmissions) == 0 || config.UpgradeV3 && store.state.SchemaVersion == 3))
-	if (store.state.SchemaVersion != 7 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
+	if (store.state.SchemaVersion != 8 && !upgrade) || store.state.ID == uuid.Nil || store.state.ID != store.lockID || store.state.Scope != scope ||
 		store.state.Root != executionIdentity(info) || store.state.Lock != executionIdentity(store.lockInfo) {
 		return nil, errors.New("ModelRuntime execution state ownership or schema changed")
 	}
@@ -191,7 +193,10 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 	}
 	if upgrade {
 		next := store.state
-		next.SchemaVersion = 7
+		next.SchemaVersion = 8
+		// Old Status responses carried no durable health evidence. Drained history
+		// therefore cannot be migrated into an implicit healthy Worker.
+		next.HealthHistoryUnknown = len(next.Executions) != 0
 		if store.state.SchemaVersion < 6 {
 			next.BackendLifecycle = &BackendLifecycleStatus{State: BackendLifecycleLegacyUnknown}
 		}
@@ -205,6 +210,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 }
 
 func (store *executionJournal) validateProofs() error {
+	if store.state.HealthHistoryUnknown && (store.state.SchemaVersion < 8 || len(store.state.Executions) == 0) {
+		return errors.New("unknown Worker health history requires retained current-schema executions")
+	}
 	if err := store.validateBackendLifecycle(); err != nil {
 		return err
 	}

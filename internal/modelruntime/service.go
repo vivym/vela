@@ -257,7 +257,7 @@ func (service *Service) PrepareStage(
 	replayed, release, err := service.executionAdmission().prepare(service, &verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
-		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) || errors.Is(err, ErrBackendIncarnationUnproven) {
+		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) || errors.Is(err, ErrBackendIncarnationUnproven) || errors.Is(err, ErrWorkerHealthUnproven) {
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		}
 		response.Detail = boundedDetail(err.Error())
@@ -580,15 +580,7 @@ func (service *Service) Status(
 	response.LocalReceiptDigest = append([]byte(nil), status.LocalReceiptDigest...)
 	response.Detail = boundedDetail(status.Detail)
 	if status.FailureEvidence != nil {
-		response.FailureEvidence = &velav1.ModelRuntimeFailureEvidence{
-			FailureClass:          status.FailureEvidence.FailureClass,
-			FailureFingerprint:    append([]byte(nil), status.FailureEvidence.FailureFingerprint...),
-			Detail:                status.FailureEvidence.Detail,
-			WorkerReusable:        status.FailureEvidence.WorkerReusable,
-			ConsumedResourceUnits: status.FailureEvidence.ConsumedResourceUnits,
-			FailedAt:              timestamppb.New(status.FailureEvidence.FailedAt.UTC()),
-			RetryAt:               timestamppb.New(status.FailureEvidence.RetryAt.UTC()),
-		}
+		response.FailureEvidence = failureEvidenceProto(status.FailureEvidence)
 	}
 	return response, nil
 }

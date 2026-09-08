@@ -250,6 +250,9 @@ func (store *executionJournal) validateRetainedExecutions() error {
 		if err := store.validateSeal(record); err != nil {
 			return err
 		}
+		if err := store.validateHealth(record); err != nil {
+			return err
+		}
 		if record.Candidates != nil {
 			if store.state.SchemaVersion < 5 {
 				return errors.New("legacy execution history cannot contain renewal candidates")

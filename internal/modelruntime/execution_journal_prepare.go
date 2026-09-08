@@ -13,15 +13,17 @@ import (
 // ExecutionJournalStatus describes one completed offline preparation. It grants
 // no execution or retirement authority and does not retain the lifetime lock.
 type ExecutionJournalStatus struct {
-	Storage            journalbinding.StorageIdentity `json:"storage"`
-	JournalID          uuid.UUID                      `json:"journal_id"`
-	SchemaVersion      int                            `json:"schema_version"`
-	Scope              [sha256.Size]byte              `json:"scope"`
-	Highest            int64                          `json:"highest"`
-	Floor              int64                          `json:"floor"`
-	RetainedExecutions int                            `json:"retained_executions"`
-	PendingExecutions  int                            `json:"pending_executions"`
-	BackendLifecycle   BackendLifecycleStatus         `json:"backend_lifecycle"`
+	Storage              journalbinding.StorageIdentity `json:"storage"`
+	JournalID            uuid.UUID                      `json:"journal_id"`
+	SchemaVersion        int                            `json:"schema_version"`
+	Scope                [sha256.Size]byte              `json:"scope"`
+	Highest              int64                          `json:"highest"`
+	Floor                int64                          `json:"floor"`
+	RetainedExecutions   int                            `json:"retained_executions"`
+	PendingExecutions    int                            `json:"pending_executions"`
+	BackendLifecycle     BackendLifecycleStatus         `json:"backend_lifecycle"`
+	WorkerReuseDenied    bool                           `json:"worker_reuse_denied"`
+	HealthHistoryUnknown bool                           `json:"health_history_unknown"`
 }
 
 // PrepareExecutionJournal validates trusted launch ownership and opens the

@@ -127,9 +127,9 @@ func TestExecutionJournalSnapshotRejectsUnboundAndMalformedDocuments(t *testing.
 			case "truncated":
 				wire = wire[:len(wire)/2]
 			case "duplicate":
-				wire = bytes.Replace(wire, []byte(`"schema_version":7`), []byte(`"schema_version":7,"schema_version":7`), 1)
+				wire = bytes.Replace(wire, []byte(`"schema_version":8`), []byte(`"schema_version":8,"schema_version":8`), 1)
 			case "unknown":
-				wire = bytes.Replace(wire, []byte(`"schema_version":7`), []byte(`"schema_version":7,"unexpected":true`), 1)
+				wire = bytes.Replace(wire, []byte(`"schema_version":8`), []byte(`"schema_version":8,"unexpected":true`), 1)
 			case "noncanonical":
 				wire = append(wire, ' ')
 			case "trailing":

@@ -175,7 +175,7 @@ func assertRecordedBackendLifecycle(t *testing.T, config modelruntime.RuntimeSer
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.SchemaVersion != 7 || lifecycle == nil || lifecycle.State != modelruntime.BackendLifecycleUnresolved || lifecycle.IncarnationID == uuid.Nil ||
+	if state.SchemaVersion != 8 || lifecycle == nil || lifecycle.State != modelruntime.BackendLifecycleUnresolved || lifecycle.IncarnationID == uuid.Nil ||
 		lifecycle.LaunchDigest != sha256.Sum256(wire) || lifecycle.RecordedAt.IsZero() || lifecycle.RecordedAt.After(time.Now()) {
 		t.Fatalf("factory entered without its durable startup intent: %+v", lifecycle)
 	}

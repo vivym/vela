@@ -46,6 +46,9 @@ type ExecutionFloorStateConfig struct {
 	// UpgradeV6 preserves lifecycle and execution history. Missing old receipts
 	// remain unknown; upgrading cannot recreate a lost sealed output receipt.
 	UpgradeV6 bool
+	// UpgradeV7 preserves receipts and lifecycle, marking legacy execution health
+	// unknown. It grants neither health clearance nor backend replacement.
+	UpgradeV7 bool
 }
 
 type executionFloorVerifier struct {

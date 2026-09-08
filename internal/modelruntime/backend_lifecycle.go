@@ -59,6 +59,9 @@ func (store *executionJournal) validateBackendLifecycle() error {
 // intent precedes the first factory, covering partial AUX startup and crashes.
 // Failure or normal Close never clears it; this process cannot attest its exit.
 func (store *executionStateFile) recordBackendStartup(manifest LaunchManifest) error {
+	if err := store.workerHealthError(); err != nil {
+		return err
+	}
 	if store.state.BackendLifecycle == nil || store.state.BackendLifecycle.State != BackendLifecycleUnstarted || store.recoveryDrain {
 		return ErrBackendIncarnationUnproven
 	}
@@ -79,5 +82,5 @@ func (store *executionStateFile) recoveryError() error {
 	if store.recoveryBackend {
 		return ErrBackendIncarnationUnproven
 	}
-	return nil
+	return store.workerHealthError()
 }

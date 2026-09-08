@@ -808,6 +808,7 @@ type durableExecutionStateDocument struct {
 	NonAdmissions         json.RawMessage                      `json:"non_admissions,omitempty"`
 	TerminalNonAdmissions json.RawMessage                      `json:"terminal_non_admissions,omitempty"`
 	BackendLifecycle      *modelruntime.BackendLifecycleStatus `json:"backend_lifecycle,omitempty"`
+	HealthHistoryUnknown  bool                                 `json:"health_history_unknown,omitempty"`
 }
 
 func readDurableExecutionState(t *testing.T, directory string) durableExecutionStateDocument {

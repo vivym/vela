@@ -51,6 +51,12 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
 	if err := service.confirmBackendAuthority(ctx, verified); err != nil {
 		return err
 	}
+	admission := service.executionAdmission()
+	admission.mu.Lock()
+	defer admission.mu.Unlock()
+	if err := admission.checkStateLocked(); err != nil {
+		return err
+	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active == nil || service.active.verified.Digest != verified.Digest {
@@ -58,6 +64,11 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
 	}
 	switch status.State {
 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
+		if admission.store != nil {
+			if err := admission.store.saveHealth(verified, status.FailureEvidence); err != nil {
+				return admission.failStateLocked(err)
+			}
+		}
 		service.active.workerReuseDenied = !status.FailureEvidence.WorkerReusable
 	}
 	return nil
