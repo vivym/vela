@@ -51,34 +51,14 @@ func WithPreparedExecutionJournal(ctx context.Context, manifest LaunchManifest, 
 	if err := context.Cause(ctx); err != nil {
 		return err
 	}
-	bindings, err := manifest.RuntimeBindings()
+	scope, err := executionScopeForManifest(manifest, validator)
 	if err != nil {
 		return err
 	}
-	floor, err := manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, validator)
-	if err != nil {
-		return err
-	}
-	verifier, err := newExecutionFloorVerifier(*floor, bindings[0])
-	if err != nil {
-		return err
-	}
-	store, err := openExecutionState(config, executionJournalScope{binding: cloneBinding(bindings[0]), floor: verifier})
+	store, err := openExecutionState(config, scope)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, store.check(), store.close(), context.Cause(ctx)) }()
-	result := ExecutionJournalStatus{
-		Storage: journalbinding.StorageIdentity{Root: journalbinding.FileIdentity(executionIdentity(store.rootInfo)),
-			Lock: journalbinding.FileIdentity(executionIdentity(store.lockInfo))},
-		JournalID: store.state.ID, SchemaVersion: store.state.SchemaVersion, Scope: store.state.Scope,
-		Highest: store.state.Highest, Floor: store.state.Floor, RetainedExecutions: len(store.state.Executions),
-		BackendLifecycle: *store.state.BackendLifecycle,
-	}
-	for _, record := range store.state.Executions {
-		if record.Drain == nil {
-			result.PendingExecutions++
-		}
-	}
-	return inspect(result)
+	return inspect(store.status())
 }

@@ -28,7 +28,7 @@ type BackendLifecycleStatus struct {
 	RecordedAt    time.Time             `json:"recorded_at"`
 }
 
-func (store *executionStateFile) validateBackendLifecycle() error {
+func (store *executionJournal) validateBackendLifecycle() error {
 	lifecycle := store.state.BackendLifecycle
 	if store.state.SchemaVersion < 6 {
 		if lifecycle != nil {

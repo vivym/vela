@@ -177,7 +177,7 @@ func (store *executionStateFile) terminalNonAdmissionCheckpoint(disposition *vel
 	return nil, nil
 }
 
-func (store *executionStateFile) retainedTerminalDisposition(wire []byte) (stageauthority.VerifiedTerminalDisposition, error) {
+func (store *executionJournal) retainedTerminalDisposition(wire []byte) (stageauthority.VerifiedTerminalDisposition, error) {
 	if len(wire) == 0 || len(wire) > maxExecutionWireBytes {
 		return stageauthority.VerifiedTerminalDisposition{}, ErrExecutionNonAdmissionUnproven
 	}
@@ -196,7 +196,7 @@ func (store *executionStateFile) retainedTerminalDisposition(wire []byte) (stage
 	return verified, store.scope.matchExecutionFloorScope(verified.Disposition)
 }
 
-func (store *executionStateFile) requireUnadmittedSequence(sequence int64) error {
+func (store *executionJournal) requireUnadmittedSequence(sequence int64) error {
 	for _, record := range store.state.Executions {
 		original, err := store.retainedAuthority(record.Authority)
 		if err != nil {
@@ -209,7 +209,7 @@ func (store *executionStateFile) requireUnadmittedSequence(sequence int64) error
 	return nil
 }
 
-func (store *executionStateFile) validateTerminalNonAdmissions() error {
+func (store *executionJournal) validateTerminalNonAdmissions() error {
 	if len(store.state.TerminalNonAdmissions) > maxNonAdmissionCheckpoints {
 		return ErrExecutionNonAdmissionHistoryFull
 	}
@@ -244,7 +244,7 @@ func (store *executionStateFile) validateTerminalNonAdmissions() error {
 	return nil
 }
 
-func (store *executionStateFile) matchTerminalNonAdmissionAuthority(authority *velav1.StageAuthority) error {
+func (store *executionJournal) matchTerminalNonAdmissionAuthority(authority *velav1.StageAuthority) error {
 	for _, record := range store.state.TerminalNonAdmissions {
 		if record.ExecutionSequence == authority.GetExecutionSequence() {
 			original, err := store.retainedTerminalDisposition(record.Disposition)

@@ -177,6 +177,30 @@ func TestRuntimeStartupLedgerBeforeActualFactory(t *testing.T) {
 				t.Fatalf("Runtime journal not locked during registration: %v", lockErr)
 			}
 			assertRuntimeFixtureFileLock(t, caller, lockIdentity)
+			// Exercise the same complete semantic verifier as Runtime recovery.
+			// These paths and original identities are independently known fixture
+			// data; this is not the missing production provenance/activation issuer.
+			document, err := os.ReadFile(filepath.Join(runtimeRoot, "state", "execution-admission.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			lockDocument, err := os.ReadFile(filepath.Join(runtimeRoot, "state", "execution-admission.lock"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			validator, err := stageauthority.NewValidator(map[string][]byte{"authority": make([]byte, 32)}, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := modelruntime.VerifyExecutionJournalSnapshot(document, lockDocument, fixture.launch, validator,
+				modelruntime.ExecutionJournalIdentity{JournalID: journal.JournalID, Scope: journal.Scope, Storage: journal.Storage})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
+			if err != nil || snapshot.MatchStartup(request) != nil {
+				t.Fatalf("Node fixture did not match the complete current startup journal: %v", err)
+			}
 			if mode == "lost-response" || mode == "record-error" {
 				_ = caller.Close()
 				_ = connection.Close()

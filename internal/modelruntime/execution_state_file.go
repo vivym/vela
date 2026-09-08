@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
-	"github.com/vivym/vela/internal/strictjson"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -70,7 +69,7 @@ type executionDiskDrain struct {
 
 // The enclosing admission mutex owns this store and its lifetime lock.
 type executionStateFile struct {
-	scope           executionJournalScope
+	executionJournal
 	path            string
 	root            *os.Root
 	rootInfo        os.FileInfo
@@ -79,7 +78,6 @@ type executionStateFile struct {
 	lockID          uuid.UUID
 	stateInfo       os.FileInfo
 	stateDigest     [sha256.Size]byte
-	state           executionDiskState
 	recoveryDrain   bool
 	recoveryBackend bool
 	syncDirectory   func(*os.Root) error
@@ -106,7 +104,7 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 	if err != nil {
 		return nil, err
 	}
-	store := &executionStateFile{scope: journalScope, path: config.Directory, root: root, rootInfo: info, syncDirectory: syncExecutionStateDirectory}
+	store := &executionStateFile{executionJournal: executionJournal{scope: journalScope}, path: config.Directory, root: root, rootInfo: info, syncDirectory: syncExecutionStateDirectory}
 	success := false
 	defer func() {
 		if !success {
@@ -161,20 +159,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 		if err != nil {
 			return nil, fmt.Errorf("ModelRuntime execution state requires recovery: %w", err)
 		}
-		if err := strictjson.RejectDuplicateKeys(document); err != nil {
+		store.state, err = decodeExecutionJournal(document)
+		if err != nil {
 			return nil, err
-		}
-		decoder := json.NewDecoder(bytes.NewReader(document))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&store.state); err != nil {
-			return nil, err
-		}
-		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return nil, errors.New("ModelRuntime execution state has trailing data")
-		}
-		canonical, err := json.Marshal(store.state)
-		if err != nil || !bytes.Equal(canonical, document) {
-			return nil, errors.New("ModelRuntime execution state is not canonical")
 		}
 		store.stateInfo, store.stateDigest = stateInfo, sha256.Sum256(document)
 	}
@@ -214,7 +201,7 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 	return store, nil
 }
 
-func (store *executionStateFile) validateProofs() error {
+func (store *executionJournal) validateProofs() error {
 	if err := store.validateBackendLifecycle(); err != nil {
 		return err
 	}

@@ -213,7 +213,7 @@ func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authori
 	return nil, nil
 }
 
-func (store *executionStateFile) retainedAuthority(wire []byte) (stageauthority.Verified, error) {
+func (store *executionJournal) retainedAuthority(wire []byte) (stageauthority.Verified, error) {
 	if len(wire) == 0 || len(wire) > maxExecutionWireBytes {
 		return stageauthority.Verified{}, errors.New("retained execution authority exceeds its bound")
 	}
@@ -232,7 +232,7 @@ func (store *executionStateFile) retainedAuthority(wire []byte) (stageauthority.
 	return verified, store.scope.matchRetainedExecutionScope(verified.Authority)
 }
 
-func (store *executionStateFile) validateRetainedExecutions() error {
+func (store *executionJournal) validateRetainedExecutions() error {
 	if len(store.state.Executions) > maxRetainedExecutions || (store.state.Highest == 0) != (len(store.state.Executions) == 0) {
 		return errors.New("retained execution history is incomplete or exceeds its bound")
 	}

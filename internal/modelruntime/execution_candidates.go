@@ -70,7 +70,7 @@ func (supervisor *Supervisor) InspectRetainedAllocationAuthorities(ctx context.C
 	return nil, nil
 }
 
-func (store *executionStateFile) validateCandidates(original stageauthority.Verified, candidates *executionDiskCandidates) error {
+func (store *executionJournal) validateCandidates(original stageauthority.Verified, candidates *executionDiskCandidates) error {
 	accepted, err := store.retainedAuthority(candidates.Accepted)
 	if err != nil {
 		return err

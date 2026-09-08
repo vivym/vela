@@ -874,6 +874,13 @@ partial handovers and changed journals remain rejected. Eleven mandatory Linux
 race tests pass without skips. This does not authorize startup, repair ownership,
 validate evolved journals or replace current Fleet activation. No Production
 Gate changes.
+The [Runtime journal snapshot verifier](runtime-journal-snapshot-evidence-2026-09-08.md)
+now separates complete semantic validation from file recovery. The live file
+owner and pure observer share canonical decoding, signed history, renewal,
+drain, non-admission and lifecycle checks. Actual startup tests verify supplied
+bytes while Runtime retains its lock, and the Node exchange fixture checks the
+complete snapshot before mock decisions. Snapshot validity is not storage
+provenance, continuous ownership, current activation or production permission.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

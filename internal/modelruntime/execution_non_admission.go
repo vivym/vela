@@ -184,7 +184,7 @@ func (store *executionStateFile) nonAdmissionCheckpoint(query stageauthority.Ver
 	return nil, nil
 }
 
-func (store *executionStateFile) validateNonAdmissions() error {
+func (store *executionJournal) validateNonAdmissions() error {
 	if len(store.state.NonAdmissions) > maxNonAdmissionCheckpoints {
 		return ErrExecutionNonAdmissionHistoryFull
 	}
