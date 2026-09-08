@@ -21,6 +21,7 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/runtimechannel"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
@@ -39,6 +40,11 @@ type journalEndpointControl struct {
 	Read                  bool
 	InteractiveSupervisor bool
 	SupervisorAction      string
+	RuntimeSocket         string
+	WorkerSocket          string
+	WorkerAction          string
+	PauseBefore           string
+	Floor                 []byte
 }
 
 type journalEndpointReport struct {
@@ -51,6 +57,11 @@ type journalEndpointReport struct {
 	SupervisorReady     bool
 	Decision            velav1.ModelRuntimeCommandDecision
 	StartCalls          int64
+	PrepareCalls        int64
+	CancelCalls         int64
+	Barrier             *stageworkeragent.StartBarrierResult
+	PausedBefore        string
+	Checkpoint          bool
 }
 
 type journalEndpointChild struct {
@@ -140,6 +151,10 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 			}
 			continue
 		}
+		if request.WorkerSocket != "" {
+			journalEndpointRunWorker(t, socket, request, decoder, encoder)
+			continue
+		}
 		receipt, err := modelruntime.ExchangeJournalCommand(t.Context(), socket, request.Identity, request.Command)
 		report := journalEndpointReport{Receipt: receipt}
 		if err != nil {
@@ -178,7 +193,15 @@ func journalEndpointStart(t *testing.T, listener *net.UnixListener, root string)
 	_ = writer.Close()
 	done := make(chan struct{})
 	go func() { _ = command.Wait(); close(done) }()
-	t.Cleanup(func() { _ = input.Close(); _ = command.Process.Kill(); <-done; _ = reader.Close() })
+	t.Cleanup(func() {
+		_ = input.Close()
+		_ = command.Process.Kill()
+		<-done
+		_ = reader.Close()
+		if t.Failed() && output.Len() != 0 {
+			t.Logf("journal child %d output: %s", command.Process.Pid, output.String())
+		}
+	})
 	connection := journalEndpointAccept(t, listener)
 	defer func() { _ = connection.Close() }()
 	caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
@@ -467,7 +490,19 @@ func journalEndpointSpec() *velav1.StageExecutionSpec {
 
 type journalEndpointBackend struct {
 	*modelruntime.FakeRuntime
-	startCalls atomic.Int64
+	startCalls   atomic.Int64
+	prepareCalls atomic.Int64
+	cancelCalls  atomic.Int64
+}
+
+func (backend *journalEndpointBackend) Prepare(ctx context.Context, authority stageauthority.Verified, spec *velav1.StageExecutionSpec) error {
+	backend.prepareCalls.Add(1)
+	return backend.FakeRuntime.Prepare(ctx, authority, spec)
+}
+
+func (backend *journalEndpointBackend) Cancel(ctx context.Context, authority stageauthority.Verified, reason velav1.ModelRuntimeCancelReason) error {
+	backend.cancelCalls.Add(1)
+	return backend.FakeRuntime.Cancel(ctx, authority, reason)
 }
 
 func (backend *journalEndpointBackend) Start(ctx context.Context, authority stageauthority.Verified) error {
@@ -505,6 +540,10 @@ func journalEndpointRunSupervisor(t *testing.T, socket string, request journalEn
 		t.Fatal(err)
 	}
 	defer supervisor.Close()
+	if request.RuntimeSocket != "" {
+		journalEndpointServeSupervisor(t, supervisor, backends[0], request.RuntimeSocket, decoder, encoder)
+		return
+	}
 	var authority velav1.StageAuthority
 	if err := proto.Unmarshal(request.Authority, &authority); err != nil {
 		t.Fatal(err)

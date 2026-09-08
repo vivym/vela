@@ -19,6 +19,11 @@ with native Supervisor progress after a measured finite overload burst.
 The subsequent [overload recovery correction](journal-overload-recovery-evidence-2026-09-08.md)
 keeps an already prepared Supervisor usable after a failed pure read, while
 requiring full owner revalidation and preserving uncertain-mutation fences.
+The subsequent [Worker barrier validation](journal-worker-barrier-evidence-2026-09-08.md)
+exercises actual Worker-to-Runtime gRPC in independent non-root processes during
+Prepare/Start overload. Old-execution non-admission or stopped/drain evidence
+precedes a useful subsequent execution, under explicit single-member test
+orchestration. Cancellation acknowledgement alone never restores capacity.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

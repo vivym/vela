@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "444b205748398dee5df3e097f68b3fa6e7c6422e",
+  "source_tree_sha256": "556b7aa9a0cdb0f9a40865c8cb28a89bce738ce16a46dca3b881f39dfd14eafa",
+  "source_file_count": 952,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "native_runner_sha256": "daf2836517f72c93d47508beb7aeb3d3d4b11b05a6c608e94694dcfc06568bbf",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/initial-count-assertion/node-startup.log",
+      "bytes": 24116,
+      "sha256": "2de00c055e4db63740602a9d3a821f80cb634c73f3acb6d21c29f0ba7f997adc"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/initial-count-assertion/source-patch.sha256",
+      "bytes": 130,
+      "sha256": "6503ba5724d08bf5a94fe14f992ed9ef4fef1628ff329158f619c6783db32143"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/initial-count-assertion/source.patch",
+      "bytes": 17305,
+      "sha256": "7080515bd146da794bdc1ce7bd407ae8fa4c73c6c5570b778f8bb92b152c5843"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/initial-count-assertion/source.txt",
+      "bytes": 153,
+      "sha256": "feef541464c6764036bb9f4b4852dc66c89db868c5a65af3e32bceb3d4ffb82c"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/linux-cross.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/binaries.sha256",
+      "bytes": 305,
+      "sha256": "afe399cc4ca53f6cb5e4110a74933779e7a7e53e2b4b50f6c4a39c9b8b8beeb7"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "ca526801ec922630b4390374cfbc59bd2f833772b5b739a6ab298e236a3dbe4b"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "4616f291d55edfa0881935315bc71d252491a9e156e7b978948879e415ade24d"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/image.txt",
+      "bytes": 72,
+      "sha256": "cb5fcf0909dc9fd19d24853b7d411fd4c5d3e731e71e34a0eef4cca4af7b667c"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/modelruntime.log",
+      "bytes": 37325,
+      "sha256": "3e2c7e81e16b10bb89234b1b6a075c3e3d930e9a806363c3a299d927d9813939"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/node-startup.log",
+      "bytes": 23320,
+      "sha256": "a37fda126ce2306a0bb04bd15044a9af307d679f9b4e4d554142d7be74b731ea"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/source-patch.sha256",
+      "bytes": 136,
+      "sha256": "9c9aa9019e8f338cf86509eb29134cfb158e64bbbbece895496b0d036206d6e0"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/source.patch",
+      "bytes": 18191,
+      "sha256": "a3640c7880df1569ff0fcb2b7ebf4e84e64e4866d10264585a59b38aabc137a8"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/native/source.txt",
+      "bytes": 153,
+      "sha256": "feef541464c6764036bb9f4b4852dc66c89db868c5a65af3e32bceb3d4ffb82c"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/repository-tests.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/journal-worker-barrier-2026-09-08/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

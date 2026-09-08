@@ -6,13 +6,24 @@ Work branch: `feature/vela-mock-hardening`
 Current local migration: `94`
 Status: In progress
 
+Latest validation increment (2026-09-08):
+[actual Worker barrier recovery](journal-worker-barrier-evidence-2026-09-08.md)
+places Worker and Runtime in separate non-root Linux PID-1 processes with real
+gRPC and authenticated Node journal access. Prepare/Start overload fails the
+Worker barrier; cancellation is not drain. Signed floor plus exact non-admission
+or observed-stop/drain permits a subsequent sequence to execute and seal once
+within the same processes. This is a single-member Stage fixture, with explicit
+parent-orchestrated recovery; complete remote Job/cache and production assembly
+remain open.
+
 Latest production-code checkpoint (2026-09-08):
 [live Supervisor overload recovery](journal-overload-recovery-evidence-2026-09-08.md)
 fixes a reproduced permanent admission fence after a read-only transport failure.
 The same native Supervisor now rejects Start during overload, then starts once
 and seals/drains after capacity returns. Every retry rereads the owner, including
 new Worker floors; uncertain writes and invalid evidence remain fenced. Full
-Worker barrier/remote Job overload behavior remains a separate obligation.
+remote Job overload behavior remains a separate obligation; the subsequent
+single-member Worker barrier checkpoint is described above.
 
 The preceding
 [bounded Node journal service](journal-server-evidence-2026-09-08.md) replaces
