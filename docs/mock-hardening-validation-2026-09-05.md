@@ -7,6 +7,15 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[request context propagation](journal-context-evidence-2026-09-08.md)
+bounds each remote journal exchange by its RPC, owner lifetime and timeout;
+write/readback share one budget. Pure read cancellation permits validated retry,
+while uncertainty after a mutation still fences backend dispatch. Full host race,
+native Linux race, repository checks and four CPU compatibility campaigns pass.
+Mutex waits, filesystem fsync, outage containment and full remote Job assembly
+remain separate obligations.
+
+The preceding
 [remote Supervisor and Worker integration](journal-remote-integration-evidence-2026-09-08.md)
 connects actual Supervisor operations to the authenticated Node journal and
 adds the Worker RPC wrapper for its distinct mutation role. Native non-root

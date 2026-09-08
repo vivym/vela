@@ -36,7 +36,7 @@ func (supervisor *Supervisor) InspectRetainedAllocationAuthorities(ctx context.C
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if admission.store == nil {

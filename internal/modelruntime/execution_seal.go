@@ -105,17 +105,17 @@ func (store *executionJournalDraft) recordSeal(verified stageauthority.Verified,
 	return store.replace(next)
 }
 
-func (service *Service) checkpointSealedReceipt(verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+func (service *Service) checkpointSealedReceipt(ctx context.Context, verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
 	admission := service.executionAdmission()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
 	if admission.store == nil {
 		return nil
 	}
-	if err := admission.store.saveSeal(verified, receipt); err != nil {
+	if err := admission.store.saveSealContext(ctx, verified, receipt); err != nil {
 		return admission.failStateLocked(err)
 	}
 	return nil
@@ -137,7 +137,7 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, errors.Join(ErrExecutionStateRecovery, err)
 	}
 	if admission.store == nil {

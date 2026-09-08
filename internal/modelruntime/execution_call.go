@@ -26,7 +26,7 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 	admission := service.executionAdmission()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, nil, err
 	}
 	service.mu.Lock()
@@ -46,7 +46,7 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
 	default:
 	}
 	if admission.store != nil {
-		if err := admission.store.saveCandidates(verified, service.active.backendAuthority); err != nil {
+		if err := admission.store.saveCandidatesContext(ctx, verified, service.active.backendAuthority); err != nil {
 			return nil, nil, admission.failStateLocked(err)
 		}
 		// Persistence must not permit dispatch after the signed grant expires.

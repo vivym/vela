@@ -9,7 +9,11 @@ implements standalone Node file ownership and original-process role binding,
 with actual Linux IPC tests. The next
 [remote integration](journal-remote-integration-evidence-2026-09-08.md) connects
 actual Supervisor operations and Worker-owned Runtime-journal mutations under
-explicit test assembly. Production composition, separate Worker journal custody,
+explicit test assembly. The subsequent
+[context checkpoint](journal-context-evidence-2026-09-08.md) adds per-request
+exchange cancellation and shared write/readback deadlines with explicit
+read-only retry versus uncertain-mutation fencing.
+Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not

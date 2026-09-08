@@ -28,14 +28,14 @@ func (service *Service) confirmBackendAuthority(ctx context.Context, verified st
 	admission := service.executionAdmission()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == verified.Digest {
 		if admission.store != nil {
-			if err := admission.store.saveCandidates(verified, &verified); err != nil {
+			if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
 				return admission.failStateLocked(err)
 			}
 		}
@@ -54,7 +54,7 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
 	admission := service.executionAdmission()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
 	service.mu.Lock()
@@ -65,7 +65,7 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
 	switch status.State {
 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
 		if admission.store != nil {
-			if err := admission.store.saveHealth(verified, status.FailureEvidence); err != nil {
+			if err := admission.store.saveHealthContext(ctx, verified, status.FailureEvidence); err != nil {
 				return admission.failStateLocked(err)
 			}
 		}

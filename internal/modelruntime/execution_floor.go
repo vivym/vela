@@ -136,7 +136,7 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if recovery && admission.store == nil {
@@ -151,7 +151,7 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
 		return nil, err
 	}
 	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {
-		if err := admission.store.saveFloor(verified.Disposition); err != nil {
+		if err := admission.store.saveFloorContext(ctx, verified.Disposition); err != nil {
 			if isExecutionJournalRejection(err) || errors.Is(err, stageauthority.ErrStale) {
 				return nil, err
 			}

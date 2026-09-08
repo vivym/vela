@@ -1,0 +1,966 @@
+diff --git a/internal/modelruntime/backend_authority.go b/internal/modelruntime/backend_authority.go
+index 21b160e..0c31dd0 100644
+--- a/internal/modelruntime/backend_authority.go
++++ b/internal/modelruntime/backend_authority.go
+@@ -28,14 +28,14 @@ func (service *Service) confirmBackendAuthority(ctx context.Context, verified st
+ 	admission := service.executionAdmission()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+ 	service.mu.Lock()
+ 	defer service.mu.Unlock()
+ 	if service.active != nil && service.active.verified.Digest == verified.Digest {
+ 		if admission.store != nil {
+-			if err := admission.store.saveCandidates(verified, &verified); err != nil {
++			if err := admission.store.saveCandidatesContext(ctx, verified, &verified); err != nil {
+ 				return admission.failStateLocked(err)
+ 			}
+ 		}
+@@ -54,7 +54,7 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
+ 	admission := service.executionAdmission()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+ 	service.mu.Lock()
+@@ -65,7 +65,7 @@ func (service *Service) confirmBackendStatus(ctx context.Context, verified stage
+ 	switch status.State {
+ 	case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
+ 		if admission.store != nil {
+-			if err := admission.store.saveHealth(verified, status.FailureEvidence); err != nil {
++			if err := admission.store.saveHealthContext(ctx, verified, status.FailureEvidence); err != nil {
+ 				return admission.failStateLocked(err)
+ 			}
+ 		}
+diff --git a/internal/modelruntime/cancellation_authority.go b/internal/modelruntime/cancellation_authority.go
+index aaee3f3..33b9761 100644
+--- a/internal/modelruntime/cancellation_authority.go
++++ b/internal/modelruntime/cancellation_authority.go
+@@ -44,7 +44,7 @@ func (admission *executionAdmission) interruptCancellation(ctx context.Context,
+ 	}
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	allowSuccessor, err := admission.validateOperationLocked(service, verified, true)
++	allowSuccessor, err := admission.validateOperationLocked(ctx, service, verified, true)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/internal/modelruntime/execution_admission.go b/internal/modelruntime/execution_admission.go
+index 2ba5ece..aa1739e 100644
+--- a/internal/modelruntime/execution_admission.go
++++ b/internal/modelruntime/execution_admission.go
+@@ -1,6 +1,7 @@
+ package modelruntime
+ 
+ import (
++	"context"
+ 	"errors"
+ 	"sync"
+ 
+@@ -46,7 +47,7 @@ func (service *Service) executionAdmission() *executionAdmission {
+ 	return service.admission
+ }
+ 
+-func (service *Service) checkReadinessAdmission() error {
++func (service *Service) checkReadinessAdmission(ctx context.Context) error {
+ 	select {
+ 	case <-service.closed:
+ 		return errors.New("ModelRuntime service is closed")
+@@ -57,7 +58,7 @@ func (service *Service) checkReadinessAdmission() error {
+ 	service.mu.Unlock()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+ 	if admission.store != nil {
+@@ -85,13 +86,13 @@ func (service *Service) checkReadinessAdmission() error {
+ }
+ 
+ // The caller owns service.operationMu throughout the returned operation.
+-func (admission *executionAdmission) prepare(service *Service, verified *stageauthority.Verified) (bool, func(), error) {
++func (admission *executionAdmission) prepare(ctx context.Context, service *Service, verified *stageauthority.Verified) (bool, func(), error) {
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+ 	if admission.store != nil && proto.Size(verified.Authority) > maxExecutionWireBytes {
+ 		return false, nil, errors.New("ModelRuntime execution authority exceeds its persistence bound")
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return false, nil, err
+ 	}
+ 	if admission.store != nil {
+@@ -127,7 +128,7 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
+ 		}
+ 		// A backend failure cannot reopen an allocation, including on another profile.
+ 		if admission.store != nil {
+-			if err := admission.store.saveHighest(verified.Authority, service.maxClockSkew); err != nil {
++			if err := admission.store.saveHighestContext(ctx, verified.Authority, service.maxClockSkew); err != nil {
+ 				if isExecutionJournalRejection(err) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
+ 					return false, nil, err
+ 				}
+@@ -156,21 +157,30 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
+ 	return true, admission.registerLocked(service, sequence), nil
+ }
+ 
+-func (admission *executionAdmission) begin(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
++func (admission *executionAdmission) begin(ctx context.Context, service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	allowRenewal, err := admission.validateOperationLocked(service, verified, cancellation)
++	allowRenewal, err := admission.validateOperationLocked(ctx, service, verified, cancellation)
+ 	if err != nil {
+ 		return false, nil, err
+ 	}
+ 	return allowRenewal, admission.registerLocked(service, verified.Authority.GetExecutionSequence()), nil
+ }
+ 
+-func (admission *executionAdmission) validateOperationLocked(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, error) {
++func (admission *executionAdmission) validateOperationLocked(ctx context.Context, service *Service, verified *stageauthority.Verified, cancellation bool) (bool, error) {
++	if ctx == nil {
++		return false, errors.New("ModelRuntime execution context is required")
++	}
++	if err := ctx.Err(); err != nil {
++		return false, err
++	}
+ 	if admission.closing {
+ 		return false, errors.New("ModelRuntime execution admission is closed")
+ 	}
+-	stateErr := admission.checkStateLocked()
++	stateErr := admission.checkStateLocked(ctx)
++	if err := ctx.Err(); err != nil {
++		return false, err
++	}
+ 	if stateErr != nil && !cancellation {
+ 		return false, stateErr
+ 	}
+@@ -226,7 +236,13 @@ func (admission *executionAdmission) registerLocked(service *Service, sequence i
+ 	}
+ }
+ 
+-func (admission *executionAdmission) checkStateLocked() error {
++func (admission *executionAdmission) checkStateLocked(ctx context.Context) error {
++	if ctx == nil {
++		return errors.New("ModelRuntime execution context is required")
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
+ 	if admission.closing {
+ 		return errors.New("ModelRuntime execution admission is closed")
+ 	}
+@@ -234,8 +250,8 @@ func (admission *executionAdmission) checkStateLocked() error {
+ 		return admission.failed
+ 	}
+ 	if admission.store != nil {
+-		if err := admission.store.check(); err != nil {
+-			if errors.Is(err, ErrJournalChanged) {
++		if err := admission.store.checkContext(ctx); err != nil {
++			if errors.Is(err, ErrJournalChanged) || errors.Is(err, errJournalReadInterrupted) {
+ 				return err
+ 			}
+ 			return admission.failStateLocked(err)
+diff --git a/internal/modelruntime/execution_call.go b/internal/modelruntime/execution_call.go
+index 176b01d..b92c248 100644
+--- a/internal/modelruntime/execution_call.go
++++ b/internal/modelruntime/execution_call.go
+@@ -26,7 +26,7 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
+ 	admission := service.executionAdmission()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, nil, err
+ 	}
+ 	service.mu.Lock()
+@@ -46,7 +46,7 @@ func (service *Service) executionCallContext(ctx context.Context, verified stage
+ 	default:
+ 	}
+ 	if admission.store != nil {
+-		if err := admission.store.saveCandidates(verified, service.active.backendAuthority); err != nil {
++		if err := admission.store.saveCandidatesContext(ctx, verified, service.active.backendAuthority); err != nil {
+ 			return nil, nil, admission.failStateLocked(err)
+ 		}
+ 		// Persistence must not permit dispatch after the signed grant expires.
+diff --git a/internal/modelruntime/execution_candidates.go b/internal/modelruntime/execution_candidates.go
+index 0d690bc..f301669 100644
+--- a/internal/modelruntime/execution_candidates.go
++++ b/internal/modelruntime/execution_candidates.go
+@@ -36,7 +36,7 @@ func (supervisor *Supervisor) InspectRetainedAllocationAuthorities(ctx context.C
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if admission.store == nil {
+diff --git a/internal/modelruntime/execution_drain.go b/internal/modelruntime/execution_drain.go
+index 5dd6ad8..37891f3 100644
+--- a/internal/modelruntime/execution_drain.go
++++ b/internal/modelruntime/execution_drain.go
+@@ -62,7 +62,7 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
+ 		admission.mu.Unlock()
+ 		return nil
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		admission.mu.Unlock()
+ 		return err
+ 	}
+@@ -99,10 +99,10 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
+ 	}
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+-	if err := admission.store.saveDrain(verified, result, service.clock.Now()); err != nil {
++	if err := admission.store.saveDrainContext(ctx, verified, result, service.clock.Now()); err != nil {
+ 		return admission.failStateLocked(err)
+ 	}
+ 	return nil
+@@ -132,7 +132,7 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
+ 		return nil, err
+ 	}
+ 	admission := service.executionAdmission()
+-	_, release, err := admission.begin(service, &verified, true)
++	_, release, err := admission.begin(ctx, service, &verified, true)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -189,7 +189,7 @@ func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authori
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if admission.store == nil {
+diff --git a/internal/modelruntime/execution_drain_reuse.go b/internal/modelruntime/execution_drain_reuse.go
+index 02a411a..19a54c5 100644
+--- a/internal/modelruntime/execution_drain_reuse.go
++++ b/internal/modelruntime/execution_drain_reuse.go
+@@ -42,7 +42,7 @@ func (service *Service) restoreDrainedExecution(ctx context.Context, verified st
+ 	admission := service.executionAdmission()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+ 	service.mu.Lock()
+diff --git a/internal/modelruntime/execution_floor.go b/internal/modelruntime/execution_floor.go
+index 7e04449..300471d 100644
+--- a/internal/modelruntime/execution_floor.go
++++ b/internal/modelruntime/execution_floor.go
+@@ -136,7 +136,7 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if recovery && admission.store == nil {
+@@ -151,7 +151,7 @@ func (supervisor *Supervisor) installExecutionFloor(ctx context.Context, value *
+ 		return nil, err
+ 	}
+ 	if verified.Disposition.GetCutoff() > admission.floor && admission.store != nil {
+-		if err := admission.store.saveFloor(verified.Disposition); err != nil {
++		if err := admission.store.saveFloorContext(ctx, verified.Disposition); err != nil {
+ 			if isExecutionJournalRejection(err) || errors.Is(err, stageauthority.ErrStale) {
+ 				return nil, err
+ 			}
+diff --git a/internal/modelruntime/execution_journal_store.go b/internal/modelruntime/execution_journal_store.go
+index cbd8b71..e141005 100644
+--- a/internal/modelruntime/execution_journal_store.go
++++ b/internal/modelruntime/execution_journal_store.go
+@@ -1,6 +1,8 @@
+ package modelruntime
+ 
+ import (
++	"context"
++	"errors"
+ 	"time"
+ 
+ 	"github.com/vivym/vela/internal/stageauthority"
+@@ -11,17 +13,17 @@ import (
+ // mutation handle. All durable changes use the typed methods below.
+ type executionJournalStore interface {
+ 	view() *executionJournal
+-	check() error
++	checkContext(context.Context) error
+ 	close() error
+ 	recoveryError() error
+-	saveHighest(*velav1.StageAuthority, time.Duration) error
+-	saveFloor(*velav1.StageTerminalDisposition) error
+-	saveCandidates(stageauthority.Verified, *stageauthority.Verified) error
+-	saveSeal(stageauthority.Verified, *velav1.LocalMaterializationReceipt) error
+-	saveHealth(stageauthority.Verified, *FailureEvidence) error
+-	saveDrain(stageauthority.Verified, BackendDrain, time.Time) error
+-	saveNonAdmission(stageauthority.Verified, executionJournalRoute, time.Time) error
+-	saveTerminalNonAdmission(*velav1.StageTerminalDisposition, string, executionJournalRoute, time.Time) error
++	saveHighestContext(context.Context, *velav1.StageAuthority, time.Duration) error
++	saveFloorContext(context.Context, *velav1.StageTerminalDisposition) error
++	saveCandidatesContext(context.Context, stageauthority.Verified, *stageauthority.Verified) error
++	saveSealContext(context.Context, stageauthority.Verified, *velav1.LocalMaterializationReceipt) error
++	saveHealthContext(context.Context, stageauthority.Verified, *FailureEvidence) error
++	saveDrainContext(context.Context, stageauthority.Verified, BackendDrain, time.Time) error
++	saveNonAdmissionContext(context.Context, stageauthority.Verified, executionJournalRoute, time.Time) error
++	saveTerminalNonAdmissionContext(context.Context, *velav1.StageTerminalDisposition, string, executionJournalRoute, time.Time) error
+ 	retainedAuthority([]byte) (stageauthority.Verified, error)
+ 	retainedExecutionIndex(stageauthority.Verified) (int, error)
+ 	nonAdmissionCheckpoint(stageauthority.Verified) (*ExecutionNonAdmissionCheckpoint, error)
+@@ -29,3 +31,60 @@ type executionJournalStore interface {
+ }
+ 
+ func (store *executionStateFile) view() *executionJournal { return &store.executionJournal }
++
++// Local filesystem operations are synchronous: context bounds entry, not an
++// in-progress fsync. Preserve the owner's non-contextual transition API.
++func (store *executionStateFile) checkContext(ctx context.Context) error {
++	if err := ctx.Err(); err != nil {
++		return errors.Join(errJournalReadInterrupted, err)
++	}
++	return store.check()
++}
++func (store *executionStateFile) saveHighestContext(ctx context.Context, authority *velav1.StageAuthority, skew time.Duration) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveHighest(authority, skew)
++}
++func (store *executionStateFile) saveFloorContext(ctx context.Context, disposition *velav1.StageTerminalDisposition) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveFloor(disposition)
++}
++func (store *executionStateFile) saveCandidatesContext(ctx context.Context, accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveCandidates(accepted, confirmed)
++}
++func (store *executionStateFile) saveSealContext(ctx context.Context, authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveSeal(authority, receipt)
++}
++func (store *executionStateFile) saveHealthContext(ctx context.Context, authority stageauthority.Verified, evidence *FailureEvidence) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveHealth(authority, evidence)
++}
++func (store *executionStateFile) saveDrainContext(ctx context.Context, authority stageauthority.Verified, drain BackendDrain, at time.Time) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveDrain(authority, drain, at)
++}
++func (store *executionStateFile) saveNonAdmissionContext(ctx context.Context, authority stageauthority.Verified, route executionJournalRoute, at time.Time) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveNonAdmission(authority, route, at)
++}
++func (store *executionStateFile) saveTerminalNonAdmissionContext(ctx context.Context, disposition *velav1.StageTerminalDisposition, id string, route executionJournalRoute, at time.Time) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	return store.saveTerminalNonAdmission(disposition, id, route, at)
++}
+diff --git a/internal/modelruntime/execution_non_admission.go b/internal/modelruntime/execution_non_admission.go
+index 29871fb..4e2ae2a 100644
+--- a/internal/modelruntime/execution_non_admission.go
++++ b/internal/modelruntime/execution_non_admission.go
+@@ -71,7 +71,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if admission.store == nil || verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 ||
+@@ -85,7 +85,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
+ 			return nil, ErrExecutionNonAdmissionUnproven
+ 		}
+ 	}
+-	if err := store.saveNonAdmission(verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
++	if err := store.saveNonAdmissionContext(ctx, verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+ 		if isExecutionJournalRejection(err) {
+ 			return nil, err
+ 		}
+@@ -119,7 +119,7 @@ func (supervisor *Supervisor) InspectNonAdmission(ctx context.Context, authority
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if admission.store == nil {
+diff --git a/internal/modelruntime/execution_seal.go b/internal/modelruntime/execution_seal.go
+index 95a5acd..ecc2fbe 100644
+--- a/internal/modelruntime/execution_seal.go
++++ b/internal/modelruntime/execution_seal.go
+@@ -105,17 +105,17 @@ func (store *executionJournalDraft) recordSeal(verified stageauthority.Verified,
+ 	return store.replace(next)
+ }
+ 
+-func (service *Service) checkpointSealedReceipt(verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
++func (service *Service) checkpointSealedReceipt(ctx context.Context, verified stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+ 	admission := service.executionAdmission()
+ 	admission.mu.Lock()
+ 	defer admission.mu.Unlock()
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return err
+ 	}
+ 	if admission.store == nil {
+ 		return nil
+ 	}
+-	if err := admission.store.saveSeal(verified, receipt); err != nil {
++	if err := admission.store.saveSealContext(ctx, verified, receipt); err != nil {
+ 		return admission.failStateLocked(err)
+ 	}
+ 	return nil
+@@ -137,7 +137,7 @@ func (supervisor *Supervisor) replaySealedOutput(ctx context.Context, authority
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, errors.Join(ErrExecutionStateRecovery, err)
+ 	}
+ 	if admission.store == nil {
+diff --git a/internal/modelruntime/journal_remote.go b/internal/modelruntime/journal_remote.go
+index fd6b105..fa47824 100644
+--- a/internal/modelruntime/journal_remote.go
++++ b/internal/modelruntime/journal_remote.go
+@@ -14,6 +14,10 @@ import (
+ 
+ var ErrJournalRejected = errors.New("execution journal owner rejected the mutation")
+ 
++// A canceled pure read published nothing and can be retried. Callers of apply
++// still fence this error: its readback follows a possibly committed mutation.
++var errJournalReadInterrupted = errors.New("execution journal read interrupted")
++
+ // RuntimeJournalTransport is supplied by trusted assembly. Implementations must
+ // authenticate the owner; implementing this interface is not startup permission.
+ type RuntimeJournalTransport interface {
+@@ -52,7 +56,7 @@ func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteE
+ 		return nil, err
+ 	}
+ 	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
+-	if err := remote.check(); err != nil {
++	if err := remote.checkContext(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	state := remote.state
+@@ -89,12 +93,40 @@ func (store *remoteExecutionJournal) view() *executionJournal { return &store.ex
+ func (store *remoteExecutionJournal) close() error            { store.closed = true; return nil }
+ func (store *remoteExecutionJournal) recoveryError() error    { return store.workerHealthError() }
+ 
+-func (store *remoteExecutionJournal) check() error {
++// Every exchange observes the RPC, owner lifetime and configured timeout.
++// Readback inherits the write's remaining budget, rather than starting anew.
++func (store *remoteExecutionJournal) operationContext(parent context.Context) (context.Context, context.CancelFunc) {
++	ctx, cancel := context.WithTimeout(parent, store.config.Timeout)
++	stop := context.AfterFunc(store.ctx, cancel)
++	if store.ctx.Err() != nil {
++		cancel()
++	}
++	return ctx, func() { stop(); cancel() }
++}
++
++func (store *remoteExecutionJournal) readInterruption(ctx context.Context) error {
++	if err := store.ctx.Err(); err != nil {
++		return errors.Join(ErrExecutionStateRecovery, err, context.Cause(store.ctx))
++	}
++	if err := ctx.Err(); err != nil {
++		return errors.Join(errJournalReadInterrupted, err, context.Cause(ctx))
++	}
++	// A socket deadline can fire before the context timer at the same instant.
++	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
++		return errors.Join(errJournalReadInterrupted, context.DeadlineExceeded)
++	}
++	return nil
++}
++
++func (store *remoteExecutionJournal) checkContext(requestCtx context.Context) error {
+ 	if store.closed {
+ 		return ErrExecutionStateRecovery
+ 	}
+-	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
++	ctx, cancel := store.operationContext(requestCtx)
+ 	defer cancel()
++	if err := store.readInterruption(ctx); err != nil {
++		return err
++	}
+ 	var document JournalDocument
+ 	var err error
+ 	for range 3 {
+@@ -102,14 +134,17 @@ func (store *remoteExecutionJournal) check() error {
+ 		if !errors.Is(err, ErrJournalChanged) {
+ 			break
+ 		}
+-		if cause := context.Cause(ctx); cause != nil {
+-			return errors.Join(ErrExecutionStateRecovery, cause)
++		if err := store.readInterruption(ctx); err != nil {
++			return err
+ 		}
+ 	}
+ 	if errors.Is(err, ErrJournalChanged) {
+ 		return ErrJournalChanged
+ 	}
+ 	if err != nil {
++		if interrupted := store.readInterruption(ctx); interrupted != nil {
++			return errors.Join(interrupted, err)
++		}
+ 		return errors.Join(ErrExecutionStateRecovery, err)
+ 	}
+ 	snapshot, err := VerifyExecutionJournalSnapshot(document.Document, document.LockDocument, store.config.Manifest, store.config.Validator, store.config.Identity)
+@@ -123,21 +158,24 @@ func (store *remoteExecutionJournal) check() error {
+ 	if err != nil {
+ 		return errors.Join(ErrExecutionStateRecovery, err)
+ 	}
+-	if err := context.Cause(ctx); err != nil {
+-		return errors.Join(ErrExecutionStateRecovery, err)
++	if err := store.readInterruption(ctx); err != nil {
++		return err
+ 	}
+ 	store.state = state
+ 	return nil
+ }
+ 
+-func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutationReceipt, error) {
++func (store *remoteExecutionJournal) apply(requestCtx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
+ 	command.SchemaVersion = 1
+ 	wire, err := EncodeJournalCommand(command)
+ 	if err != nil {
+ 		return JournalMutationReceipt{}, err
+ 	}
+-	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
++	ctx, cancel := store.operationContext(requestCtx)
+ 	defer cancel()
++	if err := ctx.Err(); err != nil {
++		return JournalMutationReceipt{}, err
++	}
+ 	receipt, err := store.config.Transport.Apply(ctx, command)
+ 	if err != nil {
+ 		if errors.Is(err, ErrJournalRejected) {
+@@ -152,7 +190,7 @@ func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutat
+ 	if err := context.Cause(ctx); err != nil {
+ 		return JournalMutationReceipt{}, errors.Join(ErrExecutionStateRecovery, err)
+ 	}
+-	if err := store.check(); err != nil {
++	if err := store.checkContext(ctx); err != nil {
+ 		return JournalMutationReceipt{}, err
+ 	}
+ 	if store.state.Highest < receipt.Highest || store.state.Floor < receipt.Floor {
+@@ -166,55 +204,55 @@ func journalAuthorityWire(authority *velav1.StageAuthority) []byte {
+ 	return wire
+ }
+ 
+-func (store *remoteExecutionJournal) saveHighest(authority *velav1.StageAuthority, _ time.Duration) error {
+-	receipt, err := store.apply(JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
++func (store *remoteExecutionJournal) saveHighestContext(ctx context.Context, authority *velav1.StageAuthority, _ time.Duration) error {
++	receipt, err := store.apply(ctx, JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
+ 	if err == nil && receipt.Replayed {
+ 		return ErrExecutionStateRecovery
+ 	}
+ 	return err
+ }
+-func (store *remoteExecutionJournal) saveCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
++func (store *remoteExecutionJournal) saveCandidatesContext(ctx context.Context, accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+ 	command := &JournalCandidatesCommand{Authority: journalAuthorityWire(accepted.Authority)}
+ 	if confirmed != nil {
+ 		command.Confirmed = journalAuthorityWire(confirmed.Authority)
+ 	}
+-	_, err := store.apply(JournalCommand{Candidates: command})
++	_, err := store.apply(ctx, JournalCommand{Candidates: command})
+ 	return err
+ }
+-func (store *remoteExecutionJournal) saveSeal(authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
++func (store *remoteExecutionJournal) saveSealContext(ctx context.Context, authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+ 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(receipt)
+ 	if err != nil {
+ 		return err
+ 	}
+-	_, err = store.apply(JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
++	_, err = store.apply(ctx, JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
+ 	return err
+ }
+-func (store *remoteExecutionJournal) saveHealth(authority stageauthority.Verified, evidence *FailureEvidence) error {
+-	_, err := store.apply(JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
++func (store *remoteExecutionJournal) saveHealthContext(ctx context.Context, authority stageauthority.Verified, evidence *FailureEvidence) error {
++	_, err := store.apply(ctx, JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
+ 	return err
+ }
+-func (store *remoteExecutionJournal) saveDrain(authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
+-	_, err := store.apply(JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
++func (store *remoteExecutionJournal) saveDrainContext(ctx context.Context, authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
++	_, err := store.apply(ctx, JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
+ 	return err
+ }
+ 
+ // Worker mutations must already be durably recorded by the independently bound
+ // Worker. Runtime checks that history under its admission lock; it cannot borrow
+ // the Worker role or attest absence based only on a private cache.
+-func (store *remoteExecutionJournal) saveFloor(disposition *velav1.StageTerminalDisposition) error {
++func (store *remoteExecutionJournal) saveFloorContext(ctx context.Context, disposition *velav1.StageTerminalDisposition) error {
+ 	if store.state.Floor < disposition.GetCutoff() {
+ 		return &executionJournalRejection{cause: ErrJournalRejected}
+ 	}
+ 	return nil
+ }
+-func (store *remoteExecutionJournal) saveNonAdmission(authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
++func (store *remoteExecutionJournal) saveNonAdmissionContext(ctx context.Context, authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
+ 	proof, err := store.nonAdmissionCheckpoint(authority)
+ 	if err != nil || proof == nil {
+ 		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
+ 	}
+ 	return nil
+ }
+-func (store *remoteExecutionJournal) saveTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
++func (store *remoteExecutionJournal) saveTerminalNonAdmissionContext(ctx context.Context, disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
+ 	allocation := stageauthority.FindTerminalAllocation(disposition, id)
+ 	if allocation == nil {
+ 		return &executionJournalRejection{cause: ErrExecutionNonAdmissionUnproven}
+diff --git a/internal/modelruntime/journal_remote_test.go b/internal/modelruntime/journal_remote_test.go
+index 3ca7175..ab9c8f1 100644
+--- a/internal/modelruntime/journal_remote_test.go
++++ b/internal/modelruntime/journal_remote_test.go
+@@ -7,6 +7,7 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"strings"
+ 	"sync"
+ 	"testing"
+ 	"time"
+@@ -25,6 +26,8 @@ type directJournalTransport struct {
+ 	mutations   int
+ 	frozen      *modelruntime.JournalDocument
+ 	readChanges int
++	beforeRead  func(context.Context) error
++	afterApply  func(context.Context) error
+ }
+ 
+ func (transport *directJournalTransport) Apply(ctx context.Context, command modelruntime.JournalCommand) (modelruntime.JournalMutationReceipt, error) {
+@@ -39,6 +42,9 @@ func (transport *directJournalTransport) Apply(ctx context.Context, command mode
+ 		return modelruntime.JournalMutationReceipt{}, err
+ 	}
+ 	receipt, err := transport.owner.Apply(ctx, transport.role, wire)
++	if err == nil && transport.afterApply != nil {
++		err = transport.afterApply(ctx)
++	}
+ 	if err == nil && transport.fault == "lost-reply" {
+ 		return modelruntime.JournalMutationReceipt{}, errors.New("lost durable reply")
+ 	}
+@@ -51,6 +57,11 @@ func (transport *directJournalTransport) Apply(ctx context.Context, command mode
+ 	return receipt, err
+ }
+ func (transport *directJournalTransport) Read(ctx context.Context) (modelruntime.JournalDocument, error) {
++	if transport.beforeRead != nil {
++		if err := transport.beforeRead(ctx); err != nil {
++			return modelruntime.JournalDocument{}, err
++		}
++	}
+ 	transport.mu.Lock()
+ 	if transport.readChanges > 0 {
+ 		transport.readChanges--
+@@ -89,6 +100,11 @@ func TestJournalRemoteReadContentionDoesNotPoisonAdmission(t *testing.T) {
+ }
+ 
+ func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntime.ExecutionJournalOwner, *directJournalTransport, string) {
++	t.Helper()
++	return remoteSupervisorContextFixture(t, t.Context(), time.Second)
++}
++
++func remoteSupervisorContextFixture(t *testing.T, lifetime context.Context, timeout time.Duration) (*executionFloorFixture, *modelruntime.ExecutionJournalOwner, *directJournalTransport, string) {
+ 	t.Helper()
+ 	f, owner, config := journalOwnerFixture(t)
+ 	startup, err := owner.RecordBackendStartupIntent(t.Context())
+@@ -103,8 +119,8 @@ func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntim
+ 	f.backend = &floorBlockingBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime(), entered: make(chan struct{}), resume: make(chan struct{})}
+ 	f.otherBackend = modelruntime.NewFakeVAERuntime()
+ 	f.services = []*modelruntime.Service{newRuntimeService(t, f.clock, f.validator, f.bindings[0], f.backend), newRuntimeService(t, f.clock, f.validator, f.bindings[1], f.otherBackend)}
+-	f.supervisor, err = modelruntime.NewSupervisorWithRemoteExecutionJournal(t.Context(), modelruntime.RemoteExecutionJournalConfig{
+-		Manifest: config.Manifest, Validator: f.validator, Identity: transport.identity, Startup: startup, Transport: transport, Timeout: time.Second}, f.services...)
++	f.supervisor, err = modelruntime.NewSupervisorWithRemoteExecutionJournal(lifetime, modelruntime.RemoteExecutionJournalConfig{
++		Manifest: config.Manifest, Validator: f.validator, Identity: transport.identity, Startup: startup, Transport: transport, Timeout: timeout}, f.services...)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -112,6 +128,120 @@ func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntim
+ 	return f, owner, transport, config.State.Directory
+ }
+ 
++func TestJournalRemoteCancellationBoundsAdmission(t *testing.T) {
++	for _, phase := range []string{"read", "write-reply", "readback", "lifetime"} {
++		t.Run(phase, func(t *testing.T) {
++			lifetime, stop := context.WithCancel(t.Context())
++			defer stop()
++			f, owner, transport, _ := remoteSupervisorContextFixture(t, lifetime, 30*time.Second)
++			ctx, cancel := context.WithCancel(t.Context())
++			defer cancel()
++			entered := make(chan struct{})
++			block := func(ctx context.Context) error {
++				close(entered)
++				<-ctx.Done()
++				return ctx.Err()
++			}
++			switch phase {
++			case "read", "lifetime":
++				transport.beforeRead = block
++			case "write-reply":
++				transport.afterApply = block
++			case "readback":
++				transport.beforeRead = func(ctx context.Context) error {
++					if transport.mutations != 0 {
++						return block(ctx)
++					}
++					return nil
++				}
++			}
++			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
++			type outcome struct {
++				response *velav1.ModelRuntimeServicePrepareStageResponse
++				err      error
++			}
++			done := make(chan outcome, 1)
++			go func() {
++				response, err := f.supervisor.PrepareStage(ctx, request)
++				done <- outcome{response, err}
++			}()
++			select {
++			case <-entered:
++			case <-time.After(5 * time.Second):
++				t.Fatal("journal phase not entered")
++			}
++			if phase == "lifetime" {
++				stop()
++			} else {
++				cancel()
++			}
++			select {
++			case result := <-done:
++				if result.err != nil || result.response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || !strings.Contains(result.response.GetDetail(), context.Canceled.Error()) {
++					t.Fatalf("cancellation lost: %v %v", result.response, result.err)
++				}
++			case <-time.After(5 * time.Second):
++				t.Fatal("cancellation waited for the 30-second journal timeout")
++			}
++			transport.beforeRead, transport.afterApply = nil, nil
++			status, err := owner.Status(t.Context())
++			written := phase == "write-reply" || phase == "readback"
++			if err != nil || written && status.Highest != 10 || !written && status.Highest != 0 || f.backend.calls.Load() != 0 {
++				t.Fatalf("wrong cancellation boundary: %+v %v backend=%d", status, err, f.backend.calls.Load())
++			}
++			before := transport.mutations
++			response, err := f.supervisor.PrepareStage(t.Context(), request)
++			if phase == "read" {
++				if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 1 {
++					t.Fatalf("pure read cancellation poisoned admission: %v %v", response, err)
++				}
++			} else if err != nil || !strings.Contains(response.GetDetail(), modelruntime.ErrExecutionStateRecovery.Error()) || transport.mutations != before || f.backend.calls.Load() != 0 {
++				t.Fatalf("uncertainty or closed lifetime allowed retry: %v %v", response, err)
++			}
++		})
++	}
++}
++
++func TestJournalRemoteWriteReadbackSharesDeadline(t *testing.T) {
++	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 20*time.Second)
++	var writeDeadline time.Time
++	transport.afterApply = func(ctx context.Context) error {
++		writeDeadline, _ = ctx.Deadline()
++		return nil
++	}
++	transport.beforeRead = func(ctx context.Context) error {
++		if !writeDeadline.IsZero() {
++			deadline, ok := ctx.Deadline()
++			if !ok || !deadline.Equal(writeDeadline) {
++				t.Errorf("readback reset write budget: %v -> %v", writeDeadline, deadline)
++			}
++			writeDeadline = time.Time{}
++		}
++		return nil
++	}
++	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
++	if transport.mutations == 0 || !writeDeadline.IsZero() {
++		t.Fatal("writes did not complete readback")
++	}
++}
++
++func TestJournalRemoteReadTimeoutCanRetry(t *testing.T) {
++	// The timeout is intentional here. Other cancellation tests signal entry
++	// before canceling and have a much longer owner budget than their hang guard.
++	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), time.Second)
++	transport.beforeRead = func(ctx context.Context) error {
++		<-ctx.Done()
++		return ctx.Err()
++	}
++	request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
++	response, err := f.supervisor.PrepareStage(t.Context(), request)
++	if err != nil || !strings.Contains(response.GetDetail(), context.DeadlineExceeded.Error()) || transport.mutations != 0 || f.backend.calls.Load() != 0 {
++		t.Fatalf("pure read timeout crossed admission: %v %v", response, err)
++	}
++	transport.beforeRead = nil
++	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
++}
++
+ func TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory(t *testing.T) {
+ 	f, owner, transport, directory := remoteSupervisorFixture(t)
+ 	readyDrainOutput(t, f, f.backend.FakeRuntime, f.authorities[0])
+diff --git a/internal/modelruntime/service.go b/internal/modelruntime/service.go
+index 1b81247..a67f726 100644
+--- a/internal/modelruntime/service.go
++++ b/internal/modelruntime/service.go
+@@ -203,7 +203,7 @@ func (service *Service) ProbeReadiness(
+ 		response.Detail = "readiness check is invalid"
+ 		return response, nil
+ 	}
+-	if err := service.checkReadinessAdmission(); err != nil {
++	if err := service.checkReadinessAdmission(ctx); err != nil {
+ 		response.Detail = boundedDetail(err.Error())
+ 		return response, nil
+ 	}
+@@ -216,7 +216,7 @@ func (service *Service) ProbeReadiness(
+ 		response.Detail = "readiness evidence exceeds bound"
+ 		return response, nil
+ 	}
+-	if err := service.checkReadinessAdmission(); err != nil {
++	if err := service.checkReadinessAdmission(ctx); err != nil {
+ 		response.Detail = boundedDetail(err.Error())
+ 		return response, nil
+ 	}
+@@ -254,7 +254,7 @@ func (service *Service) PrepareStage(
+ 
+ 	service.operationMu.Lock()
+ 	defer service.operationMu.Unlock()
+-	replayed, release, err := service.executionAdmission().prepare(service, &verified)
++	replayed, release, err := service.executionAdmission().prepare(ctx, service, &verified)
+ 	if err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+ 		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) || errors.Is(err, ErrBackendIncarnationUnproven) || errors.Is(err, ErrWorkerHealthUnproven) {
+@@ -330,7 +330,7 @@ func (service *Service) StartStage(
+ 	response.AuthorityDigest = verified.Digest[:]
+ 	service.operationMu.Lock()
+ 	defer service.operationMu.Unlock()
+-	_, release, err := service.executionAdmission().begin(service, &verified, false)
++	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
+ 	if err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+ 		response.Detail = boundedDetail(err.Error())
+@@ -423,7 +423,7 @@ func (service *Service) CancelStage(
+ 	defer finishInterruption()
+ 	service.operationMu.Lock()
+ 	defer service.operationMu.Unlock()
+-	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(service, &verified, true)
++	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
+ 	if err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+ 		response.Detail = boundedDetail(err.Error())
+@@ -490,7 +490,7 @@ func (service *Service) Status(
+ 	response.AuthorityDigest = verified.Digest[:]
+ 	service.operationMu.Lock()
+ 	defer service.operationMu.Unlock()
+-	_, release, err := service.executionAdmission().begin(service, &verified, false)
++	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
+ 	if err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+ 		response.Detail = boundedDetail(err.Error())
+@@ -601,7 +601,7 @@ func (service *Service) SealOutput(
+ 	response.AuthorityDigest = verified.Digest[:]
+ 	service.operationMu.Lock()
+ 	defer service.operationMu.Unlock()
+-	_, release, err := service.executionAdmission().begin(service, &verified, false)
++	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
+ 	if err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+ 		response.Detail = boundedDetail(err.Error())
+@@ -628,7 +628,7 @@ func (service *Service) SealOutput(
+ 			response.Detail = "sealed output lacks its retained receipt"
+ 			return response, nil
+ 		}
+-		if err := service.checkpointSealedReceipt(verified, service.activeReceipt(verified.Digest)); err != nil {
++		if err := service.checkpointSealedReceipt(ctx, verified, service.activeReceipt(verified.Digest)); err != nil {
+ 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+ 			response.State, response.Detail = state, boundedDetail(err.Error())
+ 			return response, nil
+@@ -705,7 +705,7 @@ func (service *Service) SealOutput(
+ 	service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
+ 	service.cancelWatchdogLocked()
+ 	service.mu.Unlock()
+-	if err := service.checkpointSealedReceipt(verified, receipt); err != nil {
++	if err := service.checkpointSealedReceipt(ctx, verified, receipt); err != nil {
+ 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+ 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+ 		response.Detail = boundedDetail(err.Error())
+@@ -855,13 +855,13 @@ func (service *Service) expire(generation uint64) {
+ 	}
+ 	verified := service.active.verified
+ 	service.mu.Unlock()
+-	_, release, err := service.executionAdmission().begin(service, &verified, true)
++	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
++	defer cancel()
++	_, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
+ 	if err != nil {
+ 		return
+ 	}
+ 	defer release()
+-	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
+-	defer cancel()
+ 	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
+ 	if err == nil {
+ 		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)
+diff --git a/internal/modelruntime/supervisor.go b/internal/modelruntime/supervisor.go
+index 3dda41b..3e74903 100644
+--- a/internal/modelruntime/supervisor.go
++++ b/internal/modelruntime/supervisor.go
+@@ -188,7 +188,7 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
+ 	}
+ 	// Discovery remains available during recovery drain or full history. Those
+ 	// conditions block readiness, but do not invalidate held journal ownership.
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, status.Error(codes.FailedPrecondition, err.Error())
+ 	}
+ 	if supervisor.registryBinding != nil {
+diff --git a/internal/modelruntime/terminal_non_admission.go b/internal/modelruntime/terminal_non_admission.go
+index df98b7b..3e44dc1 100644
+--- a/internal/modelruntime/terminal_non_admission.go
++++ b/internal/modelruntime/terminal_non_admission.go
+@@ -61,7 +61,7 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
+ 	if err := ctx.Err(); err != nil {
+ 		return nil, err
+ 	}
+-	if err := admission.checkStateLocked(); err != nil {
++	if err := admission.checkStateLocked(ctx); err != nil {
+ 		return nil, err
+ 	}
+ 	if admission.store == nil || disposition == nil || proto.Size(disposition) > maxExecutionWireBytes {
+@@ -96,7 +96,7 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
+ 			return nil, ErrExecutionNonAdmissionUnproven
+ 		}
+ 	}
+-	if err := store.saveTerminalNonAdmission(verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
++	if err := store.saveTerminalNonAdmissionContext(ctx, verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+ 		if isExecutionJournalRejection(err) {
+ 			return nil, err
+ 		}

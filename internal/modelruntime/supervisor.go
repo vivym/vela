@@ -188,7 +188,7 @@ func (supervisor *Supervisor) DiscoverRuntimeIdentities(
 	}
 	// Discovery remains available during recovery drain or full history. Those
 	// conditions block readiness, but do not invalidate held journal ownership.
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	if supervisor.registryBinding != nil {

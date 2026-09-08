@@ -44,7 +44,7 @@ func (admission *executionAdmission) interruptCancellation(ctx context.Context, 
 	}
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	allowSuccessor, err := admission.validateOperationLocked(service, verified, true)
+	allowSuccessor, err := admission.validateOperationLocked(ctx, service, verified, true)
 	if err != nil {
 		return nil, err
 	}

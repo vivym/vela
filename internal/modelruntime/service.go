@@ -203,7 +203,7 @@ func (service *Service) ProbeReadiness(
 		response.Detail = "readiness check is invalid"
 		return response, nil
 	}
-	if err := service.checkReadinessAdmission(); err != nil {
+	if err := service.checkReadinessAdmission(ctx); err != nil {
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
@@ -216,7 +216,7 @@ func (service *Service) ProbeReadiness(
 		response.Detail = "readiness evidence exceeds bound"
 		return response, nil
 	}
-	if err := service.checkReadinessAdmission(); err != nil {
+	if err := service.checkReadinessAdmission(ctx); err != nil {
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
 	}
@@ -254,7 +254,7 @@ func (service *Service) PrepareStage(
 
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	replayed, release, err := service.executionAdmission().prepare(service, &verified)
+	replayed, release, err := service.executionAdmission().prepare(ctx, service, &verified)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		if errors.Is(err, errSharedSlotBusy) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, ErrExecutionDrainUnproven) || errors.Is(err, ErrBackendIncarnationUnproven) || errors.Is(err, ErrWorkerHealthUnproven) {
@@ -330,7 +330,7 @@ func (service *Service) StartStage(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, &verified, false)
+	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -423,7 +423,7 @@ func (service *Service) CancelStage(
 	defer finishInterruption()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(service, &verified, true)
+	admissionAllowsSuccessor, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -490,7 +490,7 @@ func (service *Service) Status(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, &verified, false)
+	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -601,7 +601,7 @@ func (service *Service) SealOutput(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, &verified, false)
+	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -628,7 +628,7 @@ func (service *Service) SealOutput(
 			response.Detail = "sealed output lacks its retained receipt"
 			return response, nil
 		}
-		if err := service.checkpointSealedReceipt(verified, service.activeReceipt(verified.Digest)); err != nil {
+		if err := service.checkpointSealedReceipt(ctx, verified, service.activeReceipt(verified.Digest)); err != nil {
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 			response.State, response.Detail = state, boundedDetail(err.Error())
 			return response, nil
@@ -705,7 +705,7 @@ func (service *Service) SealOutput(
 	service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
 	service.cancelWatchdogLocked()
 	service.mu.Unlock()
-	if err := service.checkpointSealedReceipt(verified, receipt); err != nil {
+	if err := service.checkpointSealedReceipt(ctx, verified, receipt); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
 		response.Detail = boundedDetail(err.Error())
@@ -855,13 +855,13 @@ func (service *Service) expire(generation uint64) {
 	}
 	verified := service.active.verified
 	service.mu.Unlock()
-	_, release, err := service.executionAdmission().begin(service, &verified, true)
+	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
+	defer cancel()
+	_, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
 	if err != nil {
 		return
 	}
 	defer release()
-	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
-	defer cancel()
 	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
 	if err == nil {
 		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)

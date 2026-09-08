@@ -62,7 +62,7 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
 		admission.mu.Unlock()
 		return nil
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		admission.mu.Unlock()
 		return err
 	}
@@ -99,10 +99,10 @@ func (service *Service) checkpointExecutionDrain(ctx context.Context, verified s
 	}
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
-	if err := admission.store.saveDrain(verified, result, service.clock.Now()); err != nil {
+	if err := admission.store.saveDrainContext(ctx, verified, result, service.clock.Now()); err != nil {
 		return admission.failStateLocked(err)
 	}
 	return nil
@@ -132,7 +132,7 @@ func (supervisor *Supervisor) DrainExecution(ctx context.Context, authority *vel
 		return nil, err
 	}
 	admission := service.executionAdmission()
-	_, release, err := admission.begin(service, &verified, true)
+	_, release, err := admission.begin(ctx, service, &verified, true)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (supervisor *Supervisor) inspectExecutionDrain(ctx context.Context, authori
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if admission.store == nil {

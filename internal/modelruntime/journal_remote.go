@@ -14,6 +14,10 @@ import (
 
 var ErrJournalRejected = errors.New("execution journal owner rejected the mutation")
 
+// A canceled pure read published nothing and can be retried. Callers of apply
+// still fence this error: its readback follows a possibly committed mutation.
+var errJournalReadInterrupted = errors.New("execution journal read interrupted")
+
 // RuntimeJournalTransport is supplied by trusted assembly. Implementations must
 // authenticate the owner; implementing this interface is not startup permission.
 type RuntimeJournalTransport interface {
@@ -52,7 +56,7 @@ func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteE
 		return nil, err
 	}
 	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
-	if err := remote.check(); err != nil {
+	if err := remote.checkContext(ctx); err != nil {
 		return nil, err
 	}
 	state := remote.state
@@ -89,12 +93,40 @@ func (store *remoteExecutionJournal) view() *executionJournal { return &store.ex
 func (store *remoteExecutionJournal) close() error            { store.closed = true; return nil }
 func (store *remoteExecutionJournal) recoveryError() error    { return store.workerHealthError() }
 
-func (store *remoteExecutionJournal) check() error {
+// Every exchange observes the RPC, owner lifetime and configured timeout.
+// Readback inherits the write's remaining budget, rather than starting anew.
+func (store *remoteExecutionJournal) operationContext(parent context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(parent, store.config.Timeout)
+	stop := context.AfterFunc(store.ctx, cancel)
+	if store.ctx.Err() != nil {
+		cancel()
+	}
+	return ctx, func() { stop(); cancel() }
+}
+
+func (store *remoteExecutionJournal) readInterruption(ctx context.Context) error {
+	if err := store.ctx.Err(); err != nil {
+		return errors.Join(ErrExecutionStateRecovery, err, context.Cause(store.ctx))
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(errJournalReadInterrupted, err, context.Cause(ctx))
+	}
+	// A socket deadline can fire before the context timer at the same instant.
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return errors.Join(errJournalReadInterrupted, context.DeadlineExceeded)
+	}
+	return nil
+}
+
+func (store *remoteExecutionJournal) checkContext(requestCtx context.Context) error {
 	if store.closed {
 		return ErrExecutionStateRecovery
 	}
-	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
+	ctx, cancel := store.operationContext(requestCtx)
 	defer cancel()
+	if err := store.readInterruption(ctx); err != nil {
+		return err
+	}
 	var document JournalDocument
 	var err error
 	for range 3 {
@@ -102,14 +134,17 @@ func (store *remoteExecutionJournal) check() error {
 		if !errors.Is(err, ErrJournalChanged) {
 			break
 		}
-		if cause := context.Cause(ctx); cause != nil {
-			return errors.Join(ErrExecutionStateRecovery, cause)
+		if err := store.readInterruption(ctx); err != nil {
+			return err
 		}
 	}
 	if errors.Is(err, ErrJournalChanged) {
 		return ErrJournalChanged
 	}
 	if err != nil {
+		if interrupted := store.readInterruption(ctx); interrupted != nil {
+			return errors.Join(interrupted, err)
+		}
 		return errors.Join(ErrExecutionStateRecovery, err)
 	}
 	snapshot, err := VerifyExecutionJournalSnapshot(document.Document, document.LockDocument, store.config.Manifest, store.config.Validator, store.config.Identity)
@@ -123,21 +158,24 @@ func (store *remoteExecutionJournal) check() error {
 	if err != nil {
 		return errors.Join(ErrExecutionStateRecovery, err)
 	}
-	if err := context.Cause(ctx); err != nil {
-		return errors.Join(ErrExecutionStateRecovery, err)
+	if err := store.readInterruption(ctx); err != nil {
+		return err
 	}
 	store.state = state
 	return nil
 }
 
-func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutationReceipt, error) {
+func (store *remoteExecutionJournal) apply(requestCtx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
 	command.SchemaVersion = 1
 	wire, err := EncodeJournalCommand(command)
 	if err != nil {
 		return JournalMutationReceipt{}, err
 	}
-	ctx, cancel := context.WithTimeout(store.ctx, store.config.Timeout)
+	ctx, cancel := store.operationContext(requestCtx)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return JournalMutationReceipt{}, err
+	}
 	receipt, err := store.config.Transport.Apply(ctx, command)
 	if err != nil {
 		if errors.Is(err, ErrJournalRejected) {
@@ -152,7 +190,7 @@ func (store *remoteExecutionJournal) apply(command JournalCommand) (JournalMutat
 	if err := context.Cause(ctx); err != nil {
 		return JournalMutationReceipt{}, errors.Join(ErrExecutionStateRecovery, err)
 	}
-	if err := store.check(); err != nil {
+	if err := store.checkContext(ctx); err != nil {
 		return JournalMutationReceipt{}, err
 	}
 	if store.state.Highest < receipt.Highest || store.state.Floor < receipt.Floor {
@@ -166,55 +204,55 @@ func journalAuthorityWire(authority *velav1.StageAuthority) []byte {
 	return wire
 }
 
-func (store *remoteExecutionJournal) saveHighest(authority *velav1.StageAuthority, _ time.Duration) error {
-	receipt, err := store.apply(JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
+func (store *remoteExecutionJournal) saveHighestContext(ctx context.Context, authority *velav1.StageAuthority, _ time.Duration) error {
+	receipt, err := store.apply(ctx, JournalCommand{Admit: &JournalAuthorityCommand{Authority: journalAuthorityWire(authority)}})
 	if err == nil && receipt.Replayed {
 		return ErrExecutionStateRecovery
 	}
 	return err
 }
-func (store *remoteExecutionJournal) saveCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+func (store *remoteExecutionJournal) saveCandidatesContext(ctx context.Context, accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
 	command := &JournalCandidatesCommand{Authority: journalAuthorityWire(accepted.Authority)}
 	if confirmed != nil {
 		command.Confirmed = journalAuthorityWire(confirmed.Authority)
 	}
-	_, err := store.apply(JournalCommand{Candidates: command})
+	_, err := store.apply(ctx, JournalCommand{Candidates: command})
 	return err
 }
-func (store *remoteExecutionJournal) saveSeal(authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
+func (store *remoteExecutionJournal) saveSealContext(ctx context.Context, authority stageauthority.Verified, receipt *velav1.LocalMaterializationReceipt) error {
 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(receipt)
 	if err != nil {
 		return err
 	}
-	_, err = store.apply(JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
+	_, err = store.apply(ctx, JournalCommand{Seal: &JournalSealCommand{Authority: journalAuthorityWire(authority.Authority), Receipt: wire}})
 	return err
 }
-func (store *remoteExecutionJournal) saveHealth(authority stageauthority.Verified, evidence *FailureEvidence) error {
-	_, err := store.apply(JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
+func (store *remoteExecutionJournal) saveHealthContext(ctx context.Context, authority stageauthority.Verified, evidence *FailureEvidence) error {
+	_, err := store.apply(ctx, JournalCommand{Health: &JournalHealthCommand{Authority: journalAuthorityWire(authority.Authority), Evidence: evidence}})
 	return err
 }
-func (store *remoteExecutionJournal) saveDrain(authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
-	_, err := store.apply(JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
+func (store *remoteExecutionJournal) saveDrainContext(ctx context.Context, authority stageauthority.Verified, drain BackendDrain, _ time.Time) error {
+	_, err := store.apply(ctx, JournalCommand{Drain: &JournalDrainCommand{Authority: journalAuthorityWire(authority.Authority), Drain: drain}})
 	return err
 }
 
 // Worker mutations must already be durably recorded by the independently bound
 // Worker. Runtime checks that history under its admission lock; it cannot borrow
 // the Worker role or attest absence based only on a private cache.
-func (store *remoteExecutionJournal) saveFloor(disposition *velav1.StageTerminalDisposition) error {
+func (store *remoteExecutionJournal) saveFloorContext(ctx context.Context, disposition *velav1.StageTerminalDisposition) error {
 	if store.state.Floor < disposition.GetCutoff() {
 		return &executionJournalRejection{cause: ErrJournalRejected}
 	}
 	return nil
 }
-func (store *remoteExecutionJournal) saveNonAdmission(authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
+func (store *remoteExecutionJournal) saveNonAdmissionContext(ctx context.Context, authority stageauthority.Verified, _ executionJournalRoute, _ time.Time) error {
 	proof, err := store.nonAdmissionCheckpoint(authority)
 	if err != nil || proof == nil {
 		return &executionJournalRejection{cause: errors.Join(ErrExecutionNonAdmissionUnproven, err)}
 	}
 	return nil
 }
-func (store *remoteExecutionJournal) saveTerminalNonAdmission(disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
+func (store *remoteExecutionJournal) saveTerminalNonAdmissionContext(ctx context.Context, disposition *velav1.StageTerminalDisposition, id string, _ executionJournalRoute, _ time.Time) error {
 	allocation := stageauthority.FindTerminalAllocation(disposition, id)
 	if allocation == nil {
 		return &executionJournalRejection{cause: ErrExecutionNonAdmissionUnproven}

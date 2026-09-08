@@ -71,7 +71,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if admission.store == nil || verified.Authority.GetSchemaVersion() != stageauthority.SchemaVersionV2 ||
@@ -85,7 +85,7 @@ func (supervisor *Supervisor) CheckpointNonAdmission(ctx context.Context, author
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 	}
-	if err := store.saveNonAdmission(verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+	if err := store.saveNonAdmissionContext(ctx, verified, service.journalRoute(), service.clock.Now().UTC()); err != nil {
 		if isExecutionJournalRejection(err) {
 			return nil, err
 		}
@@ -119,7 +119,7 @@ func (supervisor *Supervisor) InspectNonAdmission(ctx context.Context, authority
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if admission.store == nil {

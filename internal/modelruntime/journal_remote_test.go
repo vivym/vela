@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,6 +26,8 @@ type directJournalTransport struct {
 	mutations   int
 	frozen      *modelruntime.JournalDocument
 	readChanges int
+	beforeRead  func(context.Context) error
+	afterApply  func(context.Context) error
 }
 
 func (transport *directJournalTransport) Apply(ctx context.Context, command modelruntime.JournalCommand) (modelruntime.JournalMutationReceipt, error) {
@@ -39,6 +42,9 @@ func (transport *directJournalTransport) Apply(ctx context.Context, command mode
 		return modelruntime.JournalMutationReceipt{}, err
 	}
 	receipt, err := transport.owner.Apply(ctx, transport.role, wire)
+	if err == nil && transport.afterApply != nil {
+		err = transport.afterApply(ctx)
+	}
 	if err == nil && transport.fault == "lost-reply" {
 		return modelruntime.JournalMutationReceipt{}, errors.New("lost durable reply")
 	}
@@ -51,6 +57,11 @@ func (transport *directJournalTransport) Apply(ctx context.Context, command mode
 	return receipt, err
 }
 func (transport *directJournalTransport) Read(ctx context.Context) (modelruntime.JournalDocument, error) {
+	if transport.beforeRead != nil {
+		if err := transport.beforeRead(ctx); err != nil {
+			return modelruntime.JournalDocument{}, err
+		}
+	}
 	transport.mu.Lock()
 	if transport.readChanges > 0 {
 		transport.readChanges--
@@ -90,6 +101,11 @@ func TestJournalRemoteReadContentionDoesNotPoisonAdmission(t *testing.T) {
 
 func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntime.ExecutionJournalOwner, *directJournalTransport, string) {
 	t.Helper()
+	return remoteSupervisorContextFixture(t, t.Context(), time.Second)
+}
+
+func remoteSupervisorContextFixture(t *testing.T, lifetime context.Context, timeout time.Duration) (*executionFloorFixture, *modelruntime.ExecutionJournalOwner, *directJournalTransport, string) {
+	t.Helper()
 	f, owner, config := journalOwnerFixture(t)
 	startup, err := owner.RecordBackendStartupIntent(t.Context())
 	if err != nil {
@@ -103,13 +119,127 @@ func remoteSupervisorFixture(t *testing.T) (*executionFloorFixture, *modelruntim
 	f.backend = &floorBlockingBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime(), entered: make(chan struct{}), resume: make(chan struct{})}
 	f.otherBackend = modelruntime.NewFakeVAERuntime()
 	f.services = []*modelruntime.Service{newRuntimeService(t, f.clock, f.validator, f.bindings[0], f.backend), newRuntimeService(t, f.clock, f.validator, f.bindings[1], f.otherBackend)}
-	f.supervisor, err = modelruntime.NewSupervisorWithRemoteExecutionJournal(t.Context(), modelruntime.RemoteExecutionJournalConfig{
-		Manifest: config.Manifest, Validator: f.validator, Identity: transport.identity, Startup: startup, Transport: transport, Timeout: time.Second}, f.services...)
+	f.supervisor, err = modelruntime.NewSupervisorWithRemoteExecutionJournal(lifetime, modelruntime.RemoteExecutionJournalConfig{
+		Manifest: config.Manifest, Validator: f.validator, Identity: transport.identity, Startup: startup, Transport: transport, Timeout: timeout}, f.services...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(f.supervisor.Close)
 	return f, owner, transport, config.State.Directory
+}
+
+func TestJournalRemoteCancellationBoundsAdmission(t *testing.T) {
+	for _, phase := range []string{"read", "write-reply", "readback", "lifetime"} {
+		t.Run(phase, func(t *testing.T) {
+			lifetime, stop := context.WithCancel(t.Context())
+			defer stop()
+			f, owner, transport, _ := remoteSupervisorContextFixture(t, lifetime, 30*time.Second)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			entered := make(chan struct{})
+			block := func(ctx context.Context) error {
+				close(entered)
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			switch phase {
+			case "read", "lifetime":
+				transport.beforeRead = block
+			case "write-reply":
+				transport.afterApply = block
+			case "readback":
+				transport.beforeRead = func(ctx context.Context) error {
+					if transport.mutations != 0 {
+						return block(ctx)
+					}
+					return nil
+				}
+			}
+			request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
+			type outcome struct {
+				response *velav1.ModelRuntimeServicePrepareStageResponse
+				err      error
+			}
+			done := make(chan outcome, 1)
+			go func() {
+				response, err := f.supervisor.PrepareStage(ctx, request)
+				done <- outcome{response, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("journal phase not entered")
+			}
+			if phase == "lifetime" {
+				stop()
+			} else {
+				cancel()
+			}
+			select {
+			case result := <-done:
+				if result.err != nil || result.response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || !strings.Contains(result.response.GetDetail(), context.Canceled.Error()) {
+					t.Fatalf("cancellation lost: %v %v", result.response, result.err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancellation waited for the 30-second journal timeout")
+			}
+			transport.beforeRead, transport.afterApply = nil, nil
+			status, err := owner.Status(t.Context())
+			written := phase == "write-reply" || phase == "readback"
+			if err != nil || written && status.Highest != 10 || !written && status.Highest != 0 || f.backend.calls.Load() != 0 {
+				t.Fatalf("wrong cancellation boundary: %+v %v backend=%d", status, err, f.backend.calls.Load())
+			}
+			before := transport.mutations
+			response, err := f.supervisor.PrepareStage(t.Context(), request)
+			if phase == "read" {
+				if err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED || f.backend.calls.Load() != 1 {
+					t.Fatalf("pure read cancellation poisoned admission: %v %v", response, err)
+				}
+			} else if err != nil || !strings.Contains(response.GetDetail(), modelruntime.ErrExecutionStateRecovery.Error()) || transport.mutations != before || f.backend.calls.Load() != 0 {
+				t.Fatalf("uncertainty or closed lifetime allowed retry: %v %v", response, err)
+			}
+		})
+	}
+}
+
+func TestJournalRemoteWriteReadbackSharesDeadline(t *testing.T) {
+	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 20*time.Second)
+	var writeDeadline time.Time
+	transport.afterApply = func(ctx context.Context) error {
+		writeDeadline, _ = ctx.Deadline()
+		return nil
+	}
+	transport.beforeRead = func(ctx context.Context) error {
+		if !writeDeadline.IsZero() {
+			deadline, ok := ctx.Deadline()
+			if !ok || !deadline.Equal(writeDeadline) {
+				t.Errorf("readback reset write budget: %v -> %v", writeDeadline, deadline)
+			}
+			writeDeadline = time.Time{}
+		}
+		return nil
+	}
+	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
+	if transport.mutations == 0 || !writeDeadline.IsZero() {
+		t.Fatal("writes did not complete readback")
+	}
+}
+
+func TestJournalRemoteReadTimeoutCanRetry(t *testing.T) {
+	// The timeout is intentional here. Other cancellation tests signal entry
+	// before canceling and have a much longer owner budget than their hang guard.
+	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), time.Second)
+	transport.beforeRead = func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	request := &velav1.ModelRuntimeServicePrepareStageRequest{Authority: f.authorities[0], ExecutionSpec: runtimeExecutionSpec()}
+	response, err := f.supervisor.PrepareStage(t.Context(), request)
+	if err != nil || !strings.Contains(response.GetDetail(), context.DeadlineExceeded.Error()) || transport.mutations != 0 || f.backend.calls.Load() != 0 {
+		t.Fatalf("pure read timeout crossed admission: %v %v", response, err)
+	}
+	transport.beforeRead = nil
+	prepareFloorRuntime(t, f.supervisor, f.authorities[0])
 }
 
 func TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory(t *testing.T) {

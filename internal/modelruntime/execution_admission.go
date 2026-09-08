@@ -1,6 +1,7 @@
 package modelruntime
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -46,7 +47,7 @@ func (service *Service) executionAdmission() *executionAdmission {
 	return service.admission
 }
 
-func (service *Service) checkReadinessAdmission() error {
+func (service *Service) checkReadinessAdmission(ctx context.Context) error {
 	select {
 	case <-service.closed:
 		return errors.New("ModelRuntime service is closed")
@@ -57,7 +58,7 @@ func (service *Service) checkReadinessAdmission() error {
 	service.mu.Unlock()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
 	if admission.store != nil {
@@ -85,13 +86,13 @@ func (service *Service) checkReadinessAdmission() error {
 }
 
 // The caller owns service.operationMu throughout the returned operation.
-func (admission *executionAdmission) prepare(service *Service, verified *stageauthority.Verified) (bool, func(), error) {
+func (admission *executionAdmission) prepare(ctx context.Context, service *Service, verified *stageauthority.Verified) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
 	if admission.store != nil && proto.Size(verified.Authority) > maxExecutionWireBytes {
 		return false, nil, errors.New("ModelRuntime execution authority exceeds its persistence bound")
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return false, nil, err
 	}
 	if admission.store != nil {
@@ -127,7 +128,7 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 		}
 		// A backend failure cannot reopen an allocation, including on another profile.
 		if admission.store != nil {
-			if err := admission.store.saveHighest(verified.Authority, service.maxClockSkew); err != nil {
+			if err := admission.store.saveHighestContext(ctx, verified.Authority, service.maxClockSkew); err != nil {
 				if isExecutionJournalRejection(err) || errors.Is(err, ErrExecutionHistoryFull) || errors.Is(err, stageauthority.ErrStale) {
 					return false, nil, err
 				}
@@ -156,21 +157,30 @@ func (admission *executionAdmission) prepare(service *Service, verified *stageau
 	return true, admission.registerLocked(service, sequence), nil
 }
 
-func (admission *executionAdmission) begin(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
+func (admission *executionAdmission) begin(ctx context.Context, service *Service, verified *stageauthority.Verified, cancellation bool) (bool, func(), error) {
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	allowRenewal, err := admission.validateOperationLocked(service, verified, cancellation)
+	allowRenewal, err := admission.validateOperationLocked(ctx, service, verified, cancellation)
 	if err != nil {
 		return false, nil, err
 	}
 	return allowRenewal, admission.registerLocked(service, verified.Authority.GetExecutionSequence()), nil
 }
 
-func (admission *executionAdmission) validateOperationLocked(service *Service, verified *stageauthority.Verified, cancellation bool) (bool, error) {
+func (admission *executionAdmission) validateOperationLocked(ctx context.Context, service *Service, verified *stageauthority.Verified, cancellation bool) (bool, error) {
+	if ctx == nil {
+		return false, errors.New("ModelRuntime execution context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	if admission.closing {
 		return false, errors.New("ModelRuntime execution admission is closed")
 	}
-	stateErr := admission.checkStateLocked()
+	stateErr := admission.checkStateLocked(ctx)
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	if stateErr != nil && !cancellation {
 		return false, stateErr
 	}
@@ -226,7 +236,13 @@ func (admission *executionAdmission) registerLocked(service *Service, sequence i
 	}
 }
 
-func (admission *executionAdmission) checkStateLocked() error {
+func (admission *executionAdmission) checkStateLocked(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("ModelRuntime execution context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if admission.closing {
 		return errors.New("ModelRuntime execution admission is closed")
 	}
@@ -234,8 +250,8 @@ func (admission *executionAdmission) checkStateLocked() error {
 		return admission.failed
 	}
 	if admission.store != nil {
-		if err := admission.store.check(); err != nil {
-			if errors.Is(err, ErrJournalChanged) {
+		if err := admission.store.checkContext(ctx); err != nil {
+			if errors.Is(err, ErrJournalChanged) || errors.Is(err, errJournalReadInterrupted) {
 				return err
 			}
 			return admission.failStateLocked(err)

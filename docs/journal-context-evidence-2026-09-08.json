@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "8104a7d728b706db54c0d3ca4e1738c1efcb1b62",
+  "production_gates": "0/9",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/modelruntime-race.log",
+      "sha256": "ce3fb59017b3a49ed585dc1d9ba6fbba09c99a72bcd5142baff6f82d5dc95d00",
+      "bytes": 57
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/repository-tests.log",
+      "sha256": "b25016543c9de466342d31c4c5fa8aa280d1c7d2a09ae2cc98293d5f54e9417c",
+      "bytes": 6836
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "bytes": 10
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/linux-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+      "bytes": 10
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/linux-cross.log",
+      "sha256": "c969e2bb4b17cb8c094048ebb351b5e26c3f60339c0d4890b1a0d59236b23d58",
+      "bytes": 167
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/campaigns.log",
+      "sha256": "c3105dab6a1e1fa5d7f3dc73e48f8802e5fee08fbe6b546b29ee90f39c982ff6",
+      "bytes": 63977
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native-runner.log",
+      "sha256": "23628e24c4d69a0e6f6f9b06d92b0e3f6de1032c67c2ac8e519dc80af8956612",
+      "bytes": 95
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/modelruntime.log",
+      "sha256": "6147eb299d7559306e0cb0097b9f1fbfed1c28e594a24a0c68b1b08e5114abfd",
+      "bytes": 33565
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/node-startup.log",
+      "sha256": "4726b412bcbc38ee5d3aca27178afa2f8cea7a1dacc4bb38b4c6d852efacdd32",
+      "bytes": 20901
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/build-modelruntime.log",
+      "sha256": "3a7bfa0efe8a44facca2074695e9d440b84a0da88b8920614d80a1018e8cc13d",
+      "bytes": 1718
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/build-nodeagent.log",
+      "sha256": "46041f710499f245ad6cce08dfa057cbde509e80e112d27cc589cfda01b10c10",
+      "bytes": 1721
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/source.txt",
+      "sha256": "1d118ae2f0c5527cf8489db3ce86c7f46b4674920562b9f8da2166b337850185",
+      "bytes": 780
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/source.patch",
+      "sha256": "1be92d6539c692bec73def9ad1befb2849398d942769805169a7bc35a2482e4e",
+      "bytes": 45939
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/source-patch.sha256",
+      "sha256": "f364aa5af4a09a9d5c4d8218a188a43e8e2b8573236622da47fa7e220b0a3734",
+      "bytes": 138
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/binaries.sha256",
+      "sha256": "597db23715c1bd8522c6e39f15ed434de914c77e80d092a38f44058ea5719a00",
+      "bytes": 309
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/docker-version.txt",
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d",
+      "bytes": 754
+    },
+    {
+      "path": "docs/evidence/journal-context-2026-09-08/native/image.txt",
+      "sha256": "b7a967568d499ec6047ad47743afd76cba2f19c3762162e81f293575e8ea6e58",
+      "bytes": 72
+    }
+  ],
+  "checks": {
+    "modelruntime_race_seconds": 80.443,
+    "repository_tests_exit": 0,
+    "vet_exit": 0,
+    "lint_exit": 0,
+    "linux_lint_exit": 0,
+    "linux_amd64_cross_exit": 0,
+    "native_runner_exit": 0,
+    "native_modelruntime_behavioral_tests": 47,
+    "native_modelruntime_helpers": 1,
+    "native_node_main_tests": 7,
+    "native_skips": 0,
+    "campaigns_exit": 0,
+    "campaigns_seconds": 61.26
+  },
+  "scope": {
+    "cancellation_faults_at_transport_interface": true,
+    "cpu_campaigns_use_local_persistence": true,
+    "production_startup_assembly": false,
+    "full_remote_job_campaign": false,
+    "sustained_operation": false
+  },
+  "source_tree_sha256": "7e6a2d39688774d5d431abfc9ff93a702423de77dd56dd78e210d615471605e1",
+  "source_file_count": 949,
+  "source_digest_method": "SHA256 of sorted tracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline"
+}

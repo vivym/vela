@@ -1,0 +1,3 @@
+ok  	github.com/vivym/vela/internal/modelruntime	0.006s
+ok  	github.com/vivym/vela/internal/nodeagent	0.005s
+ok  	github.com/vivym/vela/internal/runtimechannel	0.005s

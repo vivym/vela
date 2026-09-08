@@ -61,7 +61,7 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return nil, err
 	}
 	if admission.store == nil || disposition == nil || proto.Size(disposition) > maxExecutionWireBytes {
@@ -96,7 +96,7 @@ func (supervisor *Supervisor) terminalNonAdmission(ctx context.Context, disposit
 			return nil, ErrExecutionNonAdmissionUnproven
 		}
 	}
-	if err := store.saveTerminalNonAdmission(verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
+	if err := store.saveTerminalNonAdmissionContext(ctx, verified.Disposition, allocationID, service.journalRoute(), service.clock.Now().UTC()); err != nil {
 		if isExecutionJournalRejection(err) {
 			return nil, err
 		}

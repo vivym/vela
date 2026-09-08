@@ -42,7 +42,7 @@ func (service *Service) restoreDrainedExecution(ctx context.Context, verified st
 	admission := service.executionAdmission()
 	admission.mu.Lock()
 	defer admission.mu.Unlock()
-	if err := admission.checkStateLocked(); err != nil {
+	if err := admission.checkStateLocked(ctx); err != nil {
 		return err
 	}
 	service.mu.Lock()
