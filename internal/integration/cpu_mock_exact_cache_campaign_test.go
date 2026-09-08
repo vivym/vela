@@ -21,7 +21,7 @@ import (
 )
 
 func TestCPUMockExactCacheSourceTargetCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, true, false)
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{exactCache: true})
 }
 
 type cpuExactCacheBinding struct {

@@ -7,12 +7,14 @@ Current local migration: `94`
 Status: In progress
 
 Latest local checkpoint (2026-09-08): the
-[durable Control stream CPU campaign](cpu-durable-stream-evidence-2026-09-08.md)
-completes 32 Jobs and an exact-cache source/target pair under race detection,
-including lost commit-response recovery, matching PostgreSQL/Worker/Runtime
-history and zero final payload scratch. It reaches the 32-record Runtime history
-bound; trusted custody, full process/session recovery, history reclamation and
-open-loop operation remain open. Runtime schema-8
+[ProductionAgent.Run CPU campaign](cpu-production-loop-evidence-2026-09-08.md)
+completes 32 Jobs/128 Stage executions under race detection, including production
+readiness/capacity/heartbeat, automatic session advance and lost commit replay.
+The preceding [durable stream campaign](cpu-durable-stream-evidence-2026-09-08.md)
+also covers exact-cache source/target and explicit StreamAgent reconstruction.
+Both match PostgreSQL/Worker/Runtime history with zero final payload scratch.
+The 32-record Runtime bound, trusted custody/startup, full process recovery,
+history reclamation and open-loop operation remain open. Runtime schema-8
 [health durability](worker-health-durability-evidence-2026-09-08.md) remains the
 preceding production-code checkpoint. Earlier measurements below remain bound
 to their original revisions.
@@ -62,13 +64,13 @@ has not been changed by this campaign; subsequent lifecycle work remains open.
 | --- | --- | --- | --- |
 | A1 | Explicit module authority and current contracts agree | Review of effective SQL, Go, protocol, and deployment ownership | In progress |
 | A2 | Admission, capacity, fairness, and bounded WIP remain consistent | Concurrent capacity/running-limit/backpressure tests and mock load | Targeted concurrency/lock/quorum tests and same-source 512-Job load pass |
-| A3 | Replay, restart, cancellation, and stale epochs cannot corrupt execution | Stage fault/recovery campaign with rejected stale probes and terminal convergence | Schema-88 ordered allocation repair passes public-gRPC/race, signature and durable replay regressions; terminal writer closure remains open |
+| A3 | Replay, restart, cancellation, and stale epochs cannot corrupt execution | Stage fault/recovery campaign with rejected stale probes and terminal convergence | Current dual-journal and native ProductionAgent session/replay campaigns pass; full process replacement, protected startup and comprehensive fault composition remain open |
 | A4 | Exact cache performs miss/admit/hit/reuse through configured runtime | Two equivalent Jobs with distinct identities, fixed seed, exact output/pin bindings | Native CPU source 4 / target 2 stages, two exact cache entries and separate Job public copies pass; remote lab pending |
 | A5 | Cache, transfer, retention, and deletion preserve content isolation | Project/Organization negative tests, expiry/deletion/pin race tests | Targeted and final local integration pass; scratch writer exclusion remains open |
 | A6 | Completion and customer Charge occur at most once | Physical/cache/cancel/replay outcomes and independent Usage/Cost checks | Targeted regressions passed; accounting coverage partial |
 | A7 | Quiescence and backup can be used for actual recovery | Closed Admission, consistent authority snapshot, isolated PostgreSQL restore and replay | Isolated database drill passed; object recovery separate |
-| A8 | Idle and loaded operation have bounded resource growth | Polling/record lifecycle review, sustained mock observation, capacity evidence | Successful 64-wave scratch/watchdog/pin convergence passes; terminal scratch and inactive-worker history remain open |
-| A9 | Deployment and verification exercise current entry points | Generated contracts, lint, build, all integration packages, CPU runtime composition | Schema-88 unit, four-shard integration, lint, cross-build, deployment, generation, CNPG failover and native CPU campaigns pass; full external composition separate |
+| A8 | Idle and loaded operation have bounded resource growth | Polling/record lifecycle review, sustained mock observation, capacity evidence | Older 64-wave direct-service convergence passes; current ProductionAgent.Run reaches 32 records per Runtime with zero payload scratch but growing journal metadata; reclamation and sustained operation remain open |
+| A9 | Deployment and verification exercise current entry points | Generated contracts, lint, build, all integration packages, CPU runtime composition | Historical schema-88 broad verification is retained; current native ProductionAgent.Run/Control stream campaigns pass; Registry-bound protected Node/executable composition remains separate |
 | A10 | Review findings are repaired and independently rechecked | Finding ledger, regression tests, final requirement-by-requirement audit | Initial review: 38 findings, 34 fixed, 1 false positive, 2 partial, 1 open; subsequent content-lifecycle repair verified separately; overall closure pending |
 | A11 | Capacity and scheduling models are scientifically defensible | Independent analytical/oracle checks, dimensional consistency, deterministic load and failure experiments | 18 public-API formula/oracle checks and random conservation pass; production scheduler replay remains unmodeled |
 | A12 | Architecture improvements solve observed problems | Before/after invariants, overhead, convergence, and measured mock comparisons | In progress |

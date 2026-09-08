@@ -93,50 +93,57 @@ type cpuLoadBudget struct {
 }
 
 type cpuLoadReceipt struct {
-	SchemaVersion       int                         `json:"schema_version"`
-	EvidenceClass       string                      `json:"evidence_class"`
-	ProductionGate      bool                        `json:"production_gate"`
-	StartedAt           time.Time                   `json:"started_at"`
-	Jobs                int                         `json:"jobs"`
-	Waves               int                         `json:"waves"`
-	ConcurrentArrivals  int                         `json:"concurrent_arrivals_per_wave"`
-	PersistentWorkers   int                         `json:"persistent_workers"`
-	ProjectRunningLimit int                         `json:"project_running_limit"`
-	InitialBudget       cpuLoadBudget               `json:"initial_budget"`
-	ElapsedSeconds      float64                     `json:"elapsed_seconds"`
-	JobsPerSecond       float64                     `json:"jobs_per_second"`
-	MeanQueueSeconds    float64                     `json:"mean_queue_seconds"`
-	MaxQueueSeconds     float64                     `json:"max_queue_seconds"`
-	MeanLatencySeconds  float64                     `json:"mean_latency_seconds"`
-	Peak                cpuLoadObservation          `json:"sampled_peak"`
-	Before              cpuLoadObservation          `json:"before_arrivals"`
-	AfterWave           []cpuLoadObservation        `json:"after_wave"`
-	AfterMaintenance    []cpuLoadObservation        `json:"after_maintenance"`
-	MaintenanceResults  []retention.ReconcileResult `json:"maintenance_results"`
-	AfterIdle           cpuLoadObservation          `json:"after_idle"`
-	AcquireRetries      int64                       `json:"acquire_transaction_retries"`
-	AcquireDeadlocks    int64                       `json:"acquire_deadlock_retries"`
-	AcquireConflicts    int64                       `json:"acquire_serialization_retries"`
-	AcquireStalePolls   int64                       `json:"acquire_confirmed_stale_polls,omitempty"`
-	CapacityReports     map[string]int64            `json:"capacity_reports_by_worker"`
-	SourceTreeSHA256    string                      `json:"source_tree_sha256"`
-	RuntimeBinaries     map[string]string           `json:"runtime_binary_sha256"`
-	GoVersion           string                      `json:"go_version"`
-	FFprobeVersion      string                      `json:"ffprobe_version"`
-	Limitations         []string                    `json:"limitations"`
-	DurableStream       bool                        `json:"durable_stream,omitempty"`
-	ReplayedCommits     int64                       `json:"replayed_materialization_commits,omitempty"`
-	DurableRecords      map[string]int              `json:"durable_records_by_worker,omitempty"`
+	SchemaVersion       int                                 `json:"schema_version"`
+	EvidenceClass       string                              `json:"evidence_class"`
+	ProductionGate      bool                                `json:"production_gate"`
+	StartedAt           time.Time                           `json:"started_at"`
+	Jobs                int                                 `json:"jobs"`
+	Waves               int                                 `json:"waves"`
+	ConcurrentArrivals  int                                 `json:"concurrent_arrivals_per_wave"`
+	PersistentWorkers   int                                 `json:"persistent_workers"`
+	ProjectRunningLimit int                                 `json:"project_running_limit"`
+	InitialBudget       cpuLoadBudget                       `json:"initial_budget"`
+	ElapsedSeconds      float64                             `json:"elapsed_seconds"`
+	JobsPerSecond       float64                             `json:"jobs_per_second"`
+	MeanQueueSeconds    float64                             `json:"mean_queue_seconds"`
+	MaxQueueSeconds     float64                             `json:"max_queue_seconds"`
+	MeanLatencySeconds  float64                             `json:"mean_latency_seconds"`
+	Peak                cpuLoadObservation                  `json:"sampled_peak"`
+	Before              cpuLoadObservation                  `json:"before_arrivals"`
+	AfterWave           []cpuLoadObservation                `json:"after_wave"`
+	AfterMaintenance    []cpuLoadObservation                `json:"after_maintenance"`
+	MaintenanceResults  []retention.ReconcileResult         `json:"maintenance_results"`
+	AfterIdle           cpuLoadObservation                  `json:"after_idle"`
+	AcquireRetries      int64                               `json:"acquire_transaction_retries"`
+	AcquireDeadlocks    int64                               `json:"acquire_deadlock_retries"`
+	AcquireConflicts    int64                               `json:"acquire_serialization_retries"`
+	AcquireStalePolls   int64                               `json:"acquire_confirmed_stale_polls,omitempty"`
+	CapacityReports     map[string]int64                    `json:"capacity_reports_by_worker"`
+	SourceTreeSHA256    string                              `json:"source_tree_sha256"`
+	RuntimeBinaries     map[string]string                   `json:"runtime_binary_sha256"`
+	GoVersion           string                              `json:"go_version"`
+	FFprobeVersion      string                              `json:"ffprobe_version"`
+	Limitations         []string                            `json:"limitations"`
+	DurableStream       bool                                `json:"durable_stream,omitempty"`
+	ReplayedCommits     int64                               `json:"replayed_materialization_commits,omitempty"`
+	DurableRecords      map[string]int                      `json:"durable_records_by_worker,omitempty"`
+	ProductionLoop      bool                                `json:"production_loop,omitempty"`
+	ProductionWorkers   map[string]cpuProductionObservation `json:"production_workers,omitempty"`
 }
 
 // This opt-in campaign uses actual subprocesses and ffprobe; ordinary integration
 // shards continue to run without requiring the host media toolchain.
 func TestCPUMockConcurrentAdmissionRuntimeCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, false, false)
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{})
 }
 
-func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
+type cpuCampaignMode struct {
+	exactCache, durableStream, productionLoop bool
+}
+
+func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 	t.Helper()
+	exactCache, durableStream := mode.exactCache, mode.durableStream
 	if os.Getenv("VELA_RUN_CPU_MOCK_CAMPAIGN") != "1" {
 		t.Skip("set VELA_RUN_CPU_MOCK_CAMPAIGN=1 for the bounded subprocess campaign")
 	}
@@ -287,14 +294,23 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
 				CapacityVector: worker.capacity}, observation: stagescheduler.CapacityObservation{Sequence: worker.evidence.Capacity.Sequence}}
 		resident := newCPULoadWorker(t, ctx, root, binary, stage, worker, fixture,
 			validator, execution, evidence, artifacts, tickets, connector, materializer, durableStream)
-		if err := resident.reportCapacity(ctx); err != nil {
-			t.Fatal(err)
+		if !mode.productionLoop {
+			if err := resident.reportCapacity(ctx); err != nil {
+				t.Fatal(err)
+			}
+			worker.evidence.ControlSessionEpoch = resident.controlSessionEpoch
+			worker.evidence.Capacity.Sequence = resident.fixture.observation.Sequence
+			registerStageSchedulerRuntime(t, database, worker.evidence, worker.authority, stage.profileID)
 		}
-		worker.evidence.ControlSessionEpoch = resident.controlSessionEpoch
-		worker.evidence.Capacity.Sequence = resident.fixture.observation.Sequence
-		registerStageSchedulerRuntime(t, database, worker.evidence, worker.authority, stage.profileID)
 		if durableStream {
+			resident.durable.productionLoop = mode.productionLoop
+			if mode.productionLoop {
+				configureCPUProductionState(t, resident, worker)
+			}
 			configureCPUDurableWorker(t, resident, store, keys)
+			if mode.productionLoop {
+				configureCPUProductionLoop(t, resident, worker)
+			}
 		}
 		workers = append(workers, resident)
 	}
@@ -339,6 +355,10 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
 	if durableStream {
 		receipt.DurableStream = true
 		receipt.Limitations = cpuDurableStreamLimitations()
+	}
+	if mode.productionLoop {
+		receipt.ProductionLoop = true
+		receipt.Limitations = cpuProductionLoopLimitations()
 	}
 	receipt.Before = observeCPULoad(t, database, root)
 	receipt.Before.Processes = observeCPULoadProcesses(t)
@@ -420,6 +440,8 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
 	receipt.AfterIdle = observeCPULoad(t, database, root)
 	receipt.AfterIdle.Processes = observeCPULoadProcesses(t)
 	assertCPULoadResidentProcesses(t, receipt.Before.Processes, receipt.AfterIdle.Processes)
+	cancel()
+	wg.Wait()
 	for _, worker := range workers {
 		receipt.AcquireRetries += worker.retries.Load()
 		receipt.AcquireDeadlocks += worker.deadlocks.Load()
@@ -429,6 +451,9 @@ func runCPUMockRuntimeCampaign(t *testing.T, exactCache, durableStream bool) {
 	}
 	if durableStream {
 		receipt.DurableRecords = assertCPUDurableJournals(t, workers)
+	}
+	if mode.productionLoop {
+		receipt.ProductionWorkers = assertCPUProductionState(t, workers)
 	}
 	receipt.CapacityReports = cpuLoadCapacityReports(t, workers)
 	select {
@@ -589,6 +614,9 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close() })
+	if durable != nil {
+		durable.runtimeClient = velav1.NewModelRuntimeServiceClient(connection)
+	}
 	agent, err := stageworkeragent.New(stageworkeragent.Config{Members: []stageworkeragent.RuntimeMember{{ID: member.ID.String(), Client: velav1.NewModelRuntimeServiceClient(connection)}}})
 	if err != nil {
 		t.Fatal(err)
@@ -600,6 +628,9 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 }
 
 func (worker *cpuLoadWorker) run(ctx context.Context) error {
+	if worker.durable != nil && worker.durable.production != nil {
+		return worker.durable.production.Run(ctx)
+	}
 	for ctx.Err() == nil {
 		result, err := worker.acquire(ctx)
 		if err != nil {
@@ -863,7 +894,7 @@ func observeCPULoad(t *testing.T, database testDatabase, root string) cpuLoadObs
 				return err
 			}
 			parts := strings.Split(filepath.ToSlash(relative), "/")
-			if len(parts) > 2 && (parts[1] == "worker-admission" || parts[1] == "runtime-admission" || parts[1] == "materialization-journal" || parts[1] == "input-transfer-journal" || entry.Name() == ".vela-assignment-admission") {
+			if len(parts) > 2 && (parts[1] == "worker-admission" || parts[1] == "runtime-admission" || parts[1] == "materialization-journal" || parts[1] == "input-transfer-journal" || parts[1] == "production-state" || entry.Name() == ".vela-assignment-admission") {
 				observation.JournalBytes += info.Size()
 				return nil
 			}

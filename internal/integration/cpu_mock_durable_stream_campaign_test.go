@@ -27,30 +27,39 @@ import (
 )
 
 func TestCPUMockDurableStreamJobCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, false, true)
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{durableStream: true})
 }
 
 func TestCPUMockDurableStreamExactCacheCampaign(t *testing.T) {
-	runCPUMockRuntimeCampaign(t, true, true)
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{exactCache: true, durableStream: true})
 }
 
 type cpuDurableWorker struct {
-	supervisor *modelruntime.Supervisor
-	admission  *stageworkeragent.FileAssignmentAdmission
-	stream     *stageworkeragent.StreamAgent
-	config     stageworkeragent.DurableStreamConfig
-	control    *cpuCommitLossControl
-	acquireID  uuid.UUID
-	root       string
-	redial     func() *stageworkertransport.Client
+	supervisor      *modelruntime.Supervisor
+	admission       *stageworkeragent.FileAssignmentAdmission
+	stream          *stageworkeragent.StreamAgent
+	config          stageworkeragent.DurableStreamConfig
+	control         *cpuCommitLossControl
+	acquireID       uuid.UUID
+	root            string
+	redial          func() *stageworkertransport.Client
+	productionLoop  bool
+	production      *stageworkeragent.ProductionAgent
+	productionState *stageworkeragent.FileProductionState
+	runtimeClient   velav1.ModelRuntimeServiceClient
 }
 
 var errCPUCommitResponseLost = errors.New("CPU campaign dropped committed materialization response")
 
 type cpuCommitLossControl struct {
 	*stageworkertransport.Client
-	armed   atomic.Bool
-	dropped atomic.Int64
+	armed         atomic.Bool
+	dropped       atomic.Int64
+	worker        *cpuLoadWorker
+	lostID        atomic.Pointer[string]
+	registrations atomic.Int64
+	heartbeats    atomic.Int64
+	staleAcquires atomic.Int64
 }
 
 func (control *cpuCommitLossControl) Exchange(ctx context.Context, request *velav1.StageWorkerControlServiceConnectRequest) (*velav1.StageWorkerControlServiceConnectResponse, error) {
@@ -58,7 +67,27 @@ func (control *cpuCommitLossControl) Exchange(ctx context.Context, request *vela
 	if err == nil && request.GetCommitStageMaterialization() != nil &&
 		response.GetStageCommandResult().GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED && control.armed.Swap(false) {
 		control.dropped.Add(1)
+		id := request.GetRequestId()
+		control.lostID.Store(&id)
 		return nil, errCPUCommitResponseLost
+	}
+	if err == nil && request.GetCommitStageMaterialization() != nil && response.GetRequestId() == request.GetRequestId() &&
+		response.GetStageCommandResult().GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED {
+		if id := control.lostID.Load(); id != nil && *id == request.GetRequestId() && control.lostID.CompareAndSwap(id, nil) {
+			control.worker.replayedCommits.Add(1)
+		}
+	}
+	if err == nil && control.worker.durable.productionLoop && request.GetReportCapacityObservation() != nil && response.GetWorkerReadinessDecision().GetReady() {
+		control.worker.capacityReports.Add(1)
+	}
+	if err == nil && request.GetRegisterWorkerEvidence() != nil && response.GetWorkerReadinessDecision().GetReady() {
+		control.registrations.Add(1)
+	}
+	if err == nil && request.GetHeartbeatStage() != nil && response.GetStageCommandResult().GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED {
+		control.heartbeats.Add(1)
+	}
+	if err == nil && request.GetAcquireStage() != nil && response.GetStageCommandResult().GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE {
+		control.staleAcquires.Add(1)
 	}
 	return response, err
 }
@@ -138,11 +167,15 @@ func configureCPUDurableWorker(t *testing.T, worker *cpuLoadWorker, store *artif
 	if err != nil {
 		t.Fatal(err)
 	}
-	dial := terminalDispositionDialer(t, handler)
+	var sources []stageworkertransport.ControlSessionEpochSource
+	if durable.productionLoop {
+		sources = append(sources, durable.productionState)
+	}
+	dial := terminalDispositionDialer(t, handler, sources...)
 	durable.redial = func() *stageworkertransport.Client {
 		return dial(worker.controlCommand().Identity.SPIFFEID, worker.controlSessionEpoch)
 	}
-	durable.control = &cpuCommitLossControl{Client: durable.redial()}
+	durable.control = &cpuCommitLossControl{Client: durable.redial(), worker: worker}
 	durable.control.armed.Store(true)
 	inputJournal, err := stageworkeragent.NewFileInputTransferJournal(filepath.Join(durable.root, "input-transfer-journal"))
 	if err != nil {
@@ -262,9 +295,6 @@ func (worker *cpuLoadWorker) executeDurable(ctx context.Context, assignment *vel
 			return err
 		}
 		materialized, err = durable.stream.ResumeMaterializations(ctx)
-		if err == nil && materialized.Committed {
-			worker.replayedCommits.Add(1)
-		}
 	}
 	if err != nil || !materialized.Committed {
 		return fmt.Errorf("durable materialization: %+v: %w", materialized, err)
