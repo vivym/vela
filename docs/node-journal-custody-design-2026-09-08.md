@@ -77,6 +77,12 @@ protected task-created OCI bytes under an explicitly trusted daemon state root.
 Actual CRI/native task tests distinguish these bytes from Containers.Get.spec.
 This adds a configuration source; approved effective configuration, runtime
 options, mount isolation and the once-only startup grant still need assembly.
+The subsequent [daemon/state binding](node-task-state-evidence-2026-09-09.md)
+checks the configured state inode against CRI Status through the original
+socket-peer pidfd and reads bundles in that daemon's filesystem view. A copied
+private directory fails; a legitimate Node bind alias cannot redirect reads
+through a shadow mount below it. This closes the state-directory mapping
+prerequisite, not workload mount approval or trusted runtime/shim identity.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

@@ -34,7 +34,7 @@ func verifyRuntimeTaskLaunchBundle(t *testing.T, fixture *containerdProcessFixtu
 	}
 	path := filepath.Join(state, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
 	original, err := os.ReadFile(path)
-	if err != nil || launch.ConfigDigest != sha256.Sum256(original) || launch.ConfigBytes != int64(len(original)) || launch.DaemonStatePath != state {
+	if err != nil || launch.ConfigDigest != sha256.Sum256(original) || launch.ConfigBytes != int64(len(original)) {
 		t.Fatalf("bundle digest differs from actual daemon file: %v", err)
 	}
 	configuration.Process.Args[0] = "/caller-mutated-copy"

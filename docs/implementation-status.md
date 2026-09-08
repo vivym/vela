@@ -561,6 +561,13 @@ daemon state root, correlated with the original caller and real CRI/native task.
 Real CRI tests distinguish that source from mutable container metadata and reject
 untrusted/missing/mismatched files. Approval of the configuration, runtime options,
 effective mounts, deployment mapping and once-only grant issuance remain open.
+The subsequent [daemon/state binding](node-task-state-evidence-2026-09-09.md)
+verifies that mapping using the original socket-peer pidfd, CRI Status and the
+daemon's filesystem view. Copied private state trees fail; legitimate Node bind
+aliases cannot redirect bundle reads through a shadow mount. Actual daemon
+replacement/exit and concurrent handle cleanup are covered. This closes the
+state-root source prerequisite, not configuration/mount approval or grant/Job
+assembly.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

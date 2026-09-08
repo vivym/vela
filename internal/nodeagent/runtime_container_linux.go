@@ -34,6 +34,7 @@ type RuntimeContainerObserver struct {
 	check        func() error
 	close        func() error
 	clock        func() time.Time
+	daemon       *runtimeContainerDaemon
 }
 
 func (observer *RuntimeContainerObserver) Close() error {

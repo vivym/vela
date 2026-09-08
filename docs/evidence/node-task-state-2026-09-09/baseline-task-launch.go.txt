@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
@@ -33,7 +34,6 @@ type RuntimeTaskLaunch struct {
 	ConfigInode     uint64
 	ObservedFrom    time.Time
 	ObservedThrough time.Time
-	DaemonStatePath string
 	encoded         []byte
 }
 
@@ -47,10 +47,9 @@ func (launch *RuntimeTaskLaunch) Configuration() (specs.Spec, error) {
 }
 
 // ObserveTaskLaunch reads config.json from containerd's task bundle, not mutable
-// Containers.Get.spec/CRI verbose runtimeSpec metadata. stateDirectory is Node
-// configuration naming the state root in the Node's mount view. Its inode must
-// match the path reported by CRI Status in the pinned daemon's filesystem view;
-// bundle reads use that daemon view. This adapter supports rootful runc-v2 tasks
+// Containers.Get.spec/CRI verbose metadata. stateDirectory is trusted Node
+// configuration naming THIS daemon's state root in the Node's mount view; it
+// must never come from a workload. This adapter supports rootful runc-v2 tasks
 // without remapped bundle ownership. Root administrators remain trusted.
 func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context, stateDirectory string, target RuntimeContainerTarget, caller *RuntimeCaller) (*RuntimeTaskLaunch, error) {
 	if err := contextError(ctx); err != nil {
@@ -66,7 +65,8 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	bundle, daemonState, err := observer.openTaskBundle(ctx, stateDirectory, target)
+	bundlePath := filepath.Join(stateDirectory, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID)
+	bundle, err := securefile.OpenTrustedDirectory(bundlePath)
 	if err != nil {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
 	}
@@ -109,13 +109,13 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	}
 	// Retain the directory inode through both reads and re-open its trusted
 	// pathname to reject visible deletion/replacement or changed ancestors.
-	current, currentState, err := observer.openTaskBundle(ctx, stateDirectory, target)
+	current, err := securefile.OpenTrustedDirectory(bundlePath)
 	if err != nil {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
 	}
 	defer func() { _ = current.Close() }()
 	var currentDirectory unix.Stat_t
-	if err := unix.Fstat(int(current.Fd()), &currentDirectory); err != nil || daemonState != currentState || directory.Dev != currentDirectory.Dev || directory.Ino != currentDirectory.Ino ||
+	if err := unix.Fstat(int(current.Fd()), &currentDirectory); err != nil || directory.Dev != currentDirectory.Dev || directory.Ino != currentDirectory.Ino ||
 		directory.Mode != currentDirectory.Mode || directory.Uid != currentDirectory.Uid || directory.Gid != currentDirectory.Gid {
 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
 	}
@@ -138,7 +138,7 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
 	}
 	return &RuntimeTaskLaunch{Caller: last, ConfigDigest: sha256.Sum256(config), ConfigBytes: int64(len(config)),
 		BundleDevice: directory.Dev, BundleInode: directory.Ino, ConfigDevice: configIdentity.device, ConfigInode: configIdentity.inode,
-		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config}, nil
+		ObservedFrom: from, ObservedThrough: time.Now().UTC(), encoded: config}, nil
 }
 
 type runtimeTaskFileIdentity struct {

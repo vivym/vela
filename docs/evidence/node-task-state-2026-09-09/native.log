@@ -1,0 +1,116 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:108: actual CRI container=ded24bb4258d4e006cb279ac5749300a11c1db8ad9579e0b840009c7ac1651b1 sandbox=783da1b55ac52f70c3cffdc049423a433a9e3cbd918929489cda99a2d43c287a Pod=9f9ffadc-ceac-4676-aafb-a309074f2aeb host_pid=129 namespace_pid=1 image_ref=sha256:1c766d43a582675721395a568ba0cb8af1bc26abcb9505098ecabfdb37cd9cf7
+=== RUN   TestRuntimeCallerContainerCRI/owner/copied-state-root
+=== RUN   TestRuntimeCallerContainerCRI/owner/node-mount-alias-and-shadow
+    runtime_task_launch_integration_linux_test.go:118: === RUN   TestRuntimeTaskStateMountHelper
+            runtime_task_launch_integration_linux_test.go:243: different Node path matched the state inode; shadow mount below alias could not change the daemon-view bundle
+        --- PASS: TestRuntimeTaskStateMountHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:111: actual task bundle config sha256=99f4e15b04a38e78468ca391dd768caf67543ded13a4109f0c41d991c1bb53ae; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+    runtime_container_cri_linux_test.go:186: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+=== RUN   TestRuntimeCallerContainerCRI/wrapper
+    runtime_container_cri_linux_test.go:100: actual CRI wrapper rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/shared-pid
+    runtime_container_cri_linux_test.go:100: actual CRI shared-pid rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:108: actual CRI container=8530bd4cf5b116e91f75fe43766e14aa9f5538b539844e9e14e2d8e84a79dff5 sandbox=a3535ad5521b9a3a7d8054a8fc8fbbd28290e1616d8ddd32fd251c87c2bd3f11 Pod=04ef08e0-c48c-49dd-b54f-f9634a111656 host_pid=539 namespace_pid=1 image_ref=sha256:1c766d43a582675721395a568ba0cb8af1bc26abcb9505098ecabfdb37cd9cf7
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/copied-state-root
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/node-mount-alias-and-shadow
+    runtime_task_launch_integration_linux_test.go:118: === RUN   TestRuntimeTaskStateMountHelper
+            runtime_task_launch_integration_linux_test.go:243: different Node path matched the state inode; shadow mount below alias could not change the daemon-view bundle
+        --- PASS: TestRuntimeTaskStateMountHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:111: actual task bundle config sha256=53ade99cf8d125fbe8de82cc89deb0312f3bcb9f0969433fdbaafbc83c026b74; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+    runtime_container_cri_linux_test.go:126: Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested
+    runtime_container_cri_linux_test.go:186: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+=== RUN   TestRuntimeCallerContainerCRI/original-daemon-lifetime
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+    runtime_container_cri_linux_test.go:193: same-daemon reconnect accepted; foreign root peer, exited peer and closed observer cannot replace the original process
+--- PASS: TestRuntimeCallerContainerCRI (15.98s)
+    --- PASS: TestRuntimeCallerContainerCRI/owner (3.40s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/copied-state-root (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/node-mount-alias-and-shadow (1.04s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-writable (0.02s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid (0.01s)
+    --- PASS: TestRuntimeCallerContainerCRI/wrapper (0.18s)
+    --- PASS: TestRuntimeCallerContainerCRI/shared-pid (0.16s)
+    --- PASS: TestRuntimeCallerContainerCRI/planned-owner (3.48s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/copied-state-root (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/node-mount-alias-and-shadow (1.03s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable (0.02s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner (0.02s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid (0.01s)
+    --- PASS: TestRuntimeCallerContainerCRI/original-daemon-lifetime (1.05s)
+=== RUN   TestRuntimeContainerDaemonClosesHandles
+--- PASS: TestRuntimeContainerDaemonClosesHandles (0.00s)
+=== RUN   TestRuntimeContainerdProcessEvidence
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeContainerdProcessEvidence/owner
+    runtime_containerd_linux_test.go:76: mode=owner task_pid=704 peer_pid=704 peer_start_ticks=13274008 NSpid=[704 1] namespace=pid:[4026532690]
+    runtime_containerd_linux_test.go:109: two matching Containers.Get replies returned changed PID/argv metadata while the original namespace-init caller remained live
+    runtime_containerd_linux_test.go:120: shared PID namespace: task_pid=peer_pid=753 but NSpid=[753 12]; task ownership alone does not prove namespace ownership
+    runtime_containerd_linux_test.go:142: same container id=7fd312b4c00b4094a7ee427a8c861fb5400ff4abf5d143a28c2792ce7089f405 and CreatedAt retained after task recreation: old_pid=704 new_pid=827 old_ticks=13274008 new_ticks=13274224
+=== RUN   TestRuntimeContainerdProcessEvidence/wrapper
+    runtime_containerd_linux_test.go:76: mode=wrapper task_pid=926 peer_pid=947 peer_start_ticks=13274337 NSpid=[947 14] namespace=pid:[4026532690]
+--- PASS: TestRuntimeContainerdProcessEvidence (6.43s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/owner (3.28s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/wrapper (2.10s)
+=== RUN   TestRuntimeDaemonStateDirectory
+--- PASS: TestRuntimeDaemonStateDirectory (0.00s)
+PASS

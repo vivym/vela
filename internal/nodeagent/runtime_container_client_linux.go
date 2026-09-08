@@ -25,9 +25,19 @@ import (
 // Linux O_PATH pins the filesystem inode until Close, preventing inode reuse
 // from disguising a replaced socket. It reads the host boot ID directly.
 func DialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig) (*RuntimeContainerObserver, error) {
-	return dialRuntimeContainerObserver(ctx, config, 0, func() (string, error) {
+	daemon := &runtimeContainerDaemon{}
+	observer, err := dialRuntimeContainerObserverWithPeerCheck(ctx, config, 0, func() (string, error) {
 		return readBootID("/proc/sys/kernel/random/boot_id")
-	})
+	}, daemon.authenticate)
+	if err != nil {
+		_ = daemon.close()
+		return nil, err
+	}
+	check, closeObserver := observer.check, observer.close
+	observer.daemon = daemon
+	observer.check = func() error { return errors.Join(check(), daemon.check()) }
+	observer.close = func() error { return errors.Join(closeObserver(), daemon.close()) }
+	return observer, nil
 }
 
 func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig, owner uint32, boot func() (string, error)) (*RuntimeContainerObserver, error) {

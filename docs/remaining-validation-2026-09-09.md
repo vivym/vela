@@ -54,9 +54,11 @@ I/O 未返回时处理当前执行，调用前还会重新核对 generation 与�
 
 新增 [containerd task bundle 来源](node-task-launch-evidence-2026-09-09.md)
 已从 root 私有的实际 task bundle 读取配置，匹配原始 caller/CRI/native task，
-真实 CRI 反例证明它不随 `Containers.Get.spec` 改写而变化。它要求可信 Node
-配置给出同 daemon 的 state root；配置批准、runtime options、有效挂载、
-CLI 装配及一次性 grant 仍需完成。
+真实 CRI 反例证明它不随 `Containers.Get.spec` 改写而变化。后续
+[daemon/state 关联](node-task-state-evidence-2026-09-09.md) 已用原始 socket peer
+pidfd、CRI Status 和 daemon 的文件系统视图验证 state 目录来源；复制的私有
+目录被拒绝，Node bind-mount 别名下的覆盖挂载不改变读到的真实 bundle。
+配置批准、runtime options、工作负载有效挂载、CLI 装配及一次性 grant 仍需完成。
 
 ## 依赖顺序与通过标准
 

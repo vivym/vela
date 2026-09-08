@@ -1,0 +1,9 @@
+{
+  "module": "github.com/containerd/containerd/v2@v2.3.1",
+  "revision": "64b425cf570b3b8dd1d4cc46da7c1fce65c6651a",
+  "files": {
+    "plugins/cri/runtime/plugin.go": "9b02fc39b0f849851f58f07ff3e58363d6768281dfeea9791424468bdb92d6a9",
+    "internal/cri/server/status.go": "d6a186e916f23c1f217909fe0646cba4834c1bc4c9684e46bfcc71c8806d5a8c",
+    "internal/cri/config/config.go": "94b4130e1152f938fc39a3de04e564a58664d4448e8ba550d631989beddb2044"
+  }
+}

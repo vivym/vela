@@ -26,6 +26,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -188,6 +189,56 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			}
 		})
 	}
+	t.Run("original-daemon-lifetime", func(t *testing.T) {
+		verifyRuntimeDaemonLifetime(t, fixture, observer)
+	})
+}
+
+func verifyRuntimeDaemonLifetime(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver) {
+	t.Helper()
+	connect := func(path string) net.Conn {
+		connection, err := net.Dial("unix", path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = connection.Close() })
+		return connection
+	}
+	sameConnection := connect(fixture.socket)
+	if err := observer.daemon.authenticate(sameConnection); err != nil {
+		t.Fatalf("same daemon connection could not reuse its original pidfd: %v", err)
+	}
+	if err := sameConnection.Close(); err != nil {
+		t.Fatal(err)
+	}
+	another := startProcessContainerd(t)
+	otherConnection := connect(another.socket)
+	if err := observer.daemon.authenticate(otherConnection); err == nil {
+		t.Fatal("another root containerd replaced the pinned daemon")
+	}
+	if err := observer.check(); err != nil {
+		t.Fatalf("rejected foreign daemon destroyed the original live observer: %v", err)
+	}
+	fixture.stopDaemon(t, unix.SIGKILL, true)
+	if err := observer.daemon.check(); err == nil {
+		t.Fatal("original daemon exit left the retained pidfd live")
+	}
+	if directory, err := observer.daemon.openDirectory("/"); err == nil || directory != nil {
+		t.Fatal("lost original daemon still supplied a filesystem view")
+	}
+	if err := observer.daemon.authenticate(otherConnection); err == nil {
+		t.Fatal("another daemon revived a lost original peer")
+	}
+	if err := observer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := observer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := observer.daemon.authenticate(otherConnection); err == nil {
+		t.Fatal("closed observer acquired a new daemon")
+	}
+	t.Log("same-daemon reconnect accepted; foreign root peer, exited peer and closed observer cannot replace the original process")
 }
 
 func prepareCRICgroupDelegation(t *testing.T) {

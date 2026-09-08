@@ -1,0 +1,27 @@
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/wrong-owner
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/world-access
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/symlink
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/regular-file
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/relative
+=== RUN   TestRuntimeContainerObserverRejectsUntrustedSocket/network-address
+--- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket (0.01s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/wrong-owner (0.00s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/world-access (0.00s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/symlink (0.00s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/regular-file (0.00s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/relative (0.00s)
+    --- PASS: TestRuntimeContainerObserverRejectsUntrustedSocket/network-address (0.00s)
+=== RUN   TestRuntimeContainerObserverPinsSocketLifetime
+=== RUN   TestRuntimeContainerObserverPinsSocketLifetime/unlink-and-replace
+=== RUN   TestRuntimeContainerObserverPinsSocketLifetime/failed-boot-validation
+=== RUN   TestRuntimeContainerObserverPinsSocketLifetime/failed-connection
+--- PASS: TestRuntimeContainerObserverPinsSocketLifetime (0.11s)
+    --- PASS: TestRuntimeContainerObserverPinsSocketLifetime/unlink-and-replace (0.00s)
+    --- PASS: TestRuntimeContainerObserverPinsSocketLifetime/failed-boot-validation (0.01s)
+    --- PASS: TestRuntimeContainerObserverPinsSocketLifetime/failed-connection (0.10s)
+=== RUN   TestRuntimeContainerObserverUsesHostBootAndRootPeer
+--- PASS: TestRuntimeContainerObserverUsesHostBootAndRootPeer (0.01s)
+=== RUN   TestRuntimeContainerObserverRejectsSocketOwnerDifferentFromKernelPeer
+--- PASS: TestRuntimeContainerObserverRejectsSocketOwnerDifferentFromKernelPeer (0.21s)
+PASS

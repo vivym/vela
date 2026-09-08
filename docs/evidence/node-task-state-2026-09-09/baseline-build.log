@@ -1,0 +1,13 @@
+# github.com/vivym/vela/internal/nodeagent.test
+/usr/bin/ld: /tmp/go-link-2806521169/000022.o: in function `mygetgrgid_r':
+/_/GOROOT/src/os/user/cgo_lookup_cgo.go:45:(.text+0x40): warning: Using 'getgrgid_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /tmp/go-link-2806521169/000022.o: in function `mygetgrnam_r':
+/_/GOROOT/src/os/user/cgo_lookup_cgo.go:54:(.text+0xe0): warning: Using 'getgrnam_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /tmp/go-link-2806521169/000023.o: in function `mygetgrouplist':
+/_/GOROOT/src/os/user/getgrouplist_unix.go:15:(.text+0x28): warning: Using 'getgrouplist' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /tmp/go-link-2806521169/000004.o: in function `_cgo_77133bf98b3a_C2func_getaddrinfo':
+/tmp/go-build/cgo-gcc-prolog:60:(.text+0x30): warning: Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /tmp/go-link-2806521169/000022.o: in function `mygetpwnam_r':
+/_/GOROOT/src/os/user/cgo_lookup_cgo.go:36:(.text+0x184): warning: Using 'getpwnam_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking
+/usr/bin/ld: /tmp/go-link-2806521169/000022.o: in function `mygetpwuid_r':
+/_/GOROOT/src/os/user/cgo_lookup_cgo.go:27:(.text+0x228): warning: Using 'getpwuid_r' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking

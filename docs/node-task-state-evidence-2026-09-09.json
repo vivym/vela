@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "344e0f2bf6aa983988389180f66fcae0fdf0d30a",
+  "source_tree_sha256": "7e28c701121bcd5464645b8519307fb7f898de7feaacbfd79eff4c368902ec89",
+  "source_file_count": 988,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "ef447a4bc42f48dd3c83df8005b6808eb5ace048aa63297834f9af1f0fe0736a",
+  "production_gates": "0/9",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "native_main_tests": {
+    "TestRuntimeCallerContainerCRI": "15.98s",
+    "TestRuntimeContainerdProcessEvidence": "6.43s",
+    "TestRuntimeContainerDaemonClosesHandles": "0.00s",
+    "TestRuntimeDaemonStateDirectory": "0.00s"
+  },
+  "public_observer_native_main_tests": 4,
+  "copied_state_rejections": 2,
+  "mount_alias_and_shadow_cases": 2,
+  "baseline": {
+    "exit_code": 1,
+    "expected_copied_state_failures": 2,
+    "overlay_scope": "Original 344e0f2 task launch product file; final test with only DaemonStatePath field assertion removed for old struct compatibility"
+  },
+  "checks": [
+    {
+      "command": "bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "four public observer native race tests using the same image",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/public-observer-native.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/linux-integration-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/linux-integration-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-state-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "claim_boundary": "Pinned root socket peer and actual CRI/native containerd task with daemon-view protected bundle reads. State mapping tested with copied private roots, bind aliases and shadow mounts. Actual daemon SIGKILL, foreign daemon rejection and concurrent handle cleanup. No root-administrator anti-ABA, proxy/socket activation, executable/runtime-option or workload mount approval, grant, production CLI, full protected Job, GPU or Production Gate evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-build.log",
+      "bytes": 1721,
+      "sha256": "7b688c1258ce4a1a4b6ebf2ba94d75d2b198da50e8b3ced4fa5250fd3ec012ac"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-exit-code.txt",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-image.txt",
+      "bytes": 72,
+      "sha256": "7b29ef51cd9f4f5412f9d1071b05387db277fbc1b2bbc3adecdb2bedc7d1f40e"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-native.log",
+      "bytes": 50120,
+      "sha256": "965664ac415086d2d17f59d73f3220a1c1b496ef2bb002b390ba8ea95e35ddb9"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-overlay.json",
+      "bytes": 272,
+      "sha256": "29459f0e01652eb89fb7383b6194d19dd1f1c6970d748adcb8d9763d61d1674e"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-task-launch.go.txt",
+      "bytes": 8462,
+      "sha256": "6eb0f665559f46764053794c0a28bea24d65d6c65eb01f93c8a0e6a829878a19"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/baseline-test.go.txt",
+      "bytes": 10653,
+      "sha256": "0dff03002744d5a11feec61b30a079b5e5cb5406a0d75a5d8f81bf0dac418798"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/binaries.sha256",
+      "bytes": 825,
+      "sha256": "2cb6f70fe12b0b27ac03c8c848a8711347f3de90cbd4cb3b3d9dd7b6820421b3"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/build.log",
+      "bytes": 1721,
+      "sha256": "1d00dd4a7068084d49a8844d3ef9536051eb85bcc4698ecdfc809754e4b75b0b"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "afb8a727265566da8202fe374bf4bfc86135b24d86082c94905a2006c5be12bd"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/initial-daemon-stop-failure.log",
+      "bytes": 65220,
+      "sha256": "7f5c22ba20652d1623a11b26edd43652d4603e832b3c3b325ab9aec64ba1225e"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/linux-integration-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/linux-integration-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/native-runner.log",
+      "bytes": 97,
+      "sha256": "1478e069939778778dd475a61d6473fb2383df80b6e004517e3d139f69311175"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/native.log",
+      "bytes": 9681,
+      "sha256": "720fa5b81b6689efe09f6c30e5956593ceb8719bf954385dcfa3a420f9d349ad"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/public-observer-native.log",
+      "bytes": 2001,
+      "sha256": "33682ff8db6c3b1b658e9e66ef4a1d1cd8835be26833ab9d1921b43f907c79f2"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/run-baseline.sh",
+      "bytes": 2776,
+      "sha256": "7055246012ba1addada4f651986f765f32ee80d1b2356c5bdd505ebeb2d9a86f"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/source-files.json",
+      "bytes": 116695,
+      "sha256": "debb80b96274b9cce3eb12d0118c480899fc67f636554ff63415d345a176fe58"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "06a590cb93600ea74e1e1af5a74fad561c6da976e9087325dfe1d52688578823"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/source.patch",
+      "bytes": 29311,
+      "sha256": "e255a7133aa0c7a00e8a21af352ca1b3570f0f0d0922b85227d7c309e73dd7d2"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/source.txt",
+      "bytes": 579,
+      "sha256": "3dadf2ddf896007aa756269c668a40a0d57485ae124cf260891dd13031cd1d94"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/upstream-sources.json",
+      "bytes": 451,
+      "sha256": "6f3305ce61914a4a396a96c0cb0372ad4294a6c278476b078cec3cfd4b921a40"
+    },
+    {
+      "path": "docs/evidence/node-task-state-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

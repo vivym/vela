@@ -1,0 +1,714 @@
+diff --git a/hack/run-task-launch-native.sh b/hack/run-task-launch-native.sh
+index 4ace842..21c52f7 100644
+--- a/hack/run-task-launch-native.sh
++++ b/hack/run-task-launch-native.sh
+@@ -58,9 +58,9 @@ shasum -a 256 "$launch_evidence/image/rootfs/nodeagent.test" "$launch_evidence/i
+ # paths/sockets, host PID namespace, network, model weights or GPU are used.
+ docker run --rm --network none --privileged --cgroupns private --cpus 4 --memory 4g --pids-limit 512 \
+   -e VELA_TEST_CONTAINERD_SANDBOX=1 "$launch_image" \
+-  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI)$' -test.count=1 -test.v -test.timeout=3m \
++  -test.run='^(TestRuntimeContainerdProcessEvidence|TestRuntimeCallerContainerCRI|TestRuntimeDaemonStateDirectory|TestRuntimeContainerDaemonClosesHandles)$' -test.count=1 -test.v -test.timeout=3m \
+   > "$launch_evidence/native.log" 2>&1
+-for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI; do
++for launch_test in TestRuntimeContainerdProcessEvidence TestRuntimeCallerContainerCRI TestRuntimeDaemonStateDirectory TestRuntimeContainerDaemonClosesHandles; do
+   rg -q "^--- PASS: $launch_test " "$launch_evidence/native.log" || exit 1
+ done
+ if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$launch_evidence/native.log"; then exit 1; fi
+diff --git a/internal/nodeagent/runtime_container_client_linux.go b/internal/nodeagent/runtime_container_client_linux.go
+index d37b426..28e85ea 100644
+--- a/internal/nodeagent/runtime_container_client_linux.go
++++ b/internal/nodeagent/runtime_container_client_linux.go
+@@ -25,9 +25,19 @@ import (
+ // Linux O_PATH pins the filesystem inode until Close, preventing inode reuse
+ // from disguising a replaced socket. It reads the host boot ID directly.
+ func DialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig) (*RuntimeContainerObserver, error) {
+-	return dialRuntimeContainerObserver(ctx, config, 0, func() (string, error) {
++	daemon := &runtimeContainerDaemon{}
++	observer, err := dialRuntimeContainerObserverWithPeerCheck(ctx, config, 0, func() (string, error) {
+ 		return readBootID("/proc/sys/kernel/random/boot_id")
+-	})
++	}, daemon.authenticate)
++	if err != nil {
++		_ = daemon.close()
++		return nil, err
++	}
++	check, closeObserver := observer.check, observer.close
++	observer.daemon = daemon
++	observer.check = func() error { return errors.Join(check(), daemon.check()) }
++	observer.close = func() error { return errors.Join(closeObserver(), daemon.close()) }
++	return observer, nil
+ }
+ 
+ func dialRuntimeContainerObserver(ctx context.Context, config RuntimeContainerObserverConfig, owner uint32, boot func() (string, error)) (*RuntimeContainerObserver, error) {
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index 2e98cfd..8f394bf 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -26,6 +26,7 @@ import (
+ 	"github.com/google/go-containerregistry/pkg/v1/tarball"
+ 	"github.com/google/uuid"
+ 	"github.com/vivym/vela/internal/fleetcontroller"
++	"golang.org/x/sys/unix"
+ 	corev1 "k8s.io/api/core/v1"
+ 	"k8s.io/apimachinery/pkg/types"
+ 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
+@@ -188,6 +189,56 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 			}
+ 		})
+ 	}
++	t.Run("original-daemon-lifetime", func(t *testing.T) {
++		verifyRuntimeDaemonLifetime(t, fixture, observer)
++	})
++}
++
++func verifyRuntimeDaemonLifetime(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver) {
++	t.Helper()
++	connect := func(path string) net.Conn {
++		connection, err := net.Dial("unix", path)
++		if err != nil {
++			t.Fatal(err)
++		}
++		t.Cleanup(func() { _ = connection.Close() })
++		return connection
++	}
++	sameConnection := connect(fixture.socket)
++	if err := observer.daemon.authenticate(sameConnection); err != nil {
++		t.Fatalf("same daemon connection could not reuse its original pidfd: %v", err)
++	}
++	if err := sameConnection.Close(); err != nil {
++		t.Fatal(err)
++	}
++	another := startProcessContainerd(t)
++	otherConnection := connect(another.socket)
++	if err := observer.daemon.authenticate(otherConnection); err == nil {
++		t.Fatal("another root containerd replaced the pinned daemon")
++	}
++	if err := observer.check(); err != nil {
++		t.Fatalf("rejected foreign daemon destroyed the original live observer: %v", err)
++	}
++	fixture.stopDaemon(t, unix.SIGKILL, true)
++	if err := observer.daemon.check(); err == nil {
++		t.Fatal("original daemon exit left the retained pidfd live")
++	}
++	if directory, err := observer.daemon.openDirectory("/"); err == nil || directory != nil {
++		t.Fatal("lost original daemon still supplied a filesystem view")
++	}
++	if err := observer.daemon.authenticate(otherConnection); err == nil {
++		t.Fatal("another daemon revived a lost original peer")
++	}
++	if err := observer.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := observer.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := observer.daemon.authenticate(otherConnection); err == nil {
++		t.Fatal("closed observer acquired a new daemon")
++	}
++	t.Log("same-daemon reconnect accepted; foreign root peer, exited peer and closed observer cannot replace the original process")
+ }
+ 
+ func prepareCRICgroupDelegation(t *testing.T) {
+diff --git a/internal/nodeagent/runtime_container_linux.go b/internal/nodeagent/runtime_container_linux.go
+index 35b7673..22c1508 100644
+--- a/internal/nodeagent/runtime_container_linux.go
++++ b/internal/nodeagent/runtime_container_linux.go
+@@ -34,6 +34,7 @@ type RuntimeContainerObserver struct {
+ 	check        func() error
+ 	close        func() error
+ 	clock        func() time.Time
++	daemon       *runtimeContainerDaemon
+ }
+ 
+ func (observer *RuntimeContainerObserver) Close() error {
+diff --git a/internal/nodeagent/runtime_task_launch_integration_linux_test.go b/internal/nodeagent/runtime_task_launch_integration_linux_test.go
+index 38796a6..adfa271 100644
+--- a/internal/nodeagent/runtime_task_launch_integration_linux_test.go
++++ b/internal/nodeagent/runtime_task_launch_integration_linux_test.go
+@@ -34,7 +34,7 @@ func verifyRuntimeTaskLaunchBundle(t *testing.T, fixture *containerdProcessFixtu
+ 	}
+ 	path := filepath.Join(state, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
+ 	original, err := os.ReadFile(path)
+-	if err != nil || launch.ConfigDigest != sha256.Sum256(original) || launch.ConfigBytes != int64(len(original)) {
++	if err != nil || launch.ConfigDigest != sha256.Sum256(original) || launch.ConfigBytes != int64(len(original)) || launch.DaemonStatePath != state {
+ 		t.Fatalf("bundle digest differs from actual daemon file: %v", err)
+ 	}
+ 	configuration.Process.Args[0] = "/caller-mutated-copy"
+@@ -83,6 +83,40 @@ func verifyRuntimeTaskLaunchBundle(t *testing.T, fixture *containerdProcessFixtu
+ 	if result, err := observer.ObserveTaskLaunch(t.Context(), fixture.dataRoot, target, caller); err == nil || result != nil {
+ 		t.Fatal("another directory was accepted as this task's state root")
+ 	}
++	t.Run("copied-state-root", func(t *testing.T) {
++		copied := filepath.Join(fixture.root, "copied-state-"+target.ContainerID)
++		bundle := filepath.Join(copied, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID)
++		if err := os.MkdirAll(bundle, 0o700); err != nil {
++			t.Fatal(err)
++		}
++		for _, name := range []string{"config.json", "init.pid"} {
++			data, err := os.ReadFile(filepath.Join(filepath.Dir(path), name))
++			if err != nil {
++				t.Fatal(err)
++			}
++			if err := os.WriteFile(filepath.Join(bundle, name), data, 0o600); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if result, err := observer.ObserveTaskLaunch(t.Context(), copied, target, caller); !errors.Is(err, ErrRuntimeTaskState) || result != nil {
++			t.Fatalf("root-owned copy of the live task's exact config and PID was accepted: %v", err)
++		}
++	})
++	t.Run("node-mount-alias-and-shadow", func(t *testing.T) {
++		wire, err := json.Marshal(target)
++		if err != nil {
++			t.Fatal(err)
++		}
++		probe := exec.CommandContext(t.Context(), fixture.binary, "-test.run=^TestRuntimeTaskStateMountHelper$", "-test.v")
++		probe.Env = []string{"VELA_TASK_STATE_PROBE=" + state, "VELA_TASK_STATE_SOCKET=" + fixture.socket,
++			"VELA_TASK_STATE_TARGET=" + string(wire)}
++		probe.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS}
++		output, err := probe.CombinedOutput()
++		if err != nil || !bytes.Contains(output, []byte("--- PASS: TestRuntimeTaskStateMountHelper")) {
++			t.Fatalf("daemon mount view isolation failed: %s %v", output, err)
++		}
++		t.Log(string(output))
++	})
+ 	for _, fault := range []string{"writable", "wrong-owner", "missing", "oversize", "symlink", "hardlink", "fifo", "duplicate-key", "unknown-key", "wrong-init-pid"} {
+ 		t.Run("task-bundle-"+fault, func(t *testing.T) {
+ 			pidPath := filepath.Join(filepath.Dir(path), "init.pid")
+@@ -145,6 +179,70 @@ func verifyRuntimeTaskLaunchBundle(t *testing.T, fixture *containerdProcessFixtu
+ 	t.Logf("actual task bundle config sha256=%x; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected", launch.ConfigDigest)
+ }
+ 
++func TestRuntimeTaskStateMountHelper(t *testing.T) {
++	state := os.Getenv("VELA_TASK_STATE_PROBE")
++	if state == "" {
++		t.Skip("requires an isolated mount namespace and real CRI fixture")
++	}
++	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
++		t.Fatal(err)
++	}
++	var target RuntimeContainerTarget
++	if err := json.Unmarshal([]byte(os.Getenv("VELA_TASK_STATE_TARGET")), &target); err != nil {
++		t.Fatal(err)
++	}
++	observer, err := DialRuntimeContainerObserver(t.Context(), RuntimeContainerObserverConfig{SocketPath: os.Getenv("VELA_TASK_STATE_SOCKET"), NodeIdentity: "cpu-node"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = observer.Close() }()
++	alias, err := os.MkdirTemp("/run", "vela-node-state-alias-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = os.RemoveAll(alias) }()
++	if err := unix.Mount(state, alias, "", unix.MS_BIND, ""); err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = unix.Unmount(alias, 0) }()
++	bundle, daemonState, err := observer.openTaskBundle(t.Context(), alias, target)
++	if err != nil {
++		t.Fatal(err)
++	}
++	data, original, err := readRuntimeTaskBundleFile(t.Context(), bundle, "config.json", 1<<20)
++	_ = bundle.Close()
++	if err != nil || daemonState != state {
++		t.Fatalf("same state inode at another Node path was rejected: %v", err)
++	}
++	shadow, err := os.MkdirTemp("/run", "vela-node-shadow-bundle-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = os.RemoveAll(shadow) }()
++	if err := os.WriteFile(filepath.Join(shadow, "config.json"), []byte(`{"nodeSideShadow":true}`), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	aliasBundle := filepath.Join(alias, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID)
++	if err := unix.Mount(shadow, aliasBundle, "", unix.MS_BIND, ""); err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = unix.Unmount(aliasBundle, 0) }()
++	local, err := os.ReadFile(filepath.Join(aliasBundle, "config.json"))
++	if err != nil || !bytes.Contains(local, []byte("nodeSideShadow")) {
++		t.Fatal("Node-side shadow mount did not take effect")
++	}
++	bundle, _, err = observer.openTaskBundle(t.Context(), alias, target)
++	if err != nil {
++		t.Fatal(err)
++	}
++	fresh, identity, err := readRuntimeTaskBundleFile(t.Context(), bundle, "config.json", 1<<20)
++	_ = bundle.Close()
++	if err != nil || !bytes.Equal(data, fresh) || original != identity {
++		t.Fatalf("Node-side shadow mount replaced daemon-view configuration: %v", err)
++	}
++	t.Log("different Node path matched the state inode; shadow mount below alias could not change the daemon-view bundle")
++}
++
+ func TestRuntimeTaskBundleWriteHelper(t *testing.T) {
+ 	path := os.Getenv("VELA_TASK_BUNDLE_WRITE_PROBE")
+ 	if path == "" {
+diff --git a/internal/nodeagent/runtime_task_launch_linux.go b/internal/nodeagent/runtime_task_launch_linux.go
+index 12c0aa7..dfc1675 100644
+--- a/internal/nodeagent/runtime_task_launch_linux.go
++++ b/internal/nodeagent/runtime_task_launch_linux.go
+@@ -14,7 +14,6 @@ import (
+ 	"time"
+ 
+ 	"github.com/opencontainers/runtime-spec/specs-go"
+-	"github.com/vivym/vela/internal/securefile"
+ 	"github.com/vivym/vela/internal/strictjson"
+ 	"golang.org/x/sys/unix"
+ )
+@@ -34,6 +33,7 @@ type RuntimeTaskLaunch struct {
+ 	ConfigInode     uint64
+ 	ObservedFrom    time.Time
+ 	ObservedThrough time.Time
++	DaemonStatePath string
+ 	encoded         []byte
+ }
+ 
+@@ -47,9 +47,10 @@ func (launch *RuntimeTaskLaunch) Configuration() (specs.Spec, error) {
+ }
+ 
+ // ObserveTaskLaunch reads config.json from containerd's task bundle, not mutable
+-// Containers.Get.spec/CRI verbose metadata. stateDirectory is trusted Node
+-// configuration naming THIS daemon's state root in the Node's mount view; it
+-// must never come from a workload. This adapter supports rootful runc-v2 tasks
++// Containers.Get.spec/CRI verbose runtimeSpec metadata. stateDirectory is Node
++// configuration naming the state root in the Node's mount view. Its inode must
++// match the path reported by CRI Status in the pinned daemon's filesystem view;
++// bundle reads use that daemon view. This adapter supports rootful runc-v2 tasks
+ // without remapped bundle ownership. Root administrators remain trusted.
+ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context, stateDirectory string, target RuntimeContainerTarget, caller *RuntimeCaller) (*RuntimeTaskLaunch, error) {
+ 	if err := contextError(ctx); err != nil {
+@@ -65,8 +66,7 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	bundlePath := filepath.Join(stateDirectory, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID)
+-	bundle, err := securefile.OpenTrustedDirectory(bundlePath)
++	bundle, daemonState, err := observer.openTaskBundle(ctx, stateDirectory, target)
+ 	if err != nil {
+ 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+ 	}
+@@ -109,13 +109,13 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	}
+ 	// Retain the directory inode through both reads and re-open its trusted
+ 	// pathname to reject visible deletion/replacement or changed ancestors.
+-	current, err := securefile.OpenTrustedDirectory(bundlePath)
++	current, currentState, err := observer.openTaskBundle(ctx, stateDirectory, target)
+ 	if err != nil {
+ 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+ 	}
+ 	defer func() { _ = current.Close() }()
+ 	var currentDirectory unix.Stat_t
+-	if err := unix.Fstat(int(current.Fd()), &currentDirectory); err != nil || directory.Dev != currentDirectory.Dev || directory.Ino != currentDirectory.Ino ||
++	if err := unix.Fstat(int(current.Fd()), &currentDirectory); err != nil || daemonState != currentState || directory.Dev != currentDirectory.Dev || directory.Ino != currentDirectory.Ino ||
+ 		directory.Mode != currentDirectory.Mode || directory.Uid != currentDirectory.Uid || directory.Gid != currentDirectory.Gid {
+ 		return nil, errors.Join(ErrRuntimeTaskLaunch, err)
+ 	}
+@@ -138,7 +138,7 @@ func (observer *RuntimeContainerObserver) ObserveTaskLaunch(ctx context.Context,
+ 	}
+ 	return &RuntimeTaskLaunch{Caller: last, ConfigDigest: sha256.Sum256(config), ConfigBytes: int64(len(config)),
+ 		BundleDevice: directory.Dev, BundleInode: directory.Ino, ConfigDevice: configIdentity.device, ConfigInode: configIdentity.inode,
+-		ObservedFrom: from, ObservedThrough: time.Now().UTC(), encoded: config}, nil
++		ObservedFrom: from, ObservedThrough: time.Now().UTC(), DaemonStatePath: daemonState, encoded: config}, nil
+ }
+ 
+ type runtimeTaskFileIdentity struct {
+diff --git a/internal/nodeagent/runtime_container_daemon_linux.go b/internal/nodeagent/runtime_container_daemon_linux.go
+new file mode 100644
+index 0000000..6c1dfb0
+--- /dev/null
++++ b/internal/nodeagent/runtime_container_daemon_linux.go
+@@ -0,0 +1,185 @@
++package nodeagent
++
++import (
++	"errors"
++	"fmt"
++	"net"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++
++	"github.com/vivym/vela/internal/runtimechannel"
++	"golang.org/x/sys/unix"
++)
++
++var ErrRuntimeContainerDaemon = errors.New("containerd peer process or filesystem view is untrusted or lost")
++
++// The socket owner is trusted to serve the RPCs itself. Socket activation,
++// delegated listeners and proxies are not supported for task bundle reads.
++// The pidfd pins the original peer across gRPC reconnects, never a numeric PID
++// recovered after daemon replacement. Root administrators remain trusted.
++type runtimeContainerDaemon struct {
++	mu      sync.Mutex
++	pidfd   *os.File
++	process *os.File
++	pid     int32
++	closed  bool
++}
++
++func (daemon *runtimeContainerDaemon) authenticate(connection net.Conn) error {
++	local, ok := connection.(*net.UnixConn)
++	if !ok {
++		return ErrRuntimeContainerDaemon
++	}
++	raw, err := local.SyscallConn()
++	if err != nil {
++		return err
++	}
++	fd := -1
++	var peer *unix.Ucred
++	var peerErr error
++	err = raw.Control(func(socket uintptr) {
++		peer, peerErr = unix.GetsockoptUcred(int(socket), unix.SOL_SOCKET, unix.SO_PEERCRED)
++		if peerErr != nil || peer.Uid != 0 || peer.Gid != 0 || peer.Pid <= 0 {
++			peerErr = errors.Join(ErrRuntimeContainerDaemon, peerErr)
++			return
++		}
++		fd, peerErr = unix.GetsockoptInt(int(socket), unix.SOL_SOCKET, unix.SO_PEERPIDFD)
++	})
++	if peerErr != nil {
++		// GetsockoptInt returns zero on failure, which is not an acquired fd.
++		fd = -1
++	}
++	if fd >= 0 {
++		defer func() { _ = unix.Close(fd) }()
++	}
++	if err := errors.Join(err, peerErr); err != nil {
++		return err
++	}
++	if err := checkRuntimePIDFD(fd, peer.Pid); err != nil {
++		return err
++	}
++	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
++	if err != nil || flags&unix.FD_CLOEXEC == 0 {
++		return errors.Join(ErrRuntimeContainerDaemon, err)
++	}
++	daemon.mu.Lock()
++	defer daemon.mu.Unlock()
++	if daemon.closed {
++		return ErrRuntimeContainerDaemon
++	}
++	if daemon.pidfd != nil {
++		return runtimechannel.SameLiveProcess(int(daemon.pidfd.Fd()), fd)
++	}
++	process, err := os.Open(fmt.Sprintf("/proc/%d", peer.Pid))
++	if err != nil {
++		return err
++	}
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(int(process.Fd()), &filesystem); err != nil || filesystem.Type != unix.PROC_SUPER_MAGIC {
++		_ = process.Close()
++		return errors.Join(ErrRuntimeContainerDaemon, err)
++	}
++	if err := checkRuntimePIDFD(fd, peer.Pid); err != nil {
++		_ = process.Close()
++		return err
++	}
++	// Duplicate with CLOEXEC because fd is closed on every return above.
++	pinned, err := unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
++	if err != nil {
++		_ = process.Close()
++		return err
++	}
++	daemon.pidfd, daemon.process, daemon.pid = os.NewFile(uintptr(pinned), "containerd-peer-pidfd"), process, peer.Pid
++	return nil
++}
++
++func (daemon *runtimeContainerDaemon) check() error {
++	if daemon == nil {
++		return ErrRuntimeContainerDaemon
++	}
++	daemon.mu.Lock()
++	defer daemon.mu.Unlock()
++	return daemon.checkLocked()
++}
++
++func (daemon *runtimeContainerDaemon) checkLocked() error {
++	if daemon.closed || daemon.pidfd == nil || daemon.process == nil {
++		return ErrRuntimeContainerDaemon
++	}
++	return checkRuntimePIDFD(int(daemon.pidfd.Fd()), daemon.pid)
++}
++
++func (daemon *runtimeContainerDaemon) close() error {
++	daemon.mu.Lock()
++	defer daemon.mu.Unlock()
++	if daemon.closed {
++		return nil
++	}
++	daemon.closed = true
++	var err error
++	if daemon.pidfd != nil {
++		err = daemon.pidfd.Close()
++	}
++	if daemon.process != nil {
++		err = errors.Join(err, daemon.process.Close())
++	}
++	return err
++}
++
++// Open from the retained peer's procfs root magic link, intentionally entering
++// that process's filesystem view. All components below it must be root-owned
++// directories without symlinks or group/other writers. The Node may expose the
++// same state inode at a different bind-mount path.
++func (daemon *runtimeContainerDaemon) openDirectory(path string) (*os.File, error) {
++	if daemon == nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsRune(path, '\x00') {
++		return nil, ErrRuntimeContainerDaemon
++	}
++	daemon.mu.Lock()
++	defer daemon.mu.Unlock()
++	if err := daemon.checkLocked(); err != nil {
++		return nil, err
++	}
++	fd, err := unix.Openat(int(daemon.process.Fd()), "root", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, errors.Join(ErrRuntimeContainerDaemon, err)
++	}
++	current := os.NewFile(uintptr(fd), "containerd-root")
++	defer func() {
++		if current != nil {
++			_ = current.Close()
++		}
++	}()
++	if err := trustedDaemonDirectory(current); err != nil {
++		return nil, err
++	}
++	for _, component := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
++		if component == "" { // the filesystem root
++			continue
++		}
++		fd, err := unix.Openat(int(current.Fd()), component, unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++		if err != nil {
++			return nil, errors.Join(ErrRuntimeContainerDaemon, err)
++		}
++		_ = current.Close()
++		current = os.NewFile(uintptr(fd), "containerd-directory")
++		if err := trustedDaemonDirectory(current); err != nil {
++			return nil, err
++		}
++	}
++	if err := daemon.checkLocked(); err != nil {
++		return nil, err
++	}
++	result := current
++	current = nil
++	return result, nil
++}
++
++func trustedDaemonDirectory(directory *os.File) error {
++	var stat unix.Stat_t
++	if err := unix.Fstat(int(directory.Fd()), &stat); err != nil || stat.Mode&unix.S_IFMT != unix.S_IFDIR || stat.Uid != 0 || stat.Gid != 0 || stat.Mode&0o7022 != 0 {
++		return errors.Join(ErrRuntimeContainerDaemon, err)
++	}
++	return nil
++}
+diff --git a/internal/nodeagent/runtime_container_daemon_linux_test.go b/internal/nodeagent/runtime_container_daemon_linux_test.go
+new file mode 100644
+index 0000000..075515a
+--- /dev/null
++++ b/internal/nodeagent/runtime_container_daemon_linux_test.go
+@@ -0,0 +1,72 @@
++package nodeagent
++
++import (
++	"net"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++)
++
++func TestRuntimeContainerDaemonClosesHandles(t *testing.T) {
++	if os.Geteuid() != 0 {
++		t.Skip("the daemon peer must be root")
++	}
++	directory, err := os.MkdirTemp("/run", "vela-peer-handles-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = os.RemoveAll(directory) }()
++	path := filepath.Join(directory, "peer.sock")
++	listener, err := net.Listen("unix", path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = listener.Close() }()
++	connection, err := net.Dial("unix", path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = connection.Close() }()
++	accepted, err := listener.Accept()
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = accepted.Close() }()
++	// Warm netpoll before counting persistent descriptors.
++	initial, err := os.ReadDir("/proc/self/fd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	for range 8 {
++		daemon := &runtimeContainerDaemon{}
++		if err := daemon.check(); err == nil {
++			t.Fatal("uninitialized daemon was usable")
++		}
++		if err := daemon.authenticate(connection); err != nil {
++			t.Fatal(err)
++		}
++		group := &sync.WaitGroup{}
++		for range 4 {
++			group.Go(func() {
++				_ = daemon.authenticate(connection)
++				_ = daemon.check()
++				if directory, err := daemon.openDirectory("/"); err == nil {
++					_ = directory.Close()
++				}
++				_ = daemon.close()
++			})
++		}
++		group.Wait()
++		if err := daemon.close(); err != nil {
++			t.Fatal(err)
++		}
++		if err := daemon.authenticate(connection); err == nil {
++			t.Fatal("closed daemon repinned a process")
++		}
++	}
++	final, err := os.ReadDir("/proc/self/fd")
++	if err != nil || len(final) != len(initial) {
++		t.Fatalf("peer handles leaked across concurrent close/reconnect: before=%d after=%d err=%v", len(initial), len(final), err)
++	}
++}
+diff --git a/internal/nodeagent/runtime_task_state_linux.go b/internal/nodeagent/runtime_task_state_linux.go
+new file mode 100644
+index 0000000..b2e42ed
+--- /dev/null
++++ b/internal/nodeagent/runtime_task_state_linux.go
+@@ -0,0 +1,88 @@
++package nodeagent
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++
++	"github.com/vivym/vela/internal/securefile"
++	"github.com/vivym/vela/internal/strictjson"
++	"google.golang.org/grpc"
++	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
++)
++
++var ErrRuntimeTaskState = errors.New("node state directory does not match the authenticated containerd filesystem view")
++
++type runtimeContainerStatusReader interface {
++	Status(context.Context, *runtimev1.StatusRequest, ...grpc.CallOption) (*runtimev1.StatusResponse, error)
++}
++
++// containerd v2.3.1 reports its resolved CRI plugin state path via Status.
++// plugins/cri/runtime/plugin.go derives it from the daemon state directory,
++// preserving the historical io.containerd.grpc.v1.cri suffix. This is daemon
++// configuration, not the mutable spec stored on a container metadata object.
++func runtimeDaemonStateDirectory(configuration string) (string, error) {
++	if len(configuration) == 0 || len(configuration) > 1<<20 || strictjson.RejectDuplicateKeys([]byte(configuration)) != nil {
++		return "", ErrRuntimeTaskState
++	}
++	var document map[string]json.RawMessage
++	if err := json.Unmarshal([]byte(configuration), &document); err != nil {
++		return "", errors.Join(ErrRuntimeTaskState, err)
++	}
++	var state string
++	if err := json.Unmarshal(document["stateDir"], &state); err != nil || !filepath.IsAbs(state) || filepath.Clean(state) != state ||
++		strings.ContainsRune(state, '\x00') || filepath.Base(state) != "io.containerd.grpc.v1.cri" || filepath.Dir(state) == "/" {
++		return "", errors.Join(ErrRuntimeTaskState, err)
++	}
++	return filepath.Dir(state), nil
++}
++
++func (observer *RuntimeContainerObserver) openTaskBundle(ctx context.Context, stateDirectory string, target RuntimeContainerTarget) (*os.File, string, error) {
++	if observer == nil || observer.daemon == nil || observer.check == nil {
++		return nil, "", ErrRuntimeTaskState
++	}
++	reader, ok := observer.reader.(runtimeContainerStatusReader)
++	if !ok {
++		return nil, "", ErrRuntimeTaskState
++	}
++	if err := errors.Join(observer.check(), ctx.Err(), target.Validate()); err != nil {
++		return nil, "", err
++	}
++	status, err := reader.Status(ctx, &runtimev1.StatusRequest{Verbose: true})
++	if err != nil {
++		return nil, "", err
++	}
++	daemonState, err := runtimeDaemonStateDirectory(status.GetInfo()["config"])
++	if err != nil {
++		return nil, "", err
++	}
++	configured, err := securefile.OpenTrustedDirectory(stateDirectory)
++	if err != nil {
++		return nil, "", errors.Join(ErrRuntimeTaskState, err)
++	}
++	defer func() { _ = configured.Close() }()
++	actual, err := observer.daemon.openDirectory(daemonState)
++	if err != nil {
++		return nil, "", err
++	}
++	defer func() { _ = actual.Close() }()
++	configuredInfo, configuredErr := configured.Stat()
++	actualInfo, actualErr := actual.Stat()
++	if err := errors.Join(configuredErr, actualErr); err != nil || !os.SameFile(configuredInfo, actualInfo) {
++		return nil, "", errors.Join(ErrRuntimeTaskState, err)
++	}
++	// Read the bundle through the daemon's view as well. Comparing only the
++	// state inode would not constrain different mounts below a Node-side alias.
++	bundle, err := observer.daemon.openDirectory(filepath.Join(daemonState, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID))
++	if err != nil {
++		return nil, "", err
++	}
++	if err := errors.Join(observer.check(), ctx.Err()); err != nil {
++		_ = bundle.Close()
++		return nil, "", err
++	}
++	return bundle, daemonState, nil
++}
+diff --git a/internal/nodeagent/runtime_task_state_linux_test.go b/internal/nodeagent/runtime_task_state_linux_test.go
+new file mode 100644
+index 0000000..1743d9e
+--- /dev/null
++++ b/internal/nodeagent/runtime_task_state_linux_test.go
+@@ -0,0 +1,28 @@
++package nodeagent
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestRuntimeDaemonStateDirectory(t *testing.T) {
++	for _, configuration := range []string{
++		"", "null", "[]", `{}`, `{"StateDir":"/run/containerd/io.containerd.grpc.v1.cri"}`,
++		`{"stateDir":null}`, `{"stateDir":1}`, `{"stateDir":"relative/io.containerd.grpc.v1.cri"}`,
++		`{"stateDir":"/run/containerd/../io.containerd.grpc.v1.cri"}`, `{"stateDir":"/run/containerd/io.containerd.grpc.v1.cri/"}`,
++		`{"stateDir":"/io.containerd.grpc.v1.cri"}`, `{"stateDir":"/run/containerd/io.containerd.runtime.v2.task"}`,
++		`{"stateDir":"/run/\u0000/io.containerd.grpc.v1.cri"}`,
++		`{"stateDir":"/run/containerd/io.containerd.grpc.v1.cri","stateDir":"/other/io.containerd.grpc.v1.cri"}`,
++		`{"stateDir":"/run/containerd/io.containerd.grpc.v1.cri","nested":{"a":1,"a":2}}`,
++		`{"stateDir":"/run/containerd/io.containerd.grpc.v1.cri"} {}`,
++		strings.Repeat(" ", (1<<20)+1),
++	} {
++		if state, err := runtimeDaemonStateDirectory(configuration); err == nil || state != "" {
++			t.Fatalf("ambiguous, missing or unsupported daemon configuration produced a state path: %q", configuration[:min(200, len(configuration))])
++		}
++	}
++	state, err := runtimeDaemonStateDirectory(`{"stateDir":"/run/containerd/io.containerd.grpc.v1.cri","containerdRootDir":"/var/lib/containerd","other":{"ignored":true}}`)
++	if err != nil || state != "/run/containerd" {
++		t.Fatalf("valid daemon configuration rejected: %q %v", state, err)
++	}
++}
