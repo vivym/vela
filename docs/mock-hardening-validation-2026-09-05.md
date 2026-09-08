@@ -7,6 +7,14 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[bounded Node journal service](journal-server-evidence-2026-09-08.md) replaces
+the missing caller-owned accept loop with bounded handshake/handler concurrency,
+overload refusal, exchange deadlines, counters and explicit shutdown joining.
+Actual native Supervisor and Worker operations recover after overload; descriptor
+counts stay stable and shutdown preserves owner/socket identity boundaries.
+Production startup/mount composition and complete remote Job validation remain open.
+
+The preceding
 [request context propagation](journal-context-evidence-2026-09-08.md)
 bounds each remote journal exchange by its RPC, owner lifetime and timeout;
 write/readback share one budget. Pure read cancellation permits validated retry,

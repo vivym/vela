@@ -1,0 +1,8 @@
+internal/nodeagent/journal_server_linux.go:81:10: ST1005: error strings should not be capitalized (staticcheck)
+		return errors.New("Node journal server requires context and Unix seqpacket listener")
+		       ^
+internal/nodeagent/journal_server_linux.go:203:10: ST1005: error strings should not be capitalized (staticcheck)
+		return errors.New("Node journal shutdown requires server and context")
+		       ^
+2 issues:
+* staticcheck: 2

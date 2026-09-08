@@ -13,6 +13,9 @@ explicit test assembly. The subsequent
 [context checkpoint](journal-context-evidence-2026-09-08.md) adds per-request
 exchange cancellation and shared write/readback deadlines with explicit
 read-only retry versus uncertain-mutation fencing.
+The subsequent [bounded journal service](journal-server-evidence-2026-09-08.md)
+adds the actual accept loop, overload/timeout handling and joined shutdown,
+with native Supervisor progress after a measured finite overload burst.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

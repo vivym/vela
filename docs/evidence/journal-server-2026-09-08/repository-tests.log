@@ -1,0 +1,113 @@
+?   	github.com/vivym/vela/api/gen	[no test files]
+?   	github.com/vivym/vela/cmd/vela-artifact-validator	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-assignment-history-migrate	(cached)
+ok  	github.com/vivym/vela/cmd/vela-capacity-sim	(cached)
+ok  	github.com/vivym/vela/cmd/vela-catalog-promoter	(cached)
+ok  	github.com/vivym/vela/cmd/vela-control	(cached)
+ok  	github.com/vivym/vela/cmd/vela-fleet-controller	(cached)
+ok  	github.com/vivym/vela/cmd/vela-h3-evidence	(cached)
+ok  	github.com/vivym/vela/cmd/vela-h3-member-campaign	(cached)
+?   	github.com/vivym/vela/cmd/vela-h3-mock-backend	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-h3-reachability	(cached)
+ok  	github.com/vivym/vela/cmd/vela-h3-stage-mock	(cached)
+ok  	github.com/vivym/vela/cmd/vela-lab-assets	(cached)
+ok  	github.com/vivym/vela/cmd/vela-lab-bootstrap	(cached)
+ok  	github.com/vivym/vela/cmd/vela-lab-cpu-thumbnail-mock	(cached)
+?   	github.com/vivym/vela/cmd/vela-lab-recovery	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-lab-smoke	(cached)
+ok  	github.com/vivym/vela/cmd/vela-model-runtime	(cached)
+ok  	github.com/vivym/vela/cmd/vela-node-agent	(cached)
+?   	github.com/vivym/vela/cmd/vela-release-artifacts	[no test files]
+ok  	github.com/vivym/vela/cmd/vela-release-bundle	(cached)
+ok  	github.com/vivym/vela/cmd/vela-stage-cutover	(cached)
+ok  	github.com/vivym/vela/cmd/vela-stage-worker-agent	(cached)
+ok  	github.com/vivym/vela/cmd/vela-verify-launch	(cached)
+ok  	github.com/vivym/vela/hack	(cached)
+?   	github.com/vivym/vela/internal/admission	[no test files]
+?   	github.com/vivym/vela/internal/artifactaccess	[no test files]
+ok  	github.com/vivym/vela/internal/artifactcleanup	(cached)
+ok  	github.com/vivym/vela/internal/artifactreplication	(cached)
+ok  	github.com/vivym/vela/internal/artifactstore	(cached)
+ok  	github.com/vivym/vela/internal/artifactvalidator	(cached)
+?   	github.com/vivym/vela/internal/attemptcoordinator	[no test files]
+ok  	github.com/vivym/vela/internal/authoritypolicy	(cached)
+ok  	github.com/vivym/vela/internal/billingexport	(cached)
+?   	github.com/vivym/vela/internal/breakglass	[no test files]
+?   	github.com/vivym/vela/internal/cancellation	[no test files]
+ok  	github.com/vivym/vela/internal/capacitysim	(cached)
+ok  	github.com/vivym/vela/internal/catalogpromotion	(cached)
+ok  	github.com/vivym/vela/internal/cpumedia	(cached)
+ok  	github.com/vivym/vela/internal/database	(cached)
+ok  	github.com/vivym/vela/internal/debugdump	(cached)
+?   	github.com/vivym/vela/internal/debugdumpcontract	[no test files]
+ok  	github.com/vivym/vela/internal/deploymentcontract	(cached)
+?   	github.com/vivym/vela/internal/driverchannel	[no test files]
+ok  	github.com/vivym/vela/internal/driverdrain	(cached)
+ok  	github.com/vivym/vela/internal/driverinspection	(cached)
+ok  	github.com/vivym/vela/internal/eventstream	(cached)
+?   	github.com/vivym/vela/internal/execution	[no test files]
+ok  	github.com/vivym/vela/internal/executiongraph	(cached)
+?   	github.com/vivym/vela/internal/executionprogress	[no test files]
+ok  	github.com/vivym/vela/internal/financereconciliation	(cached)
+?   	github.com/vivym/vela/internal/fleet	[no test files]
+ok  	github.com/vivym/vela/internal/fleetadmission	(cached)
+?   	github.com/vivym/vela/internal/fleetcontract	[no test files]
+ok  	github.com/vivym/vela/internal/fleetcontroller	(cached)
+ok  	github.com/vivym/vela/internal/fleettransport	(cached)
+ok  	github.com/vivym/vela/internal/h3campaignevidence	(cached)
+ok  	github.com/vivym/vela/internal/h3campaignrunner	(cached)
+ok  	github.com/vivym/vela/internal/h3faultevidence	(cached)
+ok  	github.com/vivym/vela/internal/h3launchevidence	(cached)
+ok  	github.com/vivym/vela/internal/h3membercampaign	(cached)
+ok  	github.com/vivym/vela/internal/h3mockbackend	(cached)
+ok  	github.com/vivym/vela/internal/h3preflight	(cached)
+ok  	github.com/vivym/vela/internal/h3request	(cached)
+ok  	github.com/vivym/vela/internal/h3stage	(cached)
+ok  	github.com/vivym/vela/internal/h3stagemock	(cached)
+ok  	github.com/vivym/vela/internal/httpapi	(cached)
+ok  	github.com/vivym/vela/internal/identity	(cached)
+ok  	github.com/vivym/vela/internal/imageref	(cached)
+ok  	github.com/vivym/vela/internal/inbox	(cached)
+ok  	github.com/vivym/vela/internal/journalbinding	(cached)
+ok  	github.com/vivym/vela/internal/labv2contract	(cached)
+ok  	github.com/vivym/vela/internal/legacyh3reachability	(cached)
+ok  	github.com/vivym/vela/internal/legalhold	(cached)
+ok  	github.com/vivym/vela/internal/materializationauthority	(cached)
+ok  	github.com/vivym/vela/internal/modelruntime	38.415s
+ok  	github.com/vivym/vela/internal/modelruntimetransport	(cached)
+ok  	github.com/vivym/vela/internal/natsauth	(cached)
+ok  	github.com/vivym/vela/internal/nodeagent	(cached)
+ok  	github.com/vivym/vela/internal/noncontentexpiry	(cached)
+?   	github.com/vivym/vela/internal/organizationreporting	[no test files]
+?   	github.com/vivym/vela/internal/outbox	[no test files]
+?   	github.com/vivym/vela/internal/privilegedlistener	[no test files]
+ok  	github.com/vivym/vela/internal/productiongates	(cached)
+ok  	github.com/vivym/vela/internal/recovery	(cached)
+ok  	github.com/vivym/vela/internal/releaseartifacts	(cached)
+ok  	github.com/vivym/vela/internal/releasebundle	(cached)
+ok  	github.com/vivym/vela/internal/remediation	(cached)
+ok  	github.com/vivym/vela/internal/retention	(cached)
+ok  	github.com/vivym/vela/internal/securefile	(cached)
+ok  	github.com/vivym/vela/internal/slo	(cached)
+ok  	github.com/vivym/vela/internal/sloevidence	(cached)
+ok  	github.com/vivym/vela/internal/stageartifact	(cached)
+ok  	github.com/vivym/vela/internal/stageassignment	(cached)
+ok  	github.com/vivym/vela/internal/stageauthority	(cached)
+ok  	github.com/vivym/vela/internal/stagecache	(cached)
+?   	github.com/vivym/vela/internal/stagecutover	[no test files]
+?   	github.com/vivym/vela/internal/stagefinalization	[no test files]
+ok  	github.com/vivym/vela/internal/stageprotocol	(cached)
+ok  	github.com/vivym/vela/internal/stagescheduler	(cached)
+ok  	github.com/vivym/vela/internal/stageworkeragent	(cached)
+ok  	github.com/vivym/vela/internal/stageworkercontrol	(cached)
+ok  	github.com/vivym/vela/internal/stageworkermembertransport	(cached)
+ok  	github.com/vivym/vela/internal/stageworkertransport	(cached)
+?   	github.com/vivym/vela/internal/store/sqlc	[no test files]
+?   	github.com/vivym/vela/internal/strictjson	[no test files]
+ok  	github.com/vivym/vela/internal/supplychain	(cached)
+ok  	github.com/vivym/vela/internal/telemetry	(cached)
+ok  	github.com/vivym/vela/internal/usagecostledger	(cached)
+ok  	github.com/vivym/vela/internal/webhook	(cached)
+ok  	github.com/vivym/vela/internal/workerbootstrap	(cached)
+?   	github.com/vivym/vela/internal/workerjournal	[no test files]
+?   	github.com/vivym/vela/proto/gen/vela/v1	[no test files]

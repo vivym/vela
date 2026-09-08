@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "b9cf6d4214bbea539aa28bf7bd23473098c6efdd",
+  "source_tree_sha256": "8d44dd5539d52b9465a2d64c096c4f5b23072e85fb6fcbf4a3f37f9906141783",
+  "source_file_count": 951,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "native_runner_sha256": "daf2836517f72c93d47508beb7aeb3d3d4b11b05a6c608e94694dcfc06568bbf",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/repository-tests.log",
+      "bytes": 6844,
+      "sha256": "f331031e3d48ee03ea794db694836c2639c2935f9c29c0454af7d6e14199b582"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/linux-lint.log",
+      "bytes": 435,
+      "sha256": "b8bc7f8d05b94cf2a33a63072c8a6e23461e401b7a7d01c4490af1ee8ea15736"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/linux-lint-final.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/linux-cross.log",
+      "bytes": 167,
+      "sha256": "a6c54f778c8005569eb413dc8fb3a8e828e73326cedc50af74652a2edf8e08e8"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native-final-runner.log",
+      "bytes": 100,
+      "sha256": "36125506d18f5f2a253e537567ef032ebcab78d6b511bcb341671368918e1768"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/modelruntime.log",
+      "bytes": 33565,
+      "sha256": "adf9ce7bde571ee19109a7eaaedacab307afec2cb5d380609e85b689a5958a09"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/node-startup.log",
+      "bytes": 21702,
+      "sha256": "e128c996ca41e41bbdeda4603541454ec864c3da5cbd52427b62dabf3798161a"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "b052003e91e0d873f2f8fdf1c035a799496a7e1064a0f2e295851f949a0bb32a"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "ff1e13cab2d0e9ddaaf74f54f094791828822ed3805ca690e83669623e61724b"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/source.txt",
+      "bytes": 227,
+      "sha256": "22f6e46b9b098fdb4fa658f2b053d18c153fe84485e8594cc92feaa8c667f7ec"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/source.patch",
+      "bytes": 25867,
+      "sha256": "3f365d80f5fc05105d01838a5f4622bcfd09bd9d69ff53bfe2e649323fb26b17"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/source-patch.sha256",
+      "bytes": 143,
+      "sha256": "30384dd72c2a1599c137d6d76e5ff0ad5a5ac8cb0e5863a199fd4916ccf4573b"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/binaries.sha256",
+      "bytes": 319,
+      "sha256": "d482bcd77f28932534d515630931760a09295d1db92a7f594fa28723e096b1ee"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/journal-server-2026-09-08/native/image.txt",
+      "bytes": 72,
+      "sha256": "f336a6c77eacfd6bb99dc3a4909a70857b8db5e0870c34b07609027f266f4585"
+    }
+  ],
+  "checks": {
+    "native_runner_exit": 0,
+    "native_modelruntime_behavioral_tests": 47,
+    "native_modelruntime_helper_entrypoints": 1,
+    "native_node_main_tests": 11,
+    "native_skips": 0,
+    "race_reports": 0,
+    "repository_tests_exit": 0,
+    "vet_exit": 0,
+    "lint_exit": 0,
+    "initial_linux_lint_exit": 1,
+    "final_linux_lint_exit": 0,
+    "linux_amd64_cross_exit": 0,
+    "runner_shell_syntax_exit": 0
+  },
+  "native_server_final_stats": {
+    "accepted": 73,
+    "overloaded": 32,
+    "authenticated_handshakes": 37,
+    "replied": 36,
+    "failed": 5,
+    "in_flight": 0,
+    "peak_in_flight": 2
+  },
+  "scope": {
+    "actual_native_supervisor_through_server": true,
+    "worker_floor_through_server": true,
+    "overload_before_supervisor_construction": true,
+    "production_startup_assembly": false,
+    "separate_worker_journal_custody": false,
+    "full_remote_job_campaign": false,
+    "cpu_campaigns_rerun": false,
+    "sustained_operation": false
+  }
+}

@@ -1,0 +1,647 @@
+diff --git a/hack/run-journal-owner-native.sh b/hack/run-journal-owner-native.sh
+index c028c9b..0c4974f 100755
+--- a/hack/run-journal-owner-native.sh
++++ b/hack/run-journal-owner-native.sh
+@@ -52,7 +52,7 @@ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memo
+ # creation and process inspection; its permit is explicitly mocked, not a new issuer.
+ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE \
+   --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256 \
+-  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupLedgerBeforeActualFactory|TestJournalEndpoint|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
++  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupLedgerBeforeActualFactory|TestJournalEndpoint|TestJournalServer.*|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
+   -test.count=1 -test.v -test.timeout=3m > "$owner_evidence/node-startup.log" 2>&1
+ if rg -q -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
+   echo 'Selected native checks unexpectedly skipped; inspect evidence' >&2
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index 3567d0e..fd9cb3b 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -28,11 +28,14 @@ import (
+ )
+ 
+ type journalEndpointControl struct {
+-	Identity  modelruntime.ExecutionJournalIdentity
+-	Command   modelruntime.JournalCommand
+-	Manifest  *modelruntime.LaunchManifest
+-	Startup   modelruntime.BackendLifecycleStatus
+-	Authority []byte
++	Identity        modelruntime.ExecutionJournalIdentity
++	Command         modelruntime.JournalCommand
++	Manifest        *modelruntime.LaunchManifest
++	Startup         modelruntime.BackendLifecycleStatus
++	Authority       []byte
++	IdleConnections int
++	CloseIdle       bool
++	Read            bool
+ }
+ 
+ type journalEndpointReport struct {
+@@ -40,6 +43,8 @@ type journalEndpointReport struct {
+ 	Error               string
+ 	OwnerError          string
+ 	SupervisorCompleted bool
++	IdleReady           int
++	ReadCompleted       bool
+ }
+ 
+ type journalEndpointChild struct {
+@@ -74,6 +79,12 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 	output := os.NewFile(3, "journal-report")
+ 	defer func() { _ = output.Close() }()
+ 	decoder, encoder := json.NewDecoder(os.Stdin), json.NewEncoder(output)
++	var idle []*net.UnixConn
++	defer func() {
++		for _, connection := range idle {
++			_ = connection.Close()
++		}
++	}()
+ 	for {
+ 		var request journalEndpointControl
+ 		if err := decoder.Decode(&request); errors.Is(err, io.EOF) {
+@@ -81,6 +92,41 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 		} else if err != nil {
+ 			t.Fatal(err)
+ 		}
++		if request.IdleConnections != 0 || request.CloseIdle {
++			for _, connection := range idle {
++				_ = connection.Close()
++			}
++			idle = nil
++			for range request.IdleConnections {
++				connection, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: socket, Net: "unixpacket"})
++				if err != nil {
++					t.Fatal(err)
++				}
++				idle = append(idle, connection)
++				if err := connection.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
++					t.Fatal(err)
++				}
++				challenge := make([]byte, runtimechannel.ChallengeSize)
++				if n, err := connection.Read(challenge); err != nil || n != len(challenge) {
++					t.Fatalf("idle handshake: %d %v", n, err)
++				}
++			}
++			if err := encoder.Encode(journalEndpointReport{IdleReady: len(idle)}); err != nil {
++				t.Fatal(err)
++			}
++			continue
++		}
++		if request.Read {
++			_, err := (modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity}).Read(t.Context())
++			report := journalEndpointReport{ReadCompleted: err == nil}
++			if err != nil {
++				report.Error = err.Error()
++			}
++			if err := encoder.Encode(report); err != nil {
++				t.Fatal(err)
++			}
++			continue
++		}
+ 		if request.Manifest != nil {
+ 			journalEndpointRunSupervisor(t, socket, request)
+ 			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
+@@ -196,7 +242,19 @@ func journalEndpointExchange(t *testing.T, endpoint *JournalEndpoint, listener *
+ 	return report
+ }
+ 
+-func TestJournalEndpoint(t *testing.T) {
++type journalEndpointFixture struct {
++	owner                    *modelruntime.ExecutionJournalOwner
++	endpoint                 *JournalEndpoint
++	listener                 *net.UnixListener
++	runtime, worker, sibling *journalEndpointChild
++	identity                 modelruntime.ExecutionJournalIdentity
++	manifest                 modelruntime.LaunchManifest
++	startup                  modelruntime.BackendLifecycleStatus
++	authority, floor         []byte
++}
++
++func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
++	t.Helper()
+ 	if os.Geteuid() != 0 {
+ 		t.Skip("requires root Node and independent non-root PID namespaces")
+ 	}
+@@ -236,7 +294,7 @@ func TestJournalEndpoint(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	defer func() { _ = owner.Close() }()
++	t.Cleanup(func() { _ = owner.Close() })
+ 	startup, err := owner.RecordBackendStartupIntent(t.Context())
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -251,7 +309,7 @@ func TestJournalEndpoint(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	defer func() { _ = listener.Close() }()
++	t.Cleanup(func() { _ = listener.Close() })
+ 	if err := errors.Join(os.Chown(socket, 0, 65532), os.Chmod(socket, 0o660)); err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -265,13 +323,22 @@ func TestJournalEndpoint(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	defer func() { _ = endpoint.Close() }()
++	t.Cleanup(func() { _ = endpoint.Close() })
+ 	// Endpoint keeps independent original pidfds after enrollment is discarded.
+ 	if err := errors.Join(runtime.owner.Close(), worker.owner.Close(), sibling.owner.Close()); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	authority, floor := journalEndpointCommands(t, fixture.launch, routes[0], signer, now)
+-	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &fixture.launch, Startup: startup, Authority: authority})
++	return journalEndpointFixture{owner: owner, endpoint: endpoint, listener: listener, runtime: runtime, worker: worker, sibling: sibling, identity: identity, manifest: fixture.launch, startup: startup, authority: authority, floor: floor}
++}
++
++func TestJournalEndpoint(t *testing.T) {
++	f := newJournalEndpointFixture(t)
++	owner, endpoint, listener := f.owner, f.endpoint, f.listener
++	runtime, worker, sibling := f.runtime, f.worker, f.sibling
++	identity, authority, floor := f.identity, f.authority, f.floor
++
++	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &f.manifest, Startup: f.startup, Authority: authority})
+ 	if status, err := owner.Status(t.Context()); err != nil || status.Highest != 1 || status.PendingExecutions != 0 {
+ 		t.Fatalf("Supervisor did not persist sealed/drained execution: %+v %v", status, err)
+ 	}
+diff --git a/internal/nodeagent/journal_server_linux.go b/internal/nodeagent/journal_server_linux.go
+new file mode 100644
+index 0000000..a8afebb
+--- /dev/null
++++ b/internal/nodeagent/journal_server_linux.go
+@@ -0,0 +1,225 @@
++package nodeagent
++
++import (
++	"context"
++	"errors"
++	"net"
++	"os"
++	"slices"
++	"sync"
++	"sync/atomic"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/runtimechannel"
++	"golang.org/x/sys/unix"
++)
++
++const MaximumJournalConnections = 64
++
++// Credentials are resolved by trusted assembly, never by a request. They only
++// filter handshake admission; JournalEndpoint still authenticates exact roles.
++type JournalServerConfig struct {
++	Credentials     []RuntimeCallerCredentials
++	MaxConcurrent   int
++	ExchangeTimeout time.Duration
++}
++
++// Replied counts transmitted responses, including domain rejections. It does
++// not prove receipt or count committed mutations. Accepted includes overloads.
++// Authenticated is a verified handshake, not an authorized journal role.
++// Concurrent snapshots are not transactional; final counters balance after join.
++type JournalServerStats struct {
++	Accepted, Overloaded, Authenticated, Replied, Failed uint64
++	InFlight, PeakInFlight                               int64
++}
++
++type JournalServer struct {
++	endpoint *JournalEndpoint
++	config   JournalServerConfig
++	mu       sync.Mutex
++	stopped  bool
++	cancel   context.CancelFunc
++	done     chan struct{}
++
++	accepted, overloaded, authenticated, replied, failed atomic.Uint64
++	inFlight, peakInFlight                               atomic.Int64
++}
++
++func NewJournalServer(endpoint *JournalEndpoint, config JournalServerConfig) (*JournalServer, error) {
++	if endpoint == nil || os.Geteuid() != 0 || os.Getegid() != 0 || len(config.Credentials) == 0 || len(config.Credentials) > 2 ||
++		config.MaxConcurrent < 1 || config.MaxConcurrent > MaximumJournalConnections ||
++		config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout {
++		return nil, errors.New("invalid Node journal server configuration")
++	}
++	for i, credential := range config.Credentials {
++		if credential.UID == 0 || credential.GID == 0 || credential.UID == ^uint32(0) || credential.GID == ^uint32(0) ||
++			slices.Contains(config.Credentials[:i], credential) {
++			return nil, ErrRuntimeCallerIdentity
++		}
++	}
++	endpoint.mu.Lock()
++	defer endpoint.mu.Unlock()
++	if endpoint.owner == nil || endpoint.runtime == nil || endpoint.worker == nil {
++		return nil, ErrRuntimeNamespaceOwnerLost
++	}
++	config.Credentials = slices.Clone(config.Credentials)
++	return &JournalServer{endpoint: endpoint, config: config}, nil
++}
++
++func (server *JournalServer) Stats() JournalServerStats {
++	return JournalServerStats{Accepted: server.accepted.Load(), Overloaded: server.overloaded.Load(),
++		Authenticated: server.authenticated.Load(), Replied: server.replied.Load(), Failed: server.failed.Load(),
++		InFlight: server.inFlight.Load(), PeakInFlight: server.peakInFlight.Load()}
++}
++
++// Serve owns listener and accepted connections after successful entry. Trusted
++// assembly supplies a protected filesystem socket; this method does not create,
++// chmod, unlink or enroll anything. Only one Serve is allowed per server.
++// At most MaxConcurrent exchanges allocate handshake buffers/retain callers.
++// One additional accepted socket is immediately closed on overload; the kernel
++// listen backlog is separate. No waiting Go queue or overload goroutine is made.
++func (server *JournalServer) Serve(ctx context.Context, listener *net.UnixListener) error {
++	if server == nil || server.endpoint == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
++		return errors.New("node journal server requires context and Unix seqpacket listener")
++	}
++	server.mu.Lock()
++	if server.stopped || server.done != nil {
++		server.mu.Unlock()
++		return net.ErrClosed
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	server.cancel, server.done = cancel, make(chan struct{})
++	server.mu.Unlock()
++	// Go's default unlink-on-close could delete a replacement pathname. Socket
++	// retirement belongs to the protected assembly that knows its exact identity.
++	listener.SetUnlinkOnClose(false)
++	var active sync.WaitGroup
++	listenerClosed := make(chan struct{})
++	stop := context.AfterFunc(ctx, func() { _ = listener.Close(); close(listenerClosed) })
++	defer func() {
++		cancel()
++		if !stop() {
++			<-listenerClosed
++		} else {
++			_ = listener.Close()
++		}
++		active.Wait()
++		server.mu.Lock()
++		server.stopped = true
++		close(server.done)
++		server.mu.Unlock()
++	}()
++	slots := make(chan struct{}, server.config.MaxConcurrent)
++	if err := listener.SetDeadline(time.Time{}); err != nil {
++		return err
++	}
++	for {
++		connection, err := listener.AcceptUnix()
++		if err != nil {
++			return errors.Join(err, context.Cause(ctx))
++		}
++		server.accepted.Add(1)
++		deadline := time.Now().Add(server.config.ExchangeTimeout)
++		select {
++		case slots <- struct{}{}:
++		default:
++			server.overloaded.Add(1)
++			_ = connection.Close()
++			continue
++		}
++		count := server.inFlight.Add(1)
++		for peak := server.peakInFlight.Load(); count > peak; peak = server.peakInFlight.Load() {
++			if server.peakInFlight.CompareAndSwap(peak, count) {
++				break
++			}
++		}
++		active.Add(1)
++		go func() {
++			defer active.Done()
++			defer func() { server.inFlight.Add(-1); <-slots }()
++			server.exchange(ctx, connection, deadline)
++		}()
++	}
++}
++
++func (server *JournalServer) exchange(parent context.Context, connection *net.UnixConn, deadline time.Time) {
++	ctx, cancel := context.WithDeadline(parent, deadline)
++	defer cancel()
++	closed := make(chan struct{})
++	stop := context.AfterFunc(ctx, func() { _ = connection.Close(); close(closed) })
++	defer func() {
++		if !stop() {
++			<-closed
++		} else {
++			_ = connection.Close()
++		}
++	}()
++	credential, err := server.credentials(connection)
++	if err != nil {
++		server.failed.Add(1)
++		return
++	}
++	caller, err := ReceiveRuntimeCallerWithRequestLimit(ctx, connection, credential, modelruntime.MaximumJournalCommandBytes)
++	if err != nil {
++		server.failed.Add(1)
++		return
++	}
++	defer func() { _ = caller.Close() }()
++	server.authenticated.Add(1)
++	reply, err := server.endpoint.Handle(ctx, caller)
++	if err == nil {
++		err = caller.Reply(ctx, reply)
++	}
++	if err != nil {
++		server.failed.Add(1)
++	} else {
++		server.replied.Add(1)
++	}
++}
++
++func (server *JournalServer) credentials(connection *net.UnixConn) (RuntimeCallerCredentials, error) {
++	raw, err := connection.SyscallConn()
++	if err != nil {
++		return RuntimeCallerCredentials{}, err
++	}
++	var peer *unix.Ucred
++	var peerErr error
++	if err := raw.Control(func(fd uintptr) { peer, peerErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED) }); err != nil {
++		return RuntimeCallerCredentials{}, err
++	}
++	if peerErr != nil {
++		return RuntimeCallerCredentials{}, peerErr
++	}
++	credential := RuntimeCallerCredentials{UID: peer.Uid, GID: peer.Gid}
++	if !slices.Contains(server.config.Credentials, credential) {
++		return RuntimeCallerCredentials{}, ErrRuntimeCallerIdentity
++	}
++	return credential, nil
++}
++
++// Shutdown cancels accept/handshake/reply I/O and joins all accepted work. A
++// timeout does not prove that a synchronous journal fsync or handler stopped;
++// retain the endpoint and owner until Serve actually returns. Neither is closed
++// here. Shutdown before Serve permanently prevents starting this server.
++func (server *JournalServer) Shutdown(ctx context.Context) error {
++	if server == nil || ctx == nil {
++		return errors.New("node journal shutdown requires server and context")
++	}
++	server.mu.Lock()
++	server.stopped = true
++	if server.cancel != nil {
++		server.cancel()
++	}
++	done := server.done
++	server.mu.Unlock()
++	if done == nil {
++		return nil
++	}
++	select {
++	case <-done:
++		return nil
++	case <-ctx.Done():
++		return context.Cause(ctx)
++	}
++}
+diff --git a/internal/nodeagent/journal_server_linux_test.go b/internal/nodeagent/journal_server_linux_test.go
+new file mode 100644
+index 0000000..2089ac0
+--- /dev/null
++++ b/internal/nodeagent/journal_server_linux_test.go
+@@ -0,0 +1,245 @@
++package nodeagent
++
++import (
++	"context"
++	"errors"
++	"net"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/vivym/vela/internal/modelruntime"
++)
++
++func journalServerRequest(t *testing.T, child *journalEndpointChild, request journalEndpointControl) journalEndpointReport {
++	t.Helper()
++	if err := child.reader.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	if err := child.input.Encode(request); err != nil {
++		t.Fatal(err)
++	}
++	var report journalEndpointReport
++	if err := child.reports.Decode(&report); err != nil {
++		t.Fatal(err)
++	}
++	return report
++}
++
++func startJournalTestServer(t *testing.T, f journalEndpointFixture, timeout time.Duration) (*JournalServer, <-chan error) {
++	t.Helper()
++	credentials := []RuntimeCallerCredentials{{UID: 65532, GID: 65532}}
++	server, err := NewJournalServer(f.endpoint, JournalServerConfig{Credentials: credentials, MaxConcurrent: 2, ExchangeTimeout: timeout})
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Caller-owned configuration cannot change the admitted credential set.
++	credentials[0].UID--
++	done := make(chan error, 1)
++	go func() { done <- server.Serve(t.Context(), f.listener) }()
++	t.Cleanup(func() {
++		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++		defer cancel()
++		if err := server.Shutdown(ctx); err != nil {
++			t.Errorf("journal server did not join: %v", err)
++		}
++	})
++	return server, done
++}
++
++func waitJournalServer(t *testing.T, server *JournalServer, predicate func(JournalServerStats) bool) JournalServerStats {
++	t.Helper()
++	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
++	defer cancel()
++	for {
++		stats := server.Stats()
++		if predicate(stats) {
++			return stats
++		}
++		select {
++		case <-ctx.Done():
++			t.Fatalf("server state did not converge: %+v", stats)
++		case <-time.After(time.Millisecond):
++		}
++	}
++}
++
++func assertJournalServerJoined(t *testing.T, server *JournalServer, done <-chan error) {
++	t.Helper()
++	select {
++	case err := <-done:
++		if !errors.Is(err, context.Canceled) && !errors.Is(err, net.ErrClosed) {
++			t.Fatalf("serve termination: %v", err)
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatal("server did not join accepted connections")
++	}
++	stats := server.Stats()
++	if stats.InFlight != 0 || stats.PeakInFlight > 2 || stats.Accepted != stats.Overloaded+stats.Replied+stats.Failed {
++		t.Fatalf("unjoined work or inconsistent final counters: %+v", stats)
++	}
++	t.Logf("joined Node journal server: %+v", stats)
++}
++
++func TestJournalServer(t *testing.T) {
++	f := newJournalEndpointFixture(t)
++	server, done := startJournalTestServer(t, f, 30*time.Second)
++	before := runtimeCallerDescriptorCount(t)
++	if report := journalServerRequest(t, f.sibling, journalEndpointControl{IdleConnections: 2}); report.IdleReady != 2 {
++		t.Fatalf("real peers failed to fill handshake slots: %+v", report)
++	}
++	stats := server.Stats()
++	if stats.InFlight != 2 || stats.PeakInFlight != 2 || stats.Authenticated != 0 {
++		t.Fatalf("idle connections were not bounded before request allocation: %+v", stats)
++	}
++	held := runtimeCallerDescriptorCount(t)
++	for range 32 {
++		if report := journalServerRequest(t, f.runtime, journalEndpointControl{Identity: f.identity, Read: true}); report.Error == "" || report.ReadCompleted {
++			t.Fatal("overloaded connection bypassed handshake bound")
++		}
++	}
++	if after := runtimeCallerDescriptorCount(t); after != held {
++		t.Fatalf("overload leaked descriptors: before=%d after=%d", held, after)
++	}
++	if stats := server.Stats(); stats.Overloaded != 32 || stats.InFlight != 2 || stats.Authenticated != 0 {
++		t.Fatalf("overload created more authenticated work: %+v", stats)
++	}
++	journalServerRequest(t, f.sibling, journalEndpointControl{CloseIdle: true})
++	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.InFlight == 0 })
++	if after := runtimeCallerDescriptorCount(t); after != before {
++		t.Fatalf("idle disconnect leaked sockets/pidfds: before=%d after=%d", before, after)
++	}
++	if report := journalServerRequest(t, f.sibling, journalEndpointControl{Identity: f.identity, Read: true}); report.Error == "" {
++		t.Fatal("same-UID sibling obtained journal role")
++	}
++	admit := modelruntime.JournalCommand{SchemaVersion: 1, Admit: &modelruntime.JournalAuthorityCommand{Authority: f.authority}}
++	if report := journalServerRequest(t, f.worker, journalEndpointControl{Identity: f.identity, Command: admit}); report.Error == "" {
++		t.Fatal("Worker obtained Runtime admission role")
++	}
++	if report := journalServerRequest(t, f.worker, journalEndpointControl{Identity: f.identity, Read: true}); !report.ReadCompleted {
++		t.Fatalf("capacity release did not restore authorized read: %+v", report)
++	}
++	if report := journalServerRequest(t, f.runtime, journalEndpointControl{Identity: f.identity, Manifest: &f.manifest, Startup: f.startup, Authority: f.authority}); !report.SupervisorCompleted {
++		t.Fatalf("actual Supervisor failed through server: %+v", report)
++	}
++	floor := modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: f.floor}}
++	if report := journalServerRequest(t, f.worker, journalEndpointControl{Identity: f.identity, Command: floor}); report.Error != "" || report.Receipt.Floor != 1 {
++		t.Fatalf("Worker could not persist restriction through server: %+v", report)
++	}
++	status, err := f.owner.Status(t.Context())
++	if err != nil || status.Highest != 1 || status.Floor != 1 || status.PendingExecutions != 0 {
++		t.Fatalf("incorrect actual durable history: %+v %v", status, err)
++	}
++	journalServerRequest(t, f.sibling, journalEndpointControl{IdleConnections: 2})
++	// Shutdown must not unlink a replacement path owned by other assembly.
++	path := f.listener.Addr().String()
++	if err := os.Rename(path, path+".original"); err != nil {
++		t.Fatal(err)
++	}
++	replacement, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = replacement.Close() }()
++	if err := server.Shutdown(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	assertJournalServerJoined(t, server, done)
++	if _, err := os.Lstat(path); err != nil {
++		t.Fatalf("shutdown removed replacement socket: %v", err)
++	}
++	if _, err := f.owner.Status(t.Context()); err != nil {
++		t.Fatalf("server shutdown closed journal owner: %v", err)
++	}
++	if err := server.Serve(t.Context(), replacement); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("stopped server restarted: %v", err)
++	}
++}
++
++func TestJournalServerTimeoutAndJoin(t *testing.T) {
++	f := newJournalEndpointFixture(t)
++	server, done := startJournalTestServer(t, f, 500*time.Millisecond)
++	journalServerRequest(t, f.sibling, journalEndpointControl{IdleConnections: 1})
++	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.Failed == 1 && s.InFlight == 0 })
++	if report := journalServerRequest(t, f.runtime, journalEndpointControl{Identity: f.identity, Read: true}); !report.ReadCompleted {
++		t.Fatalf("timed out slot not reusable: %+v", report)
++	}
++	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.InFlight == 0 })
++	// Model a synchronous owner operation that cannot observe cancellation
++	// while waiting for the endpoint lock. Shutdown must report unjoined work.
++	f.endpoint.mu.Lock()
++	locked := true
++	defer func() {
++		if locked {
++			f.endpoint.mu.Unlock()
++		}
++	}()
++	before := server.Stats().Authenticated
++	if err := f.runtime.input.Encode(journalEndpointControl{Identity: f.identity, Read: true}); err != nil {
++		t.Fatal(err)
++	}
++	waitJournalServer(t, server, func(s JournalServerStats) bool { return s.Authenticated == before+1 })
++	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
++	defer cancel()
++	if err := server.Shutdown(ctx); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("shutdown forgot unjoined handler: %v", err)
++	}
++	if server.Stats().InFlight != 1 {
++		t.Fatal("shutdown fabricated completed handler")
++	}
++	f.endpoint.mu.Unlock()
++	locked = false
++	if err := server.Shutdown(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	assertJournalServerJoined(t, server, done)
++	if status, err := f.owner.Status(t.Context()); err != nil || status.Highest != 0 {
++		t.Fatalf("shutdown changed journal or closed owner: %+v %v", status, err)
++	}
++}
++
++func TestJournalServerListenerFailure(t *testing.T) {
++	f := newJournalEndpointFixture(t)
++	server, done := startJournalTestServer(t, f, 30*time.Second)
++	journalServerRequest(t, f.sibling, journalEndpointControl{IdleConnections: 2})
++	if err := f.listener.Close(); err != nil {
++		t.Fatal(err)
++	}
++	assertJournalServerJoined(t, server, done)
++	if stats := server.Stats(); stats.Failed != 2 {
++		t.Fatalf("listener failure retained handshakes: %+v", stats)
++	}
++}
++
++func TestJournalServerConfiguration(t *testing.T) {
++	f := newJournalEndpointFixture(t)
++	for _, config := range []JournalServerConfig{
++		{}, {Credentials: []RuntimeCallerCredentials{{UID: 0, GID: 1}}, MaxConcurrent: 1, ExchangeTimeout: time.Second},
++		{Credentials: []RuntimeCallerCredentials{{UID: 1, GID: 1}}, MaxConcurrent: MaximumJournalConnections + 1, ExchangeTimeout: time.Second},
++		{Credentials: []RuntimeCallerCredentials{{UID: 1, GID: 1}}, MaxConcurrent: 1, ExchangeTimeout: 46 * time.Second},
++		{Credentials: []RuntimeCallerCredentials{{UID: 1, GID: 1}, {UID: 1, GID: 1}}, MaxConcurrent: 1, ExchangeTimeout: time.Second},
++	} {
++		if server, err := NewJournalServer(f.endpoint, config); err == nil || server != nil {
++			t.Fatalf("accepted invalid configuration: %+v", config)
++		}
++	}
++	server, err := NewJournalServer(f.endpoint, JournalServerConfig{Credentials: []RuntimeCallerCredentials{{UID: 65532, GID: 65532}}, MaxConcurrent: 1, ExchangeTimeout: time.Second})
++	if err != nil {
++		t.Fatal(err)
++	}
++	stream, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(filepath.Dir(f.listener.Addr().String()), "stream.sock"), Net: "unix"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = stream.Close() }()
++	if err := server.Serve(t.Context(), stream); err == nil {
++		t.Fatal("accepted stream listener")
++	}
++	if err := server.Shutdown(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	if err := server.Serve(t.Context(), f.listener); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("shutdown-before-serve reopened: %v", err)
++	}
++}

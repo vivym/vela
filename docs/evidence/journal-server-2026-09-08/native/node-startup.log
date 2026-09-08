@@ -1,0 +1,338 @@
+=== RUN   TestJournalEndpoint
+    journal_endpoint_linux_test.go:341: actual Supervisor prepare/start/seal/drain across 33 authenticated Node exchanges; Runtime opened no journal files
+    journal_endpoint_linux_test.go:391: real root owner / non-root PID-1 roles; direct filesystem access denied; sibling rejected; lost reply replayed; exit and endpoint closure fenced
+--- PASS: TestJournalEndpoint (0.35s)
+=== RUN   TestJournalServer
+    journal_server_linux_test.go:148: joined Node journal server: {Accepted:73 Overloaded:32 Authenticated:37 Replied:36 Failed:5 InFlight:0 PeakInFlight:2}
+--- PASS: TestJournalServer (0.37s)
+=== RUN   TestJournalServerTimeoutAndJoin
+    journal_server_linux_test.go:196: joined Node journal server: {Accepted:3 Overloaded:0 Authenticated:2 Replied:1 Failed:2 InFlight:0 PeakInFlight:1}
+--- PASS: TestJournalServerTimeoutAndJoin (0.65s)
+=== RUN   TestJournalServerListenerFailure
+    journal_server_linux_test.go:209: joined Node journal server: {Accepted:2 Overloaded:0 Authenticated:0 Replied:0 Failed:2 InFlight:0 PeakInFlight:2}
+--- PASS: TestJournalServerListenerFailure (0.09s)
+=== RUN   TestJournalServerConfiguration
+--- PASS: TestJournalServerConfiguration (0.06s)
+=== RUN   TestRuntimeCallerRejectsInvalidMessages
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/delegated
+    runtime_caller_linux_test.go:108: rejected delegated without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/wrong-challenge
+    runtime_caller_linux_test.go:108: rejected wrong-challenge without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/empty
+    runtime_caller_linux_test.go:108: rejected empty without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/oversized
+    runtime_caller_linux_test.go:108: rejected oversized without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/rights
+    runtime_caller_linux_test.go:108: rejected rights without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/truncated-rights
+    runtime_caller_linux_test.go:108: rejected truncated-rights without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/wrong-uid
+    runtime_caller_linux_test.go:108: rejected wrong-uid without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/wrong-gid
+    runtime_caller_linux_test.go:108: rejected wrong-gid without descriptor growth
+=== RUN   TestRuntimeCallerRejectsInvalidMessages/stream
+    runtime_caller_linux_test.go:108: rejected stream without descriptor growth
+--- PASS: TestRuntimeCallerRejectsInvalidMessages (2.18s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/delegated (2.04s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/wrong-challenge (0.03s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/empty (0.02s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/oversized (0.01s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/rights (0.01s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/truncated-rights (0.03s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/wrong-uid (0.01s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/wrong-gid (0.01s)
+    --- PASS: TestRuntimeCallerRejectsInvalidMessages/stream (0.01s)
+=== RUN   TestRuntimeChannelRoundTrip
+=== RUN   TestRuntimeChannelRoundTrip/private-pid=false
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:425: Runtime pid=175, private-pid=false
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRoundTrip/private-pid=true
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+--- PASS: TestRuntimeChannelRoundTrip (2.05s)
+    --- PASS: TestRuntimeChannelRoundTrip/private-pid=false (1.02s)
+    --- PASS: TestRuntimeChannelRoundTrip/private-pid=true (1.03s)
+=== RUN   TestRuntimeChannelLargeRequestBounds
+=== RUN   TestRuntimeChannelLargeRequestBounds/large-request
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelLargeRequestBounds/large-default-receiver
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected large-default-receiver: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelLargeRequestBounds/large-response
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+--- PASS: TestRuntimeChannelLargeRequestBounds (3.08s)
+    --- PASS: TestRuntimeChannelLargeRequestBounds/large-request (1.03s)
+    --- PASS: TestRuntimeChannelLargeRequestBounds/large-default-receiver (1.02s)
+    --- PASS: TestRuntimeChannelLargeRequestBounds/large-response (1.03s)
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/challenge-prefix
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected challenge-prefix: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/challenge-short
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected challenge-short: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/challenge-long
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected challenge-long: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/challenge-rights
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected challenge-rights: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/challenge-delegated
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected challenge-delegated: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-replay
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-replay: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-reflected
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-reflected: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-empty
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-empty: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-long
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-long: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-rights
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-rights: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-truncated-rights
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-truncated-rights: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.03s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/response-delegated
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected response-delegated: runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/socket-replaced
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected socket-replaced: node socket inode, owner or permissions are untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/cancel-challenge
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected cancel-challenge: runtime channel kernel identity or frame is untrusted
+                raw-read unixpacket @6c7b4->/run/vela-channel-59796384/endpoint/node.sock: i/o timeout
+                resource temporarily unavailable
+                runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+                context deadline exceeded
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.25s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/cancel-response
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected cancel-response: runtime channel kernel identity or frame is untrusted
+                raw-read unixpacket @1ed7c->/run/vela-channel-143761302/endpoint/node.sock: i/o timeout
+                resource temporarily unavailable
+                runtime channel kernel identity or frame is untrusted
+                runtime channel kernel identity or frame is untrusted
+                context deadline exceeded
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.26s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/cancel-before
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected cancel-before: context canceled
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/socket-owner
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected socket-owner: node socket inode, owner or permissions are untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/socket-mode
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected socket-mode: node socket inode, owner or permissions are untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/socket-link
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected socket-link: node socket inode, owner or permissions are untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/directory-owner
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected directory-owner: node socket requires root-owned non-writable ancestors
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/directory-mode
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected directory-mode: node socket requires root-owned non-writable ancestors
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/directory-link
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected directory-link: not a directory
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/peer-uid
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected peer-uid: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+=== RUN   TestRuntimeChannelRejectsUntrustedExchange/peer-gid
+    runtime_channel_linux_test.go:352: === RUN   TestRuntimeChannelProcessHelper
+            runtime_channel_linux_test.go:420: rejected peer-gid: runtime channel kernel identity or frame is untrusted
+            runtime_channel_linux_test.go:425: Runtime pid=1, private-pid=true
+        --- PASS: TestRuntimeChannelProcessHelper (0.00s)
+        PASS
+        
+--- PASS: TestRuntimeChannelRejectsUntrustedExchange (29.22s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/challenge-prefix (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/challenge-short (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/challenge-long (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/challenge-rights (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/challenge-delegated (2.05s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-replay (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-reflected (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-empty (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-long (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-rights (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-truncated-rights (1.04s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/response-delegated (2.05s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/socket-replaced (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/cancel-challenge (1.27s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/cancel-response (1.29s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/cancel-before (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/socket-owner (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/socket-mode (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/socket-link (1.02s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/directory-owner (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/directory-mode (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/directory-link (1.03s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/peer-uid (2.05s)
+    --- PASS: TestRuntimeChannelRejectsUntrustedExchange/peer-gid (2.06s)
+=== RUN   TestRuntimeChannelReplyRejectsLostLifetime
+=== RUN   TestRuntimeChannelReplyRejectsLostLifetime/expired
+=== RUN   TestRuntimeChannelReplyRejectsLostLifetime/exited
+=== RUN   TestRuntimeChannelReplyRejectsLostLifetime/canceled
+--- PASS: TestRuntimeChannelReplyRejectsLostLifetime (1.06s)
+    --- PASS: TestRuntimeChannelReplyRejectsLostLifetime/expired (0.02s)
+    --- PASS: TestRuntimeChannelReplyRejectsLostLifetime/exited (1.02s)
+    --- PASS: TestRuntimeChannelReplyRejectsLostLifetime/canceled (0.02s)
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/mock-permit
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=mock-permit factories=1 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.09s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/deny
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=deny factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.10s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/lost-response
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=lost-response factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.11s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/record-error
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=record-error factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.08s)
+        PASS
+        
+--- PASS: TestRuntimeStartupLedgerBeforeActualFactory (4.54s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/mock-permit (1.13s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/deny (1.14s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/lost-response (1.16s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/record-error (1.11s)
+PASS

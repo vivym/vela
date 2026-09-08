@@ -28,11 +28,14 @@ import (
 )
 
 type journalEndpointControl struct {
-	Identity  modelruntime.ExecutionJournalIdentity
-	Command   modelruntime.JournalCommand
-	Manifest  *modelruntime.LaunchManifest
-	Startup   modelruntime.BackendLifecycleStatus
-	Authority []byte
+	Identity        modelruntime.ExecutionJournalIdentity
+	Command         modelruntime.JournalCommand
+	Manifest        *modelruntime.LaunchManifest
+	Startup         modelruntime.BackendLifecycleStatus
+	Authority       []byte
+	IdleConnections int
+	CloseIdle       bool
+	Read            bool
 }
 
 type journalEndpointReport struct {
@@ -40,6 +43,8 @@ type journalEndpointReport struct {
 	Error               string
 	OwnerError          string
 	SupervisorCompleted bool
+	IdleReady           int
+	ReadCompleted       bool
 }
 
 type journalEndpointChild struct {
@@ -74,12 +79,53 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 	output := os.NewFile(3, "journal-report")
 	defer func() { _ = output.Close() }()
 	decoder, encoder := json.NewDecoder(os.Stdin), json.NewEncoder(output)
+	var idle []*net.UnixConn
+	defer func() {
+		for _, connection := range idle {
+			_ = connection.Close()
+		}
+	}()
 	for {
 		var request journalEndpointControl
 		if err := decoder.Decode(&request); errors.Is(err, io.EOF) {
 			return
 		} else if err != nil {
 			t.Fatal(err)
+		}
+		if request.IdleConnections != 0 || request.CloseIdle {
+			for _, connection := range idle {
+				_ = connection.Close()
+			}
+			idle = nil
+			for range request.IdleConnections {
+				connection, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: socket, Net: "unixpacket"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				idle = append(idle, connection)
+				if err := connection.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				challenge := make([]byte, runtimechannel.ChallengeSize)
+				if n, err := connection.Read(challenge); err != nil || n != len(challenge) {
+					t.Fatalf("idle handshake: %d %v", n, err)
+				}
+			}
+			if err := encoder.Encode(journalEndpointReport{IdleReady: len(idle)}); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if request.Read {
+			_, err := (modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity}).Read(t.Context())
+			report := journalEndpointReport{ReadCompleted: err == nil}
+			if err != nil {
+				report.Error = err.Error()
+			}
+			if err := encoder.Encode(report); err != nil {
+				t.Fatal(err)
+			}
+			continue
 		}
 		if request.Manifest != nil {
 			journalEndpointRunSupervisor(t, socket, request)
@@ -196,7 +242,19 @@ func journalEndpointExchange(t *testing.T, endpoint *JournalEndpoint, listener *
 	return report
 }
 
-func TestJournalEndpoint(t *testing.T) {
+type journalEndpointFixture struct {
+	owner                    *modelruntime.ExecutionJournalOwner
+	endpoint                 *JournalEndpoint
+	listener                 *net.UnixListener
+	runtime, worker, sibling *journalEndpointChild
+	identity                 modelruntime.ExecutionJournalIdentity
+	manifest                 modelruntime.LaunchManifest
+	startup                  modelruntime.BackendLifecycleStatus
+	authority, floor         []byte
+}
+
+func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
 	}
@@ -236,7 +294,7 @@ func TestJournalEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = owner.Close() }()
+	t.Cleanup(func() { _ = owner.Close() })
 	startup, err := owner.RecordBackendStartupIntent(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +309,7 @@ func TestJournalEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = listener.Close() }()
+	t.Cleanup(func() { _ = listener.Close() })
 	if err := errors.Join(os.Chown(socket, 0, 65532), os.Chmod(socket, 0o660)); err != nil {
 		t.Fatal(err)
 	}
@@ -265,13 +323,22 @@ func TestJournalEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = endpoint.Close() }()
+	t.Cleanup(func() { _ = endpoint.Close() })
 	// Endpoint keeps independent original pidfds after enrollment is discarded.
 	if err := errors.Join(runtime.owner.Close(), worker.owner.Close(), sibling.owner.Close()); err != nil {
 		t.Fatal(err)
 	}
 	authority, floor := journalEndpointCommands(t, fixture.launch, routes[0], signer, now)
-	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &fixture.launch, Startup: startup, Authority: authority})
+	return journalEndpointFixture{owner: owner, endpoint: endpoint, listener: listener, runtime: runtime, worker: worker, sibling: sibling, identity: identity, manifest: fixture.launch, startup: startup, authority: authority, floor: floor}
+}
+
+func TestJournalEndpoint(t *testing.T) {
+	f := newJournalEndpointFixture(t)
+	owner, endpoint, listener := f.owner, f.endpoint, f.listener
+	runtime, worker, sibling := f.runtime, f.worker, f.sibling
+	identity, authority, floor := f.identity, f.authority, f.floor
+
+	journalEndpointDriveSupervisor(t, endpoint, listener, runtime, journalEndpointControl{Identity: identity, Manifest: &f.manifest, Startup: f.startup, Authority: authority})
 	if status, err := owner.Status(t.Context()); err != nil || status.Highest != 1 || status.PendingExecutions != 0 {
 		t.Fatalf("Supervisor did not persist sealed/drained execution: %+v %v", status, err)
 	}
