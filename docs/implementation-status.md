@@ -575,6 +575,14 @@ binary/state paths and matching cgroup mode, otherwise default options and no
 OCI hooks. Native CRI covers an implicit handler rejection and an explicit
 handler match plus 84 invalid-file cases. The policy is test-assembled; executable,
 effective mount and production grant approval are still separate prerequisites.
+The [startup image reservation](node-startup-image-evidence-2026-09-09.md) now
+accepts the original canonical BackendStartupRequest and checks the Node-held
+Runtime journal, approved-image entrypoint and task mechanism in one reservation
+invocation. Image/task observations bracket the single Fleet call; journal and
+owner checks follow each potentially blocking image observation. Seventeen real
+CRI cases cover rejection, consumed intent, loss of custody and history-only
+recovery, with fixture Registry/Pod/Fleet. No permit is issued; real TLS/PostgreSQL,
+production CLI, effective env/config/mount approval and full Job remain open.
 The [planned image/caller association](node-planned-image-evidence-2026-09-09.md)
 derives the config digest and default entrypoint from the Registry-bound image
 manifest, measures the unpacked native snapshot and compares actual task argv,

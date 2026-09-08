@@ -34,6 +34,14 @@ type RuntimePlannedImageCallerObservation struct {
 }
 
 func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
+	var declaration []byte
+	if config.Plan != nil {
+		declaration = config.Plan.manifest
+	}
+	return observer.observePlannedImageCaller(ctx, config, declaration)
+}
+
+func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig, declaration []byte) (*RuntimePlannedImageCallerObservation, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -65,7 +73,7 @@ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.
 	if err := config.Images.sameDaemon(observer); err != nil {
 		return nil, err
 	}
-	first, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
+	first, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +106,7 @@ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.
 		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
 		return nil, ErrRuntimePlannedImage
 	}
-	last, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
+	last, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
 	if err != nil {
 		return nil, err
 	}

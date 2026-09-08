@@ -1,0 +1,570 @@
+diff --git a/internal/nodeagent/runtime_container_cri_linux_test.go b/internal/nodeagent/runtime_container_cri_linux_test.go
+index dfc0ba5..c564900 100644
+--- a/internal/nodeagent/runtime_container_cri_linux_test.go
++++ b/internal/nodeagent/runtime_container_cri_linux_test.go
+@@ -201,6 +201,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
+ 			}
+ 		})
+ 	}
++	t.Run("startup-image-reservation", func(t *testing.T) {
++		verifyRuntimeStartupImageReservation(t, fixture, observer, runtimeImage)
++	})
+ 	t.Run("original-daemon-lifetime", func(t *testing.T) {
+ 		verifyRuntimeDaemonLifetime(t, fixture, observer)
+ 	})
+@@ -389,6 +392,15 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) RuntimeIm
+ }
+ 
+ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan) (RuntimeContainerTarget, *net.UnixListener) {
++	t.Helper()
++	var payload []byte
++	if plan != nil {
++		payload = plan.manifest
++	}
++	return fixture.createCRICallerPayload(t, client, mode, plan, payload)
++}
++
++func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte) (RuntimeContainerTarget, *net.UnixListener) {
+ 	t.Helper()
+ 	uid := uuid.New()
+ 	root := filepath.Join(fixture.root, uid.String())
+@@ -439,7 +451,7 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
+ 	runtimeUID, runtimeGID := int64(65532), int64(65532)
+ 	if plan != nil {
+ 		runtimeUID, runtimeGID = int64(plan.uid), int64(plan.gid)
+-		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(plan.manifest)})
++		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(payload)})
+ 	}
+ 	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
+ 	if mode == "substituted-executable" {
+diff --git a/internal/nodeagent/runtime_planned_image_linux.go b/internal/nodeagent/runtime_planned_image_linux.go
+index 5e890a2..01cc921 100644
+--- a/internal/nodeagent/runtime_planned_image_linux.go
++++ b/internal/nodeagent/runtime_planned_image_linux.go
+@@ -34,6 +34,14 @@ type RuntimePlannedImageCallerObservation struct {
+ }
+ 
+ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
++	var declaration []byte
++	if config.Plan != nil {
++		declaration = config.Plan.manifest
++	}
++	return observer.observePlannedImageCaller(ctx, config, declaration)
++}
++
++func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig, declaration []byte) (*RuntimePlannedImageCallerObservation, error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return nil, err
+ 	}
+@@ -65,7 +73,7 @@ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.
+ 	if err := config.Images.sameDaemon(observer); err != nil {
+ 		return nil, err
+ 	}
+-	first, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
++	first, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -98,7 +106,7 @@ func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.
+ 		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
+ 		return nil, ErrRuntimePlannedImage
+ 	}
+-	last, err := observer.ObservePlannedCaller(ctx, plan, config.Pods, config.Caller)
++	last, err := observer.observePlannedCaller(ctx, plan, config.Pods, config.Caller, declaration)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux.go b/internal/nodeagent/runtime_startup_ledger_linux.go
+index f1cd960..b07d365 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux.go
+@@ -208,15 +208,10 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
+ 		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
+ 	}
+ 	payload := caller.Payload()
+-	request, err := modelruntime.ParseBackendStartupRequest(payload)
++	request, binding, err := parseRuntimeStartupPlan(plan, payload)
+ 	if err != nil {
+ 		return RuntimeStartupRecord{}, err
+ 	}
+-	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(plan.binding)
+-	if err != nil || request.NodeIdentity != plan.binding.Claim.NodeIdentity || request.JournalID.String() != plan.binding.Pair.RuntimeJournalId ||
+-		!bytes.Equal(request.JournalScope[:], plan.binding.Pair.RuntimeScope) || request.RegistryBindingDigest != sha256.Sum256(binding) || request.LaunchDigest != sha256.Sum256(plan.manifest) {
+-		return RuntimeStartupRecord{}, errors.Join(ErrRuntimeLaunchPlan, err)
+-	}
+ 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+ 	defer cancel()
+ 	ledger.mu.Lock()
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux.go b/internal/nodeagent/runtime_startup_reservation_linux.go
+index 0c78b18..a2bc6e4 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux.go
+@@ -63,6 +63,10 @@ type RuntimeStartupReservationRecord struct {
+ // caller reply and issues no startup grant. Effective launch approval and a
+ // same-invocation grant transaction must precede any future permission response.
+ func (ledger *RuntimeStartupLedger) ReserveRemote(ctx context.Context, config RuntimeStartupReservationConfig) (RuntimeStartupReservationRecord, error) {
++	return ledger.reserveRemote(ctx, config, nil)
++}
++
++func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config RuntimeStartupReservationConfig, image *runtimeStartupImageCheck) (RuntimeStartupReservationRecord, error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+@@ -76,12 +80,20 @@ func (ledger *RuntimeStartupLedger) ReserveRemote(ctx context.Context, config Ru
+ 	if err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
++	if err := image.inspect(ctx, config); err != nil {
++		return RuntimeStartupReservationRecord{}, err
++	}
+ 	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote)
+ 	if err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+ 	ledger.mu.Lock()
+ 	defer ledger.mu.Unlock()
++	if err := image.check(ctx, config, record); err != nil {
++		return RuntimeStartupReservationRecord{}, err
++	}
++	// Image measurement can block on containerd. Recheck held storage and the
++	// original owner afterwards, immediately before consuming Fleet authority.
+ 	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+@@ -105,6 +117,9 @@ func (ledger *RuntimeStartupLedger) ReserveRemote(ctx context.Context, config Ru
+ 	if !reservation.Fresh || reservation.ReservedAt.IsZero() || !reflect.DeepEqual(reservation.RuntimeStartupRequest, request) {
+ 		return RuntimeStartupReservationRecord{}, ErrRuntimeStartupRecorded
+ 	}
++	if err := image.check(ctx, config, record); err != nil {
++		return RuntimeStartupReservationRecord{}, err
++	}
+ 	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+@@ -124,7 +139,7 @@ func inspectRemoteStartup(ctx context.Context, config RuntimeStartupReservationC
+ 	if err := json.Unmarshal(config.Plan.manifest, &manifest); err != nil {
+ 		return RuntimeStartupRemoteIntent{}, err
+ 	}
+-	request, err := modelruntime.ParseBackendStartupRequest(config.Caller.Payload())
++	request, _, err := parseRuntimeStartupPlan(config.Plan, config.Caller.Payload())
+ 	if err != nil {
+ 		return RuntimeStartupRemoteIntent{}, err
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_image_integration_linux_test.go b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+new file mode 100644
+index 0000000..b62a949
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+@@ -0,0 +1,269 @@
++//go:build integration && linux
++
++package nodeagent
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	contentapi "github.com/containerd/containerd/api/services/content/v1"
++	"github.com/google/uuid"
++	"github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/fleetcontroller"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/metadata"
++	"google.golang.org/protobuf/proto"
++	corev1 "k8s.io/api/core/v1"
++	"k8s.io/apimachinery/pkg/types"
++	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
++)
++
++func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProcessFixture, observer *RuntimeContainerObserver, image RuntimeImageTarget) {
++	t.Helper()
++	for _, fault := range []string{"none", "node", "binding", "journal", "scope", "launch", "incarnation", "manifest-only", "missing-images", "policy", "substituted-executable", "before-fleet-task-change", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "before-fleet-journal-close", "after-fleet-journal-close"} {
++		t.Run(fault, func(t *testing.T) {
++			plan, owner, request := startupImagePlanFixture(t, image)
++			switch fault {
++			case "node":
++				request.NodeIdentity = "other-node"
++			case "binding":
++				request.RegistryBindingDigest[0] ^= 1
++			case "journal":
++				request.JournalID = uuid.New()
++			case "scope":
++				request.JournalScope[0] ^= 1
++			case "launch":
++				request.LaunchDigest[0] ^= 1
++			case "incarnation":
++				request.IncarnationID = uuid.New()
++			}
++			payload, err := modelruntime.EncodeBackendStartupRequest(request)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if fault == "manifest-only" {
++				payload = plan.manifest
++			}
++			client := runtimev1.NewRuntimeServiceClient(fixture.connection)
++			target, listener := fixture.createCRICallerPayload(t, client, fault, plan, payload)
++			if _, err := client.StartContainer(t.Context(), &runtimev1.StartContainerRequest{ContainerId: target.ContainerID}); err != nil {
++				t.Fatal(err)
++			}
++			if err := listener.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
++				t.Fatal(err)
++			}
++			connection, err := listener.AcceptUnix()
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = connection.Close() }()
++			caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = caller.Close() }()
++			pod := plan.ExpectedPod()
++			pod.UID, pod.ResourceVersion, pod.Spec.NodeName = types.UID(target.PodUID.String()), "1", "cpu-node"
++			pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: target.ContainerName, RestartCount: int32(target.ContainerAttempt), ContainerID: "containerd://" + target.ContainerID, State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}}}}
++			pods := &runtimeLaunchPodFixture{pod: *pod, key: fleetcontroller.ResourceKey{Namespace: pod.Namespace, Name: pod.Name}}
++			images, err := DialRuntimeImageObserver(t.Context(), RuntimeImageObserverConfig{RuntimeContainerObserverConfig: RuntimeContainerObserverConfig{SocketPath: fixture.socket, NodeIdentity: "cpu-node"}, Namespace: "k8s.io", Snapshotter: "native"})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = images.Close() }()
++			if fault == "before-fleet-journal-close" || fault == "after-fleet-journal-close" {
++				boundary := 2
++				if fault == "after-fleet-journal-close" {
++					boundary = 3
++				}
++				images.content = &startupImageContentBoundary{ContentClient: images.content, manifest: image.ManifestDigest, at: boundary, run: func() {
++					if err := owner.Close(); err != nil {
++						t.Fatal(err)
++					}
++				}}
++			}
++			imageConfig := RuntimeStartupImageConfig{Images: images, StateDirectory: filepath.Join(fixture.root, "state"), RuntimePolicy: runtimeTaskPolicyFixture()}
++			if fault == "missing-images" {
++				imageConfig.Images = nil
++			}
++			if fault == "policy" {
++				imageConfig.RuntimePolicy.RuntimeBinaryPath = "/unapproved/runc"
++			}
++			ledger, directory := startupTestLedger(t)
++			registry := &startupReservationRegistryFixture{node: "cpu-node", actor: plan.binding.Claim.ActorIdentity}
++			config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
++			changeTask := func() {
++				t.Helper()
++				path := filepath.Join(imageConfig.StateDirectory, "io.containerd.runtime.v2.task", "k8s.io", target.ContainerID, "config.json")
++				wire, err := os.ReadFile(path)
++				if err != nil {
++					t.Fatal(err)
++				}
++				var task specs.Spec
++				if err := json.Unmarshal(wire, &task); err != nil {
++					t.Fatal(err)
++				}
++				// This does not change argv/executable. Detect mutation of other
++				// retained task bytes, without claiming approval of their values.
++				task.Process.Env = append(task.Process.Env, "CHANGED_DURING_RESERVATION=1")
++				changed, err := json.Marshal(task)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := os.WriteFile(path, changed, 0o644); err != nil {
++					t.Fatal(err)
++				}
++			}
++			if fault == "before-fleet-task-change" {
++				ledger.boundary = func(phase string) error {
++					if phase == "after-sync" {
++						changeTask()
++					}
++					return nil
++				}
++			}
++			registry.reserve = func(_ context.Context, sent fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++				if sent.RuntimeJournalID != request.JournalID || sent.IncarnationID != request.IncarnationID || len(sent.Epochs) != 1 || sent.Epochs[0].ModelRuntimeEpoch != 2 {
++					t.Fatal("reservation did not bind original request to Node-held epoch routes")
++				}
++				switch fault {
++				case "fleet-loss":
++					return fleet.RuntimeStartupReservation{}, errors.New("fixture committed response lost")
++				case "after-fleet-task-change":
++					changeTask()
++				case "image-observer-closed":
++					if err := images.Close(); err != nil {
++						t.Fatal(err)
++					}
++				}
++				return fleet.RuntimeStartupReservation{RuntimeStartupRequest: sent, Fresh: true, ReservedAt: time.Now().UTC()}, nil
++			}
++			result, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig)
++			wantCalls, wantIntent := 0, 0
++			switch fault {
++			case "none", "after-fleet-task-change", "fleet-loss", "image-observer-closed", "after-fleet-journal-close":
++				wantCalls, wantIntent = 1, 1
++			case "before-fleet-task-change", "before-fleet-journal-close":
++				wantIntent = 1
++			}
++			if registry.calls != wantCalls || len(ledger.starts) != wantIntent {
++				t.Fatalf("wrong authority side effects: calls=%d intent=%d err=%v", registry.calls, len(ledger.starts), err)
++			}
++			if fault == "none" {
++				if err != nil || result.JournalID != request.JournalID {
++					t.Fatalf("valid image-bound startup did not reserve: %+v %v", result, err)
++				}
++			} else if err == nil || result != (RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
++				t.Fatalf("failed observation returned a receipt: %+v %v", result, err)
++			}
++			if wantIntent != 0 {
++				if _, err := ledger.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
++					t.Fatalf("live retry consumed another reservation: %v", err)
++				}
++				if err := ledger.Close(); err != nil {
++					t.Fatal(err)
++				}
++				recovered, err := OpenRuntimeStartupLedger(t.Context(), directory, "cpu-node", false)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer func() { _ = recovered.Close() }()
++				history, err := recovered.InspectReservation(t.Context(), request.JournalID)
++				if fault == "none" {
++					if err != nil || history != result {
++						t.Fatalf("recovery lost receipt: %v", err)
++					}
++				} else if !errors.Is(err, os.ErrNotExist) {
++					t.Fatalf("recovery manufactured receipt: %v", err)
++				}
++				if _, err := recovered.ReserveImageRemote(t.Context(), config, imageConfig); err == nil || registry.calls != wantCalls {
++					t.Fatalf("restart consumed another reservation: %v", err)
++				}
++				if _, err := recovered.RecordExit(t.Context(), request.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
++					t.Fatalf("restart recreated original owner handle: %v", err)
++				}
++			}
++			criFixture := *fixture
++			criFixture.ctx = metadata.NewOutgoingContext(t.Context(), metadata.Pairs("containerd-namespace", "k8s.io"))
++			assertRuntimeImageResourcesReleased(t, &criFixture)
++			t.Logf("actual CRI startup envelope + root journal + image observation: fault=%s Fleet fixture calls=%d durable intents=%d", fault, registry.calls, wantIntent)
++		})
++	}
++}
++
++// Keep real daemon content and measurement; interrupt journal custody precisely
++// inside the second or third image observation, after the preceding checks.
++type startupImageContentBoundary struct {
++	contentapi.ContentClient
++	manifest  string
++	at, calls int
++	run       func()
++}
++
++func (client *startupImageContentBoundary) Info(ctx context.Context, request *contentapi.InfoRequest, options ...grpc.CallOption) (*contentapi.InfoResponse, error) {
++	if request.Digest == client.manifest {
++		client.calls++
++		if client.calls == client.at {
++			client.run()
++		}
++	}
++	return client.ContentClient.Info(ctx, request, options...)
++}
++
++func startupImagePlanFixture(t *testing.T, image RuntimeImageTarget) (*RuntimeLaunchPlan, *modelruntime.ExecutionJournalOwner, modelruntime.BackendStartupRequest) {
++	t.Helper()
++	launch := runtimeLaunchFixture(t)
++	launch.bundle.RuntimeImage = "docker.io/vela/caller-runtime@" + image.ManifestDigest
++	launch.bind(t, 0, 0)
++	validator, err := stageauthority.NewValidator(map[string][]byte{"authority": make([]byte, 32)}, time.Now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	routes, err := modelruntime.RemoteStartupBindings(launch.launch)
++	if err != nil {
++		t.Fatal(err)
++	}
++	directory := t.TempDir()
++	if err := os.Chmod(directory, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: launch.launch, Validator: validator,
++		State: modelruntime.ExecutionFloorStateConfig{Directory: directory, Initialize: true}, Routes: routes, Now: time.Now})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = owner.Close() })
++	startup, err := owner.RecordBackendStartupIntent(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	journal, err := owner.Status(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	launch.binding.Pair.RuntimeJournalId, launch.binding.Pair.RuntimeScope = journal.JournalID.String(), journal.Scope[:]
++	launch.binding.Signature, launch.binding.SigningKeyId = nil, ""
++	launch.binding, err = launch.signer.Sign(launch.binding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	plan, err := VerifyRuntimeLaunchPlan("cpu-node", launch.verifier, launch.binding, launch.wire)
++	if err != nil {
++		t.Fatal(err)
++	}
++	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(plan.binding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return plan, owner, modelruntime.BackendStartupRequest{SchemaVersion: 1, NodeIdentity: "cpu-node", RegistryBindingDigest: sha256.Sum256(binding),
++		JournalID: journal.JournalID, JournalScope: journal.Scope, IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest}
++}
+diff --git a/internal/nodeagent/runtime_startup_image_linux.go b/internal/nodeagent/runtime_startup_image_linux.go
+new file mode 100644
+index 0000000..4c05f5f
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_image_linux.go
+@@ -0,0 +1,83 @@
++package nodeagent
++
++import (
++	"context"
++	"reflect"
++	"time"
++)
++
++type RuntimeStartupImageConfig struct {
++	Images         *RuntimeImageObserver
++	StateDirectory string
++	RuntimePolicy  RuntimeTaskRuntimePolicy
++}
++
++// ReserveImageRemote checks the approved image's default entrypoint and task
++// mechanism before recording intent and on both sides of the single Fleet call.
++// All observations come from this invocation's original caller/daemon, never
++// caller-supplied records or recovered history. A failure after intent consumes
++// this attempt even if the Fleet reply was lost. No method here issues a grant;
++// effective env/config/mount approval and execution continuity remain separate.
++func (ledger *RuntimeStartupLedger) ReserveImageRemote(ctx context.Context, config RuntimeStartupReservationConfig, image RuntimeStartupImageConfig) (RuntimeStartupReservationRecord, error) {
++	if image.Images == nil {
++		return RuntimeStartupReservationRecord{}, ErrRuntimePlannedImage
++	}
++	return ledger.reserveRemote(ctx, config, &runtimeStartupImageCheck{config: image})
++}
++
++type runtimeStartupImageCheck struct {
++	config RuntimeStartupImageConfig
++	first  *RuntimePlannedImageCallerObservation
++}
++
++func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config RuntimeStartupReservationConfig) error {
++	if check == nil {
++		return nil // ReserveRemote retains its observation-only reservation contract.
++	}
++	current, err := config.Observer.ObserveStartupImageCaller(ctx, RuntimePlannedImageCallerConfig{
++		Plan: config.Plan, Pods: config.Pods, Caller: config.Caller, Images: check.config.Images,
++		StateDirectory: check.config.StateDirectory, RuntimePolicy: check.config.RuntimePolicy,
++	})
++	if err != nil {
++		return err
++	}
++	if check.first == nil {
++		check.first = current
++		return nil
++	}
++	if !samePlannedImageCaller(check.first.Planned, current.Planned) {
++		return ErrRuntimePlannedImage
++	}
++	firstImage, lastImage := check.first.Image, current.Image
++	firstImage.ObservedFrom, firstImage.ObservedThrough = lastImage.ObservedFrom, lastImage.ObservedThrough
++	firstTask, lastTask := *check.first.Task, *current.Task
++	firstTask.ObservedFrom, firstTask.ObservedThrough = time.Time{}, time.Time{}
++	lastTask.ObservedFrom, lastTask.ObservedThrough = time.Time{}, time.Time{}
++	// Each task observation already matches its planned caller's original
++	// process. Compare all retained task bytes/file identities without timestamps.
++	firstTask.Caller, lastTask.Caller = RuntimeContainerCallerObservation{}, RuntimeContainerCallerObservation{}
++	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) {
++		return ErrRuntimePlannedImage
++	}
++	return nil
++}
++
++func (check *runtimeStartupImageCheck) check(ctx context.Context, config RuntimeStartupReservationConfig, record RuntimeStartupRecord) error {
++	if check == nil {
++		return nil
++	}
++	if err := check.inspect(ctx, config); err != nil {
++		return err
++	}
++	observed := check.first.Planned
++	originalOwner, originalExecutable := record.Owner, record.Remote.Executable
++	originalOwner.ObservedFrom, originalOwner.ObservedThrough = observed.Caller.ObservedFrom, observed.Caller.ObservedThrough
++	originalOwner.Container.ObservedFrom, originalOwner.Container.ObservedThrough = observed.Caller.Container.ObservedFrom, observed.Caller.Container.ObservedThrough
++	originalOwner.Process.ObservedAt = observed.Caller.Process.ObservedAt
++	originalExecutable.ObservedFrom, originalExecutable.ObservedThrough = observed.Executable.ObservedFrom, observed.Executable.ObservedThrough
++	originalExecutable.Process.ObservedAt = observed.Executable.Process.ObservedAt
++	if originalOwner != observed.Caller || originalExecutable != observed.Executable || record.PodResourceVersion != observed.PodResourceVersion {
++		return ErrRuntimePlannedImage
++	}
++	return nil
++}
+diff --git a/internal/nodeagent/runtime_startup_plan_linux.go b/internal/nodeagent/runtime_startup_plan_linux.go
+new file mode 100644
+index 0000000..8668676
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_plan_linux.go
+@@ -0,0 +1,48 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"errors"
++
++	"github.com/vivym/vela/internal/modelruntime"
++	"google.golang.org/protobuf/proto"
++)
++
++// parseRuntimeStartupPlan validates the complete canonical envelope before its
++// bytes may replace the manifest declaration in an original-caller observation.
++// Incarnation first-use is checked separately against the held Node journal.
++func parseRuntimeStartupPlan(plan *RuntimeLaunchPlan, payload []byte) (modelruntime.BackendStartupRequest, []byte, error) {
++	if plan == nil || plan.binding == nil || plan.binding.Claim == nil || plan.binding.Pair == nil {
++		return modelruntime.BackendStartupRequest{}, nil, ErrRuntimeLaunchPlan
++	}
++	request, err := modelruntime.ParseBackendStartupRequest(payload)
++	if err != nil {
++		return modelruntime.BackendStartupRequest{}, nil, err
++	}
++	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(plan.binding)
++	if err != nil || request.NodeIdentity != plan.binding.Claim.NodeIdentity || request.JournalID.String() != plan.binding.Pair.RuntimeJournalId ||
++		!bytes.Equal(request.JournalScope[:], plan.binding.Pair.RuntimeScope) || request.RegistryBindingDigest != sha256.Sum256(binding) || request.LaunchDigest != sha256.Sum256(plan.manifest) {
++		return modelruntime.BackendStartupRequest{}, nil, errors.Join(ErrRuntimeLaunchPlan, err)
++	}
++	return request, binding, nil
++}
++
++// ObserveStartupImageCaller accepts only the original caller's canonical startup
++// envelope, fully bound to the verified plan. The returned observation cannot
++// prove journal first-use or authorize a backend. ReserveImageRemote additionally
++// checks the Node-held journal and brackets its single Fleet call with sampling.
++func (observer *RuntimeContainerObserver) ObserveStartupImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
++	if err := contextError(ctx); err != nil {
++		return nil, err
++	}
++	if config.Caller == nil {
++		return nil, ErrRuntimeLaunchPlan
++	}
++	payload := config.Caller.Payload()
++	if _, _, err := parseRuntimeStartupPlan(config.Plan, payload); err != nil {
++		return nil, err
++	}
++	return observer.observePlannedImageCaller(ctx, config, payload)
++}

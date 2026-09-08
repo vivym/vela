@@ -1,0 +1,460 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:118: actual CRI container=e312a93ca89975e4d4a323bb78d1141dc1680972130de024dc7ba5d1d3e7182b sandbox=ca26b92339de8ce3957a38af15cda3dab8019388f84627f261f53faf24ee5807 Pod=b4e8997f-5a7f-4632-ac65-2e67a25db6e3 host_pid=141 namespace_pid=1 image_ref=sha256:28540614e9d7f1896e640c71fd6aeb5f7b837e490b96f335d767a9dd1577ce2b
+=== RUN   TestRuntimeCallerContainerCRI/owner/copied-state-root
+=== RUN   TestRuntimeCallerContainerCRI/owner/node-mount-alias-and-shadow
+    runtime_task_launch_integration_linux_test.go:118: === RUN   TestRuntimeTaskStateMountHelper
+            runtime_task_launch_integration_linux_test.go:243: different Node path matched the state inode; shadow mount below alias could not change the daemon-view bundle
+        --- PASS: TestRuntimeTaskStateMountHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:121: actual task bundle config sha256=7b0a3e50d45b07a9e98cbf8493e8707a58b604fcf0eabc299bffa46e3f72b482; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-options-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-mismatched-sandbox
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-mismatched-bootstrap.json
+=== RUN   TestRuntimeCallerContainerCRI/owner/mechanism-runtime-disagrees-with-options
+=== NAME  TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:122: actual mechanism options=44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a runtime="" shim="/usr/local/bin/containerd-shim-runc-v2" explicit_policy_match=false; 42 file negatives, mismatched sandbox/bootstrap and contradictory runtime record rejected
+    runtime_container_cri_linux_test.go:198: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+=== RUN   TestRuntimeCallerContainerCRI/wrapper
+    runtime_container_cri_linux_test.go:110: actual CRI wrapper rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/shared-pid
+    runtime_container_cri_linux_test.go:110: actual CRI shared-pid rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:118: actual CRI container=4c061e850c3f6d40265026c368388616187b5eb378d061c69fd250645ee50611 sandbox=e56e839d7ee48d187ed2f3b425fb6e4de5a983c78e6e065117ccc000bf34845d Pod=e418b4fb-b364-41b8-9d43-37e85c7ab669 host_pid=552 namespace_pid=1 image_ref=sha256:28540614e9d7f1896e640c71fd6aeb5f7b837e490b96f335d767a9dd1577ce2b
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/copied-state-root
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/node-mount-alias-and-shadow
+    runtime_task_launch_integration_linux_test.go:118: === RUN   TestRuntimeTaskStateMountHelper
+            runtime_task_launch_integration_linux_test.go:243: different Node path matched the state inode; shadow mount below alias could not change the daemon-view bundle
+        --- PASS: TestRuntimeTaskStateMountHelper (0.01s)
+        PASS
+        
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:121: actual task bundle config sha256=62d09cbce55aae8cc5efe771c6a2eeabe0c16079d3c71d9f30ee733c217ffb40; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-mismatched-sandbox
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-mismatched-bootstrap.json
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-disagrees-with-options
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/mechanism-hook-rejected
+=== NAME  TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:122: actual mechanism options=fcec52f264bf6b9af1e8e9bc0c5b6277b13599047b5bcf73275a2a5c92dd7602 runtime="/usr/local/bin/runc" shim="/usr/local/bin/containerd-shim-runc-v2" explicit_policy_match=true; 42 file negatives, mismatched sandbox/bootstrap and contradictory runtime record rejected
+    runtime_container_cri_linux_test.go:137: Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested
+    runtime_container_cri_linux_test.go:138: Registry-bound image manifest=sha256:e7fa10cbdcec8b9d920996f7fd75f1b5691b3fc82221fa950840a564565608ba config=sha256:28540614e9d7f1896e640c71fd6aeb5f7b837e490b96f335d767a9dd1577ce2b entrypoint=/probe sha256=5ab7483d6aa0f3f0acec903f3d85c4060170264594b50508ba19068daadecdd4 matched actual caller and task argv
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/planned-image-other-daemon
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/planned-image-wrong-argv
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/planned-image-substituted-executable
+    runtime_planned_image_integration_linux_test.go:117: same declared CRI image and signed manifest, different live executable bytes: rejected
+=== NAME  TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:198: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/none
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=none Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/node
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=node Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/binding
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=binding Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/journal
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=journal Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/scope
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=scope Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/launch
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=launch Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/incarnation
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=incarnation Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/manifest-only
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=manifest-only Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/missing-images
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=missing-images Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/policy
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=policy Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/substituted-executable
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=substituted-executable Fleet fixture calls=0 durable intents=0
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/before-fleet-task-change
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=before-fleet-task-change Fleet fixture calls=0 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/after-fleet-task-change
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=after-fleet-task-change Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/fleet-loss
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=fleet-loss Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/image-observer-closed
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=image-observer-closed Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/before-fleet-journal-close
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=before-fleet-journal-close Fleet fixture calls=0 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/startup-image-reservation/after-fleet-journal-close
+    runtime_startup_image_integration_linux_test.go:198: actual CRI startup envelope + root journal + image observation: fault=after-fleet-journal-close Fleet fixture calls=1 durable intents=1
+=== RUN   TestRuntimeCallerContainerCRI/original-daemon-lifetime
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+    runtime_container_cri_linux_test.go:208: same-daemon reconnect accepted; foreign root peer, exited peer and closed observer cannot replace the original process
+--- PASS: TestRuntimeCallerContainerCRI (25.61s)
+    --- PASS: TestRuntimeCallerContainerCRI/owner (3.67s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/copied-state-root (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/node-mount-alias-and-shadow (1.02s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-options-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-binary-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-sandbox-id-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-task-bootstrap-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-shim-bootstrap-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-mismatched-sandbox (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-mismatched-bootstrap.json (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/mechanism-runtime-disagrees-with-options (0.01s)
+    --- PASS: TestRuntimeCallerContainerCRI/wrapper (0.19s)
+    --- PASS: TestRuntimeCallerContainerCRI/shared-pid (0.15s)
+    --- PASS: TestRuntimeCallerContainerCRI/planned-owner (5.42s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/copied-state-root (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/node-mount-alias-and-shadow (1.03s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-options-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-binary-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-sandbox-id-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-task-bootstrap-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-shim-bootstrap-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-mismatched-sandbox (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-mismatched-bootstrap.json (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-runtime-disagrees-with-options (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/mechanism-hook-rejected (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/planned-image-other-daemon (1.03s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/planned-image-wrong-argv (0.10s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/planned-image-substituted-executable (0.37s)
+    --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation (6.76s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/none (0.92s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/node (0.20s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/binding (0.20s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/journal (0.19s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/scope (0.16s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/launch (0.17s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/incarnation (0.17s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/manifest-only (0.16s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/missing-images (0.17s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/policy (0.23s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/substituted-executable (0.33s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/before-fleet-task-change (0.68s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/after-fleet-task-change (0.86s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/fleet-loss (0.78s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/image-observer-closed (0.49s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/before-fleet-journal-close (0.47s)
+        --- PASS: TestRuntimeCallerContainerCRI/startup-image-reservation/after-fleet-journal-close (0.60s)
+    --- PASS: TestRuntimeCallerContainerCRI/original-daemon-lifetime (1.05s)
+=== RUN   TestRuntimeContainerDaemonClosesHandles
+--- PASS: TestRuntimeContainerDaemonClosesHandles (0.00s)
+=== RUN   TestRuntimeContainerdProcessEvidence
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeContainerdProcessEvidence/owner
+    runtime_containerd_linux_test.go:76: mode=owner task_pid=3071 peer_pid=3071 peer_start_ticks=13598115 NSpid=[3071 1] namespace=pid:[4026532690]
+    runtime_containerd_linux_test.go:109: two matching Containers.Get replies returned changed PID/argv metadata while the original namespace-init caller remained live
+    runtime_containerd_linux_test.go:120: shared PID namespace: task_pid=peer_pid=3120 but NSpid=[3120 13]; task ownership alone does not prove namespace ownership
+    runtime_containerd_linux_test.go:142: same container id=e150e55366664d0ca840f1d52a86e2d51c1e4b9d65204e63a03923c16c704092 and CreatedAt retained after task recreation: old_pid=3071 new_pid=3192 old_ticks=13598115 new_ticks=13598328
+=== RUN   TestRuntimeContainerdProcessEvidence/wrapper
+    runtime_containerd_linux_test.go:76: mode=wrapper task_pid=3291 peer_pid=3310 peer_start_ticks=13598438 NSpid=[3310 13] namespace=pid:[4026532690]
+--- PASS: TestRuntimeContainerdProcessEvidence (6.34s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/owner (3.22s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/wrapper (2.09s)
+=== RUN   TestRuntimeImageDefaultEntrypoint
+--- PASS: TestRuntimeImageDefaultEntrypoint (0.00s)
+=== RUN   TestRuntimeImageLayerExecutableIdentity
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/missing-file
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/wrong-config
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/corrupt-json
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-lease-response
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-view-response
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-activation-response
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-journal-response
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/journal-update-failure
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/canceled-activation
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/canceled-cleanup
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/changed-activation
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/cleanup-failure
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-corrupt-content
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-lost-activation
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-canceled-cleanup
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-failed-cleanup
+=== RUN   TestRuntimeImageLayerExecutableIdentity/regular-overlay/concurrent-observations
+=== NAME  TestRuntimeImageLayerExecutableIdentity/regular-overlay
+    runtime_image_layers_linux_test.go:211: image=sha256:c552e5c6976611a5bf9bc150bb34f139b74e3d1c27963a9743d47acff744b229 kernel=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4 flattened=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4
+=== RUN   TestRuntimeImageLayerExecutableIdentity/whiteout-recreate
+    runtime_image_layers_linux_test.go:196: image=sha256:52ddc9ef26ab4c8b2819de1c12ec88353f39649cbc084df7b4790f66304263cd kernel=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4; mutate.Extract omitted the recreated executable
+=== RUN   TestRuntimeImageLayerExecutableIdentity/opaque-directory
+    runtime_image_layers_linux_test.go:211: image=sha256:bda809f9146a542885079d563edd01b063a1276ba16d50e0a10e7642646bd8f7 kernel=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4 flattened=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4
+=== RUN   TestRuntimeImageLayerExecutableIdentity/hardlink-copy-up
+    runtime_image_layers_linux_test.go:211: image=sha256:014136003f3c544f16288f399bac58fcf5e72881af37454c008db589f60ea26b kernel=5ab7483d6aa0f3f0acec903f3d85c4060170264594b50508ba19068daadecdd4 flattened=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4
+=== RUN   TestRuntimeImageLayerExecutableIdentity/relative-symlink
+    runtime_image_layers_linux_test.go:211: image=sha256:d2779ebf93d92f61e9d689806f9488c6de04b983f4c31cc5c46d033813019ffc kernel=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4 flattened=c8155386fd79a26796c85c8c46715454d388fc0cf292829ff82d597d1c22d8a4
+--- PASS: TestRuntimeImageLayerExecutableIdentity (80.88s)
+    --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay (16.02s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/missing-file (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/wrong-config (0.00s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/corrupt-json (0.00s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-lease-response (0.00s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-view-response (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-activation-response (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/lost-journal-response (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/journal-update-failure (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/canceled-activation (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/canceled-cleanup (0.04s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/changed-activation (0.04s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/cleanup-failure (0.04s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-corrupt-content (0.00s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-lost-activation (0.01s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-canceled-cleanup (0.04s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/derived-entrypoint-failed-cleanup (0.04s)
+        --- PASS: TestRuntimeImageLayerExecutableIdentity/regular-overlay/concurrent-observations (0.04s)
+    --- PASS: TestRuntimeImageLayerExecutableIdentity/whiteout-recreate (15.41s)
+    --- PASS: TestRuntimeImageLayerExecutableIdentity/opaque-directory (15.98s)
+    --- PASS: TestRuntimeImageLayerExecutableIdentity/hardlink-copy-up (16.11s)
+    --- PASS: TestRuntimeImageLayerExecutableIdentity/relative-symlink (16.17s)
+=== RUN   TestRuntimeTaskMechanismPolicy
+=== RUN   TestRuntimeTaskMechanismPolicy/implicit-binary
+=== RUN   TestRuntimeTaskMechanismPolicy/different-binary
+=== RUN   TestRuntimeTaskMechanismPolicy/implicit-root
+=== RUN   TestRuntimeTaskMechanismPolicy/different-root
+=== RUN   TestRuntimeTaskMechanismPolicy/no-pivot
+=== RUN   TestRuntimeTaskMechanismPolicy/no-keyring
+=== RUN   TestRuntimeTaskMechanismPolicy/shim-cgroup
+=== RUN   TestRuntimeTaskMechanismPolicy/io-uid
+=== RUN   TestRuntimeTaskMechanismPolicy/io-gid
+=== RUN   TestRuntimeTaskMechanismPolicy/cgroup-mode
+=== RUN   TestRuntimeTaskMechanismPolicy/criu-image
+=== RUN   TestRuntimeTaskMechanismPolicy/criu-work
+--- PASS: TestRuntimeTaskMechanismPolicy (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/implicit-binary (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/different-binary (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/implicit-root (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/different-root (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/no-pivot (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/no-keyring (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/shim-cgroup (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/io-uid (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/io-gid (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/cgroup-mode (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/criu-image (0.00s)
+    --- PASS: TestRuntimeTaskMechanismPolicy/criu-work (0.00s)
+=== RUN   TestRuntimeTaskOptionsCanonicalEncoding
+--- PASS: TestRuntimeTaskOptionsCanonicalEncoding (0.00s)
+=== RUN   TestRuntimeTaskBootstrapBinding
+--- PASS: TestRuntimeTaskBootstrapBinding (0.00s)
+=== RUN   TestRuntimeDaemonStateDirectory
+--- PASS: TestRuntimeDaemonStateDirectory (0.00s)
+PASS

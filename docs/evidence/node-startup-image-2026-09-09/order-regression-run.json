@@ -1,0 +1,27 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--network",
+    "none",
+    "--privileged",
+    "--cgroupns",
+    "private",
+    "--cpus",
+    "4",
+    "--memory",
+    "4g",
+    "--pids-limit",
+    "512",
+    "-e",
+    "VELA_TEST_CONTAINERD_SANDBOX=1",
+    "sha256:fce0a24d8d5fc6095b4cb2ba2a24cea3f013f6f2c08bb64a8ec9a311eb050d1c",
+    "-test.run=^TestRuntimeCallerContainerCRI$/^startup-image-reservation$/^(before-fleet-journal-close|after-fleet-journal-close)$",
+    "-test.count=1",
+    "-test.v",
+    "-test.timeout=1m"
+  ],
+  "exit_code": 1,
+  "binary_sha256": "92d176c0506c624a3a5c3852a8f654a0f97ba6409ee609c286d31a93886d1550"
+}

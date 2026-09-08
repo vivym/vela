@@ -89,12 +89,10 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 	}
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
-	if err := image.check(ctx, config, record); err != nil {
+	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
-	// Image measurement can block on containerd. Recheck held storage and the
-	// original owner afterwards, immediately before consuming Fleet authority.
-	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
+	if err := image.check(ctx, config, record); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
 	request, err := remoteFleetRequest(record)
@@ -117,10 +115,10 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 	if !reservation.Fresh || reservation.ReservedAt.IsZero() || !reflect.DeepEqual(reservation.RuntimeStartupRequest, request) {
 		return RuntimeStartupReservationRecord{}, ErrRuntimeStartupRecorded
 	}
-	if err := image.check(ctx, config, record); err != nil {
+	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
-	if err := ledger.checkRemoteStartup(ctx, config, record); err != nil {
+	if err := image.check(ctx, config, record); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
 	result := RuntimeStartupReservationRecord{OperationID: record.OperationID, JournalID: record.Request.JournalID,

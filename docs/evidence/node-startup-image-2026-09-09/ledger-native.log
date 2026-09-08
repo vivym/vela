@@ -1,0 +1,146 @@
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/mock-permit
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=mock-permit factories=1 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.09s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/deny
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=deny factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.08s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/lost-response
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=lost-response factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.07s)
+        PASS
+        
+=== RUN   TestRuntimeStartupLedgerBeforeActualFactory/record-error
+    runtime_startup_exchange_linux_test.go:223: === RUN   TestRuntimeStartupLedgerRuntimeHelper
+            runtime_startup_exchange_linux_test.go:346: mode=record-error factories=0 gates=1; recovery-only reopen
+        --- PASS: TestRuntimeStartupLedgerRuntimeHelper (0.07s)
+        PASS
+        
+--- PASS: TestRuntimeStartupLedgerBeforeActualFactory (4.44s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/mock-permit (1.13s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/deny (1.11s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/lost-response (1.10s)
+    --- PASS: TestRuntimeStartupLedgerBeforeActualFactory/record-error (1.11s)
+=== RUN   TestRuntimeStartupLedgerRetainsExactOwnerExit
+--- PASS: TestRuntimeStartupLedgerRetainsExactOwnerExit (0.09s)
+=== RUN   TestRuntimeStartupLedgerRestartDoesNotReconstructOwner
+--- PASS: TestRuntimeStartupLedgerRestartDoesNotReconstructOwner (0.07s)
+=== RUN   TestRuntimeStartupLedgerReservesExitCapacity
+    runtime_startup_ledger_linux_test.go:251: startup admission rejected at 504 records and 4486883 persisted bytes
+--- PASS: TestRuntimeStartupLedgerReservesExitCapacity (21.29s)
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/node
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/binding
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/journal
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/scope
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/launch
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/pod
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/closed-caller
+=== RUN   TestRuntimeStartupLedgerRejectsUnboundRequests/canceled
+--- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests (0.15s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/node (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/binding (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/journal (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/scope (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/launch (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/pod (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/closed-caller (0.02s)
+    --- PASS: TestRuntimeStartupLedgerRejectsUnboundRequests/canceled (0.02s)
+=== RUN   TestRuntimeStartupLedgerUncertainAppendRemainsConsumed
+=== RUN   TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/before-append
+=== RUN   TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/after-append
+=== RUN   TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/after-sync
+=== RUN   TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/cancel-after-sync
+--- PASS: TestRuntimeStartupLedgerUncertainAppendRemainsConsumed (0.26s)
+    --- PASS: TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/before-append (0.07s)
+    --- PASS: TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/after-append (0.07s)
+    --- PASS: TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/after-sync (0.06s)
+    --- PASS: TestRuntimeStartupLedgerUncertainAppendRemainsConsumed/cancel-after-sync (0.06s)
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/missing
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/partial
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/duplicate-key
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/hardlink
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-mode
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-owner
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/directory-mode
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/directory-replaced
+=== RUN   TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-replaced
+--- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState (0.01s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/missing (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/partial (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/duplicate-key (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/hardlink (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-mode (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-owner (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/directory-mode (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/directory-replaced (0.00s)
+    --- PASS: TestRuntimeStartupLedgerRejectsMissingAndChangedState/file-replaced (0.00s)
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/intent-before-append
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at intent-before-append: intents=0 receipts=0; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/intent-after-append
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at intent-after-append: intents=1 receipts=0; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/intent-after-sync
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at intent-after-sync: intents=1 receipts=0; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/fleet-reply
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at fleet-reply: intents=1 receipts=0; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/receipt-before-append
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at receipt-before-append: intents=1 receipts=0; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/receipt-after-append
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at receipt-after-append: intents=1 receipts=1; original pidfd not reconstructed
+=== RUN   TestRuntimeStartupReservationProcessCrashRecovery/receipt-after-sync
+    runtime_startup_reservation_linux_test.go:188: Node SIGKILL at receipt-after-sync: intents=1 receipts=1; original pidfd not reconstructed
+--- PASS: TestRuntimeStartupReservationProcessCrashRecovery (0.96s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/intent-before-append (0.09s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/intent-after-append (0.09s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/intent-after-sync (0.09s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/fleet-reply (0.13s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/receipt-before-append (0.20s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/receipt-after-append (0.18s)
+    --- PASS: TestRuntimeStartupReservationProcessCrashRecovery/receipt-after-sync (0.17s)
+=== RUN   TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal
+    runtime_startup_reservation_linux_test.go:336: root Node journal + actual non-root original PID-1; one fixture Fleet reservation; restart reads history only; no permit response
+--- PASS: TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal (0.15s)
+=== RUN   TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter
+=== RUN   TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/old-routes
+=== RUN   TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/wrong-registry
+=== RUN   TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/legacy
+--- PASS: TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter (0.12s)
+    --- PASS: TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/old-routes (0.02s)
+    --- PASS: TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/wrong-registry (0.02s)
+    --- PASS: TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter/legacy (0.07s)
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-before-append
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-after-append
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-after-sync
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-loss
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-history
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-mismatch
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/journal-closed
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/pod-changed
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/owner-exit
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-before-append
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-after-append
+=== RUN   TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-after-sync
+--- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent (1.50s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-before-append (0.19s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-after-append (0.07s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/intent-after-sync (0.07s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-loss (0.11s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-history (0.11s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/fleet-mismatch (0.11s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/journal-closed (0.11s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/pod-changed (0.15s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/owner-exit (0.11s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-before-append (0.15s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-after-append (0.15s)
+    --- PASS: TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent/receipt-after-sync (0.15s)
+PASS

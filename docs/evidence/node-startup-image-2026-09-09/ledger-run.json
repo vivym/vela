@@ -1,0 +1,37 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "--network",
+    "none",
+    "--privileged",
+    "--cgroupns",
+    "private",
+    "--cpus",
+    "4",
+    "--memory",
+    "4g",
+    "--pids-limit",
+    "512",
+    "sha256:e19124685b367b0951afce397b1de0e7e18ad9305ff44977cee62d019ace9429",
+    "-test.run=^(TestRuntimeStartupLedgerRetainsExactOwnerExit|TestRuntimeStartupLedgerRestartDoesNotReconstructOwner|TestRuntimeStartupLedgerReservesExitCapacity|TestRuntimeStartupLedgerRejectsUnboundRequests|TestRuntimeStartupLedgerUncertainAppendRemainsConsumed|TestRuntimeStartupLedgerRejectsMissingAndChangedState|TestRuntimeStartupReservationProcessCrashRecovery|TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal|TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter|TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent|TestRuntimeStartupLedgerBeforeActualFactory)$",
+    "-test.count=1",
+    "-test.v",
+    "-test.timeout=3m"
+  ],
+  "exit_code": 0,
+  "tests": [
+    "TestRuntimeStartupLedgerRetainsExactOwnerExit",
+    "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner",
+    "TestRuntimeStartupLedgerReservesExitCapacity",
+    "TestRuntimeStartupLedgerRejectsUnboundRequests",
+    "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed",
+    "TestRuntimeStartupLedgerRejectsMissingAndChangedState",
+    "TestRuntimeStartupReservationProcessCrashRecovery",
+    "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal",
+    "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter",
+    "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent",
+    "TestRuntimeStartupLedgerBeforeActualFactory"
+  ]
+}

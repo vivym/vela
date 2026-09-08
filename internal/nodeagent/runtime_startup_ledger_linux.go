@@ -208,14 +208,9 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
 		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
 	}
 	payload := caller.Payload()
-	request, err := modelruntime.ParseBackendStartupRequest(payload)
+	request, binding, err := parseRuntimeStartupPlan(plan, payload)
 	if err != nil {
 		return RuntimeStartupRecord{}, err
-	}
-	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(plan.binding)
-	if err != nil || request.NodeIdentity != plan.binding.Claim.NodeIdentity || request.JournalID.String() != plan.binding.Pair.RuntimeJournalId ||
-		!bytes.Equal(request.JournalScope[:], plan.binding.Pair.RuntimeScope) || request.RegistryBindingDigest != sha256.Sum256(binding) || request.LaunchDigest != sha256.Sum256(plan.manifest) {
-		return RuntimeStartupRecord{}, errors.Join(ErrRuntimeLaunchPlan, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

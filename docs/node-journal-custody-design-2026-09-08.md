@@ -89,6 +89,12 @@ task/sandbox bootstrap records before reading the sandbox's shim path. Only an
 explicit binary/state policy with default ancillary options and no OCI hooks
 matches. This does not prove which executable bytes ran at those paths or supply
 the production policy/approval/grant assembly.
+The [startup image reservation](node-startup-image-evidence-2026-09-09.md) connects
+the canonical original-caller request to the held Runtime journal and repeated
+image/task observations before and after the single Fleet call. The storage and
+owner checks occur after image I/O; loss of custody cannot return a receipt.
+This still records reservation history only, with no grant or production CLI;
+its real CRI fixture uses test Registry/Pod/Fleet and no complete CPU Job.
 The [planned image/caller association](node-planned-image-evidence-2026-09-09.md)
 now compares the original caller's executable and task argv with the measured
 default entrypoint derived from a Registry-bound image manifest. It requires

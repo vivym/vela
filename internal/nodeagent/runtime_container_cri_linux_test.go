@@ -201,6 +201,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			}
 		})
 	}
+	t.Run("startup-image-reservation", func(t *testing.T) {
+		verifyRuntimeStartupImageReservation(t, fixture, observer, runtimeImage)
+	})
 	t.Run("original-daemon-lifetime", func(t *testing.T) {
 		verifyRuntimeDaemonLifetime(t, fixture, observer)
 	})
@@ -390,6 +393,15 @@ func (fixture *containerdProcessFixture) importCRIImages(t *testing.T) RuntimeIm
 
 func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan) (RuntimeContainerTarget, *net.UnixListener) {
 	t.Helper()
+	var payload []byte
+	if plan != nil {
+		payload = plan.manifest
+	}
+	return fixture.createCRICallerPayload(t, client, mode, plan, payload)
+}
+
+func (fixture *containerdProcessFixture) createCRICallerPayload(t *testing.T, client runtimev1.RuntimeServiceClient, mode string, plan *RuntimeLaunchPlan, payload []byte) (RuntimeContainerTarget, *net.UnixListener) {
+	t.Helper()
 	uid := uuid.New()
 	root := filepath.Join(fixture.root, uid.String())
 	if err := os.Mkdir(root, 0o755); err != nil {
@@ -439,7 +451,7 @@ func (fixture *containerdProcessFixture) createCRICaller(t *testing.T, client ru
 	runtimeUID, runtimeGID := int64(65532), int64(65532)
 	if plan != nil {
 		runtimeUID, runtimeGID = int64(plan.uid), int64(plan.gid)
-		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(plan.manifest)})
+		environment = append(environment, &runtimev1.KeyValue{Key: "VELA_RUNTIME_CALLER_TEST_PAYLOAD", Value: base64.StdEncoding.EncodeToString(payload)})
 	}
 	mounts := []*runtimev1.Mount{{ContainerPath: "/proof", HostPath: root, Readonly: true}}
 	if mode == "substituted-executable" {

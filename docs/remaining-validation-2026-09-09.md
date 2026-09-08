@@ -67,6 +67,14 @@ state root 可匹配，隐式 binary、未批准选项、hook 声明及矛盾关
 bind mount 替换入口的反例被拒绝。这些仍是启动批准的前置条件：生产批准策略、
 有效 env/config 文件/挂载和执行连续性、CLI 装配及一次性 grant 仍需完成。
 
+新增 [同次启动请求的镜像检查与预留](node-startup-image-evidence-2026-09-09.md)
+已将 canonical BackendStartupRequest、实际 root-held Runtime journal、镜像
+默认入口、task mechanism 和单次 Fleet 预留串到 `ReserveImageRemote`。真实
+CRI 的 17 个场景覆盖请求绑定错误、入口替换、预留期间 task 变化、丢回包及
+镜像测量期间丢失 journal custody；持久 intent 不能重试，重开只能读取历史。
+这里 Pod/Registry/Fleet 仍为 fixture，尚未与真实 PostgreSQL/TLS、生产
+Node/Runtime CLI 或完整 Job 合并验证，返回回执没有启动授权含义。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
