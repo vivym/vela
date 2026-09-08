@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "b553ddbab4a2ddeca75ace68db02caf72dab10ff",
+  "source_tree_sha256": "dc1a777d846b53d600daa365ca912421c8ce825b4e4a288febdc3885f9553e0b",
+  "source_file_count": 984,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "runner_sha256": "6ab7d95a6c34ddb3b885f0cd1c2b75a55b58cdf8ddfd2c14f96488a3a11090d6",
+  "production_gates": "0/9",
+  "native_platform": "linux/arm64",
+  "race": true,
+  "skips": 0,
+  "races": 0,
+  "native_main_tests": {
+    "TestRuntimeCallerContainerCRI": "13.24s",
+    "TestRuntimeContainerdProcessEvidence": "6.44s"
+  },
+  "bundle_negative_file_cases": 20,
+  "actual_bundle_callers": 2,
+  "checks": [
+    {
+      "command": "bash hack/run-task-launch-native.sh",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/native-runner.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 golangci-lint v2.13.1 run --build-tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/linux-integration-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 go vet -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/linux-integration-vet.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true -tags=integration ./internal/nodeagent",
+      "exit_code": 0,
+      "artifact": "docs/evidence/node-task-launch-2026-09-09/amd64-cross.log"
+    }
+  ],
+  "claim_boundary": "Actual containerd 2.3.1/runc 1.4.2 CRI/native task, PID-1 helper, protected bundle config and init.pid reads, metadata change counterexample, non-root writer denial and invalid files. Node state root configuration is trusted. No approval of effective config/mounts/runtime options, production Runtime CLI, startup grant, PostgreSQL/full Job/GPU or production evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/amd64-cross.log",
+      "bytes": 53,
+      "sha256": "ba5e73ff4df8d74e0000491e154d730b8dfc9e4e699694de3c7f4bdc9c79afa2"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/binaries.sha256",
+      "bytes": 815,
+      "sha256": "53b08175f00ce69a9cfac3bc16514ac3f36420fdc6b335191f2bad91e07ee380"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/build.log",
+      "bytes": 1721,
+      "sha256": "276be157057e4eb699a4c3a0141cd9ee3ff728f369c0aac683192eae41f05d6e"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/download-provenance.json",
+      "bytes": 765,
+      "sha256": "b87399126598c3e227ca67e8f97a5c117c7c17533844ae616a1a9b8b6706ff70"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/downloads.sha256",
+      "bytes": 281,
+      "sha256": "031aef4ceeb761cd2e938127e34f0c16ef133b0ea70b02ff03b2cb514e39c4ec"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "b5762e5528cafdf02f6de551d5d53de33de14c1f1ffbd56acbe72b0962479cc5"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/linux-integration-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/linux-integration-vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/native-runner.log",
+      "bytes": 95,
+      "sha256": "c5dae3bfc343ade3855bf96490acc8b02214aff75f52fd7f875ecc826b9c9d47"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/native.log",
+      "bytes": 7525,
+      "sha256": "91e4c94f94ce55d3360926710567832c5fc168b4515fe8db703261cd6d27e7cf"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/source-files.json",
+      "bytes": 116193,
+      "sha256": "5ebc9f8687b9e2ef1cdc72b0c40c65cb105560f8602301daaa3c85deec9bcebb"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/source-patch.sha256",
+      "bytes": 79,
+      "sha256": "a04cf1c18fa3e20da9fdbdd2287f01d83d83955ead2159b0aebd260b183485ae"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/source.patch",
+      "bytes": 22567,
+      "sha256": "b7f8f4aa5d3df3d47bd608a70861b3ad8218a8559f82d1717e83ddb88b5cac83"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/source.txt",
+      "bytes": 252,
+      "sha256": "368e5d3871403e730a8afd8a5754161456b2e8d50d8267ff5f1562c0c8f0d6c7"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/upstream-sources.json",
+      "bytes": 539,
+      "sha256": "6c2d3408441dc83d4ba381ef221dcb0918a5ab3a0117aa6e0ec4feed1c15b13f"
+    },
+    {
+      "path": "docs/evidence/node-task-launch-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

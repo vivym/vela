@@ -52,6 +52,12 @@ CPU Job campaign 在
 I/O 未返回时处理当前执行，调用前还会重新核对 generation 与生命周期。
 共享 admission、其他持久化和不合作 backend 的停止时限仍需独立验证。
 
+新增 [containerd task bundle 来源](node-task-launch-evidence-2026-09-09.md)
+已从 root 私有的实际 task bundle 读取配置，匹配原始 caller/CRI/native task，
+真实 CRI 反例证明它不随 `Containers.Get.spec` 改写而变化。它要求可信 Node
+配置给出同 daemon 的 state root；配置批准、runtime options、有效挂载、
+CLI 装配及一次性 grant 仍需完成。
+
 ## 依赖顺序与通过标准
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |

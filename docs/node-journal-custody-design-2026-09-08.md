@@ -72,6 +72,11 @@ now uses actual held Worker and Runtime journals during the Fleet reservation,
 and demonstrates that non-dumpable Runtime inspection succeeds with Node
 SYS_PTRACE but rejects without it. Worker business operations still need their
 own protected owner API; Pod/CRI remain fixtures.
+The [task bundle reader](node-task-launch-evidence-2026-09-09.md) now supplies
+protected task-created OCI bytes under an explicitly trusted daemon state root.
+Actual CRI/native task tests distinguish these bytes from Containers.Get.spec.
+This adds a configuration source; approved effective configuration, runtime
+options, mount isolation and the once-only startup grant still need assembly.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

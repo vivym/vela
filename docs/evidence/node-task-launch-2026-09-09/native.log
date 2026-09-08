@@ -1,0 +1,85 @@
+=== RUN   TestRuntimeCallerContainerCRI
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:107: actual CRI container=92c41c19a8accda08fb5042deb0169e3e73c5021b5d5e52be54e1f727c166198 sandbox=c8eb0fc2f891806e64ff0d33cd6e58e820940b57fea518394b8fe695a75f4b80 Pod=12f3339f-7727-4039-b2b2-10aaa0a7769b host_pid=130 namespace_pid=1 image_ref=sha256:97ab3259891937eb520903a5dbed34f879290b79f5814e870de7185b1e1c770d
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/owner
+    runtime_container_cri_linux_test.go:110: actual task bundle config sha256=5218bc104124ef8f8bf6a854b25e07e0569d1d0a3ef881d152972f0390ccc4e8; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+    runtime_container_cri_linux_test.go:185: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+=== RUN   TestRuntimeCallerContainerCRI/wrapper
+    runtime_container_cri_linux_test.go:99: actual CRI wrapper rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/shared-pid
+    runtime_container_cri_linux_test.go:99: actual CRI shared-pid rejected as namespace owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:107: actual CRI container=2ffbed449a9059aff0be0ce9e5bc77a3c7f2727adb1b8e36c0e604bf06aba74c sandbox=aea0e0f3ebfe44119acd87031d035aaa9dfdd4b00ed18b97116e0577c0e9d059 Pod=ffb59d15-0cd8-4e43-a331-8af155b4b5f1 host_pid=530 namespace_pid=1 image_ref=sha256:97ab3259891937eb520903a5dbed34f879290b79f5814e870de7185b1e1c770d
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key
+=== RUN   TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid
+=== NAME  TestRuntimeCallerContainerCRI/planned-owner
+    runtime_container_cri_linux_test.go:110: actual task bundle config sha256=865203f3cc267fabfec6237988adbda2461cc469c0d94ba1b8603f6d01b9c553; metadata update did not alter launch; non-root writes, wrong state root and 10 invalid bundle cases rejected
+    runtime_container_cri_linux_test.go:125: Registry/Pod fixtures correlated with actual non-root CRI namespace owner; effective configuration is not attested
+    runtime_container_cri_linux_test.go:185: retained namespace-owner pidfd observed original exit after actual CRI container removal and caller handle closure
+--- PASS: TestRuntimeCallerContainerCRI (13.24s)
+    --- PASS: TestRuntimeCallerContainerCRI/owner (2.31s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/owner/task-bundle-wrong-init-pid (0.00s)
+    --- PASS: TestRuntimeCallerContainerCRI/wrapper (0.21s)
+    --- PASS: TestRuntimeCallerContainerCRI/shared-pid (0.18s)
+    --- PASS: TestRuntimeCallerContainerCRI/planned-owner (2.41s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-writable (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-owner (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-missing (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-oversize (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-symlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-hardlink (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-fifo (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-duplicate-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-unknown-key (0.01s)
+        --- PASS: TestRuntimeCallerContainerCRI/planned-owner/task-bundle-wrong-init-pid (0.01s)
+=== RUN   TestRuntimeContainerdProcessEvidence
+    runtime_containerd_linux_test.go:154: containerd github.com/containerd/containerd/v2 v2.3.1 64b425cf570b3b8dd1d4cc46da7c1fce65c6651a
+    runtime_containerd_linux_test.go:154: runc version 1.4.2
+        commit: v1.4.2-0-gc241c0bb
+        spec: 1.3.0
+        go: go1.25.8
+        libseccomp: 2.6.0
+=== RUN   TestRuntimeContainerdProcessEvidence/owner
+    runtime_containerd_linux_test.go:76: mode=owner task_pid=660 peer_pid=660 peer_start_ticks=13164425 NSpid=[660 1] namespace=pid:[4026532690]
+    runtime_containerd_linux_test.go:109: two matching Containers.Get replies returned changed PID/argv metadata while the original namespace-init caller remained live
+    runtime_containerd_linux_test.go:120: shared PID namespace: task_pid=peer_pid=708 but NSpid=[708 12]; task ownership alone does not prove namespace ownership
+    runtime_containerd_linux_test.go:142: same container id=5aaf75c5cd494f44bde627e3e69384921f6dabbb709a4d138679854f5de30bb1 and CreatedAt retained after task recreation: old_pid=660 new_pid=781 old_ticks=13164425 new_ticks=13164641
+=== RUN   TestRuntimeContainerdProcessEvidence/wrapper
+    runtime_containerd_linux_test.go:76: mode=wrapper task_pid=879 peer_pid=899 peer_start_ticks=13164755 NSpid=[899 14] namespace=pid:[4026532690]
+--- PASS: TestRuntimeContainerdProcessEvidence (6.44s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/owner (3.29s)
+    --- PASS: TestRuntimeContainerdProcessEvidence/wrapper (2.11s)
+PASS

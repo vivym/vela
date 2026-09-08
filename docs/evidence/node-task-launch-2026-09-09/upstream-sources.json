@@ -1,0 +1,10 @@
+{
+  "module": "github.com/containerd/containerd/v2@v2.3.1",
+  "revision": "64b425cf570b3b8dd1d4cc46da7c1fce65c6651a",
+  "go_module_ziphash": "h1:4dVXBdlvotRBlaP2TmNbY/EGc06KJrMDDUqQdxX/HOk=",
+  "files": {
+    "core/runtime/v2/bundle.go": "db31583e9652d704e8891bd2df6de294ef2f0f8ebd7f1e69d5fa3fad3c9ff297",
+    "core/runtime/v2/bundle_linux.go": "a5aa0059193adcc28cb7ca83ce1364ee2ec2227bb84d0f05136a355fa370c798",
+    "cmd/containerd-shim-runc-v2/runc/container.go": "af7b6741d2a4ece7ac7ff5ee6996ddcb855357730bee09e9603e7895a016726a"
+  }
+}

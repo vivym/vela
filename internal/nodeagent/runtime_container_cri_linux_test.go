@@ -107,6 +107,7 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			t.Logf("actual CRI container=%s sandbox=%s Pod=%s host_pid=%d namespace_pid=%d image_ref=%s",
 				target.ContainerID, target.SandboxID, target.PodUID, observation.Process.HostPID,
 				observation.Process.NamespacePID, observation.Container.ImageRef)
+			verifyRuntimeTaskLaunchBundle(t, fixture, observer, target, caller)
 			var pods *runtimeLaunchPodFixture
 			if plan != nil {
 				// Pod API and Registry are fixtures; CRI, native task and caller are real.
@@ -159,6 +160,9 @@ func TestRuntimeCallerContainerCRI(t *testing.T) {
 			}
 			if result, err := observer.ObserveCaller(t.Context(), target, caller); err == nil || result != (RuntimeContainerCallerObservation{}) {
 				t.Fatal("exited original caller remained correlated with a live container")
+			}
+			if launch, err := observer.ObserveTaskLaunch(t.Context(), filepath.Join(fixture.root, "state"), target, caller); err == nil || launch != nil {
+				t.Fatal("exited caller retained a live task launch observation")
 			}
 			if plan != nil {
 				if result, err := observer.ObservePlannedCaller(t.Context(), plan, pods, caller); err == nil || result != (RuntimePlannedCallerObservation{}) {

@@ -555,6 +555,12 @@ releases the Service state lock across pre-dispatch and confirmation candidate
 I/O while retaining operation/admission serialization. Watchdog and Shutdown
 signals can now reach these boundaries; dispatch rechecks the original generation
 and lifetime. Other lock waits and actual backend containment remain open.
+The [containerd task bundle source](node-task-launch-evidence-2026-09-09.md)
+reads protected task-created OCI configuration and init.pid under a trusted
+daemon state root, correlated with the original caller and real CRI/native task.
+Real CRI tests distinguish that source from mutable container metadata and reject
+untrusted/missing/mismatched files. Approval of the configuration, runtime options,
+effective mounts, deployment mapping and once-only grant issuance remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

@@ -1,0 +1,17 @@
+{
+  "runc": {
+    "release_api": "https://api.github.com/repos/opencontainers/runc/releases/tags/v1.4.2",
+    "tag": "v1.4.2",
+    "asset_id": 387432606,
+    "asset_name": "runc.arm64",
+    "asset_api": "https://api.github.com/repos/opencontainers/runc/releases/assets/387432606",
+    "sha256": "ea54032310588e115633aa2f4bba8bf9500257f657e1deca88df5778775138db",
+    "bytes": 11499552
+  },
+  "containerd": {
+    "url": "https://github.com/containerd/containerd/releases/download/v2.3.1/containerd-2.3.1-linux-arm64.tar.gz",
+    "sha256": "46a83603a850f3916ca7c942310daaf82ed17773a85b1d431e92d4a541e46d0d",
+    "bytes": 31275697,
+    "official_sha256sum": "46a83603a850f3916ca7c942310daaf82ed17773a85b1d431e92d4a541e46d0d  containerd-2.3.1-linux-arm64.tar.gz"
+  }
+}
