@@ -853,6 +853,17 @@ and lock identities independently of mutable journal metadata. Missing origin
 records cannot be recreated from UUID/scope history, including older local state.
 Owner-controlled storage remains trusted; independent Node provenance and Fleet
 mount/ownership isolation are still required before production authorization.
+The [protected Node provisioning increment](node-protected-provisioning-evidence-2026-09-08.md)
+now initializes fresh journals under a root-only Node parent, durably captures
+their complete initial storage inventory, and transfers only those held objects
+to the current Fleet UID/GID 10001. The separate Node records remain inaccessible
+to actual non-root processes after a scratch-only CPU bind mount. Six mandatory
+Linux main tests cover recovery, concurrency, unsafe roots, mutation, interrupted
+transfer and actual process exit. Repeating provisioning always rejects retained
+state; no adoption or ownership-repair operation exists. Current Fleet mount
+assembly, protected-record recovery, effective launch/current activation and the
+durable startup permission transaction remain open. Schema versions and
+Production Gates remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

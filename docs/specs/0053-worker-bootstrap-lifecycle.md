@@ -34,6 +34,18 @@ the preparer's trusted-owner storage; independent Node protection, inode-reuse
 and administrative-rollback defenses are separate. See the
 [journal-origin repair](../worker-bootstrap-journal-origin-evidence-2026-09-07.md).
 
+Explicit Linux `bootstrap --action provision` now creates that scratch tree
+under an empty root-only Node parent and performs first use as root. Before
+transferring the exact held objects to Fleet UID/GID 10001 it durably records
+their original directory/file identities and complete initial file digests in
+separate root-only Node state. A final handover record binds that origin digest.
+The parent must remain excluded from workloads; initialization must precede any
+workload mount. Partial or complete existing operations reject further provision
+calls without adopting state or obtaining another first-use claim. There is no
+automatic handover recovery or production startup grant. Current Fleet mounting
+and recurring initializers are not wired to this operation. See the
+[protected provisioning evidence](../node-protected-provisioning-evidence-2026-09-08.md).
+
 Durable Worker assembly also requires live Runtime discovery to return that
 Registry binding after checking the held execution journal under its admission
 mutex. The Worker independently verifies the signature and member scope; local
