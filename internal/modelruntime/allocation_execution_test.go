@@ -76,7 +76,14 @@ func TestAllocationExecutionDiscoveryRejectsAmbiguousOrUnavailableObservations(t
 				t.Fatalf("renewal fault: %v %v", response, err)
 			}
 			backend.inspectFault.Store(int32(index + 1))
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+			// Semantic faults must test the returned evidence, not whether a
+			// contended race build finishes verification within 30 milliseconds.
+			// Keep the short deadline only for the deliberately blocked inspector.
+			timeout := 5 * time.Second
+			if fault == "timeout" {
+				timeout = 30 * time.Millisecond
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), timeout)
 			read, err := f.supervisor.InspectAllocationExecution(ctx, allocationInspectionRequest(latest))
 			cancel()
 			if read.GetObservedAuthority() != nil || read.GetInspection() != nil {

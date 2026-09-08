@@ -14,6 +14,9 @@ while uncertainty after a mutation still fences backend dispatch. Full host race
 native Linux race, repository checks and four CPU compatibility campaigns pass.
 Mutex waits, filesystem fsync, outage containment and full remote Job assembly
 remain separate obligations.
+The subsequent [inspection test refinement](inspection-timeout-evidence-2026-09-08.md)
+separates semantic rejection from the intentional 30 ms timeout and passes
+ten race repetitions; it changes no production behavior.
 
 The preceding
 [remote Supervisor and Worker integration](journal-remote-integration-evidence-2026-09-08.md)
