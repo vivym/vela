@@ -898,6 +898,15 @@ The 15,360 floor updates quantify a material authenticated-IPC cost; they do not
 measure complete Jobs, startup grants, terminal retirement or open-loop soak.
 The test-only experiment and raw receipts are isolated in prototype commit
 `34aae79`; production ownership and Fleet assembly remain unchanged.
+The [durable sealed-receipt increment](durable-sealed-receipt-evidence-2026-09-08.md)
+advances Runtime journal schema to **7**. It persists the exact receipt before
+drain and replays it through the existing Worker gRPC path only with a matching
+durable drain, preserving original identity after expiry/epoch changes without
+backend entry. Explicit schema-6 migration preserves lifecycle and never invents
+missing receipts. Full unit/lint/vet/cross-build, real process-crash/race, Node
+startup exchange and PostgreSQL provisioning checks pass. Local output source
+validity, independent custody/writer proof, uncertain-outcome recovery and
+complete retirement/sustained-load closure remain open.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the

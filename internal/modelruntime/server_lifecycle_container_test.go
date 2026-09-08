@@ -325,7 +325,7 @@ func assertLifecycleJournal(t *testing.T, files map[string][]byte, phase string)
 	if phase == "admitted" {
 		want = 1
 	}
-	if state.SchemaVersion != 6 || len(state.Executions) != want || want == 1 && string(state.Executions[0].Drain) != "null" {
+	if state.SchemaVersion != 7 || len(state.Executions) != want || want == 1 && string(state.Executions[0].Drain) != "null" {
 		t.Fatalf("incorrect execution history for %s: %+v", phase, state)
 	}
 	if phase == "initializing" && files["server-ready"] != nil || phase != "initializing" && files["server-ready"] == nil {

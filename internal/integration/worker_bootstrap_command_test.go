@@ -203,7 +203,7 @@ func TestWorkerBootstrapCommandPersistsAuthorityAcrossProcesses(t *testing.T) {
 				}
 				if err != nil || json.Unmarshal(retry, &result) != nil || before.Receipt == nil || result.RequestID != operation.RequestID ||
 					result.Worker.JournalID != before.Receipt.WorkerJournalID || result.Runtime.JournalID != before.Receipt.RuntimeJournalID ||
-					!result.RecordedAt.Equal(before.RecordedAt) || result.Worker.SchemaVersion != 5 || result.Runtime.SchemaVersion != 6 {
+					!result.RecordedAt.Equal(before.RecordedAt) || result.Worker.SchemaVersion != 5 || result.Runtime.SchemaVersion != 7 {
 					t.Fatalf("command replay changed journal pair: %s %v", retry, err)
 				}
 				if lostMethod == "" && !bytes.Equal(first, retry) {

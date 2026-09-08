@@ -381,7 +381,7 @@ func startRegistryBoundCPURuntime(t *testing.T, preparation []string, scratch st
 		t.Fatal(err)
 	}
 	lifecycle := recovered.BackendLifecycle
-	if recovered.SchemaVersion != 6 || lifecycle.State != modelruntime.BackendLifecycleUnresolved || lifecycle.IncarnationID == uuid.Nil ||
+	if recovered.SchemaVersion != 7 || lifecycle.State != modelruntime.BackendLifecycleUnresolved || lifecycle.IncarnationID == uuid.Nil ||
 		lifecycle.IncarnationID.Version() != 4 || lifecycle.LaunchDigest != sha256.Sum256(launch) || lifecycle.RecordedAt.IsZero() {
 		t.Fatalf("CPU startup lost its durable backend intent: %+v", recovered)
 	}

@@ -636,6 +636,11 @@ func (service *Service) SealOutput(
 			response.Detail = "sealed output lacks its retained receipt"
 			return response, nil
 		}
+		if err := service.checkpointSealedReceipt(verified, service.activeReceipt(verified.Digest)); err != nil {
+			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+			response.State, response.Detail = state, boundedDetail(err.Error())
+			return response, nil
+		}
 		if err := service.checkpointExecutionDrain(ctx, verified); err != nil {
 			response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 			response.State = state
@@ -708,6 +713,12 @@ func (service *Service) SealOutput(
 	service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
 	service.cancelWatchdogLocked()
 	service.mu.Unlock()
+	if err := service.checkpointSealedReceipt(verified, receipt); err != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.Detail = boundedDetail(err.Error())
+		return response, nil
+	}
 	if err := context.Cause(ctx); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED

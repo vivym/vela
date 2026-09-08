@@ -302,7 +302,12 @@ func TestExecutionDrainPersistenceFailureRequiresRecovery(t *testing.T) {
 	backend := &executionDrainBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
 	f := newExecutionDrainFixture(t, directory, backend)
 	readyDrainOutput(t, f, backend.FakeRuntime, f.authorities[0])
-	restore := modelruntime.SetExecutionStateSyncHookForTest(f.supervisor, func(func() error) error {
+	writes := 0
+	restore := modelruntime.SetExecutionStateSyncHookForTest(f.supervisor, func(syncDirectory func() error) error {
+		writes++
+		if writes == 1 {
+			return syncDirectory() // The sealed receipt precedes writer drain.
+		}
 		return errors.New("injected drain fsync failure")
 	})
 	response, err := f.supervisor.SealOutput(t.Context(), &velav1.ModelRuntimeServiceSealOutputRequest{Authority: f.authorities[0]})
@@ -404,7 +409,7 @@ func TestExecutionDrainHistoryBackpressureNeverEvictsAndDoesNotPoisonReads(t *te
 		t.Fatalf("history overflow failed open or poisoned admission: %v %v", response, err)
 	}
 	assertExecutionDrainCheckpoint(t, f.supervisor, f.authorities[0], true)
-	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 6 {
+	if state := readDurableExecutionState(t, directory); state.Highest != 41 || state.SchemaVersion != 7 {
 		t.Fatalf("history overflow consumed new authority: %+v", state)
 	}
 }
@@ -448,6 +453,10 @@ type retainedExecutionDocument struct {
 		Accepted  []byte `json:"accepted"`
 		Confirmed []byte `json:"confirmed,omitempty"`
 	} `json:"candidates,omitempty"`
+	Seal *struct {
+		Authority []byte `json:"authority"`
+		Receipt   []byte `json:"receipt"`
+	} `json:"seal,omitempty"`
 }
 
 func TestExecutionDrainRecoveryRejectsDamagedProofs(t *testing.T) {

@@ -43,6 +43,9 @@ type ExecutionFloorStateConfig struct {
 	// UpgradeV5 preserves schema-5 evidence and marks unrecorded backend history
 	// unknown. No upgrade infers that an empty execution journal never ran models.
 	UpgradeV5 bool
+	// UpgradeV6 preserves lifecycle and execution history. Missing old receipts
+	// remain unknown; upgrading cannot recreate a lost sealed output receipt.
+	UpgradeV6 bool
 }
 
 type executionFloorVerifier struct {

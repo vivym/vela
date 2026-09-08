@@ -78,6 +78,7 @@ func withoutRetainedCandidates(t *testing.T, wire json.RawMessage) json.RawMessa
 	}
 	for index := range records {
 		records[index].Candidates = nil
+		records[index].Seal = nil // Simulate history from before sealed receipts existed.
 	}
 	result, err := json.Marshal(records)
 	if err != nil {

@@ -120,8 +120,8 @@ func (store *executionStateFile) saveCandidates(accepted stageauthority.Verified
 	if bytes.Equal(candidates.Accepted, previous.Candidates.Accepted) && bytes.Equal(candidates.Confirmed, previous.Candidates.Confirmed) {
 		return nil
 	}
-	if previous.Drain != nil {
-		return errors.New("drained execution candidate history is immutable")
+	if previous.Drain != nil || previous.Seal != nil {
+		return errors.New("sealed or drained execution candidate history is immutable")
 	}
 	if len(previous.Candidates.Confirmed) != 0 && !bytes.Equal(previous.Candidates.Confirmed, candidates.Confirmed) &&
 		!bytes.Equal(candidates.Accepted, candidates.Confirmed) {

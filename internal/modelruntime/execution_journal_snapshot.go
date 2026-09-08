@@ -86,7 +86,7 @@ func VerifyExecutionJournalSnapshot(document, lockDocument []byte, manifest Laun
 	if err != nil {
 		return ExecutionJournalSnapshot{}, err
 	}
-	if state.SchemaVersion != 6 || state.ID != expected.JournalID || state.Scope != expected.Scope ||
+	if state.SchemaVersion != 7 || state.ID != expected.JournalID || state.Scope != expected.Scope ||
 		state.Root != executionFileIdentity(expected.Storage.Root) || state.Lock != executionFileIdentity(expected.Storage.Lock) {
 		return ExecutionJournalSnapshot{}, errors.New("execution journal snapshot ownership or schema changed")
 	}

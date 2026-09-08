@@ -247,6 +247,9 @@ func (store *executionJournal) validateRetainedExecutions() error {
 			return errors.New("retained execution history is unordered")
 		}
 		previous = sequence
+		if err := store.validateSeal(record); err != nil {
+			return err
+		}
 		if record.Candidates != nil {
 			if store.state.SchemaVersion < 5 {
 				return errors.New("legacy execution history cannot contain renewal candidates")
@@ -319,6 +322,9 @@ func (store *executionStateFile) saveDrain(verified stageauthority.Verified, res
 	state := store.state
 	state.Executions = slices.Clone(state.Executions)
 	state.Executions[index].Drain = &executionDiskDrain{Authority: wire, Result: result, DrainedAt: observed.UTC()}
+	if err := store.validateSeal(state.Executions[index]); err != nil {
+		return err
+	}
 	return store.persist(state)
 }
 

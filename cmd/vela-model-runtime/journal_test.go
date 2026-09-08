@@ -26,6 +26,7 @@ func TestJournalCommandRequiresExplicitActionAndNeverInfersBootstrap(t *testing.
 		append([]string{"journal", "--action", "upgrade-v3"}, arguments...),
 		append([]string{"journal", "--action", "upgrade-v4"}, arguments...),
 		append([]string{"journal", "--action", "upgrade-v5"}, arguments...),
+		append([]string{"journal", "--action", "upgrade-v6"}, arguments...),
 		append([]string{"journal", "--action", "initialize", "--unknown"}, arguments...),
 		append(append([]string{"journal", "--action", "initialize"}, arguments...), "unexpected"),
 	} {
@@ -67,7 +68,7 @@ func TestJournalCommandInitializesOfflineAndPreservesIdentityOnRecovery(t *testi
 		return result.Journal, nil
 	}
 	first, err := prepare("initialize")
-	if err != nil || first.SchemaVersion != 6 || first.JournalID == uuid.Nil || first.Highest != 0 || first.Floor != 0 {
+	if err != nil || first.SchemaVersion != 7 || first.JournalID == uuid.Nil || first.Highest != 0 || first.Floor != 0 {
 		t.Fatalf("offline bootstrap: %+v %v", first, err)
 	}
 	if _, err := prepare("initialize"); err == nil {
@@ -76,6 +77,21 @@ func TestJournalCommandInitializesOfflineAndPreservesIdentityOnRecovery(t *testi
 	second, err := prepare("recover")
 	if err != nil || first != second {
 		t.Fatalf("recovery changed journal identity/restrictions: %+v %v", second, err)
+	}
+	statePath := filepath.Join(directory, "execution-admission.json")
+	wire, err := os.ReadFile(statePath)
+	if err != nil || !bytes.Contains(wire, []byte(`"schema_version":7`)) {
+		t.Fatal("missing current journal for legacy fixture", err)
+	}
+	legacy := bytes.Replace(wire, []byte(`"schema_version":7`), []byte(`"schema_version":6`), 1)
+	if err := os.WriteFile(statePath, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepare("recover"); err == nil {
+		t.Fatal("ordinary command silently upgraded schema 6")
+	}
+	if upgraded, err := prepare("upgrade-v6"); err != nil || upgraded != first {
+		t.Fatalf("explicit command lost schema-6 identity/lifecycle: %+v %v", upgraded, err)
 	}
 	manifestPath := arguments[1]
 	manifest, err := modelruntime.LoadLaunchManifest(manifestPath)

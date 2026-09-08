@@ -274,6 +274,15 @@ func (supervisor *Supervisor) SealOutput(
 	ctx context.Context,
 	request *velav1.ModelRuntimeServiceSealOutputRequest,
 ) (*velav1.ModelRuntimeServiceSealOutputResponse, error) {
+	if replay, err := supervisor.replaySealedOutput(ctx, request.GetAuthority()); err != nil {
+		decision := authorityDecision(err)
+		if errors.Is(err, ErrExecutionStateRecovery) {
+			decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
+		}
+		return &velav1.ModelRuntimeServiceSealOutputResponse{Decision: decision, Detail: boundedDetail(err.Error())}, nil
+	} else if replay != nil {
+		return replay, nil
+	}
 	if service := supervisor.routeAuthority(request.GetAuthority()); service != nil {
 		return service.SealOutput(ctx, request)
 	}
