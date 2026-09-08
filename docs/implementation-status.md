@@ -891,6 +891,13 @@ rejecting live authenticated callers under CPU contention. Node and Runtime
 channel checks now retry only `EINTR`; exit/error events still reject. Full unit,
 cross-build, scoped Linux lint/vet and actual Linux race channel/namespace
 regressions pass. This repairs availability, not startup authorization.
+The [measured custody prototype](node-journal-custody-prototype-evidence-2026-09-08.md)
+then passes real process-crash/reconnect and workload writer/role rejection
+checks, native Linux race validation and three CPU measurement repetitions.
+The 15,360 floor updates quantify a material authenticated-IPC cost; they do not
+measure complete Jobs, startup grants, terminal retirement or open-loop soak.
+The test-only experiment and raw receipts are isolated in prototype commit
+`34aae79`; production ownership and Fleet assembly remain unchanged.
 The same admission boundary now revalidates authority after waiting for the
 Service operation lock. Blocking CPU mocks reproduced expired queued execution
 and a watchdog deadline extended by queue time; both regressions pass after the
