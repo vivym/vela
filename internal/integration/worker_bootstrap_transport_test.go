@@ -206,7 +206,7 @@ func bootstrapMutualTLSClientsOn(t *testing.T, service *fleet.Service, intercept
 			NodeIdentity: identity.NodeIdentity, AgentID: identity.AgentID, SPIFFEIdentity: nodeagent.NodeAgentSPIFFEIdentity(identity)})
 	}
 	configuration := fleettransport.Config{SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
-		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service}
+		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service, RuntimeStartupService: service}
 	if len(signers) != 0 {
 		configuration.BootstrapSigner = signers[0]
 	}

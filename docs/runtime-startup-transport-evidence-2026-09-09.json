@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "5452a8147cd3c3e647471ba54f4495135818fb72",
+  "source_tree_sha256": "7f4ede01ff1d12d1140739444910d42efff13313ef13dc761bcefb35ceecc06d",
+  "source_file_count": 973,
+  "source_digest_method": "SHA256 of sorted tracked/untracked Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "source_digest_scope_note": "Includes proto and Buf inputs for this protocol change; not directly comparable to earlier Go/SQL-only source digests.",
+  "postgres_schema": 95,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "checks": [
+    {
+      "command": "go test -race -tags=integration ./internal/integration -run '^Test(WorkerBootstrap(MutualTLS|Binding|History)|RuntimeStartup)' -count=1 -v -timeout=5m",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/integration.log"
+    },
+    {
+      "command": "go test -race ./internal/fleettransport ./cmd/vela-control -count=1",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/race.log"
+    },
+    {
+      "command": "go test ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/repository-test.log"
+    },
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/vet.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/lint.log"
+    },
+    {
+      "command": "golangci-lint v2.13.1 run --build-tags=integration ./internal/fleettransport ./internal/integration",
+      "exit_code": 1,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/integration-lint.log"
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./internal/fleettransport ./cmd/vela-control",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/linux-cross.log"
+    },
+    {
+      "command": "go run github.com/bufbuild/buf/cmd/buf@v1.72.0 generate --output <independent-output-directory>",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/generate.log"
+    },
+    {
+      "command": "go run github.com/bufbuild/buf/cmd/buf@v1.72.0 lint",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/buf-lint.log"
+    },
+    {
+      "command": "go run github.com/bufbuild/buf/cmd/buf@v1.72.0 breaking --against '.git#ref=5452a81'",
+      "exit_code": 0,
+      "artifact": "docs/evidence/runtime-startup-transport-2026-09-09/buf-breaking.log"
+    }
+  ],
+  "integration_main_tests": [
+    "TestRuntimeStartupReservationConcurrentFirstUseAndHistory",
+    "TestRuntimeStartupReservationRejectsUnapprovedVector",
+    "TestRuntimeStartupReservationRejectsFencedAndChangedBundle",
+    "TestRuntimeStartupReservationRequiresCommittedQuorum",
+    "TestRuntimeStartupReservationAUXVectorIsAtomic",
+    "TestRuntimeStartupReservationRequiresJournalReceipt",
+    "TestRuntimeStartupReservationWaitsForConcurrentFence",
+    "TestRuntimeStartupReservationRecoveryGateAndEmptyMigration",
+    "TestRuntimeStartupMutualTLSReservationPreservesLostResponse",
+    "TestWorkerBootstrapBindingCommandUsesCommittedRegistryIdentity",
+    "TestWorkerBootstrapHistoryIsReadOnlyAndPrincipalScoped",
+    "TestWorkerBootstrapMutualTLSBindsNodeAndPreservesLostResponses"
+  ],
+  "integration_seconds": 63.939,
+  "integration_skips": 0,
+  "integration_races": 0,
+  "integration_lint": {
+    "passed": false,
+    "diagnostics": 82,
+    "unchanged_baseline_files": 23,
+    "changed_files_with_diagnostics": []
+  },
+  "generated_files_identical": 13,
+  "claim_boundary": "Authenticated Fleet reservation RPC and Control server assembly only. No Node grant transaction, effective OCI/process attestation, protected Node command/mount assembly, replacement recovery or remote-owner Job/GPU validation.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/buf-breaking.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/buf-lint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/generate.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/generated-match.json",
+      "bytes": 1457,
+      "sha256": "39540609a0de98a269b0eff1ce4f6d9464acdd2ff0dc7aa8babd496dbd40721d"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/integration-lint-baseline.json",
+      "bytes": 2979,
+      "sha256": "203347173f84d23f04891be02878c3522245361e5f30f1b8f0633eff97d42b02"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/integration-lint.log",
+      "bytes": 16126,
+      "sha256": "bb40d53aa8ae40315481a2389d007b7fbe1200f332a0daf50add892cf9dab276"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/integration.log",
+      "bytes": 146281,
+      "sha256": "d496f97c4b00e19dfe171915e410bcb5e29e4cc9404e91127deb147f4d03ed3c"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/linux-cross.log",
+      "bytes": 109,
+      "sha256": "6eb4af1d6d8852bb460a3b6e5e350c498f217c6709fd3208e1665c8695c978ba"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/race.log",
+      "bytes": 109,
+      "sha256": "c6bf4e0e1080c48b8af04c927ce6ba380f12de1af9872ccc6455e3b3ee6463e0"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/repository-test.log",
+      "bytes": 6837,
+      "sha256": "7baaacbb773f8393085514c83e7c2e7558200fc29728d68938fa32200f13f154"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/source-files.json",
+      "bytes": 114781,
+      "sha256": "46eecaec35db16b3c1e5011fd8b618bc4544e6a2bc316d86048ebdf9ad31891c"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/source.patch",
+      "bytes": 97523,
+      "sha256": "337f76db4d221cab0157a33677add390f91f86a3a94312e65f4dd87627f94a80"
+    },
+    {
+      "path": "docs/evidence/runtime-startup-transport-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

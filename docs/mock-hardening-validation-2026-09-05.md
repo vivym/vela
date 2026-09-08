@@ -7,6 +7,14 @@ Current local migration: `95`
 Status: In progress
 
 Latest production-code increment (2026-09-09):
+[authenticated Fleet startup reservation](runtime-startup-transport-evidence-2026-09-09.md)
+connects the reservation to the Control Fleet listener and registered Node Agent
+mTLS principals. Typed clients validate exact response bindings; history has no
+Fresh field. Real PostgreSQL/TLS1.3 response-loss tests retain one reservation
+without issuing permission on replay. Node grant issuance and complete protected
+startup/Job assembly remain open.
+
+Preceding production-code increment (2026-09-09):
 [Fleet first-startup reservation](runtime-startup-reservation-evidence-2026-09-09.md)
 adds a committed once-only reservation tied to the complete approved member
 epoch vector, bootstrap journal pair, incarnation and trusted owner/launch

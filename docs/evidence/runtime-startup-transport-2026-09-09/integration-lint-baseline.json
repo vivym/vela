@@ -1,0 +1,29 @@
+{
+  "baseline_commit": "5452a8147cd3c3e647471ba54f4495135818fb72",
+  "diagnostics": 82,
+  "files_unchanged_from_baseline": {
+    "internal/integration/admission_test.go": "37d8cf18170dfe303bdd6521fdbb8a62c64cfa1c4ccb3d1c4623f3a7adebd73c",
+    "internal/integration/attempt_coordinator_test.go": "dde43a444c8b26a3bc4d3d1193d0e917b059479b15f6cd417a7210bdf6bd2695",
+    "internal/integration/break_glass_test.go": "bc5494108e1565dcc70a456ace79b20b85f0242778bc67193654764d08e927bc",
+    "internal/integration/cancellation_test.go": "917c465e995ea8bb72b3b3af2fe2a859741d425a9ff8a37bea53f7a65907a025",
+    "internal/integration/catalog_promotion_test.go": "be3eb781a038f915a82f0284ac334d7f48af0149096ad3de635b2b6a2dc01961",
+    "internal/integration/foundation_test.go": "586221cbdc53f2a1581fbd236f5ca2eb384aed2e5c09e8d9090ee8617cc052f7",
+    "internal/integration/human_identity_test.go": "d247e13029625016bc30b2f2b3d7415cd7d8cc4893a39d5f7832a8cdc55f0301",
+    "internal/integration/human_membership_administration_test.go": "2d3dc41e760f814956c787e8e0124d62f331ce18f817284f56e18ca2ca110e0d",
+    "internal/integration/identity_administration_test.go": "f118db2a3f04d118fd2cdb3696cd4edc39f88b4061aa597d944d2148effb01c2",
+    "internal/integration/invoice_export_test.go": "78364c6ddcd72663eab8d7fac997dcef0ffc06b9dab27412bc2b6d9dfb798f94",
+    "internal/integration/nats_workload_identity_test.go": "1cc4fbff3586192d2537470336254ac6ba1ef091e7e3cdc180619110be997c72",
+    "internal/integration/non_content_expiry_test.go": "f56f79af61b55d5004c2b619fc6adb714613018525a35e48adb206d14559d9ad",
+    "internal/integration/postgres_restore_test.go": "1a5d5db3be6e02d28ea992af1fd39eab0034dddc68515fc547433020b03bac98",
+    "internal/integration/release_bundle_fixture_test.go": "5f0000f2c828e7c7a200b929a0687baa66a6902483ab73061780962d1d4174d9",
+    "internal/integration/retention_test.go": "1b86d8f30867b05630a76bb61f719798ae12b463a7f0ec4d64936c61f29a9765",
+    "internal/integration/stage_allocation_execution_sequence_test.go": "5a5b49ebbc0b22ce15a4b71f150547dfb26295907a0ecfa04d343af2999961a0",
+    "internal/integration/stage_execution_catalog_test.go": "58300521845d6453275b8455bb3204ebcc0c9ca240ee66ec441d61632ba31f96",
+    "internal/integration/stage_graph_failure_test.go": "c6c5ee6c21afe7a0be4074c2065d96d18b07394c1f329517eb7ea3ffd5c5751a",
+    "internal/integration/stage_materialization_replay_test.go": "11609b44911c25307051ebe3671ef9a9c1dde6a490d46d34462095028d652f11",
+    "internal/integration/stage_stream_materialization_replay_test.go": "5e04afb031573ffff90a8ffe7d1e72fc67de001d9f108a268b41a775bb449906",
+    "internal/integration/stage_worker_control_test.go": "ff6865a7ab4375fe700e6c4346a1d7a3bc5a0254eb3cad4212a47bc23752efc8",
+    "internal/integration/terminal_job_fixture_test.go": "cece6dabc7810f2325ef902bb89b64526ca875a87130e9c293efcbfcdcafaaed",
+    "internal/integration/webhook_test.go": "1564c4c8b4410894591418f353d4e9154a1b48c37a7fedb4fd2f4f9225d064b3"
+  }
+}

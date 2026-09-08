@@ -46,6 +46,7 @@ type Config struct {
 	NodeAgentRegistrations []NodeAgentRegistration
 	BootstrapService       WorkerBootstrapService
 	BootstrapSigner        *journalbinding.Signer
+	RuntimeStartupService  RuntimeStartupService
 }
 
 type NodeAgentRegistration struct {
@@ -77,11 +78,15 @@ type Server struct {
 	nodeAgentPrincipals map[string]nodeAgentPrincipal
 	bootstrap           WorkerBootstrapService
 	bootstrapSigner     *journalbinding.Signer
+	runtimeStartup      RuntimeStartupService
 }
 
 func NewServer(service Service, config Config) (*Server, error) {
 	if config.BootstrapSigner != nil && config.BootstrapService == nil {
 		return nil, errors.New("journal binding signer requires bootstrap Registry authority")
+	}
+	if config.RuntimeStartupService != nil && config.BootstrapService == nil {
+		return nil, errors.New("runtime startup reservation requires bootstrap Registry authority")
 	}
 	if service == nil {
 		return nil, errors.New("fleet maintenance service is required")
@@ -106,6 +111,7 @@ func NewServer(service Service, config Config) (*Server, error) {
 		service: service, spiffeIdentity: config.SPIFFEIdentity,
 		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: principals,
 		bootstrap: config.BootstrapService, bootstrapSigner: config.BootstrapSigner,
+		runtimeStartup: config.RuntimeStartupService,
 	}, nil
 }
 

@@ -513,6 +513,16 @@ Node issuer, authenticated startup transport, readiness or replacement protocol.
 Ordinary tests/vet/lint pass; integration-tag lint retains 82 baseline diagnostics.
 Production Gates remain `0/9`.
 
+The [authenticated startup reservation transport](runtime-startup-transport-evidence-2026-09-09.md)
+connects that service to the Control Fleet listener. Registered Node Agent mTLS
+identity determines the Node and actor before the consuming operation. Typed
+clients reject mismatched or malformed results, and the separate history RPC
+has no Fresh field. Real PostgreSQL/TLS1.3 tests retain one reservation after
+post-commit response loss, reject other Node/Agent identities and return no new
+permission on retry. This closes the Fleet transport prerequisite; Node grant
+custody, effective process/configuration approval and protected Job assembly
+remain open. Schema 95 and Production Gates `0/9` are unchanged.
+
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).
 The original authenticated Node Agent can permanently reject an unrecorded claim

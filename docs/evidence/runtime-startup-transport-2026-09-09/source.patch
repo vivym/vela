@@ -1,0 +1,1959 @@
+diff --git a/cmd/vela-control/main.go b/cmd/vela-control/main.go
+index aaa9ca2..dd67265 100644
+--- a/cmd/vela-control/main.go
++++ b/cmd/vela-control/main.go
+@@ -924,6 +924,7 @@ func run() error {
+ 			ActorIdentity:          configuration.fleetControllerActorIdentity,
+ 			NodeAgentRegistrations: nodeAgentRegistrations(remediationEndpoints),
+ 			BootstrapService:       fleetService,
++			RuntimeStartupService:  fleetService,
+ 			BootstrapSigner:        bootstrapSigner,
+ 		},
+ 	)
+diff --git a/internal/fleettransport/server.go b/internal/fleettransport/server.go
+index 7a9a311..36b6d8a 100644
+--- a/internal/fleettransport/server.go
++++ b/internal/fleettransport/server.go
+@@ -46,6 +46,7 @@ type Config struct {
+ 	NodeAgentRegistrations []NodeAgentRegistration
+ 	BootstrapService       WorkerBootstrapService
+ 	BootstrapSigner        *journalbinding.Signer
++	RuntimeStartupService  RuntimeStartupService
+ }
+ 
+ type NodeAgentRegistration struct {
+@@ -77,12 +78,16 @@ type Server struct {
+ 	nodeAgentPrincipals map[string]nodeAgentPrincipal
+ 	bootstrap           WorkerBootstrapService
+ 	bootstrapSigner     *journalbinding.Signer
++	runtimeStartup      RuntimeStartupService
+ }
+ 
+ func NewServer(service Service, config Config) (*Server, error) {
+ 	if config.BootstrapSigner != nil && config.BootstrapService == nil {
+ 		return nil, errors.New("journal binding signer requires bootstrap Registry authority")
+ 	}
++	if config.RuntimeStartupService != nil && config.BootstrapService == nil {
++		return nil, errors.New("runtime startup reservation requires bootstrap Registry authority")
++	}
+ 	if service == nil {
+ 		return nil, errors.New("fleet maintenance service is required")
+ 	}
+@@ -106,6 +111,7 @@ func NewServer(service Service, config Config) (*Server, error) {
+ 		service: service, spiffeIdentity: config.SPIFFEIdentity,
+ 		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: principals,
+ 		bootstrap: config.BootstrapService, bootstrapSigner: config.BootstrapSigner,
++		runtimeStartup: config.RuntimeStartupService,
+ 	}, nil
+ }
+ 
+diff --git a/internal/integration/worker_bootstrap_transport_test.go b/internal/integration/worker_bootstrap_transport_test.go
+index c12a114..e2564bf 100644
+--- a/internal/integration/worker_bootstrap_transport_test.go
++++ b/internal/integration/worker_bootstrap_transport_test.go
+@@ -206,7 +206,7 @@ func bootstrapMutualTLSClientsOn(t *testing.T, service *fleet.Service, intercept
+ 			NodeIdentity: identity.NodeIdentity, AgentID: identity.AgentID, SPIFFEIdentity: nodeagent.NodeAgentSPIFFEIdentity(identity)})
+ 	}
+ 	configuration := fleettransport.Config{SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
+-		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service}
++		ActorIdentity: "fleet/primary", NodeAgentRegistrations: registrations, BootstrapService: service, RuntimeStartupService: service}
+ 	if len(signers) != 0 {
+ 		configuration.BootstrapSigner = signers[0]
+ 	}
+diff --git a/proto/gen/vela/v1/fleet_maintenance.pb.go b/proto/gen/vela/v1/fleet_maintenance.pb.go
+index d8de73b..dbde8a4 100644
+--- a/proto/gen/vela/v1/fleet_maintenance.pb.go
++++ b/proto/gen/vela/v1/fleet_maintenance.pb.go
+@@ -71,6 +71,386 @@ func (FleetMutationOperation) EnumDescriptor() ([]byte, []int) {
+ 	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{0}
+ }
+ 
++type RuntimeStartupEpoch struct {
++	state                  protoimpl.MessageState `protogen:"open.v1"`
++	ModelResidencyId       string                 `protobuf:"bytes,1,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
++	ModelRuntimeIdentity   string                 `protobuf:"bytes,2,opt,name=model_runtime_identity,json=modelRuntimeIdentity,proto3" json:"model_runtime_identity,omitempty"`
++	StageProfileRevisionId string                 `protobuf:"bytes,3,opt,name=stage_profile_revision_id,json=stageProfileRevisionId,proto3" json:"stage_profile_revision_id,omitempty"`
++	ModelRuntimeEpoch      int64                  `protobuf:"varint,4,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
++	unknownFields          protoimpl.UnknownFields
++	sizeCache              protoimpl.SizeCache
++}
++
++func (x *RuntimeStartupEpoch) Reset() {
++	*x = RuntimeStartupEpoch{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *RuntimeStartupEpoch) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*RuntimeStartupEpoch) ProtoMessage() {}
++
++func (x *RuntimeStartupEpoch) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use RuntimeStartupEpoch.ProtoReflect.Descriptor instead.
++func (*RuntimeStartupEpoch) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{0}
++}
++
++func (x *RuntimeStartupEpoch) GetModelResidencyId() string {
++	if x != nil {
++		return x.ModelResidencyId
++	}
++	return ""
++}
++
++func (x *RuntimeStartupEpoch) GetModelRuntimeIdentity() string {
++	if x != nil {
++		return x.ModelRuntimeIdentity
++	}
++	return ""
++}
++
++func (x *RuntimeStartupEpoch) GetStageProfileRevisionId() string {
++	if x != nil {
++		return x.StageProfileRevisionId
++	}
++	return ""
++}
++
++func (x *RuntimeStartupEpoch) GetModelRuntimeEpoch() int64 {
++	if x != nil {
++		return x.ModelRuntimeEpoch
++	}
++	return 0
++}
++
++// Node and actor are derived from registered mTLS identity, never request data.
++type ReserveRuntimeStartupRequest struct {
++	state                  protoimpl.MessageState `protogen:"open.v1"`
++	RequestId              string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
++	BootstrapRequestId     string                 `protobuf:"bytes,2,opt,name=bootstrap_request_id,json=bootstrapRequestId,proto3" json:"bootstrap_request_id,omitempty"`
++	RuntimeJournalId       string                 `protobuf:"bytes,3,opt,name=runtime_journal_id,json=runtimeJournalId,proto3" json:"runtime_journal_id,omitempty"`
++	RuntimeScope           []byte                 `protobuf:"bytes,4,opt,name=runtime_scope,json=runtimeScope,proto3" json:"runtime_scope,omitempty"`
++	IncarnationId          string                 `protobuf:"bytes,5,opt,name=incarnation_id,json=incarnationId,proto3" json:"incarnation_id,omitempty"`
++	LaunchDigest           []byte                 `protobuf:"bytes,6,opt,name=launch_digest,json=launchDigest,proto3" json:"launch_digest,omitempty"`
++	OwnerObservationDigest []byte                 `protobuf:"bytes,7,opt,name=owner_observation_digest,json=ownerObservationDigest,proto3" json:"owner_observation_digest,omitempty"`
++	Epochs                 []*RuntimeStartupEpoch `protobuf:"bytes,8,rep,name=epochs,proto3" json:"epochs,omitempty"`
++	unknownFields          protoimpl.UnknownFields
++	sizeCache              protoimpl.SizeCache
++}
++
++func (x *ReserveRuntimeStartupRequest) Reset() {
++	*x = ReserveRuntimeStartupRequest{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ReserveRuntimeStartupRequest) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ReserveRuntimeStartupRequest) ProtoMessage() {}
++
++func (x *ReserveRuntimeStartupRequest) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ReserveRuntimeStartupRequest.ProtoReflect.Descriptor instead.
++func (*ReserveRuntimeStartupRequest) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{1}
++}
++
++func (x *ReserveRuntimeStartupRequest) GetRequestId() string {
++	if x != nil {
++		return x.RequestId
++	}
++	return ""
++}
++
++func (x *ReserveRuntimeStartupRequest) GetBootstrapRequestId() string {
++	if x != nil {
++		return x.BootstrapRequestId
++	}
++	return ""
++}
++
++func (x *ReserveRuntimeStartupRequest) GetRuntimeJournalId() string {
++	if x != nil {
++		return x.RuntimeJournalId
++	}
++	return ""
++}
++
++func (x *ReserveRuntimeStartupRequest) GetRuntimeScope() []byte {
++	if x != nil {
++		return x.RuntimeScope
++	}
++	return nil
++}
++
++func (x *ReserveRuntimeStartupRequest) GetIncarnationId() string {
++	if x != nil {
++		return x.IncarnationId
++	}
++	return ""
++}
++
++func (x *ReserveRuntimeStartupRequest) GetLaunchDigest() []byte {
++	if x != nil {
++		return x.LaunchDigest
++	}
++	return nil
++}
++
++func (x *ReserveRuntimeStartupRequest) GetOwnerObservationDigest() []byte {
++	if x != nil {
++		return x.OwnerObservationDigest
++	}
++	return nil
++}
++
++func (x *ReserveRuntimeStartupRequest) GetEpochs() []*RuntimeStartupEpoch {
++	if x != nil {
++		return x.Epochs
++	}
++	return nil
++}
++
++// Immutable first-use reservation history, not Node permission or readiness.
++type RuntimeStartupReservation struct {
++	state         protoimpl.MessageState        `protogen:"open.v1"`
++	Request       *ReserveRuntimeStartupRequest `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
++	NodeIdentity  string                        `protobuf:"bytes,2,opt,name=node_identity,json=nodeIdentity,proto3" json:"node_identity,omitempty"`
++	ActorIdentity string                        `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
++	ReservedAt    *timestamppb.Timestamp        `protobuf:"bytes,4,opt,name=reserved_at,json=reservedAt,proto3" json:"reserved_at,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *RuntimeStartupReservation) Reset() {
++	*x = RuntimeStartupReservation{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *RuntimeStartupReservation) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*RuntimeStartupReservation) ProtoMessage() {}
++
++func (x *RuntimeStartupReservation) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use RuntimeStartupReservation.ProtoReflect.Descriptor instead.
++func (*RuntimeStartupReservation) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{2}
++}
++
++func (x *RuntimeStartupReservation) GetRequest() *ReserveRuntimeStartupRequest {
++	if x != nil {
++		return x.Request
++	}
++	return nil
++}
++
++func (x *RuntimeStartupReservation) GetNodeIdentity() string {
++	if x != nil {
++		return x.NodeIdentity
++	}
++	return ""
++}
++
++func (x *RuntimeStartupReservation) GetActorIdentity() string {
++	if x != nil {
++		return x.ActorIdentity
++	}
++	return ""
++}
++
++func (x *RuntimeStartupReservation) GetReservedAt() *timestamppb.Timestamp {
++	if x != nil {
++		return x.ReservedAt
++	}
++	return nil
++}
++
++type ReserveRuntimeStartupResponse struct {
++	state       protoimpl.MessageState     `protogen:"open.v1"`
++	Reservation *RuntimeStartupReservation `protobuf:"bytes,1,opt,name=reservation,proto3" json:"reservation,omitempty"`
++	// Only the inserting committed RPC is fresh. No retry or lookup renews it.
++	Fresh         bool `protobuf:"varint,2,opt,name=fresh,proto3" json:"fresh,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *ReserveRuntimeStartupResponse) Reset() {
++	*x = ReserveRuntimeStartupResponse{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *ReserveRuntimeStartupResponse) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*ReserveRuntimeStartupResponse) ProtoMessage() {}
++
++func (x *ReserveRuntimeStartupResponse) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use ReserveRuntimeStartupResponse.ProtoReflect.Descriptor instead.
++func (*ReserveRuntimeStartupResponse) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{3}
++}
++
++func (x *ReserveRuntimeStartupResponse) GetReservation() *RuntimeStartupReservation {
++	if x != nil {
++		return x.Reservation
++	}
++	return nil
++}
++
++func (x *ReserveRuntimeStartupResponse) GetFresh() bool {
++	if x != nil {
++		return x.Fresh
++	}
++	return false
++}
++
++type LookupRuntimeStartupRequest struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *LookupRuntimeStartupRequest) Reset() {
++	*x = LookupRuntimeStartupRequest{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *LookupRuntimeStartupRequest) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*LookupRuntimeStartupRequest) ProtoMessage() {}
++
++func (x *LookupRuntimeStartupRequest) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use LookupRuntimeStartupRequest.ProtoReflect.Descriptor instead.
++func (*LookupRuntimeStartupRequest) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{4}
++}
++
++func (x *LookupRuntimeStartupRequest) GetRequestId() string {
++	if x != nil {
++		return x.RequestId
++	}
++	return ""
++}
++
++// Deliberately has no fresh/permission field.
++type LookupRuntimeStartupResponse struct {
++	state         protoimpl.MessageState     `protogen:"open.v1"`
++	Reservation   *RuntimeStartupReservation `protobuf:"bytes,1,opt,name=reservation,proto3" json:"reservation,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *LookupRuntimeStartupResponse) Reset() {
++	*x = LookupRuntimeStartupResponse{}
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *LookupRuntimeStartupResponse) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*LookupRuntimeStartupResponse) ProtoMessage() {}
++
++func (x *LookupRuntimeStartupResponse) ProtoReflect() protoreflect.Message {
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use LookupRuntimeStartupResponse.ProtoReflect.Descriptor instead.
++func (*LookupRuntimeStartupResponse) Descriptor() ([]byte, []int) {
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{5}
++}
++
++func (x *LookupRuntimeStartupResponse) GetReservation() *RuntimeStartupReservation {
++	if x != nil {
++		return x.Reservation
++	}
++	return nil
++}
++
+ type ClaimWorkerBootstrapRequest struct {
+ 	state               protoimpl.MessageState `protogen:"open.v1"`
+ 	RequestId           string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+@@ -84,7 +464,7 @@ type ClaimWorkerBootstrapRequest struct {
+ 
+ func (x *ClaimWorkerBootstrapRequest) Reset() {
+ 	*x = ClaimWorkerBootstrapRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -96,7 +476,7 @@ func (x *ClaimWorkerBootstrapRequest) String() string {
+ func (*ClaimWorkerBootstrapRequest) ProtoMessage() {}
+ 
+ func (x *ClaimWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -109,7 +489,7 @@ func (x *ClaimWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ClaimWorkerBootstrapRequest.ProtoReflect.Descriptor instead.
+ func (*ClaimWorkerBootstrapRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{0}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{6}
+ }
+ 
+ func (x *ClaimWorkerBootstrapRequest) GetRequestId() string {
+@@ -165,7 +545,7 @@ type WorkerBootstrapClaim struct {
+ 
+ func (x *WorkerBootstrapClaim) Reset() {
+ 	*x = WorkerBootstrapClaim{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -177,7 +557,7 @@ func (x *WorkerBootstrapClaim) String() string {
+ func (*WorkerBootstrapClaim) ProtoMessage() {}
+ 
+ func (x *WorkerBootstrapClaim) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -190,7 +570,7 @@ func (x *WorkerBootstrapClaim) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkerBootstrapClaim.ProtoReflect.Descriptor instead.
+ func (*WorkerBootstrapClaim) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{1}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{7}
+ }
+ 
+ func (x *WorkerBootstrapClaim) GetRequestId() string {
+@@ -267,7 +647,7 @@ type ClaimWorkerBootstrapResponse struct {
+ 
+ func (x *ClaimWorkerBootstrapResponse) Reset() {
+ 	*x = ClaimWorkerBootstrapResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -279,7 +659,7 @@ func (x *ClaimWorkerBootstrapResponse) String() string {
+ func (*ClaimWorkerBootstrapResponse) ProtoMessage() {}
+ 
+ func (x *ClaimWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -292,7 +672,7 @@ func (x *ClaimWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ClaimWorkerBootstrapResponse.ProtoReflect.Descriptor instead.
+ func (*ClaimWorkerBootstrapResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{2}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
+ }
+ 
+ func (x *ClaimWorkerBootstrapResponse) GetClaim() *WorkerBootstrapClaim {
+@@ -322,7 +702,7 @@ type RecordWorkerBootstrapReceiptRequest struct {
+ 
+ func (x *RecordWorkerBootstrapReceiptRequest) Reset() {
+ 	*x = RecordWorkerBootstrapReceiptRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -334,7 +714,7 @@ func (x *RecordWorkerBootstrapReceiptRequest) String() string {
+ func (*RecordWorkerBootstrapReceiptRequest) ProtoMessage() {}
+ 
+ func (x *RecordWorkerBootstrapReceiptRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -347,7 +727,7 @@ func (x *RecordWorkerBootstrapReceiptRequest) ProtoReflect() protoreflect.Messag
+ 
+ // Deprecated: Use RecordWorkerBootstrapReceiptRequest.ProtoReflect.Descriptor instead.
+ func (*RecordWorkerBootstrapReceiptRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{3}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
+ }
+ 
+ func (x *RecordWorkerBootstrapReceiptRequest) GetRequestId() string {
+@@ -400,7 +780,7 @@ type WorkerBootstrapJournalPair struct {
+ 
+ func (x *WorkerBootstrapJournalPair) Reset() {
+ 	*x = WorkerBootstrapJournalPair{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -412,7 +792,7 @@ func (x *WorkerBootstrapJournalPair) String() string {
+ func (*WorkerBootstrapJournalPair) ProtoMessage() {}
+ 
+ func (x *WorkerBootstrapJournalPair) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -425,7 +805,7 @@ func (x *WorkerBootstrapJournalPair) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkerBootstrapJournalPair.ProtoReflect.Descriptor instead.
+ func (*WorkerBootstrapJournalPair) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{4}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
+ }
+ 
+ func (x *WorkerBootstrapJournalPair) GetRequestId() string {
+@@ -486,7 +866,7 @@ type RecordWorkerBootstrapReceiptResponse struct {
+ 
+ func (x *RecordWorkerBootstrapReceiptResponse) Reset() {
+ 	*x = RecordWorkerBootstrapReceiptResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -498,7 +878,7 @@ func (x *RecordWorkerBootstrapReceiptResponse) String() string {
+ func (*RecordWorkerBootstrapReceiptResponse) ProtoMessage() {}
+ 
+ func (x *RecordWorkerBootstrapReceiptResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -511,7 +891,7 @@ func (x *RecordWorkerBootstrapReceiptResponse) ProtoReflect() protoreflect.Messa
+ 
+ // Deprecated: Use RecordWorkerBootstrapReceiptResponse.ProtoReflect.Descriptor instead.
+ func (*RecordWorkerBootstrapReceiptResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{5}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
+ }
+ 
+ func (x *RecordWorkerBootstrapReceiptResponse) GetPair() *WorkerBootstrapJournalPair {
+@@ -530,7 +910,7 @@ type LookupWorkerBootstrapRequest struct {
+ 
+ func (x *LookupWorkerBootstrapRequest) Reset() {
+ 	*x = LookupWorkerBootstrapRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -542,7 +922,7 @@ func (x *LookupWorkerBootstrapRequest) String() string {
+ func (*LookupWorkerBootstrapRequest) ProtoMessage() {}
+ 
+ func (x *LookupWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -555,7 +935,7 @@ func (x *LookupWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use LookupWorkerBootstrapRequest.ProtoReflect.Descriptor instead.
+ func (*LookupWorkerBootstrapRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{6}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
+ }
+ 
+ func (x *LookupWorkerBootstrapRequest) GetRequestId() string {
+@@ -576,7 +956,7 @@ type LookupWorkerBootstrapResponse struct {
+ 
+ func (x *LookupWorkerBootstrapResponse) Reset() {
+ 	*x = LookupWorkerBootstrapResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -588,7 +968,7 @@ func (x *LookupWorkerBootstrapResponse) String() string {
+ func (*LookupWorkerBootstrapResponse) ProtoMessage() {}
+ 
+ func (x *LookupWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -601,7 +981,7 @@ func (x *LookupWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use LookupWorkerBootstrapResponse.ProtoReflect.Descriptor instead.
+ func (*LookupWorkerBootstrapResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{7}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
+ }
+ 
+ func (x *LookupWorkerBootstrapResponse) GetClaim() *WorkerBootstrapClaim {
+@@ -636,7 +1016,7 @@ type WorkerBootstrapAbandonment struct {
+ 
+ func (x *WorkerBootstrapAbandonment) Reset() {
+ 	*x = WorkerBootstrapAbandonment{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -648,7 +1028,7 @@ func (x *WorkerBootstrapAbandonment) String() string {
+ func (*WorkerBootstrapAbandonment) ProtoMessage() {}
+ 
+ func (x *WorkerBootstrapAbandonment) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -661,7 +1041,7 @@ func (x *WorkerBootstrapAbandonment) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkerBootstrapAbandonment.ProtoReflect.Descriptor instead.
+ func (*WorkerBootstrapAbandonment) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{14}
+ }
+ 
+ func (x *WorkerBootstrapAbandonment) GetFencedInstanceEpoch() int64 {
+@@ -687,7 +1067,7 @@ type AbandonWorkerBootstrapRequest struct {
+ 
+ func (x *AbandonWorkerBootstrapRequest) Reset() {
+ 	*x = AbandonWorkerBootstrapRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -699,7 +1079,7 @@ func (x *AbandonWorkerBootstrapRequest) String() string {
+ func (*AbandonWorkerBootstrapRequest) ProtoMessage() {}
+ 
+ func (x *AbandonWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -712,7 +1092,7 @@ func (x *AbandonWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use AbandonWorkerBootstrapRequest.ProtoReflect.Descriptor instead.
+ func (*AbandonWorkerBootstrapRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{15}
+ }
+ 
+ func (x *AbandonWorkerBootstrapRequest) GetRequestId() string {
+@@ -732,7 +1112,7 @@ type AbandonWorkerBootstrapResponse struct {
+ 
+ func (x *AbandonWorkerBootstrapResponse) Reset() {
+ 	*x = AbandonWorkerBootstrapResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -744,7 +1124,7 @@ func (x *AbandonWorkerBootstrapResponse) String() string {
+ func (*AbandonWorkerBootstrapResponse) ProtoMessage() {}
+ 
+ func (x *AbandonWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -757,7 +1137,7 @@ func (x *AbandonWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use AbandonWorkerBootstrapResponse.ProtoReflect.Descriptor instead.
+ func (*AbandonWorkerBootstrapResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{16}
+ }
+ 
+ func (x *AbandonWorkerBootstrapResponse) GetClaim() *WorkerBootstrapClaim {
+@@ -788,7 +1168,7 @@ type WorkerBootstrapBinding struct {
+ 
+ func (x *WorkerBootstrapBinding) Reset() {
+ 	*x = WorkerBootstrapBinding{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -800,7 +1180,7 @@ func (x *WorkerBootstrapBinding) String() string {
+ func (*WorkerBootstrapBinding) ProtoMessage() {}
+ 
+ func (x *WorkerBootstrapBinding) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -813,7 +1193,7 @@ func (x *WorkerBootstrapBinding) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkerBootstrapBinding.ProtoReflect.Descriptor instead.
+ func (*WorkerBootstrapBinding) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{17}
+ }
+ 
+ func (x *WorkerBootstrapBinding) GetSchemaVersion() uint32 {
+@@ -860,7 +1240,7 @@ type LookupWorkerBootstrapBindingRequest struct {
+ 
+ func (x *LookupWorkerBootstrapBindingRequest) Reset() {
+ 	*x = LookupWorkerBootstrapBindingRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -872,7 +1252,7 @@ func (x *LookupWorkerBootstrapBindingRequest) String() string {
+ func (*LookupWorkerBootstrapBindingRequest) ProtoMessage() {}
+ 
+ func (x *LookupWorkerBootstrapBindingRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -885,7 +1265,7 @@ func (x *LookupWorkerBootstrapBindingRequest) ProtoReflect() protoreflect.Messag
+ 
+ // Deprecated: Use LookupWorkerBootstrapBindingRequest.ProtoReflect.Descriptor instead.
+ func (*LookupWorkerBootstrapBindingRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{18}
+ }
+ 
+ func (x *LookupWorkerBootstrapBindingRequest) GetRequestId() string {
+@@ -904,7 +1284,7 @@ type LookupWorkerBootstrapBindingResponse struct {
+ 
+ func (x *LookupWorkerBootstrapBindingResponse) Reset() {
+ 	*x = LookupWorkerBootstrapBindingResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -916,7 +1296,7 @@ func (x *LookupWorkerBootstrapBindingResponse) String() string {
+ func (*LookupWorkerBootstrapBindingResponse) ProtoMessage() {}
+ 
+ func (x *LookupWorkerBootstrapBindingResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -929,7 +1309,7 @@ func (x *LookupWorkerBootstrapBindingResponse) ProtoReflect() protoreflect.Messa
+ 
+ // Deprecated: Use LookupWorkerBootstrapBindingResponse.ProtoReflect.Descriptor instead.
+ func (*LookupWorkerBootstrapBindingResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{19}
+ }
+ 
+ func (x *LookupWorkerBootstrapBindingResponse) GetBinding() *WorkerBootstrapBinding {
+@@ -948,7 +1328,7 @@ type ApplyResidencyPlanRequest struct {
+ 
+ func (x *ApplyResidencyPlanRequest) Reset() {
+ 	*x = ApplyResidencyPlanRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -960,7 +1340,7 @@ func (x *ApplyResidencyPlanRequest) String() string {
+ func (*ApplyResidencyPlanRequest) ProtoMessage() {}
+ 
+ func (x *ApplyResidencyPlanRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -973,7 +1353,7 @@ func (x *ApplyResidencyPlanRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ApplyResidencyPlanRequest.ProtoReflect.Descriptor instead.
+ func (*ApplyResidencyPlanRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{14}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{20}
+ }
+ 
+ func (x *ApplyResidencyPlanRequest) GetApprovedPlanJson() []byte {
+@@ -993,7 +1373,7 @@ type ApplyResidencyPlanResponse struct {
+ 
+ func (x *ApplyResidencyPlanResponse) Reset() {
+ 	*x = ApplyResidencyPlanResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1005,7 +1385,7 @@ func (x *ApplyResidencyPlanResponse) String() string {
+ func (*ApplyResidencyPlanResponse) ProtoMessage() {}
+ 
+ func (x *ApplyResidencyPlanResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1018,7 +1398,7 @@ func (x *ApplyResidencyPlanResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ApplyResidencyPlanResponse.ProtoReflect.Descriptor instead.
+ func (*ApplyResidencyPlanResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{15}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{21}
+ }
+ 
+ func (x *ApplyResidencyPlanResponse) GetPlanRevisionId() string {
+@@ -1044,7 +1424,7 @@ type ObserveWorkerInstanceRequest struct {
+ 
+ func (x *ObserveWorkerInstanceRequest) Reset() {
+ 	*x = ObserveWorkerInstanceRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1056,7 +1436,7 @@ func (x *ObserveWorkerInstanceRequest) String() string {
+ func (*ObserveWorkerInstanceRequest) ProtoMessage() {}
+ 
+ func (x *ObserveWorkerInstanceRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1069,7 +1449,7 @@ func (x *ObserveWorkerInstanceRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ObserveWorkerInstanceRequest.ProtoReflect.Descriptor instead.
+ func (*ObserveWorkerInstanceRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{16}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{22}
+ }
+ 
+ func (x *ObserveWorkerInstanceRequest) GetEvidenceJson() []byte {
+@@ -1092,7 +1472,7 @@ type ObserveWorkerInstanceResponse struct {
+ 
+ func (x *ObserveWorkerInstanceResponse) Reset() {
+ 	*x = ObserveWorkerInstanceResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1104,7 +1484,7 @@ func (x *ObserveWorkerInstanceResponse) String() string {
+ func (*ObserveWorkerInstanceResponse) ProtoMessage() {}
+ 
+ func (x *ObserveWorkerInstanceResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1117,7 +1497,7 @@ func (x *ObserveWorkerInstanceResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ObserveWorkerInstanceResponse.ProtoReflect.Descriptor instead.
+ func (*ObserveWorkerInstanceResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{17}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{23}
+ }
+ 
+ func (x *ObserveWorkerInstanceResponse) GetWorkerInstanceId() string {
+@@ -1174,7 +1554,7 @@ type AuthorizeMutationRequest struct {
+ 
+ func (x *AuthorizeMutationRequest) Reset() {
+ 	*x = AuthorizeMutationRequest{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1186,7 +1566,7 @@ func (x *AuthorizeMutationRequest) String() string {
+ func (*AuthorizeMutationRequest) ProtoMessage() {}
+ 
+ func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1199,7 +1579,7 @@ func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use AuthorizeMutationRequest.ProtoReflect.Descriptor instead.
+ func (*AuthorizeMutationRequest) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{18}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{24}
+ }
+ 
+ func (x *AuthorizeMutationRequest) GetRequestUid() string {
+@@ -1290,7 +1670,7 @@ type AuthorizeMutationResponse struct {
+ 
+ func (x *AuthorizeMutationResponse) Reset() {
+ 	*x = AuthorizeMutationResponse{}
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1302,7 +1682,7 @@ func (x *AuthorizeMutationResponse) String() string {
+ func (*AuthorizeMutationResponse) ProtoMessage() {}
+ 
+ func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
++	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1315,7 +1695,7 @@ func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use AuthorizeMutationResponse.ProtoReflect.Descriptor instead.
+ func (*AuthorizeMutationResponse) Descriptor() ([]byte, []int) {
+-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{19}
++	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{25}
+ }
+ 
+ func (x *AuthorizeMutationResponse) GetRequestUid() string {
+@@ -1343,7 +1723,36 @@ var File_vela_v1_fleet_maintenance_proto protoreflect.FileDescriptor
+ 
+ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
+ 	"\n" +
+-	"\x1fvela/v1/fleet_maintenance.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf1\x01\n" +
++	"\x1fvela/v1/fleet_maintenance.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe4\x01\n" +
++	"\x13RuntimeStartupEpoch\x12,\n" +
++	"\x12model_residency_id\x18\x01 \x01(\tR\x10modelResidencyId\x124\n" +
++	"\x16model_runtime_identity\x18\x02 \x01(\tR\x14modelRuntimeIdentity\x129\n" +
++	"\x19stage_profile_revision_id\x18\x03 \x01(\tR\x16stageProfileRevisionId\x12.\n" +
++	"\x13model_runtime_epoch\x18\x04 \x01(\x03R\x11modelRuntimeEpoch\"\xfe\x02\n" +
++	"\x1cReserveRuntimeStartupRequest\x12\x1d\n" +
++	"\n" +
++	"request_id\x18\x01 \x01(\tR\trequestId\x120\n" +
++	"\x14bootstrap_request_id\x18\x02 \x01(\tR\x12bootstrapRequestId\x12,\n" +
++	"\x12runtime_journal_id\x18\x03 \x01(\tR\x10runtimeJournalId\x12#\n" +
++	"\rruntime_scope\x18\x04 \x01(\fR\fruntimeScope\x12%\n" +
++	"\x0eincarnation_id\x18\x05 \x01(\tR\rincarnationId\x12#\n" +
++	"\rlaunch_digest\x18\x06 \x01(\fR\flaunchDigest\x128\n" +
++	"\x18owner_observation_digest\x18\a \x01(\fR\x16ownerObservationDigest\x124\n" +
++	"\x06epochs\x18\b \x03(\v2\x1c.vela.v1.RuntimeStartupEpochR\x06epochs\"\xe5\x01\n" +
++	"\x19RuntimeStartupReservation\x12?\n" +
++	"\arequest\x18\x01 \x01(\v2%.vela.v1.ReserveRuntimeStartupRequestR\arequest\x12#\n" +
++	"\rnode_identity\x18\x02 \x01(\tR\fnodeIdentity\x12%\n" +
++	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12;\n" +
++	"\vreserved_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
++	"reservedAt\"{\n" +
++	"\x1dReserveRuntimeStartupResponse\x12D\n" +
++	"\vreservation\x18\x01 \x01(\v2\".vela.v1.RuntimeStartupReservationR\vreservation\x12\x14\n" +
++	"\x05fresh\x18\x02 \x01(\bR\x05fresh\"<\n" +
++	"\x1bLookupRuntimeStartupRequest\x12\x1d\n" +
++	"\n" +
++	"request_id\x18\x01 \x01(\tR\trequestId\"d\n" +
++	"\x1cLookupRuntimeStartupResponse\x12D\n" +
++	"\vreservation\x18\x01 \x01(\v2\".vela.v1.RuntimeStartupReservationR\vreservation\"\xf1\x01\n" +
+ 	"\x1bClaimWorkerBootstrapRequest\x12\x1d\n" +
+ 	"\n" +
+ 	"request_id\x18\x01 \x01(\tR\trequestId\x12,\n" +
+@@ -1450,7 +1859,7 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
+ 	"\x16FleetMutationOperation\x12(\n" +
+ 	"$FLEET_MUTATION_OPERATION_UNSPECIFIED\x10\x00\x12#\n" +
+ 	"\x1fFLEET_MUTATION_OPERATION_DELETE\x10\x01\x12-\n" +
+-	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x04\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x032\xee\x06\n" +
++	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x04\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x032\xbb\b\n" +
+ 	"\x17FleetMaintenanceService\x12]\n" +
+ 	"\x12ApplyResidencyPlan\x12\".vela.v1.ApplyResidencyPlanRequest\x1a#.vela.v1.ApplyResidencyPlanResponse\x12f\n" +
+ 	"\x15ObserveWorkerInstance\x12%.vela.v1.ObserveWorkerInstanceRequest\x1a&.vela.v1.ObserveWorkerInstanceResponse\x12Z\n" +
+@@ -1459,7 +1868,9 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
+ 	"\x1cRecordWorkerBootstrapReceipt\x12,.vela.v1.RecordWorkerBootstrapReceiptRequest\x1a-.vela.v1.RecordWorkerBootstrapReceiptResponse\x12f\n" +
+ 	"\x15LookupWorkerBootstrap\x12%.vela.v1.LookupWorkerBootstrapRequest\x1a&.vela.v1.LookupWorkerBootstrapResponse\x12{\n" +
+ 	"\x1cLookupWorkerBootstrapBinding\x12,.vela.v1.LookupWorkerBootstrapBindingRequest\x1a-.vela.v1.LookupWorkerBootstrapBindingResponse\x12i\n" +
+-	"\x16AbandonWorkerBootstrap\x12&.vela.v1.AbandonWorkerBootstrapRequest\x1a'.vela.v1.AbandonWorkerBootstrapResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
++	"\x16AbandonWorkerBootstrap\x12&.vela.v1.AbandonWorkerBootstrapRequest\x1a'.vela.v1.AbandonWorkerBootstrapResponse\x12f\n" +
++	"\x15ReserveRuntimeStartup\x12%.vela.v1.ReserveRuntimeStartupRequest\x1a&.vela.v1.ReserveRuntimeStartupResponse\x12c\n" +
++	"\x14LookupRuntimeStartup\x12$.vela.v1.LookupRuntimeStartupRequest\x1a%.vela.v1.LookupRuntimeStartupResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+ 
+ var (
+ 	file_vela_v1_fleet_maintenance_proto_rawDescOnce sync.Once
+@@ -1474,67 +1885,82 @@ func file_vela_v1_fleet_maintenance_proto_rawDescGZIP() []byte {
+ }
+ 
+ var file_vela_v1_fleet_maintenance_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+-var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
++var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+ var file_vela_v1_fleet_maintenance_proto_goTypes = []any{
+ 	(FleetMutationOperation)(0),                  // 0: vela.v1.FleetMutationOperation
+-	(*ClaimWorkerBootstrapRequest)(nil),          // 1: vela.v1.ClaimWorkerBootstrapRequest
+-	(*WorkerBootstrapClaim)(nil),                 // 2: vela.v1.WorkerBootstrapClaim
+-	(*ClaimWorkerBootstrapResponse)(nil),         // 3: vela.v1.ClaimWorkerBootstrapResponse
+-	(*RecordWorkerBootstrapReceiptRequest)(nil),  // 4: vela.v1.RecordWorkerBootstrapReceiptRequest
+-	(*WorkerBootstrapJournalPair)(nil),           // 5: vela.v1.WorkerBootstrapJournalPair
+-	(*RecordWorkerBootstrapReceiptResponse)(nil), // 6: vela.v1.RecordWorkerBootstrapReceiptResponse
+-	(*LookupWorkerBootstrapRequest)(nil),         // 7: vela.v1.LookupWorkerBootstrapRequest
+-	(*LookupWorkerBootstrapResponse)(nil),        // 8: vela.v1.LookupWorkerBootstrapResponse
+-	(*WorkerBootstrapAbandonment)(nil),           // 9: vela.v1.WorkerBootstrapAbandonment
+-	(*AbandonWorkerBootstrapRequest)(nil),        // 10: vela.v1.AbandonWorkerBootstrapRequest
+-	(*AbandonWorkerBootstrapResponse)(nil),       // 11: vela.v1.AbandonWorkerBootstrapResponse
+-	(*WorkerBootstrapBinding)(nil),               // 12: vela.v1.WorkerBootstrapBinding
+-	(*LookupWorkerBootstrapBindingRequest)(nil),  // 13: vela.v1.LookupWorkerBootstrapBindingRequest
+-	(*LookupWorkerBootstrapBindingResponse)(nil), // 14: vela.v1.LookupWorkerBootstrapBindingResponse
+-	(*ApplyResidencyPlanRequest)(nil),            // 15: vela.v1.ApplyResidencyPlanRequest
+-	(*ApplyResidencyPlanResponse)(nil),           // 16: vela.v1.ApplyResidencyPlanResponse
+-	(*ObserveWorkerInstanceRequest)(nil),         // 17: vela.v1.ObserveWorkerInstanceRequest
+-	(*ObserveWorkerInstanceResponse)(nil),        // 18: vela.v1.ObserveWorkerInstanceResponse
+-	(*AuthorizeMutationRequest)(nil),             // 19: vela.v1.AuthorizeMutationRequest
+-	(*AuthorizeMutationResponse)(nil),            // 20: vela.v1.AuthorizeMutationResponse
+-	(*timestamppb.Timestamp)(nil),                // 21: google.protobuf.Timestamp
++	(*RuntimeStartupEpoch)(nil),                  // 1: vela.v1.RuntimeStartupEpoch
++	(*ReserveRuntimeStartupRequest)(nil),         // 2: vela.v1.ReserveRuntimeStartupRequest
++	(*RuntimeStartupReservation)(nil),            // 3: vela.v1.RuntimeStartupReservation
++	(*ReserveRuntimeStartupResponse)(nil),        // 4: vela.v1.ReserveRuntimeStartupResponse
++	(*LookupRuntimeStartupRequest)(nil),          // 5: vela.v1.LookupRuntimeStartupRequest
++	(*LookupRuntimeStartupResponse)(nil),         // 6: vela.v1.LookupRuntimeStartupResponse
++	(*ClaimWorkerBootstrapRequest)(nil),          // 7: vela.v1.ClaimWorkerBootstrapRequest
++	(*WorkerBootstrapClaim)(nil),                 // 8: vela.v1.WorkerBootstrapClaim
++	(*ClaimWorkerBootstrapResponse)(nil),         // 9: vela.v1.ClaimWorkerBootstrapResponse
++	(*RecordWorkerBootstrapReceiptRequest)(nil),  // 10: vela.v1.RecordWorkerBootstrapReceiptRequest
++	(*WorkerBootstrapJournalPair)(nil),           // 11: vela.v1.WorkerBootstrapJournalPair
++	(*RecordWorkerBootstrapReceiptResponse)(nil), // 12: vela.v1.RecordWorkerBootstrapReceiptResponse
++	(*LookupWorkerBootstrapRequest)(nil),         // 13: vela.v1.LookupWorkerBootstrapRequest
++	(*LookupWorkerBootstrapResponse)(nil),        // 14: vela.v1.LookupWorkerBootstrapResponse
++	(*WorkerBootstrapAbandonment)(nil),           // 15: vela.v1.WorkerBootstrapAbandonment
++	(*AbandonWorkerBootstrapRequest)(nil),        // 16: vela.v1.AbandonWorkerBootstrapRequest
++	(*AbandonWorkerBootstrapResponse)(nil),       // 17: vela.v1.AbandonWorkerBootstrapResponse
++	(*WorkerBootstrapBinding)(nil),               // 18: vela.v1.WorkerBootstrapBinding
++	(*LookupWorkerBootstrapBindingRequest)(nil),  // 19: vela.v1.LookupWorkerBootstrapBindingRequest
++	(*LookupWorkerBootstrapBindingResponse)(nil), // 20: vela.v1.LookupWorkerBootstrapBindingResponse
++	(*ApplyResidencyPlanRequest)(nil),            // 21: vela.v1.ApplyResidencyPlanRequest
++	(*ApplyResidencyPlanResponse)(nil),           // 22: vela.v1.ApplyResidencyPlanResponse
++	(*ObserveWorkerInstanceRequest)(nil),         // 23: vela.v1.ObserveWorkerInstanceRequest
++	(*ObserveWorkerInstanceResponse)(nil),        // 24: vela.v1.ObserveWorkerInstanceResponse
++	(*AuthorizeMutationRequest)(nil),             // 25: vela.v1.AuthorizeMutationRequest
++	(*AuthorizeMutationResponse)(nil),            // 26: vela.v1.AuthorizeMutationResponse
++	(*timestamppb.Timestamp)(nil),                // 27: google.protobuf.Timestamp
+ }
+ var file_vela_v1_fleet_maintenance_proto_depIdxs = []int32{
+-	21, // 0: vela.v1.WorkerBootstrapClaim.claimed_at:type_name -> google.protobuf.Timestamp
+-	2,  // 1: vela.v1.ClaimWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
+-	21, // 2: vela.v1.WorkerBootstrapJournalPair.recorded_at:type_name -> google.protobuf.Timestamp
+-	5,  // 3: vela.v1.RecordWorkerBootstrapReceiptResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
+-	2,  // 4: vela.v1.LookupWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
+-	5,  // 5: vela.v1.LookupWorkerBootstrapResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
+-	9,  // 6: vela.v1.LookupWorkerBootstrapResponse.abandonment:type_name -> vela.v1.WorkerBootstrapAbandonment
+-	21, // 7: vela.v1.WorkerBootstrapAbandonment.abandoned_at:type_name -> google.protobuf.Timestamp
+-	2,  // 8: vela.v1.AbandonWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
+-	9,  // 9: vela.v1.AbandonWorkerBootstrapResponse.abandonment:type_name -> vela.v1.WorkerBootstrapAbandonment
+-	2,  // 10: vela.v1.WorkerBootstrapBinding.claim:type_name -> vela.v1.WorkerBootstrapClaim
+-	5,  // 11: vela.v1.WorkerBootstrapBinding.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
+-	12, // 12: vela.v1.LookupWorkerBootstrapBindingResponse.binding:type_name -> vela.v1.WorkerBootstrapBinding
+-	0,  // 13: vela.v1.AuthorizeMutationRequest.operation:type_name -> vela.v1.FleetMutationOperation
+-	15, // 14: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:input_type -> vela.v1.ApplyResidencyPlanRequest
+-	17, // 15: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:input_type -> vela.v1.ObserveWorkerInstanceRequest
+-	19, // 16: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
+-	1,  // 17: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:input_type -> vela.v1.ClaimWorkerBootstrapRequest
+-	4,  // 18: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:input_type -> vela.v1.RecordWorkerBootstrapReceiptRequest
+-	7,  // 19: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:input_type -> vela.v1.LookupWorkerBootstrapRequest
+-	13, // 20: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:input_type -> vela.v1.LookupWorkerBootstrapBindingRequest
+-	10, // 21: vela.v1.FleetMaintenanceService.AbandonWorkerBootstrap:input_type -> vela.v1.AbandonWorkerBootstrapRequest
+-	16, // 22: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:output_type -> vela.v1.ApplyResidencyPlanResponse
+-	18, // 23: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:output_type -> vela.v1.ObserveWorkerInstanceResponse
+-	20, // 24: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
+-	3,  // 25: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:output_type -> vela.v1.ClaimWorkerBootstrapResponse
+-	6,  // 26: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:output_type -> vela.v1.RecordWorkerBootstrapReceiptResponse
+-	8,  // 27: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:output_type -> vela.v1.LookupWorkerBootstrapResponse
+-	14, // 28: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:output_type -> vela.v1.LookupWorkerBootstrapBindingResponse
+-	11, // 29: vela.v1.FleetMaintenanceService.AbandonWorkerBootstrap:output_type -> vela.v1.AbandonWorkerBootstrapResponse
+-	22, // [22:30] is the sub-list for method output_type
+-	14, // [14:22] is the sub-list for method input_type
+-	14, // [14:14] is the sub-list for extension type_name
+-	14, // [14:14] is the sub-list for extension extendee
+-	0,  // [0:14] is the sub-list for field type_name
++	1,  // 0: vela.v1.ReserveRuntimeStartupRequest.epochs:type_name -> vela.v1.RuntimeStartupEpoch
++	2,  // 1: vela.v1.RuntimeStartupReservation.request:type_name -> vela.v1.ReserveRuntimeStartupRequest
++	27, // 2: vela.v1.RuntimeStartupReservation.reserved_at:type_name -> google.protobuf.Timestamp
++	3,  // 3: vela.v1.ReserveRuntimeStartupResponse.reservation:type_name -> vela.v1.RuntimeStartupReservation
++	3,  // 4: vela.v1.LookupRuntimeStartupResponse.reservation:type_name -> vela.v1.RuntimeStartupReservation
++	27, // 5: vela.v1.WorkerBootstrapClaim.claimed_at:type_name -> google.protobuf.Timestamp
++	8,  // 6: vela.v1.ClaimWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
++	27, // 7: vela.v1.WorkerBootstrapJournalPair.recorded_at:type_name -> google.protobuf.Timestamp
++	11, // 8: vela.v1.RecordWorkerBootstrapReceiptResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
++	8,  // 9: vela.v1.LookupWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
++	11, // 10: vela.v1.LookupWorkerBootstrapResponse.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
++	15, // 11: vela.v1.LookupWorkerBootstrapResponse.abandonment:type_name -> vela.v1.WorkerBootstrapAbandonment
++	27, // 12: vela.v1.WorkerBootstrapAbandonment.abandoned_at:type_name -> google.protobuf.Timestamp
++	8,  // 13: vela.v1.AbandonWorkerBootstrapResponse.claim:type_name -> vela.v1.WorkerBootstrapClaim
++	15, // 14: vela.v1.AbandonWorkerBootstrapResponse.abandonment:type_name -> vela.v1.WorkerBootstrapAbandonment
++	8,  // 15: vela.v1.WorkerBootstrapBinding.claim:type_name -> vela.v1.WorkerBootstrapClaim
++	11, // 16: vela.v1.WorkerBootstrapBinding.pair:type_name -> vela.v1.WorkerBootstrapJournalPair
++	18, // 17: vela.v1.LookupWorkerBootstrapBindingResponse.binding:type_name -> vela.v1.WorkerBootstrapBinding
++	0,  // 18: vela.v1.AuthorizeMutationRequest.operation:type_name -> vela.v1.FleetMutationOperation
++	21, // 19: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:input_type -> vela.v1.ApplyResidencyPlanRequest
++	23, // 20: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:input_type -> vela.v1.ObserveWorkerInstanceRequest
++	25, // 21: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
++	7,  // 22: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:input_type -> vela.v1.ClaimWorkerBootstrapRequest
++	10, // 23: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:input_type -> vela.v1.RecordWorkerBootstrapReceiptRequest
++	13, // 24: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:input_type -> vela.v1.LookupWorkerBootstrapRequest
++	19, // 25: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:input_type -> vela.v1.LookupWorkerBootstrapBindingRequest
++	16, // 26: vela.v1.FleetMaintenanceService.AbandonWorkerBootstrap:input_type -> vela.v1.AbandonWorkerBootstrapRequest
++	2,  // 27: vela.v1.FleetMaintenanceService.ReserveRuntimeStartup:input_type -> vela.v1.ReserveRuntimeStartupRequest
++	5,  // 28: vela.v1.FleetMaintenanceService.LookupRuntimeStartup:input_type -> vela.v1.LookupRuntimeStartupRequest
++	22, // 29: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:output_type -> vela.v1.ApplyResidencyPlanResponse
++	24, // 30: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:output_type -> vela.v1.ObserveWorkerInstanceResponse
++	26, // 31: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
++	9,  // 32: vela.v1.FleetMaintenanceService.ClaimWorkerBootstrap:output_type -> vela.v1.ClaimWorkerBootstrapResponse
++	12, // 33: vela.v1.FleetMaintenanceService.RecordWorkerBootstrapReceipt:output_type -> vela.v1.RecordWorkerBootstrapReceiptResponse
++	14, // 34: vela.v1.FleetMaintenanceService.LookupWorkerBootstrap:output_type -> vela.v1.LookupWorkerBootstrapResponse
++	20, // 35: vela.v1.FleetMaintenanceService.LookupWorkerBootstrapBinding:output_type -> vela.v1.LookupWorkerBootstrapBindingResponse
++	17, // 36: vela.v1.FleetMaintenanceService.AbandonWorkerBootstrap:output_type -> vela.v1.AbandonWorkerBootstrapResponse
++	4,  // 37: vela.v1.FleetMaintenanceService.ReserveRuntimeStartup:output_type -> vela.v1.ReserveRuntimeStartupResponse
++	6,  // 38: vela.v1.FleetMaintenanceService.LookupRuntimeStartup:output_type -> vela.v1.LookupRuntimeStartupResponse
++	29, // [29:39] is the sub-list for method output_type
++	19, // [19:29] is the sub-list for method input_type
++	19, // [19:19] is the sub-list for extension type_name
++	19, // [19:19] is the sub-list for extension extendee
++	0,  // [0:19] is the sub-list for field type_name
+ }
+ 
+ func init() { file_vela_v1_fleet_maintenance_proto_init() }
+@@ -1548,7 +1974,7 @@ func file_vela_v1_fleet_maintenance_proto_init() {
+ 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+ 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_fleet_maintenance_proto_rawDesc), len(file_vela_v1_fleet_maintenance_proto_rawDesc)),
+ 			NumEnums:      1,
+-			NumMessages:   20,
++			NumMessages:   26,
+ 			NumExtensions: 0,
+ 			NumServices:   1,
+ 		},
+diff --git a/proto/gen/vela/v1/fleet_maintenance_grpc.pb.go b/proto/gen/vela/v1/fleet_maintenance_grpc.pb.go
+index 3292e16..b5081f9 100644
+--- a/proto/gen/vela/v1/fleet_maintenance_grpc.pb.go
++++ b/proto/gen/vela/v1/fleet_maintenance_grpc.pb.go
+@@ -27,6 +27,8 @@ const (
+ 	FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName        = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrap"
+ 	FleetMaintenanceService_LookupWorkerBootstrapBinding_FullMethodName = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrapBinding"
+ 	FleetMaintenanceService_AbandonWorkerBootstrap_FullMethodName       = "/vela.v1.FleetMaintenanceService/AbandonWorkerBootstrap"
++	FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName        = "/vela.v1.FleetMaintenanceService/ReserveRuntimeStartup"
++	FleetMaintenanceService_LookupRuntimeStartup_FullMethodName         = "/vela.v1.FleetMaintenanceService/LookupRuntimeStartup"
+ )
+ 
+ // FleetMaintenanceServiceClient is the client API for FleetMaintenanceService service.
+@@ -41,6 +43,8 @@ type FleetMaintenanceServiceClient interface {
+ 	LookupWorkerBootstrap(ctx context.Context, in *LookupWorkerBootstrapRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapResponse, error)
+ 	LookupWorkerBootstrapBinding(ctx context.Context, in *LookupWorkerBootstrapBindingRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapBindingResponse, error)
+ 	AbandonWorkerBootstrap(ctx context.Context, in *AbandonWorkerBootstrapRequest, opts ...grpc.CallOption) (*AbandonWorkerBootstrapResponse, error)
++	ReserveRuntimeStartup(ctx context.Context, in *ReserveRuntimeStartupRequest, opts ...grpc.CallOption) (*ReserveRuntimeStartupResponse, error)
++	LookupRuntimeStartup(ctx context.Context, in *LookupRuntimeStartupRequest, opts ...grpc.CallOption) (*LookupRuntimeStartupResponse, error)
+ }
+ 
+ type fleetMaintenanceServiceClient struct {
+@@ -131,6 +135,26 @@ func (c *fleetMaintenanceServiceClient) AbandonWorkerBootstrap(ctx context.Conte
+ 	return out, nil
+ }
+ 
++func (c *fleetMaintenanceServiceClient) ReserveRuntimeStartup(ctx context.Context, in *ReserveRuntimeStartupRequest, opts ...grpc.CallOption) (*ReserveRuntimeStartupResponse, error) {
++	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
++	out := new(ReserveRuntimeStartupResponse)
++	err := c.cc.Invoke(ctx, FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName, in, out, cOpts...)
++	if err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
++func (c *fleetMaintenanceServiceClient) LookupRuntimeStartup(ctx context.Context, in *LookupRuntimeStartupRequest, opts ...grpc.CallOption) (*LookupRuntimeStartupResponse, error) {
++	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
++	out := new(LookupRuntimeStartupResponse)
++	err := c.cc.Invoke(ctx, FleetMaintenanceService_LookupRuntimeStartup_FullMethodName, in, out, cOpts...)
++	if err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
+ // FleetMaintenanceServiceServer is the server API for FleetMaintenanceService service.
+ // All implementations must embed UnimplementedFleetMaintenanceServiceServer
+ // for forward compatibility.
+@@ -143,6 +167,8 @@ type FleetMaintenanceServiceServer interface {
+ 	LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error)
+ 	LookupWorkerBootstrapBinding(context.Context, *LookupWorkerBootstrapBindingRequest) (*LookupWorkerBootstrapBindingResponse, error)
+ 	AbandonWorkerBootstrap(context.Context, *AbandonWorkerBootstrapRequest) (*AbandonWorkerBootstrapResponse, error)
++	ReserveRuntimeStartup(context.Context, *ReserveRuntimeStartupRequest) (*ReserveRuntimeStartupResponse, error)
++	LookupRuntimeStartup(context.Context, *LookupRuntimeStartupRequest) (*LookupRuntimeStartupResponse, error)
+ 	mustEmbedUnimplementedFleetMaintenanceServiceServer()
+ }
+ 
+@@ -177,6 +203,12 @@ func (UnimplementedFleetMaintenanceServiceServer) LookupWorkerBootstrapBinding(c
+ func (UnimplementedFleetMaintenanceServiceServer) AbandonWorkerBootstrap(context.Context, *AbandonWorkerBootstrapRequest) (*AbandonWorkerBootstrapResponse, error) {
+ 	return nil, status.Error(codes.Unimplemented, "method AbandonWorkerBootstrap not implemented")
+ }
++func (UnimplementedFleetMaintenanceServiceServer) ReserveRuntimeStartup(context.Context, *ReserveRuntimeStartupRequest) (*ReserveRuntimeStartupResponse, error) {
++	return nil, status.Error(codes.Unimplemented, "method ReserveRuntimeStartup not implemented")
++}
++func (UnimplementedFleetMaintenanceServiceServer) LookupRuntimeStartup(context.Context, *LookupRuntimeStartupRequest) (*LookupRuntimeStartupResponse, error) {
++	return nil, status.Error(codes.Unimplemented, "method LookupRuntimeStartup not implemented")
++}
+ func (UnimplementedFleetMaintenanceServiceServer) mustEmbedUnimplementedFleetMaintenanceServiceServer() {
+ }
+ func (UnimplementedFleetMaintenanceServiceServer) testEmbeddedByValue() {}
+@@ -343,6 +375,42 @@ func _FleetMaintenanceService_AbandonWorkerBootstrap_Handler(srv interface{}, ct
+ 	return interceptor(ctx, in, info, handler)
+ }
+ 
++func _FleetMaintenanceService_ReserveRuntimeStartup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
++	in := new(ReserveRuntimeStartupRequest)
++	if err := dec(in); err != nil {
++		return nil, err
++	}
++	if interceptor == nil {
++		return srv.(FleetMaintenanceServiceServer).ReserveRuntimeStartup(ctx, in)
++	}
++	info := &grpc.UnaryServerInfo{
++		Server:     srv,
++		FullMethod: FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName,
++	}
++	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
++		return srv.(FleetMaintenanceServiceServer).ReserveRuntimeStartup(ctx, req.(*ReserveRuntimeStartupRequest))
++	}
++	return interceptor(ctx, in, info, handler)
++}
++
++func _FleetMaintenanceService_LookupRuntimeStartup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
++	in := new(LookupRuntimeStartupRequest)
++	if err := dec(in); err != nil {
++		return nil, err
++	}
++	if interceptor == nil {
++		return srv.(FleetMaintenanceServiceServer).LookupRuntimeStartup(ctx, in)
++	}
++	info := &grpc.UnaryServerInfo{
++		Server:     srv,
++		FullMethod: FleetMaintenanceService_LookupRuntimeStartup_FullMethodName,
++	}
++	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
++		return srv.(FleetMaintenanceServiceServer).LookupRuntimeStartup(ctx, req.(*LookupRuntimeStartupRequest))
++	}
++	return interceptor(ctx, in, info, handler)
++}
++
+ // FleetMaintenanceService_ServiceDesc is the grpc.ServiceDesc for FleetMaintenanceService service.
+ // It's only intended for direct use with grpc.RegisterService,
+ // and not to be introspected or modified (even as a copy)
+@@ -382,6 +450,14 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
+ 			MethodName: "AbandonWorkerBootstrap",
+ 			Handler:    _FleetMaintenanceService_AbandonWorkerBootstrap_Handler,
+ 		},
++		{
++			MethodName: "ReserveRuntimeStartup",
++			Handler:    _FleetMaintenanceService_ReserveRuntimeStartup_Handler,
++		},
++		{
++			MethodName: "LookupRuntimeStartup",
++			Handler:    _FleetMaintenanceService_LookupRuntimeStartup_Handler,
++		},
+ 	},
+ 	Streams:  []grpc.StreamDesc{},
+ 	Metadata: "vela/v1/fleet_maintenance.proto",
+diff --git a/proto/vela/v1/fleet_maintenance.proto b/proto/vela/v1/fleet_maintenance.proto
+index ec0bf07..908ba98 100644
+--- a/proto/vela/v1/fleet_maintenance.proto
++++ b/proto/vela/v1/fleet_maintenance.proto
+@@ -23,6 +23,52 @@ service FleetMaintenanceService {
+       returns (LookupWorkerBootstrapBindingResponse);
+   rpc AbandonWorkerBootstrap(AbandonWorkerBootstrapRequest)
+       returns (AbandonWorkerBootstrapResponse);
++  rpc ReserveRuntimeStartup(ReserveRuntimeStartupRequest)
++      returns (ReserveRuntimeStartupResponse);
++  rpc LookupRuntimeStartup(LookupRuntimeStartupRequest)
++      returns (LookupRuntimeStartupResponse);
++}
++
++message RuntimeStartupEpoch {
++  string model_residency_id = 1;
++  string model_runtime_identity = 2;
++  string stage_profile_revision_id = 3;
++  int64 model_runtime_epoch = 4;
++}
++
++// Node and actor are derived from registered mTLS identity, never request data.
++message ReserveRuntimeStartupRequest {
++  string request_id = 1;
++  string bootstrap_request_id = 2;
++  string runtime_journal_id = 3;
++  bytes runtime_scope = 4;
++  string incarnation_id = 5;
++  bytes launch_digest = 6;
++  bytes owner_observation_digest = 7;
++  repeated RuntimeStartupEpoch epochs = 8;
++}
++
++// Immutable first-use reservation history, not Node permission or readiness.
++message RuntimeStartupReservation {
++  ReserveRuntimeStartupRequest request = 1;
++  string node_identity = 2;
++  string actor_identity = 3;
++  google.protobuf.Timestamp reserved_at = 4;
++}
++
++message ReserveRuntimeStartupResponse {
++  RuntimeStartupReservation reservation = 1;
++  // Only the inserting committed RPC is fresh. No retry or lookup renews it.
++  bool fresh = 2;
++}
++
++message LookupRuntimeStartupRequest {
++  string request_id = 1;
++}
++
++// Deliberately has no fresh/permission field.
++message LookupRuntimeStartupResponse {
++  RuntimeStartupReservation reservation = 1;
+ }
+ 
+ message ClaimWorkerBootstrapRequest {
+diff --git a/internal/fleettransport/runtime_startup.go b/internal/fleettransport/runtime_startup.go
+new file mode 100644
+index 0000000..3a90cec
+--- /dev/null
++++ b/internal/fleettransport/runtime_startup.go
+@@ -0,0 +1,218 @@
++package fleettransport
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"slices"
++	"strings"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/fleet"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
++	"google.golang.org/protobuf/types/known/timestamppb"
++)
++
++const maximumRuntimeStartupBytes = 64 << 10
++
++type RuntimeStartupService interface {
++	ReserveRuntimeStartup(context.Context, fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error)
++	LookupRuntimeStartup(context.Context, fleet.WorkerBootstrapLookup) (fleet.RuntimeStartupReservation, error)
++}
++
++func (server *Server) authenticateRuntimeStartup(ctx context.Context) (nodeAgentPrincipal, error) {
++	principal, err := server.authenticateBootstrap(ctx)
++	if err != nil {
++		return nodeAgentPrincipal{}, err
++	}
++	if server.runtimeStartup == nil {
++		return nodeAgentPrincipal{}, status.Error(codes.Unimplemented, "Runtime startup reservation is not configured")
++	}
++	return principal, nil
++}
++
++func (server *Server) ReserveRuntimeStartup(ctx context.Context, request *velav1.ReserveRuntimeStartupRequest) (*velav1.ReserveRuntimeStartupResponse, error) {
++	principal, err := server.authenticateRuntimeStartup(ctx)
++	if err != nil {
++		return nil, err
++	}
++	parsed, err := decodeRuntimeStartupRequest(request, principal)
++	if err != nil {
++		return nil, invalidRequest("Runtime startup reservation")
++	}
++	// Scope-check immutable bootstrap history before consuming any permission.
++	// The SQL transaction independently repeats current-state and pair checks.
++	history, err := server.lookupBootstrap(ctx, parsed.BootstrapRequestID, principal)
++	if err != nil {
++		return nil, err
++	}
++	if history.Receipt == nil || history.Abandonment != nil || history.Receipt.RuntimeJournalID != parsed.RuntimeJournalID ||
++		!bytes.Equal(history.Receipt.RuntimeScope, parsed.RuntimeScope) {
++		return nil, status.Error(codes.FailedPrecondition, "Runtime startup requires its retained journal pair")
++	}
++	result, err := server.runtimeStartup.ReserveRuntimeStartup(ctx, parsed)
++	if err != nil {
++		return nil, mapServiceError("reserve Runtime startup", err)
++	}
++	wire := encodeRuntimeStartupReservation(result)
++	checked, err := decodeRuntimeStartupReservation(wire, principal)
++	if err != nil || !sameRuntimeStartupRequest(checked.RuntimeStartupRequest, parsed) {
++		return nil, invalidAuthoritativeResult("Runtime startup reservation")
++	}
++	return &velav1.ReserveRuntimeStartupResponse{Reservation: wire, Fresh: result.Fresh}, nil
++}
++
++func (server *Server) LookupRuntimeStartup(ctx context.Context, request *velav1.LookupRuntimeStartupRequest) (*velav1.LookupRuntimeStartupResponse, error) {
++	principal, err := server.authenticateRuntimeStartup(ctx)
++	if err != nil {
++		return nil, err
++	}
++	if !knownBootstrapMessage(request) {
++		return nil, invalidRequest("Runtime startup lookup")
++	}
++	id, err := bootstrapUUID(request.GetRequestId())
++	if err != nil {
++		return nil, invalidRequest("Runtime startup lookup")
++	}
++	result, err := server.runtimeStartup.LookupRuntimeStartup(ctx, fleet.WorkerBootstrapLookup{
++		RequestID: id, NodeIdentity: principal.NodeIdentity, ActorIdentity: principal.actorIdentity()})
++	if err != nil {
++		return nil, mapServiceError("lookup Runtime startup", err)
++	}
++	wire := encodeRuntimeStartupReservation(result)
++	checked, err := decodeRuntimeStartupReservation(wire, principal)
++	if err != nil || checked.RequestID != id || result.Fresh {
++		return nil, invalidAuthoritativeResult("Runtime startup history")
++	}
++	return &velav1.LookupRuntimeStartupResponse{Reservation: wire}, nil
++}
++
++// ReserveRuntimeStartup exposes committed first-use reservation only. The
++// authenticated response is not a Node grant, live pidfd or recovery token.
++// No application retry or history-to-Fresh conversion occurs in this client.
++func (client *BootstrapClient) ReserveRuntimeStartup(ctx context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++	if !client.configured(ctx) || request.NodeIdentity != client.NodeIdentity() || request.ActorIdentity != client.ActorIdentity() {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup client principal is invalid")
++	}
++	wire := encodeRuntimeStartupRequest(request)
++	expected, err := decodeRuntimeStartupRequest(wire, client.principal)
++	if err != nil {
++		return fleet.RuntimeStartupReservation{}, err
++	}
++	response, err := client.service.ReserveRuntimeStartup(ctx, wire,
++		grpc.MaxCallSendMsgSize(maximumRuntimeStartupBytes), grpc.MaxCallRecvMsgSize(maximumRuntimeStartupBytes))
++	if err != nil {
++		return fleet.RuntimeStartupReservation{}, err
++	}
++	if !knownBootstrapMessage(response) {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup response is invalid")
++	}
++	result, err := decodeRuntimeStartupReservation(response.GetReservation(), client.principal)
++	if err != nil || !sameRuntimeStartupRequest(result.RuntimeStartupRequest, expected) {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup response changed the requested identity")
++	}
++	result.Fresh = response.GetFresh()
++	return result, nil
++}
++
++// LookupRuntimeStartup reads a reservation ID, not a bootstrap request ID.
++// Its wire response has no Fresh field and never reconstructs permission.
++func (client *BootstrapClient) LookupRuntimeStartup(ctx context.Context, requestID uuid.UUID) (fleet.RuntimeStartupReservation, error) {
++	if !client.configured(ctx) || requestID == uuid.Nil {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup lookup identity is invalid")
++	}
++	response, err := client.service.LookupRuntimeStartup(ctx, &velav1.LookupRuntimeStartupRequest{RequestId: requestID.String()},
++		grpc.MaxCallRecvMsgSize(maximumRuntimeStartupBytes))
++	if err != nil {
++		return fleet.RuntimeStartupReservation{}, err
++	}
++	if !knownBootstrapMessage(response) {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup history response is invalid")
++	}
++	result, err := decodeRuntimeStartupReservation(response.GetReservation(), client.principal)
++	if err != nil || result.RequestID != requestID {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup history changed the requested identity")
++	}
++	return result, nil
++}
++
++func decodeRuntimeStartupRequest(wire *velav1.ReserveRuntimeStartupRequest, principal nodeAgentPrincipal) (fleet.RuntimeStartupRequest, error) {
++	invalid := errors.New("runtime startup request is invalid")
++	if !knownBootstrapMessage(wire) || proto.Size(wire) > maximumRuntimeStartupBytes ||
++		len(wire.GetEpochs()) == 0 || len(wire.GetEpochs()) > 64 || !validBootstrapDigest(wire.GetRuntimeScope()) ||
++		!validBootstrapDigest(wire.GetLaunchDigest()) || !validBootstrapDigest(wire.GetOwnerObservationDigest()) {
++		return fleet.RuntimeStartupRequest{}, invalid
++	}
++	id, e1 := bootstrapUUID(wire.GetRequestId())
++	bootstrap, e2 := bootstrapUUID(wire.GetBootstrapRequestId())
++	journal, e3 := bootstrapUUID(wire.GetRuntimeJournalId())
++	incarnation, e4 := bootstrapUUID(wire.GetIncarnationId())
++	if errors.Join(e1, e2, e3, e4) != nil || incarnation.Version() != 4 || incarnation.Variant() != uuid.RFC4122 {
++		return fleet.RuntimeStartupRequest{}, invalid
++	}
++	result := fleet.RuntimeStartupRequest{RequestID: id, BootstrapRequestID: bootstrap, RuntimeJournalID: journal,
++		IncarnationID: incarnation, NodeIdentity: principal.NodeIdentity, ActorIdentity: principal.actorIdentity(),
++		RuntimeScope: bytes.Clone(wire.GetRuntimeScope()), LaunchDigest: bytes.Clone(wire.GetLaunchDigest()),
++		OwnerObservationDigest: bytes.Clone(wire.GetOwnerObservationDigest())}
++	seen := make(map[uuid.UUID]bool)
++	for _, epoch := range wire.GetEpochs() {
++		if !knownBootstrapMessage(epoch) || epoch.GetModelRuntimeEpoch() <= 0 || !validText(epoch.GetModelRuntimeIdentity(), 300) {
++			return fleet.RuntimeStartupRequest{}, invalid
++		}
++		residency, e1 := bootstrapUUID(epoch.GetModelResidencyId())
++		profile, e2 := bootstrapUUID(epoch.GetStageProfileRevisionId())
++		if errors.Join(e1, e2) != nil || seen[residency] {
++			return fleet.RuntimeStartupRequest{}, invalid
++		}
++		seen[residency] = true
++		result.Epochs = append(result.Epochs, fleet.RuntimeStartupEpoch{ModelResidencyID: residency,
++			StageProfileRevisionID: profile, ModelRuntimeIdentity: epoch.GetModelRuntimeIdentity(), ModelRuntimeEpoch: epoch.GetModelRuntimeEpoch()})
++	}
++	sortRuntimeStartupEpochs(result.Epochs)
++	return result, nil
++}
++
++func encodeRuntimeStartupRequest(request fleet.RuntimeStartupRequest) *velav1.ReserveRuntimeStartupRequest {
++	wire := &velav1.ReserveRuntimeStartupRequest{RequestId: request.RequestID.String(), BootstrapRequestId: request.BootstrapRequestID.String(),
++		RuntimeJournalId: request.RuntimeJournalID.String(), RuntimeScope: bytes.Clone(request.RuntimeScope), IncarnationId: request.IncarnationID.String(),
++		LaunchDigest: bytes.Clone(request.LaunchDigest), OwnerObservationDigest: bytes.Clone(request.OwnerObservationDigest)}
++	epochs := slices.Clone(request.Epochs)
++	sortRuntimeStartupEpochs(epochs)
++	for _, epoch := range epochs {
++		wire.Epochs = append(wire.Epochs, &velav1.RuntimeStartupEpoch{ModelResidencyId: epoch.ModelResidencyID.String(),
++			StageProfileRevisionId: epoch.StageProfileRevisionID.String(), ModelRuntimeIdentity: epoch.ModelRuntimeIdentity, ModelRuntimeEpoch: epoch.ModelRuntimeEpoch})
++	}
++	return wire
++}
++
++func sortRuntimeStartupEpochs(epochs []fleet.RuntimeStartupEpoch) {
++	slices.SortFunc(epochs, func(a, b fleet.RuntimeStartupEpoch) int {
++		return strings.Compare(a.ModelResidencyID.String(), b.ModelResidencyID.String())
++	})
++}
++
++func encodeRuntimeStartupReservation(result fleet.RuntimeStartupReservation) *velav1.RuntimeStartupReservation {
++	return &velav1.RuntimeStartupReservation{Request: encodeRuntimeStartupRequest(result.RuntimeStartupRequest),
++		NodeIdentity: result.NodeIdentity, ActorIdentity: result.ActorIdentity, ReservedAt: timestamppb.New(result.ReservedAt)}
++}
++
++func decodeRuntimeStartupReservation(wire *velav1.RuntimeStartupReservation, principal nodeAgentPrincipal) (fleet.RuntimeStartupReservation, error) {
++	if !knownBootstrapMessage(wire) || wire.GetNodeIdentity() != principal.NodeIdentity || wire.GetActorIdentity() != principal.actorIdentity() ||
++		!validBootstrapTime(wire.GetReservedAt()) {
++		return fleet.RuntimeStartupReservation{}, errors.New("runtime startup reservation principal or timestamp is invalid")
++	}
++	request, err := decodeRuntimeStartupRequest(wire.GetRequest(), principal)
++	if err != nil {
++		return fleet.RuntimeStartupReservation{}, err
++	}
++	return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, ReservedAt: wire.GetReservedAt().AsTime()}, nil
++}
++
++func sameRuntimeStartupRequest(a, b fleet.RuntimeStartupRequest) bool {
++	return a.NodeIdentity == b.NodeIdentity && a.ActorIdentity == b.ActorIdentity &&
++		proto.Equal(encodeRuntimeStartupRequest(a), encodeRuntimeStartupRequest(b))
++}
+diff --git a/internal/fleettransport/runtime_startup_test.go b/internal/fleettransport/runtime_startup_test.go
+new file mode 100644
+index 0000000..13a7e17
+--- /dev/null
++++ b/internal/fleettransport/runtime_startup_test.go
+@@ -0,0 +1,228 @@
++package fleettransport
++
++import (
++	"bytes"
++	"context"
++	"reflect"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/fleet"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
++)
++
++func startupTransportFixture(t *testing.T) (fleet.RuntimeStartupRequest, string, *bootstrapServiceStub) {
++	t.Helper()
++	bootstrap, identity := bootstrapTransportFixture(t)
++	principal, _ := parseNodeAgentSPIFFEIdentity(identity)
++	service := &bootstrapServiceStub{}
++	_, err := service.ClaimWorkerBootstrap(t.Context(), bootstrap)
++	mustBootstrap(t, err)
++	r := fleet.RuntimeStartupRequest{RequestID: uuid.New(), BootstrapRequestID: bootstrap.RequestID,
++		NodeIdentity: principal.NodeIdentity, ActorIdentity: principal.actorIdentity(), RuntimeJournalID: uuid.New(),
++		RuntimeScope: bytes.Repeat([]byte{1}, 32), LaunchDigest: bytes.Repeat([]byte{2}, 32),
++		OwnerObservationDigest: bytes.Repeat([]byte{3}, 32), IncarnationID: uuid.New(),
++		Epochs: []fleet.RuntimeStartupEpoch{{ModelResidencyID: uuid.New(), ModelRuntimeIdentity: "cpu-fixture",
++			StageProfileRevisionID: uuid.New(), ModelRuntimeEpoch: 2}}}
++	_, err = service.RecordWorkerBootstrapReceipt(t.Context(), fleet.WorkerBootstrapReceipt{
++		RequestID: bootstrap.RequestID, ActorIdentity: r.ActorIdentity, WorkerJournalID: uuid.New(),
++		WorkerScope: bytes.Repeat([]byte{4}, 32), RuntimeJournalID: r.RuntimeJournalID, RuntimeScope: r.RuntimeScope})
++	mustBootstrap(t, err)
++	return r, identity, service
++}
++
++type startupServiceStub struct {
++	result fleet.RuntimeStartupReservation
++	calls  int
++}
++
++func (s *startupServiceStub) ReserveRuntimeStartup(_ context.Context, _ fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++	s.calls++
++	return s.result, nil
++}
++
++func (s *startupServiceStub) LookupRuntimeStartup(_ context.Context, _ fleet.WorkerBootstrapLookup) (fleet.RuntimeStartupReservation, error) {
++	return s.result, nil
++}
++
++func TestRuntimeStartupTransportRejectsBeforeReservation(t *testing.T) {
++	r, identity, bootstrap := startupTransportFixture(t)
++	principal, _ := parseNodeAgentSPIFFEIdentity(identity)
++	service := &startupServiceStub{result: fleet.RuntimeStartupReservation{RuntimeStartupRequest: r, Fresh: true, ReservedAt: time.Now().UTC()}}
++	config := Config{SPIFFEIdentity: fleetSPIFFE, ActorIdentity: "fleet/primary", BootstrapService: bootstrap,
++		RuntimeStartupService: service, NodeAgentRegistrations: []NodeAgentRegistration{{NodeIdentity: principal.NodeIdentity,
++			AgentID: principal.AgentID, SPIFFEIdentity: identity}}}
++	server, err := NewServer(bootstrap, config)
++	mustBootstrap(t, err)
++	wire := encodeRuntimeStartupRequest(r)
++	for _, ctx := range []context.Context{context.Background(), verifiedPeerContext(t, fleetSPIFFE)} {
++		if _, err := server.ReserveRuntimeStartup(ctx, wire); status.Code(err) != codes.Unauthenticated {
++			t.Fatalf("untrusted caller: %v", err)
++		}
++	}
++	ctx := verifiedPeerContext(t, identity)
++	for name, mutate := range map[string]func(*velav1.ReserveRuntimeStartupRequest){
++		"unknown":        func(w *velav1.ReserveRuntimeStartupRequest) { w.ProtoReflect().SetUnknown([]byte{0x48, 1}) },
++		"nested unknown": func(w *velav1.ReserveRuntimeStartupRequest) { w.Epochs[0].ProtoReflect().SetUnknown([]byte{0x28, 1}) },
++		"zero request":   func(w *velav1.ReserveRuntimeStartupRequest) { w.RequestId = uuid.Nil.String() },
++		"missing epochs": func(w *velav1.ReserveRuntimeStartupRequest) { w.Epochs = nil },
++		"nil epoch":      func(w *velav1.ReserveRuntimeStartupRequest) { w.Epochs[0] = nil },
++		"too many epochs": func(w *velav1.ReserveRuntimeStartupRequest) {
++			for len(w.Epochs) <= 64 {
++				w.Epochs = append(w.Epochs, proto.CloneOf(w.Epochs[0]))
++			}
++		},
++		"duplicate":  func(w *velav1.ReserveRuntimeStartupRequest) { w.Epochs = append(w.Epochs, proto.CloneOf(w.Epochs[0])) },
++		"zero scope": func(w *velav1.ReserveRuntimeStartupRequest) { clear(w.RuntimeScope) },
++		"bad incarnation": func(w *velav1.ReserveRuntimeStartupRequest) {
++			w.IncarnationId = uuid.NewSHA1(uuid.Nil, []byte("bad")).String()
++		},
++		"epoch": func(w *velav1.ReserveRuntimeStartupRequest) { w.Epochs[0].ModelRuntimeEpoch = 0 },
++	} {
++		t.Run(name, func(t *testing.T) {
++			bad := proto.CloneOf(wire)
++			mutate(bad)
++			if _, err := server.ReserveRuntimeStartup(ctx, bad); status.Code(err) != codes.InvalidArgument {
++				t.Fatalf("invalid request: %v", err)
++			}
++		})
++	}
++	wrongPair := proto.CloneOf(wire)
++	wrongPair.RuntimeJournalId = uuid.NewString()
++	if _, err := server.ReserveRuntimeStartup(ctx, wrongPair); status.Code(err) != codes.FailedPrecondition {
++		t.Fatalf("wrong journal pair: %v", err)
++	}
++	if service.calls != 0 {
++		t.Fatal("rejected requests consumed first use")
++	}
++	response, err := server.ReserveRuntimeStartup(ctx, wire)
++	if err != nil || !response.GetFresh() || response.GetReservation().GetActorIdentity() != r.ActorIdentity || service.calls != 1 {
++		t.Fatalf("valid authenticated reservation: %v %v", response, err)
++	}
++	lookup := &velav1.LookupRuntimeStartupRequest{RequestId: r.RequestID.String()}
++	if _, err := server.LookupRuntimeStartup(ctx, lookup); status.Code(err) != codes.Internal {
++		t.Fatalf("authoritative Fresh escaped history endpoint: %v", err)
++	}
++	service.result.Fresh = false
++	if _, err := server.LookupRuntimeStartup(ctx, lookup); err != nil {
++		t.Fatal(err)
++	}
++	service.result.NodeIdentity = "other-node"
++	if _, err := server.ReserveRuntimeStartup(ctx, wire); status.Code(err) != codes.Internal {
++		t.Fatalf("changed authoritative principal accepted: %v", err)
++	}
++	config.RuntimeStartupService = nil
++	server, err = NewServer(bootstrap, config)
++	mustBootstrap(t, err)
++	if _, err := server.ReserveRuntimeStartup(ctx, wire); status.Code(err) != codes.Unimplemented {
++		t.Fatalf("missing reservation service: %v", err)
++	}
++}
++
++type startupRPCStub struct {
++	velav1.UnimplementedFleetMaintenanceServiceServer
++	response *velav1.ReserveRuntimeStartupResponse
++	fault    string
++}
++
++func (s *startupRPCStub) ReserveRuntimeStartup(context.Context, *velav1.ReserveRuntimeStartupRequest) (*velav1.ReserveRuntimeStartupResponse, error) {
++	if s.fault == "unavailable" {
++		return nil, status.Error(codes.Unavailable, "committed response lost")
++	}
++	return s.response, nil
++}
++
++func (s *startupRPCStub) LookupRuntimeStartup(context.Context, *velav1.LookupRuntimeStartupRequest) (*velav1.LookupRuntimeStartupResponse, error) {
++	response := &velav1.LookupRuntimeStartupResponse{Reservation: s.response.Reservation}
++	if s.fault == "lookup-unknown" {
++		response.ProtoReflect().SetUnknown([]byte{0x10, 1}) // fabricated Fresh field
++	}
++	return response, nil
++}
++
++func TestRuntimeStartupClientHistoryCannotMintFresh(t *testing.T) {
++	r, identity, _ := startupTransportFixture(t)
++	for _, fault := range []string{"", "request", "node", "actor", "time", "lookup-unknown", "unavailable"} {
++		t.Run(fault, func(t *testing.T) {
++			response := &velav1.ReserveRuntimeStartupResponse{Fresh: true, Reservation: encodeRuntimeStartupReservation(
++				fleet.RuntimeStartupReservation{RuntimeStartupRequest: r, ReservedAt: time.Now().UTC()})}
++			switch fault {
++			case "request":
++				response.Reservation.Request.RequestId = uuid.NewString()
++			case "node":
++				response.Reservation.NodeIdentity = "other-node"
++			case "actor":
++				response.Reservation.ActorIdentity = "other-actor"
++			case "time":
++				response.Reservation.ReservedAt = nil
++			}
++			base := newTestClient(t, &startupRPCStub{response: response, fault: fault})
++			client, err := base.WorkerBootstrap(identity)
++			mustBootstrap(t, err)
++			var result fleet.RuntimeStartupReservation
++			if fault == "unavailable" {
++				result, err = client.ReserveRuntimeStartup(t.Context(), r)
++			} else {
++				result, err = client.LookupRuntimeStartup(t.Context(), r.RequestID)
++			}
++			if fault == "" {
++				if err != nil || result.Fresh || !sameRuntimeStartupRequest(result.RuntimeStartupRequest, r) {
++					t.Fatalf("history minted permission or lost identity: %+v %v", result, err)
++				}
++			} else if err == nil || !reflect.DeepEqual(result, fleet.RuntimeStartupReservation{}) {
++				t.Fatalf("bad outcome exposed reservation: %+v %v", result, err)
++			}
++		})
++	}
++}
++
++func TestRuntimeStartupClientRejectsChangedResponses(t *testing.T) {
++	r, identity, _ := startupTransportFixture(t)
++	for name, mutate := range map[string]func(*velav1.ReserveRuntimeStartupResponse){
++		"request": func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.RequestId = uuid.NewString() },
++		"bootstrap": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.Request.BootstrapRequestId = uuid.NewString()
++		},
++		"journal": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.Request.RuntimeJournalId = uuid.NewString()
++		},
++		"scope":       func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.RuntimeScope[0]++ },
++		"incarnation": func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.IncarnationId = uuid.NewString() },
++		"launch":      func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.LaunchDigest[0]++ },
++		"owner":       func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.OwnerObservationDigest[0]++ },
++		"node":        func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.NodeIdentity = "other-node" },
++		"actor":       func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.ActorIdentity = "other-actor" },
++		"epoch":       func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.Request.Epochs[0].ModelRuntimeEpoch++ },
++		"time":        func(w *velav1.ReserveRuntimeStartupResponse) { w.Reservation.ReservedAt = nil },
++		"unknown":     func(w *velav1.ReserveRuntimeStartupResponse) { w.ProtoReflect().SetUnknown([]byte{0x18, 1}) },
++		"unknown reservation": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.ProtoReflect().SetUnknown([]byte{0x28, 1})
++		},
++		"unknown request": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.Request.ProtoReflect().SetUnknown([]byte{0x48, 1})
++		},
++		"unknown epoch": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.Request.Epochs[0].ProtoReflect().SetUnknown([]byte{0x28, 1})
++		},
++		"unknown timestamp": func(w *velav1.ReserveRuntimeStartupResponse) {
++			w.Reservation.ReservedAt.ProtoReflect().SetUnknown([]byte{0x18, 1})
++		},
++	} {
++		t.Run(name, func(t *testing.T) {
++			response := &velav1.ReserveRuntimeStartupResponse{Fresh: true, Reservation: encodeRuntimeStartupReservation(
++				fleet.RuntimeStartupReservation{RuntimeStartupRequest: r, ReservedAt: time.Now().UTC()})}
++			mutate(response)
++			base := newTestClient(t, &startupRPCStub{response: response})
++			client, err := base.WorkerBootstrap(identity)
++			mustBootstrap(t, err)
++			result, err := client.ReserveRuntimeStartup(t.Context(), r)
++			if err == nil || !reflect.DeepEqual(result, fleet.RuntimeStartupReservation{}) {
++				t.Fatalf("malformed result exposed permission: %+v %v", result, err)
++			}
++		})
++	}
++}
+diff --git a/internal/integration/runtime_startup_transport_test.go b/internal/integration/runtime_startup_transport_test.go
+new file mode 100644
+index 0000000..654157e
+--- /dev/null
++++ b/internal/integration/runtime_startup_transport_test.go
+@@ -0,0 +1,109 @@
++//go:build integration
++
++package integration_test
++
++import (
++	"context"
++	"crypto/tls"
++	"reflect"
++	"sync/atomic"
++	"testing"
++
++	"github.com/vivym/vela/internal/fleet"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/credentials"
++	"google.golang.org/grpc/peer"
++	"google.golang.org/grpc/status"
++	"google.golang.org/protobuf/proto"
++)
++
++func TestRuntimeStartupMutualTLSReservationPreservesLostResponse(t *testing.T) {
++	for _, loseResponse := range []bool{false, true} {
++		t.Run(map[bool]string{false: "normal", true: "committed-response-lost"}[loseResponse], func(t *testing.T) {
++			database, service, bootstrap := newWorkerBootstrapFixture(t)
++			var dropped atomic.Bool
++			var committedCalls atomic.Int32
++			var tlsVersion atomic.Uint32
++			clients := bootstrapMutualTLSClients(t, service, func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
++				if p, ok := peer.FromContext(ctx); ok {
++					if auth, ok := p.AuthInfo.(credentials.TLSInfo); ok {
++						tlsVersion.Store(uint32(auth.State.Version))
++					}
++				}
++				result, err := handler(ctx, req)
++				if err == nil && info.FullMethod == velav1.FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName {
++					committedCalls.Add(1)
++					if loseResponse && dropped.CompareAndSwap(false, true) {
++						return nil, status.Error(codes.Unavailable, "committed startup reservation response lost")
++					}
++				}
++				return result, err
++			})
++			// Real immutable Registry rows, with fixture journal/owner observations.
++			// The production reservation call below derives identity solely from TLS.
++			bootstrap.ActorIdentity = clients[0].bootstrap.ActorIdentity()
++			request := runtimeStartupRequest(t, service, bootstrap)
++			wire := &velav1.ReserveRuntimeStartupRequest{RequestId: request.RequestID.String(), BootstrapRequestId: request.BootstrapRequestID.String(),
++				RuntimeJournalId: request.RuntimeJournalID.String(), RuntimeScope: request.RuntimeScope, IncarnationId: request.IncarnationID.String(),
++				LaunchDigest: request.LaunchDigest, OwnerObservationDigest: request.OwnerObservationDigest}
++			for _, epoch := range request.Epochs {
++				wire.Epochs = append(wire.Epochs, &velav1.RuntimeStartupEpoch{ModelResidencyId: epoch.ModelResidencyID.String(),
++					ModelRuntimeIdentity: epoch.ModelRuntimeIdentity, StageProfileRevisionId: epoch.StageProfileRevisionID.String(), ModelRuntimeEpoch: epoch.ModelRuntimeEpoch})
++			}
++			for index, code := range map[int]codes.Code{1: codes.NotFound, 2: codes.NotFound, 3: codes.Unauthenticated} {
++				if _, err := clients[index].rpc.ReserveRuntimeStartup(t.Context(), wire); status.Code(err) != code {
++					t.Fatalf("other-node/other-agent/unregistered caller %d: %v", index, err)
++				}
++			}
++			unknown := proto.CloneOf(wire)
++			unknown.ProtoReflect().SetUnknown([]byte{0x48, 1})
++			if _, err := clients[0].rpc.ReserveRuntimeStartup(t.Context(), unknown); status.Code(err) != codes.InvalidArgument {
++				t.Fatalf("caller-supplied extension accepted: %v", err)
++			}
++			badEpoch := proto.CloneOf(wire)
++			badEpoch.Epochs[0].ModelRuntimeEpoch++
++			if _, err := clients[0].rpc.ReserveRuntimeStartup(t.Context(), badEpoch); status.Code(err) != codes.Aborted {
++				t.Fatalf("unapproved epoch accepted: %v", err)
++			}
++			var count int
++			if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 {
++				t.Fatalf("rejected callers consumed startup: %d %v", count, err)
++			}
++			result, err := clients[0].bootstrap.ReserveRuntimeStartup(t.Context(), request)
++			if loseResponse {
++				if status.Code(err) != codes.Unavailable || !dropped.Load() || !reflect.DeepEqual(result, fleet.RuntimeStartupReservation{}) {
++					t.Fatalf("lost committed response exposed permission: %+v %v", result, err)
++				}
++			} else if err != nil || !result.Fresh || !reflect.DeepEqual(result.RuntimeStartupRequest, request) {
++				t.Fatalf("authenticated startup reservation: %+v %v", result, err)
++			}
++			if committedCalls.Load() != 1 || tlsVersion.Load() != tls.VersionTLS13 {
++				t.Fatalf("client retried or wrong TLS version: calls=%d TLS=%x", committedCalls.Load(), tlsVersion.Load())
++			}
++			if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 1 {
++				t.Fatalf("committed reservation missing or duplicated: %d %v", count, err)
++			}
++			history, err := clients[0].bootstrap.LookupRuntimeStartup(t.Context(), request.RequestID)
++			if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, request) {
++				t.Fatalf("history changed identity or minted permission: %+v %v", history, err)
++			}
++			again, err := clients[0].bootstrap.ReserveRuntimeStartup(t.Context(), request)
++			if err != nil || again.Fresh || !reflect.DeepEqual(again, history) {
++				t.Fatalf("retry reissued first-use authority: %+v %v", again, err)
++			}
++			for index, code := range map[int]codes.Code{1: codes.NotFound, 2: codes.NotFound, 3: codes.Unauthenticated} {
++				if _, err := clients[index].bootstrap.LookupRuntimeStartup(t.Context(), request.RequestID); status.Code(err) != code {
++					t.Fatalf("other principal read history %d: %v", index, err)
++				}
++			}
++			changed := request
++			changed.OwnerObservationDigest = sha256Bytes([]byte("replacement owner"))
++			if _, err := clients[0].bootstrap.ReserveRuntimeStartup(t.Context(), changed); status.Code(err) != codes.Aborted {
++				t.Fatalf("replacement owner reused committed request: %v", err)
++			}
++			t.Logf("TLS1.3: lost=%v, one durable reservation, exact history/retry carry no Fresh, other principals cannot reserve/read", loseResponse)
++		})
++	}
++}

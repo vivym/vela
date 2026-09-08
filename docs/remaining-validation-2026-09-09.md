@@ -22,8 +22,11 @@ watchdog 仍发出停止。证据分别见
 [Fleet 首次启动预留](runtime-startup-reservation-evidence-2026-09-09.md)
 已在 PostgreSQL schema 95 原子保留完整 epoch 向量与 journal/incarnation/
 owner 摘要，重放和回包丢失不产生新预留；未解决预留会阻止数据库静默证明。
-它尚未被命令入口、Node issuer、启动 transport 或 Fleet 挂载消费，不能直接
-作为 backend 许可；`NewJournalWorkerClient`、`NewJournalServer` 也尚无生产入口装配。
+新增的 [认证预留通道](runtime-startup-transport-evidence-2026-09-09.md) 已接到
+Control 的 Fleet listener，Node/actor 由已注册的 mTLS principal 推导，真实
+PostgreSQL/TLS 回包丢失不会重新发放 Fresh。Node issuer、Node 端命令和 Fleet
+挂载尚未消费此预留，不能直接作为 backend 许可；`NewJournalWorkerClient`、
+`NewJournalServer` 也尚无生产入口装配。
 CPU Job campaign 在
 `internal/integration/cpu_mock_load_campaign_test.go` 仍通过
 `NewSupervisorWithExecutionFloor` 使用本地 `runtime-admission` 目录。

@@ -924,6 +924,7 @@ func run() error {
 			ActorIdentity:          configuration.fleetControllerActorIdentity,
 			NodeAgentRegistrations: nodeAgentRegistrations(remediationEndpoints),
 			BootstrapService:       fleetService,
+			RuntimeStartupService:  fleetService,
 			BootstrapSigner:        bootstrapSigner,
 		},
 	)

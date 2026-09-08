@@ -1,0 +1,19 @@
+{
+  "files": 13,
+  "identical": true,
+  "sha256": {
+    "vela/v1/events.pb.go": "85c3163d66c50a1f8c7d0c8d97e9b4239de56870128f1692999a45083b67338b",
+    "vela/v1/fleet_maintenance.pb.go": "a9ddfdaad4bc8a298a59a4f178b005d853c27c3ab2d27fdc45c77db6af335534",
+    "vela/v1/fleet_maintenance_grpc.pb.go": "d9c3113c00a503986917e99f228926789e0f062852e2ebb641cce88cf9289b5b",
+    "vela/v1/model_runtime.pb.go": "132959efa99127695469f43925481f9cea494a6ef783be57e0238fbd0d8ba56f",
+    "vela/v1/model_runtime_grpc.pb.go": "42d78f7bb8c6b6b08eee976957bb6a7a0ba25776615d7bd0a6e962effdff1bc7",
+    "vela/v1/node_agent.pb.go": "bcd6c5230d28592373f0a0bffa62cd6d4213df91b5ea655786d84aed975b3271",
+    "vela/v1/node_agent_grpc.pb.go": "1589b673f4143bfc967524300b4025f3b01a30e778f3a8d1fb69cf5cc1f30f53",
+    "vela/v1/stage_authority.pb.go": "a410de39079a30109f5ed0f8ddb53780ff9fcb52da2aca5586ad81e930045833",
+    "vela/v1/stage_terminal_disposition.pb.go": "7e6d2a908b315c8a98cde6932f77eabdffee14bf42e876f3202d430ea79d05c4",
+    "vela/v1/stage_worker_control.pb.go": "bcd0d7777c3d42beb1722fbeb41ee0b28440500da61ee0a089f7e00289b71843",
+    "vela/v1/stage_worker_control_grpc.pb.go": "31301f18e4b837b4a3f1643bcb834dbb73d14dfcd6d821ef87bcf942b41d9a67",
+    "vela/v1/stage_worker_member.pb.go": "6c3ec60e37bde785d392af0b6189facedebcbd78eb89d33ea2e9e39d887005a1",
+    "vela/v1/stage_worker_member_grpc.pb.go": "dac9d6725e41999c218c2fde9bbf9a5d3844229588e463efc7e1c9b71ec3762d"
+  }
+}

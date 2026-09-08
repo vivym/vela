@@ -23,6 +23,52 @@ service FleetMaintenanceService {
       returns (LookupWorkerBootstrapBindingResponse);
   rpc AbandonWorkerBootstrap(AbandonWorkerBootstrapRequest)
       returns (AbandonWorkerBootstrapResponse);
+  rpc ReserveRuntimeStartup(ReserveRuntimeStartupRequest)
+      returns (ReserveRuntimeStartupResponse);
+  rpc LookupRuntimeStartup(LookupRuntimeStartupRequest)
+      returns (LookupRuntimeStartupResponse);
+}
+
+message RuntimeStartupEpoch {
+  string model_residency_id = 1;
+  string model_runtime_identity = 2;
+  string stage_profile_revision_id = 3;
+  int64 model_runtime_epoch = 4;
+}
+
+// Node and actor are derived from registered mTLS identity, never request data.
+message ReserveRuntimeStartupRequest {
+  string request_id = 1;
+  string bootstrap_request_id = 2;
+  string runtime_journal_id = 3;
+  bytes runtime_scope = 4;
+  string incarnation_id = 5;
+  bytes launch_digest = 6;
+  bytes owner_observation_digest = 7;
+  repeated RuntimeStartupEpoch epochs = 8;
+}
+
+// Immutable first-use reservation history, not Node permission or readiness.
+message RuntimeStartupReservation {
+  ReserveRuntimeStartupRequest request = 1;
+  string node_identity = 2;
+  string actor_identity = 3;
+  google.protobuf.Timestamp reserved_at = 4;
+}
+
+message ReserveRuntimeStartupResponse {
+  RuntimeStartupReservation reservation = 1;
+  // Only the inserting committed RPC is fresh. No retry or lookup renews it.
+  bool fresh = 2;
+}
+
+message LookupRuntimeStartupRequest {
+  string request_id = 1;
+}
+
+// Deliberately has no fresh/permission field.
+message LookupRuntimeStartupResponse {
+  RuntimeStartupReservation reservation = 1;
 }
 
 message ClaimWorkerBootstrapRequest {

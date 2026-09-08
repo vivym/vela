@@ -43,6 +43,10 @@ durably consumes first-use epoch proposals for a Registry-retained member and
 journal pair. Only a committed insert is fresh; lookup cannot recreate a grant.
 It binds trusted owner/launch digests but does not attest their preimages or
 establish Node grant custody. Unresolved reservations block database quiescence.
+The next [authenticated reservation channel](runtime-startup-transport-evidence-2026-09-09.md)
+binds requests to registered Node Agent TLS principals at the Control listener.
+Real PostgreSQL/TLS response loss preserves one reservation and no new Fresh on
+retry; this still provides no Node grant transaction or process attestation.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

@@ -27,6 +27,8 @@ const (
 	FleetMaintenanceService_LookupWorkerBootstrap_FullMethodName        = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrap"
 	FleetMaintenanceService_LookupWorkerBootstrapBinding_FullMethodName = "/vela.v1.FleetMaintenanceService/LookupWorkerBootstrapBinding"
 	FleetMaintenanceService_AbandonWorkerBootstrap_FullMethodName       = "/vela.v1.FleetMaintenanceService/AbandonWorkerBootstrap"
+	FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName        = "/vela.v1.FleetMaintenanceService/ReserveRuntimeStartup"
+	FleetMaintenanceService_LookupRuntimeStartup_FullMethodName         = "/vela.v1.FleetMaintenanceService/LookupRuntimeStartup"
 )
 
 // FleetMaintenanceServiceClient is the client API for FleetMaintenanceService service.
@@ -41,6 +43,8 @@ type FleetMaintenanceServiceClient interface {
 	LookupWorkerBootstrap(ctx context.Context, in *LookupWorkerBootstrapRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapResponse, error)
 	LookupWorkerBootstrapBinding(ctx context.Context, in *LookupWorkerBootstrapBindingRequest, opts ...grpc.CallOption) (*LookupWorkerBootstrapBindingResponse, error)
 	AbandonWorkerBootstrap(ctx context.Context, in *AbandonWorkerBootstrapRequest, opts ...grpc.CallOption) (*AbandonWorkerBootstrapResponse, error)
+	ReserveRuntimeStartup(ctx context.Context, in *ReserveRuntimeStartupRequest, opts ...grpc.CallOption) (*ReserveRuntimeStartupResponse, error)
+	LookupRuntimeStartup(ctx context.Context, in *LookupRuntimeStartupRequest, opts ...grpc.CallOption) (*LookupRuntimeStartupResponse, error)
 }
 
 type fleetMaintenanceServiceClient struct {
@@ -131,6 +135,26 @@ func (c *fleetMaintenanceServiceClient) AbandonWorkerBootstrap(ctx context.Conte
 	return out, nil
 }
 
+func (c *fleetMaintenanceServiceClient) ReserveRuntimeStartup(ctx context.Context, in *ReserveRuntimeStartupRequest, opts ...grpc.CallOption) (*ReserveRuntimeStartupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReserveRuntimeStartupResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetMaintenanceServiceClient) LookupRuntimeStartup(ctx context.Context, in *LookupRuntimeStartupRequest, opts ...grpc.CallOption) (*LookupRuntimeStartupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LookupRuntimeStartupResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_LookupRuntimeStartup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // FleetMaintenanceServiceServer is the server API for FleetMaintenanceService service.
 // All implementations must embed UnimplementedFleetMaintenanceServiceServer
 // for forward compatibility.
@@ -143,6 +167,8 @@ type FleetMaintenanceServiceServer interface {
 	LookupWorkerBootstrap(context.Context, *LookupWorkerBootstrapRequest) (*LookupWorkerBootstrapResponse, error)
 	LookupWorkerBootstrapBinding(context.Context, *LookupWorkerBootstrapBindingRequest) (*LookupWorkerBootstrapBindingResponse, error)
 	AbandonWorkerBootstrap(context.Context, *AbandonWorkerBootstrapRequest) (*AbandonWorkerBootstrapResponse, error)
+	ReserveRuntimeStartup(context.Context, *ReserveRuntimeStartupRequest) (*ReserveRuntimeStartupResponse, error)
+	LookupRuntimeStartup(context.Context, *LookupRuntimeStartupRequest) (*LookupRuntimeStartupResponse, error)
 	mustEmbedUnimplementedFleetMaintenanceServiceServer()
 }
 
@@ -176,6 +202,12 @@ func (UnimplementedFleetMaintenanceServiceServer) LookupWorkerBootstrapBinding(c
 }
 func (UnimplementedFleetMaintenanceServiceServer) AbandonWorkerBootstrap(context.Context, *AbandonWorkerBootstrapRequest) (*AbandonWorkerBootstrapResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AbandonWorkerBootstrap not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) ReserveRuntimeStartup(context.Context, *ReserveRuntimeStartupRequest) (*ReserveRuntimeStartupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReserveRuntimeStartup not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) LookupRuntimeStartup(context.Context, *LookupRuntimeStartupRequest) (*LookupRuntimeStartupResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LookupRuntimeStartup not implemented")
 }
 func (UnimplementedFleetMaintenanceServiceServer) mustEmbedUnimplementedFleetMaintenanceServiceServer() {
 }
@@ -343,6 +375,42 @@ func _FleetMaintenanceService_AbandonWorkerBootstrap_Handler(srv interface{}, ct
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FleetMaintenanceService_ReserveRuntimeStartup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReserveRuntimeStartupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).ReserveRuntimeStartup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_ReserveRuntimeStartup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).ReserveRuntimeStartup(ctx, req.(*ReserveRuntimeStartupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetMaintenanceService_LookupRuntimeStartup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LookupRuntimeStartupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).LookupRuntimeStartup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_LookupRuntimeStartup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).LookupRuntimeStartup(ctx, req.(*LookupRuntimeStartupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // FleetMaintenanceService_ServiceDesc is the grpc.ServiceDesc for FleetMaintenanceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -381,6 +449,14 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AbandonWorkerBootstrap",
 			Handler:    _FleetMaintenanceService_AbandonWorkerBootstrap_Handler,
+		},
+		{
+			MethodName: "ReserveRuntimeStartup",
+			Handler:    _FleetMaintenanceService_ReserveRuntimeStartup_Handler,
+		},
+		{
+			MethodName: "LookupRuntimeStartup",
+			Handler:    _FleetMaintenanceService_LookupRuntimeStartup_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
