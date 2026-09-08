@@ -1,0 +1,14 @@
+=== RUN   TestRunServesResidentRuntimeUntilShutdown
+--- PASS: TestRunServesResidentRuntimeUntilShutdown (1.06s)
+=== RUN   TestRuntimeProcessProtection
+    process_protection_linux_test.go:80: baseline: same-UID exec child memory-open=true ptrace-attach=true parent-dumpable=1
+    process_protection_linux_test.go:80: protect: same-UID exec child memory-open=false ptrace-attach=false parent-dumpable=0
+    process_protection_linux_test.go:80: repeat: same-UID exec child memory-open=false ptrace-attach=false parent-dumpable=0
+--- PASS: TestRuntimeProcessProtection (4.08s)
+=== RUN   TestRuntimeProcessProtectionFailsClosed
+=== RUN   TestRuntimeProcessProtectionFailsClosed/deny-set
+=== RUN   TestRuntimeProcessProtectionFailsClosed/deny-get
+--- PASS: TestRuntimeProcessProtectionFailsClosed (2.05s)
+    --- PASS: TestRuntimeProcessProtectionFailsClosed/deny-set (1.02s)
+    --- PASS: TestRuntimeProcessProtectionFailsClosed/deny-get (1.03s)
+PASS

@@ -35,6 +35,9 @@ Node helper 已由外层 parent 在另一组 7 个精确
 有效 OCI/executable/config 批准、一次性
 Node grant、Node 端命令和 Fleet 挂载仍未完成；`NewJournalWorkerClient`、
 `NewJournalServer` 也尚无生产入口装配。
+新增 [Runtime 内存保护](runtime-process-protection-evidence-2026-09-09.md) 在实际
+Linux 服务入口关闭 dumpability，防止无特权同 UID backend ptrace/mem 访问；
+它不认证 executable/config，也不替代 backend UID/mount 与后代隔离。
 CPU Job campaign 在
 `internal/integration/cpu_mock_load_campaign_test.go` 仍通过
 `NewSupervisorWithExecutionFloor` 使用本地 `runtime-admission` 目录。

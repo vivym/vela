@@ -538,6 +538,12 @@ make one reservation RPC and retain one database row; loss leaves only a local
 intent, while history and reopening issue no new request. Pod/CRI and Worker
 journal data remain fixtures. Effective launch approval and the Job/grant
 assembly remain open.
+The [Runtime process protection](runtime-process-protection-evidence-2026-09-09.md)
+sets and verifies Linux non-dumpability before the real Runtime service reads
+configuration or creates backends. Native non-root race tests demonstrate the
+same-UID memory/ptrace baseline and protected denial, plus fail-closed syscall
+errors. Linux core dumps/nonprivileged attach are disabled; effective launch
+approval, shared-file isolation and once-only Node grants remain open.
 
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).

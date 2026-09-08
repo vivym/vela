@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "0f02f2e113d2857440d8daff7b1430961424a5e1",
+  "source_tree_sha256": "84534d180ef6d2d5f2aa0898d7cb8d38086987b65763983f8a267c2bfb6250cf",
+  "source_file_count": 981,
+  "source_digest_method": "SHA256 of sorted Go, SQL, proto, go.mod, go.sum, buf.yaml and buf.gen.yaml path + NUL + hex SHA256(file bytes) + newline",
+  "production_gates": "0/9",
+  "native_main_tests": [
+    "TestRunServesResidentRuntimeUntilShutdown",
+    "TestRuntimeProcessProtection",
+    "TestRuntimeProcessProtectionFailsClosed"
+  ],
+  "native_skips": 0,
+  "native_races": 0,
+  "native_user": "10001:10001",
+  "native_capabilities": "ALL dropped",
+  "native_network": "none",
+  "seccomp": "unconfined for ptrace baseline; separate helper injects syscall EPERM",
+  "checks": [
+    {
+      "command": "bash hack/run-runtime-process-protection-native.sh",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/native-runner.log",
+      "exit_code": 0
+    },
+    {
+      "command": "go test ./...",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/repository-test.log",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -race ./cmd/vela-model-runtime -count=1",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/race.log",
+      "exit_code": 0
+    },
+    {
+      "command": "go vet ./...",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/vet.log",
+      "exit_code": 0
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 go test -exec=true ./cmd/vela-model-runtime",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/linux-cross.log",
+      "exit_code": 0
+    },
+    {
+      "command": "golangci-lint v2.13.1 run ./...",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/lint.log",
+      "exit_code": 0
+    },
+    {
+      "command": "GOOS=linux GOARCH=amd64 golangci-lint v2.13.1 run ./cmd/vela-model-runtime",
+      "artifact": "docs/evidence/runtime-process-protection-2026-09-09/linux-lint.log",
+      "exit_code": 0
+    }
+  ],
+  "claim_boundary": "Linux Runtime service entry sets and verifies non-dumpability before config/factories. Native same-UID child can open memory/attach before and is denied after. No effective launch approval, malicious-Runtime resistance, shared-file/descendant/device containment, Node grant or full Job evidence.",
+  "artifacts": [
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/binary.sha256",
+      "bytes": 153,
+      "sha256": "808f455d48d7f737eb8ace2ce58b6b7416ed63f6e5dd8a2c18a41ffb6dac826c"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/build.log",
+      "bytes": 341,
+      "sha256": "738c83d488dd72e51f3e97f98ec382176e1044769d8814992b2a25e82882562d"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/image.txt",
+      "bytes": 72,
+      "sha256": "4ab883a76b7e12017717c9292828c656888bce4fd2f2ec37bf2a8119bfc27658"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/linux-cross.log",
+      "bytes": 57,
+      "sha256": "1e4c0715740661194efabf3335ddb34f0d6b7fcb91c1adaa7d2fd5d7cc0097e4"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/native-runner.log",
+      "bytes": 103,
+      "sha256": "55fffc812a2581b253dcf43bc2d44be6e4b1b6b348d1f58a3729390f51a63aaa"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/native.log",
+      "bytes": 947,
+      "sha256": "ffc15bcccc7d9f7e0136f23b680133339f34fd59288374bf6778b183c99e14f6"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/race.log",
+      "bytes": 57,
+      "sha256": "17ca1e43748d9bc71d2ccaba51d44b406c88fb49070a1d91ad1687981e2a1d1c"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/repository-test.log",
+      "bytes": 6845,
+      "sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/source-files.json",
+      "bytes": 115805,
+      "sha256": "e8f0231002e2e05302870b3a6cdf732a2df605cdd07e937f9accc92b1472849d"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/source.patch",
+      "bytes": 13126,
+      "sha256": "cd10bda8317d788f6d357ad202add94cf12abc5b5bca5d39c1a2a74fe94b0c0b"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/source.txt",
+      "bytes": 41,
+      "sha256": "f44134b7ca141985c8747a6551aaaad9322e7817baa32169051e88bbcab3dcfd"
+    },
+    {
+      "path": "docs/evidence/runtime-process-protection-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

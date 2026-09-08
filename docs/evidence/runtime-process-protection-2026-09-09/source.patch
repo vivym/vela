@@ -1,0 +1,347 @@
+diff --git a/cmd/vela-model-runtime/main.go b/cmd/vela-model-runtime/main.go
+index 5da062a..fa89502 100644
+--- a/cmd/vela-model-runtime/main.go
++++ b/cmd/vela-model-runtime/main.go
+@@ -51,6 +51,15 @@ func main() {
+ }
+ 
+ func run(ctx context.Context) error {
++	if ctx == nil {
++		return errors.New("ModelRuntime context is required")
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	if err := protectRuntimeProcess(); err != nil {
++		return err
++	}
+ 	return runUsing(ctx, func(
+ 		ctx context.Context,
+ 		config modelruntime.RuntimeServerConfig,
+diff --git a/cmd/vela-model-runtime/process_protection_linux.go b/cmd/vela-model-runtime/process_protection_linux.go
+new file mode 100644
+index 0000000..9646978
+--- /dev/null
++++ b/cmd/vela-model-runtime/process_protection_linux.go
+@@ -0,0 +1,29 @@
++package main
++
++import (
++	"fmt"
++
++	"golang.org/x/sys/unix"
++)
++
++// Disable ptrace-class access by same-UID backend processes before reading
++// launch configuration or invoking any factory. This mm-wide property covers
++// every Go thread. It also disables core dumps. Privileged host/Node inspection
++// still requires CAP_SYS_PTRACE in the target's user namespace.
++//
++// This is not launch attestation or an exec/descendant containment policy:
++// exec and credential changes can reset dumpability. The resident Runtime
++// must not perform those transitions after installing this protection.
++func protectRuntimeProcess() error {
++	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
++		return fmt.Errorf("disable Runtime process memory inspection: %w", err)
++	}
++	value, err := unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0, 0, 0, 0)
++	if err != nil {
++		return fmt.Errorf("verify Runtime process memory protection: %w", err)
++	}
++	if value != 0 {
++		return fmt.Errorf("runtime process remains dumpable: %d", value)
++	}
++	return nil
++}
+diff --git a/cmd/vela-model-runtime/process_protection_linux_test.go b/cmd/vela-model-runtime/process_protection_linux_test.go
+new file mode 100644
+index 0000000..5bdd864
+--- /dev/null
++++ b/cmd/vela-model-runtime/process_protection_linux_test.go
+@@ -0,0 +1,226 @@
++package main
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"os/exec"
++	"runtime"
++	"strconv"
++	"strings"
++	"testing"
++	"time"
++	"unsafe"
++
++	"golang.org/x/sys/unix"
++)
++
++type runtimeMemoryProbe struct {
++	MemoryOpen bool
++	Attach     bool
++	Dumpable   int
++}
++
++func TestRuntimeProcessProtection(t *testing.T) {
++	if os.Getuid() == 0 {
++		t.Skip("run the memory isolation test as non-root without CAP_SYS_PTRACE")
++	}
++	binary, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
++	defer cancel()
++	command := exec.CommandContext(ctx, binary, "-test.run=^TestRuntimeProcessProtectionHelper$")
++	command.Env = []string{"VELA_RUNTIME_PROTECTION_HELPER=victim"}
++	input, err := command.StdinPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	output, err := command.StdoutPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	var stderr bytes.Buffer
++	command.Stderr = &stderr
++	if err := command.Start(); err != nil {
++		t.Fatal(err)
++	}
++	waited := false
++	t.Cleanup(func() {
++		if !waited {
++			_ = command.Process.Kill()
++			_ = command.Wait()
++		}
++		_ = input.Close()
++		_ = output.Close()
++	})
++	decoder := json.NewDecoder(output)
++	for _, phase := range []string{"baseline", "protect", "repeat"} {
++		if _, err := fmt.Fprintln(input, phase); err != nil {
++			t.Fatal(err)
++		}
++		var probe runtimeMemoryProbe
++		if err := decoder.Decode(&probe); err != nil {
++			detail, _ := io.ReadAll(io.LimitReader(io.MultiReader(decoder.Buffered(), output), 16<<10))
++			t.Fatalf("victim failed at %s: %v\n%s", phase, err, detail)
++		}
++		if phase == "baseline" {
++			if !probe.MemoryOpen || !probe.Attach || probe.Dumpable != 1 {
++				t.Fatalf("kernel/environment did not expose baseline same-UID access: %+v", probe)
++			}
++		} else if probe.MemoryOpen || probe.Attach || probe.Dumpable != 0 {
++			t.Fatalf("protected Runtime exposed memory after backend exec: %+v", probe)
++		}
++		t.Logf("%s: same-UID exec child memory-open=%v ptrace-attach=%v parent-dumpable=%d", phase, probe.MemoryOpen, probe.Attach, probe.Dumpable)
++	}
++	if err := input.Close(); err != nil {
++		t.Fatal(err)
++	}
++	err = command.Wait()
++	waited = true
++	if err != nil {
++		t.Fatalf("victim: %v %s", err, stderr.String())
++	}
++}
++
++func TestRuntimeProcessProtectionHelper(t *testing.T) {
++	mode := os.Getenv("VELA_RUNTIME_PROTECTION_HELPER")
++	if mode == "" {
++		t.Skip("isolated process helper")
++	}
++	if mode == "deny-set" || mode == "deny-get" {
++		runtime.LockOSThread()
++		defer runtime.UnlockOSThread()
++		operation := uint32(unix.PR_SET_DUMPABLE)
++		if mode == "deny-get" {
++			operation = unix.PR_GET_DUMPABLE
++		}
++		filter := []unix.SockFilter{
++			{Code: unix.BPF_LD | unix.BPF_W | unix.BPF_ABS, K: 0},
++			{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, K: uint32(unix.SYS_PRCTL), Jf: 3},
++			{Code: unix.BPF_LD | unix.BPF_W | unix.BPF_ABS, K: 16},
++			{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, K: operation, Jf: 1},
++			{Code: unix.BPF_RET | unix.BPF_K, K: unix.SECCOMP_RET_ERRNO | uint32(unix.EPERM)},
++			{Code: unix.BPF_RET | unix.BPF_K, K: unix.SECCOMP_RET_ALLOW},
++		}
++		program := unix.SockFprog{Len: uint16(len(filter)), Filter: &filter[0]}
++		if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
++			t.Fatal(err)
++		}
++		_, _, errno := unix.Syscall6(unix.SYS_PRCTL, unix.PR_SET_SECCOMP, unix.SECCOMP_MODE_FILTER, uintptr(unsafe.Pointer(&program)), 0, 0, 0)
++		runtime.KeepAlive(filter)
++		if errno != 0 {
++			t.Fatal(errno)
++		}
++		if err := run(t.Context()); !errors.Is(err, unix.EPERM) {
++			t.Fatalf("kernel protection failure did not stop actual entry: %v", err)
++		}
++		return
++	}
++	if mode == "attacker" {
++		pid, err := strconv.Atoi(os.Getenv("VELA_RUNTIME_PROTECTION_TARGET"))
++		if err != nil || pid <= 0 {
++			t.Fatal("invalid victim pid")
++		}
++		probe := runtimeMemoryProbe{}
++		file, err := os.OpenFile(fmt.Sprintf("/proc/%d/mem", pid), os.O_RDWR, 0)
++		if err == nil {
++			probe.MemoryOpen = true
++			_ = file.Close()
++		} else if !errors.Is(err, os.ErrPermission) {
++			t.Fatalf("unexpected memory error: %v", err)
++		}
++		runtime.LockOSThread()
++		defer runtime.UnlockOSThread()
++		err = unix.PtraceAttach(pid)
++		if err == nil {
++			probe.Attach = true
++			var status unix.WaitStatus
++			if _, err := unix.Wait4(pid, &status, unix.WALL, nil); err != nil {
++				t.Fatal(err)
++			}
++			if err := unix.PtraceDetach(pid); err != nil {
++				t.Fatal(err)
++			}
++		} else if !errors.Is(err, unix.EPERM) {
++			t.Fatalf("unexpected ptrace error: %v", err)
++		}
++		if err := json.NewEncoder(os.Stdout).Encode(probe); err != nil {
++			t.Fatal(err)
++		}
++		return
++	}
++	if mode != "victim" {
++		t.Fatal("unknown helper mode")
++	}
++	// Relax Yama only in this victim fixture so a passing baseline proves
++	// dumpability is the changed enforcement mechanism, not ambient policy.
++	// EINVAL means this kernel has no Yama ptracer option; the successful
++	// baseline is still mandatory and independently checks available access.
++	if err := unix.Prctl(unix.PR_SET_PTRACER, unix.PR_SET_PTRACER_ANY, 0, 0, 0); err != nil && !errors.Is(err, unix.EINVAL) {
++		t.Fatal(err)
++	}
++	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 1, 0, 0, 0); err != nil {
++		t.Fatal(err)
++	}
++	scanner := bufio.NewScanner(os.Stdin)
++	for scanner.Scan() {
++		phase := scanner.Text()
++		if phase != "baseline" {
++			// Invoke the actual production entry; invalid configuration must fail
++			// only after installing process protection, before any backend exists.
++			if err := run(t.Context()); err == nil {
++				t.Fatal("missing launch configuration unexpectedly started Runtime")
++			}
++		}
++		binary, err := os.Executable()
++		if err != nil {
++			t.Fatal(err)
++		}
++		child := exec.CommandContext(t.Context(), binary, "-test.run=^TestRuntimeProcessProtectionHelper$")
++		child.Env = []string{"VELA_RUNTIME_PROTECTION_HELPER=attacker", "VELA_RUNTIME_PROTECTION_TARGET=" + strconv.Itoa(os.Getpid())}
++		result, err := child.CombinedOutput()
++		if err != nil {
++			t.Fatalf("same-UID backend probe: %v %s", err, result)
++		}
++		var probe runtimeMemoryProbe
++		if err := json.NewDecoder(strings.NewReader(string(result))).Decode(&probe); err != nil {
++			t.Fatal(err)
++		}
++		probe.Dumpable, err = unix.PrctlRetInt(unix.PR_GET_DUMPABLE, 0, 0, 0, 0)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := json.NewEncoder(os.Stdout).Encode(probe); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := scanner.Err(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestRuntimeProcessProtectionFailsClosed(t *testing.T) {
++	binary, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, mode := range []string{"deny-set", "deny-get"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
++			defer cancel()
++			command := exec.CommandContext(ctx, binary, "-test.run=^TestRuntimeProcessProtectionHelper$")
++			command.Env = []string{"VELA_RUNTIME_PROTECTION_HELPER=" + mode}
++			output, err := command.CombinedOutput()
++			if err != nil || !bytes.Contains(output, []byte("PASS")) {
++				t.Fatalf("failed protection was not enforced: %v %s", err, output)
++			}
++		})
++	}
++}
+diff --git a/cmd/vela-model-runtime/process_protection_other.go b/cmd/vela-model-runtime/process_protection_other.go
+new file mode 100644
+index 0000000..ce44c84
+--- /dev/null
++++ b/cmd/vela-model-runtime/process_protection_other.go
+@@ -0,0 +1,6 @@
++//go:build !linux
++
++package main
++
++// Non-Linux local development does not claim the Linux process boundary.
++func protectRuntimeProcess() error { return nil }
+diff --git a/hack/run-runtime-process-protection-native.sh b/hack/run-runtime-process-protection-native.sh
+new file mode 100644
+index 0000000..468542c
+--- /dev/null
++++ b/hack/run-runtime-process-protection-native.sh
+@@ -0,0 +1,42 @@
++#!/usr/bin/env bash
++# CPU-only proof of the actual Runtime entry's same-UID memory boundary.
++set -euo pipefail
++protection_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++protection_evidence="${VELA_PROTECTION_EVIDENCE:-$(mktemp -d /tmp/vela-runtime-protection.XXXXXX)}"
++protection_cache="${VELA_PROTECTION_BUILD_CACHE:-$protection_evidence/go-cache}"
++protection_modules="$(go env GOMODCACHE)"
++protection_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
++[[ "$protection_evidence" = /* && "$protection_cache" = /* ]] || exit 2
++mkdir -p "$protection_evidence/image/rootfs/tmp" "$protection_cache"
++chmod 1777 "$protection_evidence/image/rootfs/tmp"
++git -C "$protection_repo" rev-parse HEAD > "$protection_evidence/source.txt"
++git -C "$protection_repo" diff HEAD --binary -- cmd/vela-model-runtime > "$protection_evidence/source.patch"
++while IFS= read -r -d '' protection_file; do
++  protection_diff_status=0
++  git -C "$protection_repo" diff --no-index --binary /dev/null "$protection_file" >> "$protection_evidence/source.patch" || protection_diff_status=$?
++  [[ "$protection_diff_status" = 0 || "$protection_diff_status" = 1 ]] || exit "$protection_diff_status"
++done < <(git -C "$protection_repo" ls-files -z --others --exclude-standard -- cmd/vela-model-runtime)
++docker run --rm --network none --cpus 4 --memory 4g --pids-limit 512 \
++  -v "$protection_repo:/workspace:ro" -v "$protection_modules:/go/pkg/mod:ro" \
++  -v "$protection_evidence:/evidence" -v "$protection_cache:/build-cache" -w /workspace \
++  -e GOCACHE=/build-cache -e GOPROXY=off -e CGO_ENABLED=1 "$protection_builder" \
++  go test -race -c -ldflags '-linkmode external -extldflags=-static' \
++  -o /evidence/image/rootfs/runtime.test ./cmd/vela-model-runtime > "$protection_evidence/build.log" 2>&1
++cat > "$protection_evidence/image/Dockerfile" <<'DOCKERFILE'
++FROM scratch
++COPY rootfs /
++DOCKERFILE
++protection_image="$(docker build --network none -q "$protection_evidence/image")"
++echo "$protection_image" > "$protection_evidence/image.txt"
++shasum -a 256 "$protection_evidence/image/rootfs/runtime.test" > "$protection_evidence/binary.sha256"
++# seccomp must allow ptrace in the baseline. The unprivileged process has no
++# capabilities; both phases use the same environment and uid/gid.
++docker run --rm --network none --user 10001:10001 --cap-drop ALL --security-opt seccomp=unconfined \
++  --cpus 4 --memory 1g --pids-limit 128 "$protection_image" /runtime.test \
++  -test.run '^(TestRuntimeProcessProtection|TestRuntimeProcessProtectionFailsClosed|TestRunServesResidentRuntimeUntilShutdown)$' \
++  -test.count=1 -test.v -test.timeout=45s > "$protection_evidence/native.log" 2>&1
++for protection_test in TestRuntimeProcessProtection TestRuntimeProcessProtectionFailsClosed TestRunServesResidentRuntimeUntilShutdown; do
++  rg -q -- "^--- PASS: $protection_test " "$protection_evidence/native.log" || exit 1
++done
++if rg -q -- '--- SKIP:|WARNING: DATA RACE' "$protection_evidence/native.log"; then exit 1; fi
++echo "Runtime process protection checks passed: $protection_evidence"

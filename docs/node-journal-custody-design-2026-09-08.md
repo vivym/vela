@@ -61,6 +61,12 @@ Real PostgreSQL/TLS response loss preserves one reservation and no new Fresh on
 retry; this still provides no Node grant transaction or process attestation.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
+The [Runtime memory protection](runtime-process-protection-evidence-2026-09-09.md)
+now disables dumpability at the actual Linux service entry before configuration
+or factory dispatch. Native same-UID exec-child probes show memory-open/ptrace
+access before protection and denial after it. This removes one nonprivileged
+memory-access path; it does not authenticate launch provenance or protect
+shared writable files, signals and descendant/device lifetimes.
 The full objective remains correct, recoverable Stage execution with bounded
 resources and verified system behavior; passing a startup observation is not
 the completion criterion.

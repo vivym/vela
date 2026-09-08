@@ -51,6 +51,15 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("ModelRuntime context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := protectRuntimeProcess(); err != nil {
+		return err
+	}
 	return runUsing(ctx, func(
 		ctx context.Context,
 		config modelruntime.RuntimeServerConfig,
