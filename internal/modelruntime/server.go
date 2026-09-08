@@ -47,6 +47,7 @@ type RuntimeServerConfig struct {
 	ExecutionFloor     *ExecutionFloorConfig
 	RegistryBinding    *velav1.WorkerBootstrapBinding
 	RegistryVerifier   *journalbinding.Verifier
+	RemoteStartup      *RemoteRuntimeStartup
 }
 
 type RuntimeServer struct {
@@ -74,7 +75,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 }
 
 func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened func(*executionStateFile)) (*RuntimeServer, error) {
-	if ctx == nil || config.EpochStore == nil || config.Validator == nil {
+	if ctx == nil || (config.EpochStore == nil && config.RemoteStartup == nil) || config.Validator == nil {
 		return nil, errors.New("ModelRuntime server configuration is incomplete")
 	}
 	if err := context.Cause(ctx); err != nil {
@@ -90,8 +91,8 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 		return nil, errors.New("ModelRuntime Registry binding and verifier must be configured together")
 	}
 	if config.RegistryBinding != nil {
-		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
-			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 || config.ExecutionFloor.State.UpgradeV6 || config.ExecutionFloor.State.UpgradeV7 {
+		if config.RemoteStartup == nil && (config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
+			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 || config.ExecutionFloor.State.UpgradeV6 || config.ExecutionFloor.State.UpgradeV7) {
 			return nil, errors.New("ModelRuntime Registry binding requires an existing execution journal without initialization or upgrade")
 		}
 		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)
@@ -127,6 +128,15 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 	if err != nil {
 		return nil, err
 	}
+	remoteState, err := prepareRemoteRuntimeStartup(ctx, &config)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if remoteState != nil {
+			_ = remoteState.close()
+		}
+	}()
 	var startupState *executionStateFile
 	if config.ExecutionFloor != nil && config.ExecutionFloor.State != nil {
 		verifier, err := newExecutionFloorVerifier(*config.ExecutionFloor, bindings[0])
@@ -218,6 +228,16 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 			Binding: binding, EpochStore: config.EpochStore, Validator: config.Validator,
 			EpochFloor: runtime.ModelRuntimeEpochFloor, MaxClockSkew: config.MaxClockSkew,
 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
+				if remoteState != nil {
+					if !backendStartupRecorded {
+						if err := remoteState.authorizeRemoteStartup(runtimeCtx, config.RegistryBinding, config.RemoteStartup.Authorize); err != nil {
+							return nil, err
+						}
+						backendStartupRecorded = true
+					} else if err := remoteState.checkFreshStartup(runtimeCtx); err != nil {
+						return nil, err
+					}
+				}
 				// A valid pending journal permits recovery RPCs, not replacement
 				// model startup while historical writers may still own the device.
 				if startupState != nil {
@@ -260,11 +280,23 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 			return rollbackStart(fmt.Errorf("resident runtime readiness lost during startup: %w", startupErr))
 		}
 	}
-	supervisor, err = newSupervisorWithState(config.ExecutionFloor, startupState, services...)
+	if remoteState != nil {
+		if err := remoteState.checkFreshStartup(runtimeCtx); err != nil {
+			return rollbackStart(err)
+		}
+		floor, floorErr := config.Manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, config.Validator)
+		if floorErr != nil {
+			return rollbackStart(floorErr)
+		}
+		supervisor, err = newSupervisorWithStores(floor, nil, remoteState, services...)
+	} else {
+		supervisor, err = newSupervisorWithState(config.ExecutionFloor, startupState, services...)
+	}
 	if err != nil {
 		return rollbackStart(err)
 	}
 	startupState = nil
+	remoteState = nil
 	supervisor.registryBinding, supervisor.registryVerifier = config.RegistryBinding, config.RegistryVerifier
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),

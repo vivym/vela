@@ -1,0 +1,777 @@
+diff --git a/hack/run-journal-owner-native.sh b/hack/run-journal-owner-native.sh
+index 0c4974f..559ad7d 100755
+--- a/hack/run-journal-owner-native.sh
++++ b/hack/run-journal-owner-native.sh
+@@ -43,7 +43,7 @@ DOCKERFILE
+ owner_image="$(docker build --network none -q "$owner_evidence/image")"
+ echo "$owner_image" > "$owner_evidence/image.txt"
+ shasum -a 256 "$owner_evidence/image/rootfs/"*.test > "$owner_evidence/binaries.sha256"
+-owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestJournalRemote|TestJournalRead|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
++owner_selected='^(TestJournalOwner|TestJournalCommand|TestJournalResponse|TestJournalRemote|TestJournalRead|TestExecutionNonAdmission|TestTerminalNonAdmission|TestRuntimeServer(RemoteStartup|RetainsBackendOwnership|FreezesLaunch|DrainDoesNotRetire|BackendStartupPersistence|RejectsMalformedBackendLifecycle))'
+ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memory 4g --pids-limit 256 \
+   "$owner_image" /modelruntime.test -test.run "$owner_selected" -test.count=1 -test.v -test.timeout=3m \
+   > "$owner_evidence/modelruntime.log" 2>&1
+diff --git a/internal/modelruntime/journal_remote.go b/internal/modelruntime/journal_remote.go
+index 12b8f8b..9140127 100644
+--- a/internal/modelruntime/journal_remote.go
++++ b/internal/modelruntime/journal_remote.go
+@@ -48,23 +48,11 @@ type remoteExecutionJournal struct {
+ // local journal and cannot start a backend, allocate an epoch, authorize first
+ // use or adopt a replacement. Trusted startup assembly must precede this call.
+ func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig, services ...*Service) (*Supervisor, error) {
+-	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
+-		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
+-		return nil, ErrExecutionStateRecovery
+-	}
+-	config.Manifest = cloneLaunchManifest(config.Manifest)
+-	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
++	remote, err := newRemoteExecutionJournal(ctx, config)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
+-	if err := remote.checkContext(ctx); err != nil {
+-		return nil, err
+-	}
+-	state := remote.state
+-	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
+-		return nil, ErrBackendIncarnationUnproven
+-	}
++	config = remote.config
+ 	bindings, err := config.Manifest.RuntimeBindings()
+ 	if err != nil || len(bindings) != len(services) {
+ 		return nil, ErrExecutionStateRecovery
+@@ -91,6 +79,34 @@ func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteE
+ 	return newSupervisorWithStores(floor, nil, remote, services...)
+ }
+ 
++func newRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig) (*remoteExecutionJournal, error) {
++	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
++		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
++		return nil, ErrExecutionStateRecovery
++	}
++	config.Manifest = cloneLaunchManifest(config.Manifest)
++	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
++	if err != nil {
++		return nil, err
++	}
++	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
++	if err := remote.checkContext(ctx); err != nil {
++		return nil, err
++	}
++	if err := remote.requireFreshStartup(); err != nil {
++		return nil, err
++	}
++	return remote, nil
++}
++
++func (store *remoteExecutionJournal) requireFreshStartup() error {
++	state := store.state
++	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
++		return ErrBackendIncarnationUnproven
++	}
++	return nil
++}
++
+ func (store *remoteExecutionJournal) view() *executionJournal { return &store.executionJournal }
+ func (store *remoteExecutionJournal) close() error            { store.closed = true; return nil }
+ func (store *remoteExecutionJournal) recoveryError() error    { return store.workerHealthError() }
+diff --git a/internal/modelruntime/server.go b/internal/modelruntime/server.go
+index c8265b1..7892b45 100644
+--- a/internal/modelruntime/server.go
++++ b/internal/modelruntime/server.go
+@@ -47,6 +47,7 @@ type RuntimeServerConfig struct {
+ 	ExecutionFloor     *ExecutionFloorConfig
+ 	RegistryBinding    *velav1.WorkerBootstrapBinding
+ 	RegistryVerifier   *journalbinding.Verifier
++	RemoteStartup      *RemoteRuntimeStartup
+ }
+ 
+ type RuntimeServer struct {
+@@ -74,7 +75,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
+ }
+ 
+ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened func(*executionStateFile)) (*RuntimeServer, error) {
+-	if ctx == nil || config.EpochStore == nil || config.Validator == nil {
++	if ctx == nil || (config.EpochStore == nil && config.RemoteStartup == nil) || config.Validator == nil {
+ 		return nil, errors.New("ModelRuntime server configuration is incomplete")
+ 	}
+ 	if err := context.Cause(ctx); err != nil {
+@@ -90,8 +91,8 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened
+ 		return nil, errors.New("ModelRuntime Registry binding and verifier must be configured together")
+ 	}
+ 	if config.RegistryBinding != nil {
+-		if config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
+-			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 || config.ExecutionFloor.State.UpgradeV6 || config.ExecutionFloor.State.UpgradeV7 {
++		if config.RemoteStartup == nil && (config.ExecutionFloor == nil || config.ExecutionFloor.State == nil || config.ExecutionFloor.State.Initialize ||
++			config.ExecutionFloor.State.UpgradeV2 || config.ExecutionFloor.State.UpgradeV3 || config.ExecutionFloor.State.UpgradeV4 || config.ExecutionFloor.State.UpgradeV5 || config.ExecutionFloor.State.UpgradeV6 || config.ExecutionFloor.State.UpgradeV7) {
+ 			return nil, errors.New("ModelRuntime Registry binding requires an existing execution journal without initialization or upgrade")
+ 		}
+ 		verified, err := config.RegistryVerifier.Verify(config.RegistryBinding)
+@@ -127,6 +128,15 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	remoteState, err := prepareRemoteRuntimeStartup(ctx, &config)
++	if err != nil {
++		return nil, err
++	}
++	defer func() {
++		if remoteState != nil {
++			_ = remoteState.close()
++		}
++	}()
+ 	var startupState *executionStateFile
+ 	if config.ExecutionFloor != nil && config.ExecutionFloor.State != nil {
+ 		verifier, err := newExecutionFloorVerifier(*config.ExecutionFloor, bindings[0])
+@@ -218,6 +228,16 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened
+ 			Binding: binding, EpochStore: config.EpochStore, Validator: config.Validator,
+ 			EpochFloor: runtime.ModelRuntimeEpochFloor, MaxClockSkew: config.MaxClockSkew,
+ 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
++				if remoteState != nil {
++					if !backendStartupRecorded {
++						if err := remoteState.authorizeRemoteStartup(runtimeCtx, config.RegistryBinding, config.RemoteStartup.Authorize); err != nil {
++							return nil, err
++						}
++						backendStartupRecorded = true
++					} else if err := remoteState.checkFreshStartup(runtimeCtx); err != nil {
++						return nil, err
++					}
++				}
+ 				// A valid pending journal permits recovery RPCs, not replacement
+ 				// model startup while historical writers may still own the device.
+ 				if startupState != nil {
+@@ -260,11 +280,23 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened
+ 			return rollbackStart(fmt.Errorf("resident runtime readiness lost during startup: %w", startupErr))
+ 		}
+ 	}
+-	supervisor, err = newSupervisorWithState(config.ExecutionFloor, startupState, services...)
++	if remoteState != nil {
++		if err := remoteState.checkFreshStartup(runtimeCtx); err != nil {
++			return rollbackStart(err)
++		}
++		floor, floorErr := config.Manifest.bindExecutionFloorConfig(ExecutionFloorConfig{}, config.Validator)
++		if floorErr != nil {
++			return rollbackStart(floorErr)
++		}
++		supervisor, err = newSupervisorWithStores(floor, nil, remoteState, services...)
++	} else {
++		supervisor, err = newSupervisorWithState(config.ExecutionFloor, startupState, services...)
++	}
+ 	if err != nil {
+ 		return rollbackStart(err)
+ 	}
+ 	startupState = nil
++	remoteState = nil
+ 	supervisor.registryBinding, supervisor.registryVerifier = config.RegistryBinding, config.RegistryVerifier
+ 	grpcServer := grpc.NewServer(
+ 		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),
+diff --git a/internal/nodeagent/journal_endpoint_linux_test.go b/internal/nodeagent/journal_endpoint_linux_test.go
+index ced969e..f2886e8 100644
+--- a/internal/nodeagent/journal_endpoint_linux_test.go
++++ b/internal/nodeagent/journal_endpoint_linux_test.go
+@@ -46,6 +46,9 @@ type journalEndpointControl struct {
+ 	PauseBefore           string
+ 	Floor                 []byte
+ 	ControlledClock       bool
++	RemoteServer          bool
++	RegistryBinding       []byte
++	AllowRemoteStartup    bool
+ }
+ 
+ type journalEndpointReport struct {
+@@ -64,6 +67,8 @@ type journalEndpointReport struct {
+ 	PausedBefore        string
+ 	Checkpoint          bool
+ 	CancelReason        velav1.ModelRuntimeCancelReason
++	RemoteStartup       *modelruntime.RemoteBackendStartupRequest
++	FactoryCalls        int
+ }
+ 
+ type journalEndpointChild struct {
+@@ -147,6 +152,10 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
+ 			continue
+ 		}
+ 		if request.Manifest != nil {
++			if request.RemoteServer {
++				journalEndpointRunRemoteServer(t, socket, request, decoder, encoder)
++				continue
++			}
+ 			journalEndpointRunSupervisor(t, socket, request, decoder, encoder)
+ 			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
+ 				t.Fatal(err)
+@@ -285,6 +294,11 @@ type journalEndpointFixture struct {
+ }
+ 
+ func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
++	t.Helper()
++	return newJournalEndpointFixtureWithEpochOffset(t, 0)
++}
++
++func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) journalEndpointFixture {
+ 	t.Helper()
+ 	if os.Geteuid() != 0 {
+ 		t.Skip("requires root Node and independent non-root PID namespaces")
+@@ -318,7 +332,7 @@ func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
+ 		t.Fatal(err)
+ 	}
+ 	for i := range routes {
+-		routes[i].ModelRuntimeEpoch = fixture.launch.Runtimes[i].ModelRuntimeEpochFloor
++		routes[i].ModelRuntimeEpoch = fixture.launch.Runtimes[i].ModelRuntimeEpochFloor + epochOffset
+ 	}
+ 	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: fixture.launch,
+ 		Validator: validator, Routes: routes, State: modelruntime.ExecutionFloorStateConfig{Directory: state, Initialize: true}, Now: clock})
+diff --git a/internal/modelruntime/server_remote_startup.go b/internal/modelruntime/server_remote_startup.go
+new file mode 100644
+index 0000000..3fba457
+--- /dev/null
++++ b/internal/modelruntime/server_remote_startup.go
+@@ -0,0 +1,137 @@
++package modelruntime
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"errors"
++	"math"
++	"time"
++
++	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++// RemoteRuntimeStartup is trusted server assembly for first startup only. Node
++// must already own the Registry-bound journal, persist its startup intent and
++// reserve the exact epochs derived from the approved manifest. It must authorize
++// this original process once; a repeated callback success is not proof of that.
++// No local epoch allocation, file adoption or replacement backend is supported.
++type RemoteRuntimeStartup struct {
++	Journal   RemoteExecutionJournalConfig
++	Authorize func(context.Context, RemoteBackendStartupRequest) error
++}
++
++// RemoteBackendStartupRequest declares Node custody and all proposed live
++// bindings explicitly. It is intentionally not the local-file startup request.
++// The authorizer must independently match these facts to live Fleet approval,
++// retained process identity and its own durable journal/epoch reservation.
++type RemoteBackendStartupRequest struct {
++	Intent          BackendStartupRequest
++	JournalIdentity ExecutionJournalIdentity
++	Bindings        []stageauthority.RuntimeBinding
++}
++
++// RemoteStartupBindings chooses the first epoch strictly above each approved
++// launch floor. The Node authorizer must reserve and approve these exact values;
++// computing them alone grants no startup or replacement permission.
++func RemoteStartupBindings(manifest LaunchManifest) ([]stageauthority.RuntimeBinding, error) {
++	bindings, err := manifest.RuntimeBindings()
++	if err != nil {
++		return nil, err
++	}
++	for i := range bindings {
++		floor := manifest.Runtimes[i].ModelRuntimeEpochFloor
++		if floor < 0 || floor == math.MaxInt64 {
++			return nil, ErrBackendStartupDenied
++		}
++		bindings[i].ModelRuntimeEpoch = floor + 1
++	}
++	return bindings, nil
++}
++
++func prepareRemoteRuntimeStartup(ctx context.Context, config *RuntimeServerConfig) (*remoteExecutionJournal, error) {
++	if config.RemoteStartup == nil {
++		return nil, nil
++	}
++	if config.EpochStore != nil || config.ExecutionFloor != nil || config.BackendStartupGate != nil || config.RegistryBinding == nil || config.RegistryVerifier == nil {
++		return nil, errors.New("remote startup requires Registry binding and exclusive Node journal/epoch custody")
++	}
++	remote := *config.RemoteStartup
++	if remote.Authorize == nil {
++		return nil, ErrBackendStartupGateRequired
++	}
++	manifest, err := EncodeLaunchManifest(config.Manifest)
++	if err != nil {
++		return nil, err
++	}
++	declared, err := EncodeLaunchManifest(remote.Journal.Manifest)
++	if err != nil || !bytes.Equal(manifest, declared) || remote.Journal.Validator != config.Validator {
++		return nil, ErrBackendStartupDenied
++	}
++	remote.Journal.Manifest = cloneLaunchManifest(config.Manifest)
++	config.RemoteStartup = &remote
++	bindings, err := RemoteStartupBindings(config.Manifest)
++	if err != nil {
++		return nil, err
++	}
++	if err := config.RegistryVerifier.VerifyJournal(config.RegistryBinding, journalbinding.RuntimeJournal, journalbinding.Journal{
++		WorkerInstanceID: config.Manifest.WorkerInstanceID, WorkerInstanceEpoch: config.Manifest.WorkerInstanceEpoch,
++		WorkerMemberID: config.Manifest.WorkerMemberID, WorkerMemberEpoch: config.Manifest.WorkerMemberEpoch,
++		JournalID: remote.Journal.Identity.JournalID, Scope: remote.Journal.Identity.Scope,
++	}); err != nil {
++		return nil, err
++	}
++	store, err := newRemoteExecutionJournal(ctx, remote.Journal)
++	if err != nil {
++		return nil, err
++	}
++	config.EpochStore = EpochStoreFunc(func(binding stageauthority.RuntimeBinding) (int64, error) {
++		for _, expected := range bindings {
++			if binding.ModelResidencyID == expected.ModelResidencyID && binding.ModelRuntimeIdentity == expected.ModelRuntimeIdentity && binding.StageProfileRevisionID == expected.StageProfileRevisionID {
++				return expected.ModelRuntimeEpoch, nil
++			}
++		}
++		return 0, stageauthority.ErrRuntimeMismatch
++	})
++	return store, nil
++}
++
++func (store *remoteExecutionJournal) authorizeRemoteStartup(ctx context.Context, binding *velav1.WorkerBootstrapBinding, authorize func(context.Context, RemoteBackendStartupRequest) error) error {
++	if authorize == nil {
++		return ErrBackendStartupGateRequired
++	}
++	if err := store.checkFreshStartup(ctx); err != nil {
++		return err
++	}
++	bindings, err := RemoteStartupBindings(store.config.Manifest)
++	if err != nil {
++		return err
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
++	if err != nil {
++		return err
++	}
++	lifecycle := store.config.Startup
++	request := RemoteBackendStartupRequest{Intent: BackendStartupRequest{SchemaVersion: 1, NodeIdentity: binding.GetClaim().GetNodeIdentity(),
++		RegistryBindingDigest: sha256.Sum256(wire), JournalID: store.state.ID, JournalScope: store.state.Scope,
++		IncarnationID: lifecycle.IncarnationID, LaunchDigest: lifecycle.LaunchDigest}, JournalIdentity: store.config.Identity, Bindings: bindings}
++	if err := request.Intent.Validate(); err != nil {
++		return err
++	}
++	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
++	defer cancel()
++	if err := authorize(ctx, request); err != nil {
++		return errors.Join(ErrBackendStartupDenied, err)
++	}
++	return errors.Join(context.Cause(ctx), store.checkFreshStartup(ctx))
++}
++
++func (store *remoteExecutionJournal) checkFreshStartup(ctx context.Context) error {
++	if err := store.checkContext(ctx); err != nil {
++		return err
++	}
++	return store.requireFreshStartup()
++}
+diff --git a/internal/modelruntime/server_remote_startup_test.go b/internal/modelruntime/server_remote_startup_test.go
+new file mode 100644
+index 0000000..a386205
+--- /dev/null
++++ b/internal/modelruntime/server_remote_startup_test.go
+@@ -0,0 +1,211 @@
++package modelruntime_test
++
++import (
++	"context"
++	"crypto/sha256"
++	"errors"
++	"math"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/modelruntimetransport"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++)
++
++func remoteRuntimeServerFixture(t *testing.T) (modelruntime.RuntimeServerConfig, *modelruntime.ExecutionJournalOwner, string) {
++	t.Helper()
++	config := journalRuntimeServerConfig(t)
++	routes, err := modelruntime.RemoteStartupBindings(config.Manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	directory := config.ExecutionFloor.State.Directory
++	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: config.Manifest, Validator: config.Validator,
++		State: *config.ExecutionFloor.State, Routes: routes, Now: time.Now})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = owner.Close() })
++	startup, err := owner.RecordBackendStartupIntent(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	status, err := owner.Status(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	config.RegistryBinding, config.RegistryVerifier = runtimeRegistryBinding(t, config, status, nil)
++	identity := modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}
++	config.RemoteStartup = &modelruntime.RemoteRuntimeStartup{Journal: modelruntime.RemoteExecutionJournalConfig{
++		Manifest: config.Manifest, Validator: config.Validator, Identity: identity, Startup: startup,
++		Transport: &directJournalTransport{owner: owner, identity: identity, role: modelruntime.JournalRuntimeRole}, Timeout: time.Second},
++		Authorize: func(context.Context, modelruntime.RemoteBackendStartupRequest) error { return nil }}
++	config.EpochStore, config.ExecutionFloor = nil, nil
++	return config, owner, directory
++}
++
++func TestRuntimeServerRemoteStartupBeforeFactories(t *testing.T) {
++	for _, scenario := range []string{"permit", "deny", "cancel-after-permit", "changed-after-permit", "changed-after-first-factory", "gate-alias-mutation"} {
++		t.Run(scenario, func(t *testing.T) {
++			config, owner, directory := remoteRuntimeServerFixture(t)
++			manifestWire, err := modelruntime.EncodeLaunchManifest(config.Manifest)
++			if err != nil {
++				t.Fatal(err)
++			}
++			bindingWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(config.RegistryBinding)
++			if err != nil {
++				t.Fatal(err)
++			}
++			routes, err := modelruntime.RemoteStartupBindings(config.Manifest)
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithCancel(t.Context())
++			defer cancel()
++			gateCalls := 0
++			var backends []*floorBlockingBackend
++			changeJournal := func() {
++				path := filepath.Join(directory, durableStateFileName)
++				wire, err := os.ReadFile(path)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if err := os.WriteFile(path, append(wire, ' '), 0o600); err != nil {
++					t.Fatal(err)
++				}
++			}
++			config.RemoteStartup.Authorize = func(ctx context.Context, request modelruntime.RemoteBackendStartupRequest) error {
++				gateCalls++
++				if gateCalls != 1 {
++					return errors.New("fixture denies repeated permission for original incarnation")
++				}
++				status, err := owner.Status(ctx)
++				if err != nil || len(backends) != 0 || request.Intent.Validate() != nil || request.Intent.JournalID != status.JournalID ||
++					request.Intent.JournalScope != status.Scope || request.JournalIdentity.Storage != status.Storage || request.Intent.IncarnationID != status.BackendLifecycle.IncarnationID ||
++					request.Intent.LaunchDigest != sha256.Sum256(manifestWire) || request.Intent.RegistryBindingDigest != sha256.Sum256(bindingWire) ||
++					!reflect.DeepEqual(request.Bindings, routes) {
++					t.Fatalf("remote authorization did not precede factories with exact owner/epochs: %+v %v", request, err)
++				}
++				if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > 45*time.Second {
++					t.Fatal("unbounded authorizer context")
++				}
++				switch scenario {
++				case "deny":
++					return errors.New("fixture denies Node permission")
++				case "cancel-after-permit":
++					cancel()
++				case "changed-after-permit":
++					changeJournal()
++				case "gate-alias-mutation":
++					request.Bindings[0].ModelRuntimeEpoch++
++					request.Bindings[0].DeviceSetDigest[0] ^= 1
++					config.RemoteStartup.Journal.Manifest.Runtimes[0].ModelRuntimeEpochFloor++
++				}
++				return nil
++			}
++			config.BackendFactory = func(_ context.Context, runtime modelruntime.LaunchRuntime, binding stageauthority.RuntimeBinding, _ modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
++				if gateCalls != 1 || !reflect.DeepEqual(binding, routes[len(backends)]) {
++					t.Fatalf("factory used unapproved epoch/config: %+v", binding)
++				}
++				backend := &floorBlockingBackend{FakeRuntime: modelruntime.NewFakeEncoderRuntime(), resume: make(chan struct{})}
++				if runtime.Component == "VAE" {
++					backend.FakeRuntime = modelruntime.NewFakeVAERuntime()
++				}
++				backends = append(backends, backend)
++				if scenario == "changed-after-first-factory" {
++					changeJournal()
++				}
++				return backend, nil
++			}
++			server, err := modelruntime.StartRuntimeServer(ctx, config)
++			if scenario == "permit" || scenario == "gate-alias-mutation" {
++				if err != nil || server == nil || len(backends) != len(routes) || gateCalls != 1 {
++					t.Fatalf("authorized remote startup: factories=%d gate=%d err=%v", len(backends), gateCalls, err)
++				}
++				client, err := modelruntimetransport.Dial(ctx, modelruntimetransport.Config{SocketPath: config.SocketPath, ExpectedUID: uint32(os.Getuid())})
++				if err != nil {
++					t.Fatal(err)
++				}
++				discovery, err := client.DiscoverRuntimeIdentities(ctx, &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
++					WorkerInstanceId: routes[0].WorkerInstanceID, WorkerInstanceEpoch: routes[0].WorkerInstanceEpoch,
++					WorkerMemberId: routes[0].WorkerMemberID, WorkerMemberEpoch: routes[0].WorkerMemberEpoch})
++				if err != nil || len(discovery.GetIdentities()) != len(routes) || !proto.Equal(discovery.GetJournalBinding(), config.RegistryBinding) {
++					t.Fatalf("remote server failed Registry-bound discovery: %v %v", discovery, err)
++				}
++				_ = client.Close()
++				if err := server.Close(); err != nil {
++					t.Fatal(err)
++				}
++				if scenario == "permit" {
++					if retry, err := modelruntime.StartRuntimeServer(ctx, config); err == nil || retry != nil || gateCalls != 2 || len(backends) != len(routes) {
++						t.Fatalf("server bypassed repeated Node permission refusal: %v %v", retry, err)
++					}
++				}
++			} else if err == nil || server != nil || (scenario == "changed-after-first-factory" && len(backends) != 1) ||
++				(scenario != "changed-after-first-factory" && len(backends) != 0) {
++				t.Fatalf("failed remote startup entered more factories: factories=%d err=%v", len(backends), err)
++			}
++			for _, backend := range backends {
++				if !backend.closed.Load() {
++					t.Fatal("startup rollback/server close leaked backend")
++				}
++			}
++			if _, err := os.Lstat(config.SocketPath); !errors.Is(err, os.ErrNotExist) {
++				t.Fatalf("failed/closed remote startup left socket: %v", err)
++			}
++		})
++	}
++}
++
++func TestRuntimeServerRemoteStartupRejectsMixedCustody(t *testing.T) {
++	for _, fault := range []string{"local-epoch", "local-state", "local-gate", "missing-gate", "missing-registry", "signature", "manifest", "verifier", "incarnation", "journal", "overflow"} {
++		t.Run(fault, func(t *testing.T) {
++			config, _, _ := remoteRuntimeServerFixture(t)
++			calls := 0
++			config.BackendFactory = func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
++				calls++
++				return modelruntime.NewFakeEncoderRuntime(), nil
++			}
++			switch fault {
++			case "local-epoch":
++				config.EpochStore = modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) {
++					t.Fatal("remote startup allocated local epoch")
++					return 0, nil
++				})
++			case "local-state":
++				config.ExecutionFloor = &modelruntime.ExecutionFloorConfig{}
++			case "local-gate":
++				config.BackendStartupGate = func(context.Context, modelruntime.BackendStartupRequest) error {
++					t.Fatal("remote startup borrowed local gate")
++					return nil
++				}
++			case "missing-gate":
++				config.RemoteStartup.Authorize = nil
++			case "missing-registry":
++				config.RegistryBinding, config.RegistryVerifier = nil, nil
++			case "signature":
++				config.RegistryBinding.Signature[0] ^= 1
++			case "manifest":
++				config.RemoteStartup.Journal.Manifest.DeviceSetDigest = repeatHex("8")
++			case "verifier":
++				config.RemoteStartup.Journal.Validator = nil
++			case "incarnation":
++				config.RemoteStartup.Journal.Startup.IncarnationID = uuid.New()
++			case "journal":
++				config.RemoteStartup.Journal.Identity.JournalID = uuid.New()
++			case "overflow":
++				config.Manifest.Runtimes[0].ModelRuntimeEpochFloor = math.MaxInt64
++			}
++			if server, err := modelruntime.StartRuntimeServer(t.Context(), config); err == nil || server != nil || calls != 0 {
++				t.Fatalf("invalid remote configuration entered factory: server=%v err=%v calls=%d", server, err, calls)
++			}
++		})
++	}
++}
+diff --git a/internal/nodeagent/journal_remote_server_linux_test.go b/internal/nodeagent/journal_remote_server_linux_test.go
+new file mode 100644
+index 0000000..4851814
+--- /dev/null
++++ b/internal/nodeagent/journal_remote_server_linux_test.go
+@@ -0,0 +1,188 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/journalbinding"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/stageauthority"
++	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
++	"google.golang.org/protobuf/proto"
++	"google.golang.org/protobuf/types/known/timestamppb"
++)
++
++func journalEndpointRunRemoteServer(t *testing.T, socket string, request journalEndpointControl, decoder *json.Decoder, encoder *json.Encoder) {
++	t.Helper()
++	validator, err := stageauthority.NewValidator(map[string][]byte{"journal-test": bytes.Repeat([]byte{73}, 32)}, time.Now)
++	if err != nil {
++		t.Fatal(err)
++	}
++	seed := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{17}, ed25519.SeedSize))
++	verifier, err := journalbinding.NewVerifier(map[string][]byte{"registry": seed.Public().(ed25519.PublicKey)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	var binding velav1.WorkerBootstrapBinding
++	if err := proto.Unmarshal(request.RegistryBinding, &binding); err != nil {
++		t.Fatal(err)
++	}
++	var backend *journalEndpointBackend
++	factories := 0
++	server, err := modelruntime.StartRuntimeServer(t.Context(), modelruntime.RuntimeServerConfig{
++		Manifest: *request.Manifest, Validator: validator, SocketPath: request.RuntimeSocket, CancelTimeout: time.Second,
++		RegistryBinding: &binding, RegistryVerifier: verifier,
++		RemoteStartup: &modelruntime.RemoteRuntimeStartup{Journal: modelruntime.RemoteExecutionJournalConfig{
++			Manifest: *request.Manifest, Validator: validator, Identity: request.Identity, Startup: request.Startup,
++			Transport: modelruntime.UnixRuntimeJournalTransport{Socket: socket, Identity: request.Identity}, Timeout: 5 * time.Second},
++			Authorize: func(_ context.Context, intent modelruntime.RemoteBackendStartupRequest) error {
++				// This is an explicit fixture authorizer over inherited control
++				// pipes, not a production Fleet/Registry permission issuer.
++				journalBarrierReport(t, encoder, journalEndpointReport{RemoteStartup: &intent, FactoryCalls: factories})
++				var decision journalEndpointControl
++				if err := decoder.Decode(&decision); err != nil || !decision.AllowRemoteStartup {
++					return errors.New("parent Node fixture denied remote startup")
++				}
++				return nil
++			}},
++		BackendFactory: func(context.Context, modelruntime.LaunchRuntime, stageauthority.RuntimeBinding, modelruntime.ProcessBackendConfig) (modelruntime.Backend, error) {
++			factories++
++			backend = &journalEndpointBackend{FakeRuntime: modelruntime.NewFakeDiTRuntime()}
++			return backend, nil
++		},
++	})
++	if err != nil {
++		journalBarrierReport(t, encoder, journalEndpointReport{Error: err.Error(), FactoryCalls: factories})
++		return
++	}
++	defer func() { _ = server.Close() }()
++	journalBarrierReport(t, encoder, journalEndpointReport{SupervisorReady: true, FactoryCalls: factories})
++	for {
++		var control journalEndpointControl
++		if err := decoder.Decode(&control); err != nil {
++			t.Fatal(err)
++		}
++		switch control.SupervisorAction {
++		case "output":
++			backend.MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/native.bin"}`))
++		case "close":
++			if err := server.Close(); err != nil {
++				t.Fatal(err)
++			}
++			journalBarrierReport(t, encoder, journalEndpointReport{SupervisorCompleted: true, FactoryCalls: factories})
++			return
++		default:
++			t.Fatalf("unknown remote server action: %q", control.SupervisorAction)
++		}
++		journalBarrierReport(t, encoder, journalEndpointReport{FactoryCalls: factories, PrepareCalls: backend.prepareCalls.Load(), StartCalls: backend.startCalls.Load()})
++	}
++}
++
++func TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution(t *testing.T) {
++	for _, allow := range []bool{true, false} {
++		t.Run(map[bool]string{true: "permit", false: "deny"}[allow], func(t *testing.T) {
++			f := newJournalEndpointFixtureWithEpochOffset(t, 1)
++			server, done := startJournalTestServer(t, f, 30*time.Second)
++			directory := filepath.Join(filepath.Dir(f.listener.Addr().String()), "workload")
++			if err := os.Mkdir(directory, 0o700); err != nil {
++				t.Fatal(err)
++			}
++			if err := os.Chown(directory, 65532, 65532); err != nil {
++				t.Fatal(err)
++			}
++			binding := journalRemoteServerBinding(t, f)
++			socket := filepath.Join(directory, "runtime.sock")
++			request := journalServerRequest(t, f.runtime, journalEndpointControl{RemoteServer: true, Identity: f.identity, Manifest: &f.manifest,
++				Startup: f.startup, RuntimeSocket: socket, RegistryBinding: binding})
++			routes, err := modelruntime.RemoteStartupBindings(f.manifest)
++			if err != nil {
++				t.Fatal(err)
++			}
++			intent := request.RemoteStartup
++			if intent == nil || request.FactoryCalls != 0 || intent.Intent.Validate() != nil || intent.JournalIdentity != f.identity ||
++				intent.Intent.IncarnationID != f.startup.IncarnationID || intent.Intent.LaunchDigest != f.startup.LaunchDigest ||
++				intent.Intent.RegistryBindingDigest != sha256.Sum256(binding) || !reflect.DeepEqual(intent.Bindings, routes) {
++				t.Fatalf("remote server called factory before exact Node declaration: %+v", request)
++			}
++			if _, err := os.Lstat(socket); !errors.Is(err, os.ErrNotExist) {
++				t.Fatalf("Runtime published RPC socket before permission: %v", err)
++			}
++			result := journalServerRequest(t, f.runtime, journalEndpointControl{AllowRemoteStartup: allow})
++			if !allow {
++				if result.Error == "" || result.FactoryCalls != 0 || result.SupervisorReady {
++					t.Fatalf("denied server started backend: %+v", result)
++				}
++			} else {
++				if !result.SupervisorReady || result.FactoryCalls != 1 || result.Error != "" {
++					t.Fatalf("permitted server did not start exactly one backend: %+v", result)
++				}
++				started := journalServerRequest(t, f.worker, journalEndpointControl{WorkerSocket: socket, WorkerAction: "execute", Authority: f.authority, Identity: f.identity})
++				if started.Error != "" || started.Barrier == nil || !started.Barrier.BarrierPassed {
++					t.Fatalf("actual Worker could not execute on remotely started server: %+v", started)
++				}
++				calls := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "output"})
++				if calls.PrepareCalls != 1 || calls.StartCalls != 1 || calls.FactoryCalls != 1 {
++					t.Fatalf("remote server repeated backend calls: %+v", calls)
++				}
++				journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "seal", Authority: f.authority})
++				if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain", Authority: f.authority}); !report.Checkpoint {
++					t.Fatal("actual remote server did not persist exact drain")
++				}
++				journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "close", Authority: f.authority})
++				if report := journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "close"}); !report.SupervisorCompleted {
++					t.Fatalf("remote server did not close: %+v", report)
++				}
++			}
++			status, err := f.owner.Status(t.Context())
++			expectedHighest := int64(0)
++			if allow {
++				expectedHighest = 1
++			}
++			if err != nil || status.Highest != expectedHighest || status.PendingExecutions != 0 || status.BackendLifecycle != f.startup {
++				t.Fatalf("remote server changed Node lifecycle or lost drain: %+v %v", status, err)
++			}
++			entries, err := os.ReadDir(directory)
++			if err != nil || len(entries) != 0 {
++				t.Fatalf("Runtime created local journal/epoch files or retained socket: %v %v", entries, err)
++			}
++			if err := server.Shutdown(t.Context()); err != nil {
++				t.Fatal(err)
++			}
++			assertJournalServerJoined(t, server, done)
++			t.Logf("actual remote Runtime server: permit=%v; factory permission precedes RPC publication; Node owns journal; fixture matches exact proposed epochs; Worker uses real RPC", allow)
++		})
++	}
++}
++
++func journalRemoteServerBinding(t *testing.T, f journalEndpointFixture) []byte {
++	t.Helper()
++	signer, err := journalbinding.NewSigner("registry", bytes.Repeat([]byte{17}, ed25519.SeedSize))
++	if err != nil {
++		t.Fatal(err)
++	}
++	request := uuid.NewString()
++	binding, err := signer.Sign(&velav1.WorkerBootstrapBinding{SchemaVersion: journalbinding.SchemaVersion,
++		Claim: &velav1.WorkerBootstrapClaim{RequestId: request, WorkerInstanceId: f.manifest.WorkerInstanceID, WorkerInstanceEpoch: f.manifest.WorkerInstanceEpoch,
++			WorkerMemberId: f.manifest.WorkerMemberID, WorkerMemberEpoch: f.manifest.WorkerMemberEpoch, NodeIdentity: "cpu-node", ActorIdentity: "node-agent/cpu-node",
++			BundleDigest: bytes.Repeat([]byte{1}, 32), ClaimedAt: timestamppb.Now()},
++		Pair: &velav1.WorkerBootstrapJournalPair{RequestId: request, ActorIdentity: "node-agent/cpu-node", WorkerJournalId: uuid.NewString(), WorkerScope: bytes.Repeat([]byte{2}, 32),
++			RuntimeJournalId: f.identity.JournalID.String(), RuntimeScope: f.identity.Scope[:], RecordedAt: timestamppb.Now()}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(binding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return wire
++}

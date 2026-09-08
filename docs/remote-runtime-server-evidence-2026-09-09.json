@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "637c80ebd50bbe1298036c383ef5a81408fa3d6d",
+  "source_tree_sha256": "0995602e45cb5e7891fc8563e79ebca770a241bd9412d4cd1a7213a8217b6f66",
+  "source_file_count": 957,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "native_runner_sha256": "9ee108158b33b27ba167bc222db4d748f3ab83838ce5e8cfa35343d5403fce5c",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/focused.log",
+      "bytes": 2951,
+      "sha256": "44964089c85182bd368347117f6cec0d3891cf6c29e85cca672a72d379ad447c"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/linux-cross.log",
+      "bytes": 166,
+      "sha256": "a540c4361abc739192ee755ce8b9e7955b18fec9a4f040895e60471120b2af20"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/modelruntime-race.log",
+      "bytes": 58,
+      "sha256": "0dbb75392a1b3d6f216c94bcd2d9cc9d4770a14ccbce3e32e976154a698da9a5"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/binaries.sha256",
+      "bytes": 305,
+      "sha256": "e14e494377a032a59d726b000b5fd564c341cecd4fea7556a134adac81aa5adf"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/build-modelruntime.log",
+      "bytes": 1718,
+      "sha256": "31a8915cde2847a6671b5cd6f0ad21cc210df3a5f8dd3f2118ce32a69947de81"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/build-nodeagent.log",
+      "bytes": 1715,
+      "sha256": "77e10a0191eb1e269923b8c7c2d5b0923ba87d4f14207f9c3e1ee25384c2c330"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/image.txt",
+      "bytes": 72,
+      "sha256": "867e74694d9141db00f58b73962222659ae50433fb3c94caab02ae3718b6d8fc"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/modelruntime.log",
+      "bytes": 40905,
+      "sha256": "fb64915745f07d503d4689e8064d0c868f61f1dddb4f83a46a5158735ee36052"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/node-startup.log",
+      "bytes": 26698,
+      "sha256": "0e5e9a1cc116696858b825d1bb0be80cba3f0624ce4539032136e5566f11c95f"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/source-patch.sha256",
+      "bytes": 136,
+      "sha256": "bc1f59b7296a7829db2788fc8b46f26d6b774d3d0d6b6723850d99b45ebf88a2"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/source.patch",
+      "bytes": 36616,
+      "sha256": "fd86fe9587947bc55ef2d1b902eeeed56d6802af891e029707b1a3d4a80913f1"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native/source.txt",
+      "bytes": 371,
+      "sha256": "af80ed0bc39390eda7c89a4bd41a8d246e514d0bab9c6aeadbd5a6db69a96889"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/native-runner.log",
+      "bytes": 93,
+      "sha256": "b625385273fbf5a147f389f683243fd98fc2a524e45d48ef9b1bf5c4fbad2bd5"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/repository-tests.log",
+      "bytes": 6789,
+      "sha256": "855ff14d72a742c1b5cda0ee37e104bd8ae70fd1beb73bd6d5b402e922c950ff"
+    },
+    {
+      "path": "docs/evidence/remote-runtime-server-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

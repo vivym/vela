@@ -48,23 +48,11 @@ type remoteExecutionJournal struct {
 // local journal and cannot start a backend, allocate an epoch, authorize first
 // use or adopt a replacement. Trusted startup assembly must precede this call.
 func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig, services ...*Service) (*Supervisor, error) {
-	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
-		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
-		return nil, ErrExecutionStateRecovery
-	}
-	config.Manifest = cloneLaunchManifest(config.Manifest)
-	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
+	remote, err := newRemoteExecutionJournal(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
-	if err := remote.checkContext(ctx); err != nil {
-		return nil, err
-	}
-	state := remote.state
-	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
-		return nil, ErrBackendIncarnationUnproven
-	}
+	config = remote.config
 	bindings, err := config.Manifest.RuntimeBindings()
 	if err != nil || len(bindings) != len(services) {
 		return nil, ErrExecutionStateRecovery
@@ -89,6 +77,34 @@ func NewSupervisorWithRemoteExecutionJournal(ctx context.Context, config RemoteE
 		return nil, err
 	}
 	return newSupervisorWithStores(floor, nil, remote, services...)
+}
+
+func newRemoteExecutionJournal(ctx context.Context, config RemoteExecutionJournalConfig) (*remoteExecutionJournal, error) {
+	if ctx == nil || config.Transport == nil || config.Timeout <= 0 || config.Timeout > 45*time.Second ||
+		config.Startup.State != BackendLifecycleUnresolved || !config.Identity.Storage.Valid() {
+		return nil, ErrExecutionStateRecovery
+	}
+	config.Manifest = cloneLaunchManifest(config.Manifest)
+	scope, err := executionScopeForManifest(config.Manifest, config.Validator)
+	if err != nil {
+		return nil, err
+	}
+	remote := &remoteExecutionJournal{executionJournal: executionJournal{scope: scope}, config: config, ctx: ctx}
+	if err := remote.checkContext(ctx); err != nil {
+		return nil, err
+	}
+	if err := remote.requireFreshStartup(); err != nil {
+		return nil, err
+	}
+	return remote, nil
+}
+
+func (store *remoteExecutionJournal) requireFreshStartup() error {
+	state := store.state
+	if state.Highest != 0 || state.Floor != 0 || len(state.Executions) != 0 || len(state.NonAdmissions) != 0 || len(state.TerminalNonAdmissions) != 0 {
+		return ErrBackendIncarnationUnproven
+	}
+	return nil
 }
 
 func (store *remoteExecutionJournal) view() *executionJournal { return &store.executionJournal }

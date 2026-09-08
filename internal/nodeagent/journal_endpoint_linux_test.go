@@ -46,6 +46,9 @@ type journalEndpointControl struct {
 	PauseBefore           string
 	Floor                 []byte
 	ControlledClock       bool
+	RemoteServer          bool
+	RegistryBinding       []byte
+	AllowRemoteStartup    bool
 }
 
 type journalEndpointReport struct {
@@ -64,6 +67,8 @@ type journalEndpointReport struct {
 	PausedBefore        string
 	Checkpoint          bool
 	CancelReason        velav1.ModelRuntimeCancelReason
+	RemoteStartup       *modelruntime.RemoteBackendStartupRequest
+	FactoryCalls        int
 }
 
 type journalEndpointChild struct {
@@ -147,6 +152,10 @@ func TestJournalEndpointProcessHelper(t *testing.T) {
 			continue
 		}
 		if request.Manifest != nil {
+			if request.RemoteServer {
+				journalEndpointRunRemoteServer(t, socket, request, decoder, encoder)
+				continue
+			}
 			journalEndpointRunSupervisor(t, socket, request, decoder, encoder)
 			if err := encoder.Encode(journalEndpointReport{SupervisorCompleted: true}); err != nil {
 				t.Fatal(err)
@@ -286,6 +295,11 @@ type journalEndpointFixture struct {
 
 func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
 	t.Helper()
+	return newJournalEndpointFixtureWithEpochOffset(t, 0)
+}
+
+func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) journalEndpointFixture {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
 	}
@@ -318,7 +332,7 @@ func newJournalEndpointFixture(t *testing.T) journalEndpointFixture {
 		t.Fatal(err)
 	}
 	for i := range routes {
-		routes[i].ModelRuntimeEpoch = fixture.launch.Runtimes[i].ModelRuntimeEpochFloor
+		routes[i].ModelRuntimeEpoch = fixture.launch.Runtimes[i].ModelRuntimeEpochFloor + epochOffset
 	}
 	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{Manifest: fixture.launch,
 		Validator: validator, Routes: routes, State: modelruntime.ExecutionFloorStateConfig{Directory: state, Initialize: true}, Now: clock})

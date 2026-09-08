@@ -16,9 +16,11 @@ watchdog 仍发出停止。证据分别见
 [停止路径](journal-stop-outage-evidence-2026-09-08.md)及
 [watchdog 排队](watchdog-lock-wait-evidence-2026-09-09.md)。
 
-一次当前源代码检查确认：`NewSupervisorWithRemoteExecutionJournal`、
-`NewJournalWorkerClient`、`NewJournalServer` 在非测试 Go 文件中只有定义，
-没有生产装配调用。CPU Job campaign 在
+最新的 [Runtime server 增量](remote-runtime-server-evidence-2026-09-09.md)
+已使 `StartRuntimeServer` 支持远程 journal 启动，并要求 factory 前独立授权。
+其授权器目前仍为测试装配，命令入口、Node issuer、epoch 预留和 Fleet 挂载尚未
+接通；`NewJournalWorkerClient`、`NewJournalServer` 也尚无生产入口装配。
+CPU Job campaign 在
 `internal/integration/cpu_mock_load_campaign_test.go` 仍通过
 `NewSupervisorWithExecutionFloor` 使用本地 `runtime-admission` 目录。
 因此，真实 RPC 组件证据与完整 Job 证据目前仍来自两种不同装配。

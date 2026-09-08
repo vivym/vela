@@ -1,0 +1,40 @@
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/deny
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/cancel-after-permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/changed-after-permit
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/changed-after-first-factory
+=== RUN   TestRuntimeServerRemoteStartupBeforeFactories/gate-alias-mutation
+--- PASS: TestRuntimeServerRemoteStartupBeforeFactories (0.22s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/permit (0.06s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/deny (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/cancel-after-permit (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/changed-after-permit (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/changed-after-first-factory (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupBeforeFactories/gate-alias-mutation (0.04s)
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-epoch
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-state
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/local-gate
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-gate
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-registry
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/signature
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/manifest
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/verifier
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/incarnation
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/journal
+=== RUN   TestRuntimeServerRemoteStartupRejectsMixedCustody/overflow
+--- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody (0.27s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-epoch (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-state (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/local-gate (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-gate (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/missing-registry (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/signature (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/manifest (0.02s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/verifier (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/incarnation (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/journal (0.03s)
+    --- PASS: TestRuntimeServerRemoteStartupRejectsMixedCustody/overflow (0.03s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	2.157s

@@ -7,6 +7,16 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code increment (2026-09-09):
+[actual Runtime server remote startup](remote-runtime-server-evidence-2026-09-09.md)
+adds remote journal/epoch custody to `StartRuntimeServer`, requiring Registry
+binding, exact startup declaration and an independent authorizer before factories.
+Mixed local/remote custody is rejected; later startup failure rolls back created
+backends. Independent Linux Runtime/Worker processes execute the actual server
+and a complete Stage through the protected Node journal. The authorizer remains
+an explicit test fixture; production issuance, CLI/Fleet assembly and complete
+remote-owner Jobs are still open.
+
+Preceding production-code increment (2026-09-09):
 [watchdog admission wait](watchdog-lock-wait-evidence-2026-09-09.md)
 fixes a second reproduced lost-stop case: another journal read held admission
 longer than the backend stop budget. The pending watchdog now starts its backend

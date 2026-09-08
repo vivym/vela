@@ -33,6 +33,11 @@ The next [watchdog wait correction](watchdog-lock-wait-evidence-2026-09-09.md)
 retains the one-shot expiry event across admission lock waiting by starting the
 backend stop budget after admission. Native held-read validation proves eventual
 dispatch when the lock releases; it does not establish a fixed stop bound.
+The next [remote server startup composition](remote-runtime-server-evidence-2026-09-09.md)
+connects `StartRuntimeServer` to Node journal custody before factory dispatch,
+with Registry binding, explicit epoch proposals and a required independent
+remote authorizer. Native tests run actual server/Worker execution with a fixture
+authorizer; production issuance and the external launch assembly remain open.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded
