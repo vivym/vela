@@ -1,0 +1,5 @@
+ok  	github.com/vivym/vela/internal/stageworkeragent	14.097s
+ok  	github.com/vivym/vela/internal/stageauthority	5.256s
+ok  	github.com/vivym/vela/internal/materializationauthority	3.170s
+ok  	github.com/vivym/vela/cmd/vela-control	2.576s
+ok  	github.com/vivym/vela/cmd/vela-model-runtime	3.884s

@@ -269,7 +269,7 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 		admission, err = agent.admission.Begin(ctx, assignment, acquireID)
 		if err != nil {
 			agent.inputMu.Unlock()
-			return result, err
+			return result, fmt.Errorf("begin durable assignment admission: %w", err)
 		}
 	}
 	agent.pendingInputs = inputs
@@ -326,7 +326,7 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 	if admission != nil {
 		if err := admission.EnterRuntime(ctx); err != nil {
 			agent.runtimeMu.Unlock()
-			return result, err
+			return result, fmt.Errorf("enter Runtime after durable input admission: %w", err)
 		}
 	}
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)

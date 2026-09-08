@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -368,6 +369,71 @@ func TestAssignmentAdmissionClosesWithinAcceptedClockSkew(t *testing.T) {
 	beginAdmission(t, gate, fixture.assignment, fixture.acquireID).Release()
 	if err := gate.CloseExecution(t.Context(), fixture.assignment.Authority); err != nil {
 		t.Fatalf("cannot close authority admitted under the same skew policy: %v", err)
+	}
+}
+
+func TestAssignmentAdmissionProductionClockPolicy(t *testing.T) {
+	for _, name := range []string{"zero-skew-reproduction", "consumer-lag", "inclusive-bound", "beyond-bound", "wall-expired", "monotonic-expired"} {
+		t.Run(name, func(t *testing.T) {
+			fixture := newAdmissionFixture(t)
+			fixture.config.MaxClockSkew = authoritypolicy.ProductionMaxClockSkew
+			authority := fixture.assignment.Authority
+			authority.MonotonicValidFor = durationpb.New(10 * time.Second)
+			fixture.sign(t, fixture.assignment)
+			issued := authority.GetIssuedAt().AsTime()
+			now := issued.Add(-time.Second)
+			accepted := name == "consumer-lag" || name == "inclusive-bound"
+			switch name {
+			case "zero-skew-reproduction":
+				fixture.config.MaxClockSkew = 0
+			case "inclusive-bound":
+				now = issued.Add(-authoritypolicy.ProductionMaxClockSkew)
+			case "beyond-bound":
+				now = issued.Add(-authoritypolicy.ProductionMaxClockSkew - time.Nanosecond)
+			case "wall-expired":
+				now = authority.GetExpiresAt().AsTime()
+			case "monotonic-expired":
+				now = issued.Add(10 * time.Second)
+			}
+			fixture.clock.Store(now.UnixNano())
+			gate := fixture.open(t)
+			path := filepath.Join(fixture.config.Directory, admissionTestState)
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			handle, err := gate.Begin(t.Context(), fixture.assignment, fixture.acquireID)
+			if accepted {
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer handle.Release()
+				if err := handle.CompleteInputs(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				if err := handle.EnterRuntime(t.Context()); err != nil {
+					t.Fatalf("accepted clock policy not preserved at Runtime entry: %v", err)
+				}
+				return
+			}
+			if handle != nil {
+				handle.Release()
+				t.Fatal("rejected authority received admission custody")
+			}
+			if !errors.Is(err, stageauthority.ErrStale) {
+				t.Fatalf("clock policy rejection = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) || admissionSnapshot(t, gate).Watermark != 0 {
+				t.Fatalf("rejected clock changed durable admission: %v", err)
+			}
+			if err := gate.Close(); err != nil {
+				t.Fatal(err)
+			}
+			fixture.clock.Store(issued.UnixNano())
+			gate = fixture.open(t)
+			beginAdmission(t, gate, fixture.assignment, fixture.acquireID).Release()
+		})
 	}
 }
 

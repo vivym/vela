@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageartifact"
@@ -53,17 +54,22 @@ var errCPUCommitResponseLost = errors.New("CPU campaign dropped committed materi
 
 type cpuCommitLossControl struct {
 	*stageworkertransport.Client
-	armed         atomic.Bool
-	dropped       atomic.Int64
-	worker        *cpuLoadWorker
-	lostID        atomic.Pointer[string]
-	registrations atomic.Int64
-	heartbeats    atomic.Int64
-	staleAcquires atomic.Int64
+	armed             atomic.Bool
+	dropped           atomic.Int64
+	worker            *cpuLoadWorker
+	lostID            atomic.Pointer[string]
+	registrations     atomic.Int64
+	heartbeats        atomic.Int64
+	staleAcquires     atomic.Int64
+	futureAssignments atomic.Int64
 }
 
 func (control *cpuCommitLossControl) Exchange(ctx context.Context, request *velav1.StageWorkerControlServiceConnectRequest) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	response, err := control.Client.Exchange(ctx, request)
+	if assignment := response.GetStageAssignment(); err == nil && assignment != nil &&
+		assignment.GetAuthority().GetIssuedAt().AsTime().After(control.worker.consumerNow()) {
+		control.futureAssignments.Add(1)
+	}
 	if err == nil && request.GetCommitStageMaterialization() != nil &&
 		response.GetStageCommandResult().GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED && control.armed.Swap(false) {
 		control.dropped.Add(1)
@@ -102,7 +108,7 @@ func newCPUDurableJournals(t *testing.T, scratch string, binding stageauthority.
 	gate, err := stageworkeragent.NewFileAssignmentAdmission(stageworkeragent.AssignmentAdmissionConfig{
 		Initialize: true, Directory: filepath.Join(scratch, "worker-admission"), InputRoot: filepath.Join(scratch, "inputs"), OutputRoot: filepath.Join(scratch, "outputs"),
 		WorkerInstanceID: uuid.MustParse(binding.WorkerInstanceID), WorkerInstanceEpoch: binding.WorkerInstanceEpoch, WorkerMemberID: uuid.MustParse(binding.WorkerMemberID),
-		Validator: validator, MaxRecords: 32, Bindings: []stageworkeragent.AdmissionRuntimeBinding{{Runtime: binding, IdentityDigest: [32]byte(identity), DeviceSubsetDigest: [32]byte(subset)}},
+		Validator: validator, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew, MaxRecords: 32, Bindings: []stageworkeragent.AdmissionRuntimeBinding{{Runtime: binding, IdentityDigest: [32]byte(identity), DeviceSubsetDigest: [32]byte(subset)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +169,7 @@ func configureCPUDurableWorker(t *testing.T, worker *cpuLoadWorker, store *artif
 		t.Fatal(err)
 	}
 	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{Validator: worker.validator, Authorizer: authorizer,
-		MaterializationValidator: materializationValidator, MaterializationAuthorizer: worker.artifacts, Executor: executor})
+		MaterializationValidator: materializationValidator, MaterializationAuthorizer: worker.artifacts, Executor: executor, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +201,7 @@ func configureCPUDurableWorker(t *testing.T, worker *cpuLoadWorker, store *artif
 	}
 	resolver, err := stageworkeragent.NewAssignmentInputResolver(stageworkeragent.AssignmentInputResolverConfig{
 		Store: store, TicketSigner: worker.tickets, Control: durable.control, InputRoot: worker.inputRoot,
-		ConnectorRevisionID: uuid.MustParse(connectorID), Now: time.Now, Journal: inputJournal,
+		ConnectorRevisionID: uuid.MustParse(connectorID), Now: worker.consumerNow, Journal: inputJournal, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -212,8 +218,12 @@ func configureCPUDurableWorker(t *testing.T, worker *cpuLoadWorker, store *artif
 	if err != nil {
 		t.Fatal(err)
 	}
+	consumerMaterializationValidator, err := materializationauthority.NewValidator(keys, worker.consumerNow)
+	if err != nil {
+		t.Fatal(err)
+	}
 	durable.config = stageworkeragent.DurableStreamConfig{Runtime: worker.agent, Control: durable.control, Admission: durable.admission, InputResolver: resolver,
-		Materialization: &stageworkeragent.MaterializationConfig{Validator: materializationValidator, Source: source, Publisher: publisher, Journal: journal,
+		Materialization: &stageworkeragent.MaterializationConfig{Validator: consumerMaterializationValidator, Source: source, Publisher: publisher, Journal: journal, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 			ScratchRetirer: worker.scratchRetirer, OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
 			SourceLossEvidence: stageworkeragent.MaterializationSourceLossEvidenceFunc(func(context.Context, stageworkeragent.PendingMaterialization) (stageworkeragent.MaterializationSourceLossEvidence, error) {
 				return stageworkeragent.MaterializationSourceLossEvidence{}, errors.New("CPU successful Job campaign unexpectedly lost its source")

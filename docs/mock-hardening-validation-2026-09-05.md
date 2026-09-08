@@ -7,13 +7,22 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[production clock-policy validation](clock-policy-evidence-2026-09-08.md)
+aligns CPU campaign admission, Runtime, Control, transfer and materialization
+with the shared production skew bound. Deterministic tests reproduce zero-skew
+rejection and preserve rejection beyond the bound and after expiration. The
+consumer-offset campaign records actually future-issued assignments separately
+from its configured offset. The old `11ce026` failure remains causally unresolved;
+this change does not establish a fix for that historical run.
+
+The preceding
 [profile-guided history lookup](journal-lookup-evidence-2026-09-08.md) preserves
 full validation and exact historical identity while checking the newest record
 first. All focused/full ModelRuntime and ordinary repository checks pass, as do
 three race and three no-race 32-Job final-source campaigns plus exact-cache
 compatibility. A separate old-version no-race run failed with a stale assignment;
-its evidence is retained. The campaign's zero clock-skew defaults differ from
-production's shared policy, requiring deterministic follow-up validation. No
+its evidence is retained. The campaign's zero clock-skew defaults differed from
+production's shared policy; the latest checkpoint addresses that discrepancy. No
 full custody, process-replacement or sustained-operation closure is claimed.
 
 The preceding
@@ -103,6 +112,29 @@ has not been changed by this campaign; subsequent lifecycle work remains open.
 | A12 | Architecture improvements solve observed problems | Before/after invariants, overhead, convergence, and measured mock comparisons | In progress |
 
 ## Current closure priorities
+
+The following priorities supersede the historical schema-89/90 list below.
+Current evidence is PostgreSQL 94, Worker journal 5 and Runtime journal 8;
+Production Gates remain **0/9**.
+
+1. Implement and validate the [Node-private journal custody candidate](node-journal-custody-design-2026-09-08.md),
+   including typed authenticated transitions, protected mounts and Registry/Fleet
+   startup ordering. Current workload-owned files and passive lock observations
+   do not establish independent ownership continuity after process loss.
+2. Prove full Worker/Runtime/Node process replacement and startup outcome recovery,
+   including lost replies and crashes on either side of every durable acknowledgement.
+   Current production-loop replay retains live Worker and Runtime owners.
+3. Implement safe history reclamation after exact terminal, writer-exclusion,
+   namespace-retirement and health obligations are discharged. Floors alone are
+   insufficient; deleting records or raising the 32-record limit is not closure.
+4. Run sustained offered arrivals beyond that bound with disconnects and capacity
+   pressure. Record offered/completed work, queue age, rejection/timeout rates,
+   retained bytes and resource slopes. Drained-wave TPS is not sustained throughput.
+5. Reconcile the full acceptance matrix and remaining Usage/Cost and inactive
+   Worker history obligations against current source. Preserve separate CPU,
+   deployment, real GPU certification and Production Launch Receipt evidence.
+
+## Historical schema-89/90 closure priorities
 
 The schema-89 [terminal history reader](terminal-history-evidence-2026-09-05.md)
 now covers allocated but undelivered retries and historical Runtime scopes in

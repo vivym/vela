@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/artifactvalidator"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/retention"
@@ -129,6 +130,9 @@ type cpuLoadReceipt struct {
 	DurableRecords      map[string]int                      `json:"durable_records_by_worker,omitempty"`
 	ProductionLoop      bool                                `json:"production_loop,omitempty"`
 	ProductionWorkers   map[string]cpuProductionObservation `json:"production_workers,omitempty"`
+	AuthorityMaxSkewNS  int64                               `json:"authority_max_clock_skew_ns"`
+	VerifierOffsetNS    int64                               `json:"worker_authority_verifier_offset_ns"`
+	FutureAssignments   map[string]int64                    `json:"future_issued_assignments_by_worker,omitempty"`
 }
 
 // This opt-in campaign uses actual subprocesses and ffprobe; ordinary integration
@@ -139,6 +143,7 @@ func TestCPUMockConcurrentAdmissionRuntimeCampaign(t *testing.T) {
 
 type cpuCampaignMode struct {
 	exactCache, durableStream, productionLoop bool
+	verifierOffset                            time.Duration
 }
 
 func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
@@ -236,6 +241,13 @@ func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Offset consumer authority verification only. Control/DB issuance and
+	// capacity observations keep their real clocks and signed bytes unchanged.
+	consumerNow := func() time.Time { return time.Now().Add(mode.verifierOffset) }
+	consumerValidator, err := stageauthority.NewValidator(keys, consumerNow)
+	if err != nil {
+		t.Fatal(err)
+	}
 	signer, err := stageauthority.NewSigner(keys)
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +255,7 @@ func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 	execution, err := stageworkercontrol.NewPostgresExecutionBackend(
 		newRolePool(t, database.DSN, "vela_stage_worker_control_login", "vela-stage-worker-control-password"), signer,
 		stageworkercontrol.PostgresExecutionConfig{ActiveSigningKeyID: "stage-authority-key-v1", AuthorityTTL: time.Minute,
-			LocalDeadlineTTL: 50 * time.Second, MaxClockSkew: time.Second, Now: time.Now})
+			LocalDeadlineTTL: 50 * time.Second, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew, Now: time.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +305,7 @@ func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 				ModelResidencyID: worker.authority.ModelResidencyID, ModelRuntimeEpoch: worker.authority.ModelRuntimeEpoch,
 				CapacityVector: worker.capacity}, observation: stagescheduler.CapacityObservation{Sequence: worker.evidence.Capacity.Sequence}}
 		resident := newCPULoadWorker(t, ctx, root, binary, stage, worker, fixture,
-			validator, execution, evidence, artifacts, tickets, connector, materializer, durableStream)
+			validator, consumerValidator, consumerNow, execution, evidence, artifacts, tickets, connector, materializer, durableStream)
 		if !mode.productionLoop {
 			if err := resident.reportCapacity(ctx); err != nil {
 				t.Fatal(err)
@@ -342,6 +354,7 @@ func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 		Waves: waves, ConcurrentArrivals: width, PersistentWorkers: len(workers), ProjectRunningLimit: 2,
 		InitialBudget:    budget,
 		SourceTreeSHA256: sourceDigest, RuntimeBinaries: binaryDigests, GoVersion: runtime.Version(),
+		AuthorityMaxSkewNS: int64(authoritypolicy.ProductionMaxClockSkew), VerifierOffsetNS: int64(mode.verifierOffset),
 		FFprobeVersion: strings.SplitN(string(version), "\n", 2)[0],
 		Limitations: []string{"bounded CPU load campaign, not a production soak", "logical GPU profiles executed only by CPU mock processes",
 			"loopback gRPC runtime; control services called through their public Go boundaries", "local exact-version object store, not remote S3",
@@ -479,6 +492,16 @@ func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 	if digest := cpuLoadSourceDigest(t); digest != receipt.SourceTreeSHA256 {
 		t.Fatalf("Go/SQL source tree changed during campaign: %s -> %s", receipt.SourceTreeSHA256, digest)
 	}
+	if durableStream {
+		receipt.FutureAssignments = make(map[string]int64, len(workers))
+		for _, worker := range workers {
+			count := worker.durable.control.futureAssignments.Load()
+			receipt.FutureAssignments[worker.stage.key] = count
+			if mode.verifierOffset < 0 && count == 0 {
+				t.Fatalf("%s clock-offset campaign did not observe a future-issued assignment", worker.stage.key)
+			}
+		}
+	}
 	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		t.Fatal(err)
@@ -505,6 +528,7 @@ type cpuLoadWorker struct {
 	nextCapacityReport    time.Time
 	capacityReports       atomic.Int64
 	validator             *stageauthority.Validator
+	consumerNow           func() time.Time
 	artifacts             *stageartifact.PostgresRepository
 	tickets               *stageartifact.TransferTicketSigner
 	connector             *stageartifact.ObjectStorePullConnector
@@ -521,7 +545,7 @@ type cpuLoadWorker struct {
 }
 
 func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, stage h3IntegrationStage,
-	worker h3IntegrationWorker, fixture stageSchedulerFixture, validator *stageauthority.Validator,
+	worker h3IntegrationWorker, fixture stageSchedulerFixture, validator, consumerValidator *stageauthority.Validator, consumerNow func() time.Time,
 	execution *stageworkercontrol.PostgresExecutionBackend, evidence *stageworkercontrol.PostgresWorkerEvidenceBackend,
 	artifacts *stageartifact.PostgresRepository,
 	tickets *stageartifact.TransferTicketSigner, connector *stageartifact.ObjectStorePullConnector,
@@ -572,11 +596,11 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 		}
 		admissionBinding := binding
 		admissionBinding.ModelRuntimeEpoch = worker.authority.ModelRuntimeEpoch
-		durable = newCPUDurableJournals(t, scratch, admissionBinding, validator, identityDigest, subsetDigest)
+		durable = newCPUDurableJournals(t, scratch, admissionBinding, consumerValidator, identityDigest, subsetDigest)
 	}
-	service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, Validator: validator,
+	service, err := modelruntime.NewService(modelruntime.Config{Binding: binding, Validator: consumerValidator,
 		EpochStore:    modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) { return worker.authority.ModelRuntimeEpoch, nil }),
-		CancelTimeout: time.Second,
+		CancelTimeout: time.Second, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 		BackendFactory: func(allocated stageauthority.RuntimeBinding) (modelruntime.Backend, error) {
 			return modelruntime.NewProcessBackend(ctx, allocated, modelruntime.ProcessBackendConfig{
 				Component: component, ModelComponentRevision: stage.component, Command: []string{executable},
@@ -591,7 +615,7 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 	var runtimeServer velav1.ModelRuntimeServiceServer = service
 	if durableStream {
 		durable.supervisor, err = modelruntime.NewSupervisorWithExecutionFloor(modelruntime.ExecutionFloorConfig{
-			Validator: validator, State: &modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(scratch, "runtime-admission"), Initialize: true},
+			Validator: consumerValidator, State: &modelruntime.ExecutionFloorStateConfig{Directory: filepath.Join(scratch, "runtime-admission"), Initialize: true},
 			Members: []modelruntime.ExecutionFloorMember{{WorkerMemberID: binding.WorkerMemberID, MemberEpoch: binding.WorkerMemberEpoch, IdentityDigest: identityDigest, DeviceSubsetDigest: subsetDigest}},
 		}, service)
 		if err != nil {
@@ -623,13 +647,16 @@ func newCPULoadWorker(t *testing.T, ctx context.Context, root, binary string, st
 	}
 	return &cpuLoadWorker{stage: stage, fixture: fixture, assignments: newPostgresAssignmentTestBackend(t, fixture),
 		execution: execution, evidence: evidence, controlSessionEpoch: worker.evidence.ControlSessionEpoch,
-		validator: validator, artifacts: artifacts, tickets: tickets, connector: connector,
+		validator: validator, consumerNow: consumerNow, artifacts: artifacts, tickets: tickets, connector: connector,
 		materializer: materializer, agent: agent, scratchRetirer: scratchRetirer, inputRoot: inputRoot, outputRoot: outputRoot, durable: durable}
 }
 
 func (worker *cpuLoadWorker) run(ctx context.Context) error {
 	if worker.durable != nil && worker.durable.production != nil {
-		return worker.durable.production.Run(ctx)
+		if err := worker.durable.production.Run(ctx); err != nil {
+			return fmt.Errorf("%s Worker %s production loop: %w", worker.stage.key, worker.fixture.authority.WorkerInstanceID, err)
+		}
+		return nil
 	}
 	for ctx.Err() == nil {
 		result, err := worker.acquire(ctx)

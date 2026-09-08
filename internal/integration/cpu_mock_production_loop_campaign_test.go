@@ -19,6 +19,10 @@ func TestCPUMockProductionLoopJobCampaign(t *testing.T) {
 	runCPUMockRuntimeCampaign(t, cpuCampaignMode{durableStream: true, productionLoop: true})
 }
 
+func TestCPUMockProductionLoopClockOffsetCampaign(t *testing.T) {
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{durableStream: true, productionLoop: true, verifierOffset: -time.Second})
+}
+
 func configureCPUProductionState(t *testing.T, worker *cpuLoadWorker, fixture h3IntegrationWorker) {
 	t.Helper()
 	state, err := stageworkeragent.NewFileProductionState(stageworkeragent.FileProductionStateConfig{
