@@ -38,6 +38,11 @@ connects `StartRuntimeServer` to Node journal custody before factory dispatch,
 with Registry binding, explicit epoch proposals and a required independent
 remote authorizer. Native tests run actual server/Worker execution with a fixture
 authorizer; production issuance and the external launch assembly remain open.
+The next [Fleet reservation](runtime-startup-reservation-evidence-2026-09-09.md)
+durably consumes first-use epoch proposals for a Registry-retained member and
+journal pair. Only a committed insert is fresh; lookup cannot recreate a grant.
+It binds trusted owner/launch digests but does not attest their preimages or
+establish Node grant custody. Unresolved reservations block database quiescence.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

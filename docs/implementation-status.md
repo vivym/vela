@@ -501,6 +501,18 @@ with PostgreSQL/TLS lock probes, post-commit timeout/SIGTERM recovery, full unit
 related race/lint and Linux non-root checks pass. Schema remains 93; preparation
 still grants no serving or drain authority, and unrecorded first initialization
 and the remaining lifecycle work stay open.
+The [Runtime startup reservation](runtime-startup-reservation-evidence-2026-09-09.md)
+adds schema 95's immutable first-use reservation for a complete approved
+member-local epoch vector and retained journal pair. Concurrent requests produce
+one fresh committed result; history/replay never grants another startup.
+Fencing, commit-quorum failure and recovery closure reject fresh reservations;
+unresolved reservations block database quiescence. Thirty related PostgreSQL
+race tests pass, including eight startup reservation tests and independent
+database restore. This is a trusted Fleet service boundary, not a production
+Node issuer, authenticated startup transport, readiness or replacement protocol.
+Ordinary tests/vet/lint pass; integration-tag lint retains 82 baseline diagnostics.
+Production Gates remain `0/9`.
+
 The [explicit bootstrap abandonment](worker-bootstrap-abandonment-evidence-2026-09-06.md)
 adds schema 94 and a [lifecycle contract](specs/0053-worker-bootstrap-lifecycle.md).
 The original authenticated Node Agent can permanently reject an unrecorded claim

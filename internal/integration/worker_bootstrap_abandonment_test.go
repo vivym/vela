@@ -75,7 +75,7 @@ func TestWorkerBootstrapAbandonmentFencesAndPermanentlyRejectsCompletion(t *test
 		t.Fatal("abandoned member acquired replacement initialization")
 	}
 	sealed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
-	if err != nil || sealed.SchemaVersion != 94 || sealed.Inventory["worker_bootstrap_claims"] != 0 {
+	if err != nil || sealed.SchemaVersion != 95 || sealed.Inventory["worker_bootstrap_claims"] != 0 {
 		t.Fatalf("permanently rejected claim prevented database quiescence: %+v %v", sealed, err)
 	}
 	for _, statement := range []string{"UPDATE worker_bootstrap_abandonments SET fenced_instance_epoch=3", "DELETE FROM worker_bootstrap_abandonments", "TRUNCATE worker_bootstrap_abandonments"} {

@@ -3,10 +3,18 @@
 Date: 2026-09-05
 Baseline: `1a99484fbadffcb0ac6d6edd3bf2a5ea471ccda2`
 Work branch: `feature/vela-mock-hardening`
-Current local migration: `94`
+Current local migration: `95`
 Status: In progress
 
 Latest production-code increment (2026-09-09):
+[Fleet first-startup reservation](runtime-startup-reservation-evidence-2026-09-09.md)
+adds a committed once-only reservation tied to the complete approved member
+epoch vector, bootstrap journal pair, incarnation and trusted owner/launch
+digests. Replay and history return no new permission. Unresolved reservations
+block database quiescence; Node grant issuance, authenticated transport and
+replacement reconciliation are still open. This is not a backend grant.
+
+Preceding production-code increment (2026-09-09):
 [actual Runtime server remote startup](remote-runtime-server-evidence-2026-09-09.md)
 adds remote journal/epoch custody to `StartRuntimeServer`, requiring Registry
 binding, exact startup declaration and an independent authorizer before factories.

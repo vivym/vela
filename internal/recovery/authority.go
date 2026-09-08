@@ -98,6 +98,9 @@ func (receipt Receipt) Validate() error {
 	if receipt.SchemaVersion >= 91 {
 		keys = append(keys, "worker_bootstrap_claims")
 	}
+	if receipt.SchemaVersion >= 95 {
+		keys = append(keys, "runtime_startup_reservations")
+	}
 	if len(receipt.Inventory) != len(keys) {
 		return errors.New("quiescence inventory is incomplete")
 	}

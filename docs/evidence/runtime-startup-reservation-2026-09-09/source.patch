@@ -1,0 +1,793 @@
+diff --git a/internal/integration/worker_bootstrap_abandonment_test.go b/internal/integration/worker_bootstrap_abandonment_test.go
+index 0b7184c..d3b98d4 100644
+--- a/internal/integration/worker_bootstrap_abandonment_test.go
++++ b/internal/integration/worker_bootstrap_abandonment_test.go
+@@ -75,7 +75,7 @@ func TestWorkerBootstrapAbandonmentFencesAndPermanentlyRejectsCompletion(t *test
+ 		t.Fatal("abandoned member acquired replacement initialization")
+ 	}
+ 	sealed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
+-	if err != nil || sealed.SchemaVersion != 94 || sealed.Inventory["worker_bootstrap_claims"] != 0 {
++	if err != nil || sealed.SchemaVersion != 95 || sealed.Inventory["worker_bootstrap_claims"] != 0 {
+ 		t.Fatalf("permanently rejected claim prevented database quiescence: %+v %v", sealed, err)
+ 	}
+ 	for _, statement := range []string{"UPDATE worker_bootstrap_abandonments SET fenced_instance_epoch=3", "DELETE FROM worker_bootstrap_abandonments", "TRUNCATE worker_bootstrap_abandonments"} {
+diff --git a/internal/integration/worker_bootstrap_test.go b/internal/integration/worker_bootstrap_test.go
+index b826a41..f65e183 100644
+--- a/internal/integration/worker_bootstrap_test.go
++++ b/internal/integration/worker_bootstrap_test.go
+@@ -358,12 +358,17 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	completed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
+-	if err != nil || completed.SchemaVersion != 94 || completed.Inventory["worker_bootstrap_claims"] != 0 {
++	if err != nil || completed.SchemaVersion != 95 || completed.Inventory["worker_bootstrap_claims"] != 0 {
+ 		t.Fatalf("completed first use did not release quiescence: %+v %v", completed, err)
+ 	}
+ }
+ 
+ func newWorkerBootstrapFixture(t *testing.T) (testDatabase, *fleet.Service, fleet.WorkerBootstrapRequest) {
++	t.Helper()
++	return newConfiguredWorkerBootstrapFixture(t, nil)
++}
++
++func newConfiguredWorkerBootstrapFixture(t *testing.T, configure func(*fleet.ApprovedResidencyPlan, *fleetcontroller.WorkerBundleActuation)) (testDatabase, *fleet.Service, fleet.WorkerBootstrapRequest) {
+ 	t.Helper()
+ 	database := newPostgres(t)
+ 	applyFoundation(t, database.Admin)
+@@ -405,6 +410,9 @@ func newWorkerBootstrapFixture(t *testing.T) (testDatabase, *fleet.Service, flee
+ 			}},
+ 		}},
+ 	}
++	if configure != nil {
++		configure(&plan, &bundle)
++	}
+ 	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+ 	if err != nil {
+ 		t.Fatal(err)
+diff --git a/internal/recovery/authority.go b/internal/recovery/authority.go
+index 64925e1..3ec71eb 100644
+--- a/internal/recovery/authority.go
++++ b/internal/recovery/authority.go
+@@ -98,6 +98,9 @@ func (receipt Receipt) Validate() error {
+ 	if receipt.SchemaVersion >= 91 {
+ 		keys = append(keys, "worker_bootstrap_claims")
+ 	}
++	if receipt.SchemaVersion >= 95 {
++		keys = append(keys, "runtime_startup_reservations")
++	}
+ 	if len(receipt.Inventory) != len(keys) {
+ 		return errors.New("quiescence inventory is incomplete")
+ 	}
+diff --git a/internal/recovery/snapshot_test.go b/internal/recovery/snapshot_test.go
+index 3bfb478..8cde483 100644
+--- a/internal/recovery/snapshot_test.go
++++ b/internal/recovery/snapshot_test.go
+@@ -59,6 +59,27 @@ func TestReceiptRequiresBootstrapInventoryAtSchema91(t *testing.T) {
+ 	}
+ }
+ 
++func TestReceiptRequiresStartupInventoryAtSchema95(t *testing.T) {
++	receipt := validTestReceipt()
++	receipt.SchemaVersion = 94
++	receipt.Inventory["worker_bootstrap_claims"] = 0
++	if err := receipt.Validate(); err != nil {
++		t.Fatal(err)
++	}
++	receipt.SchemaVersion = 95
++	if err := receipt.Validate(); err == nil {
++		t.Fatal("schema 95 receipt omitted startup reservations")
++	}
++	receipt.Inventory["runtime_startup_reservations"] = 1
++	if err := receipt.Validate(); err == nil {
++		t.Fatal("unresolved startup accepted as quiescent")
++	}
++	receipt.Inventory["runtime_startup_reservations"] = 0
++	if err := receipt.Validate(); err != nil {
++		t.Fatal(err)
++	}
++}
++
+ func TestRestoreRejectsCorruptDumpBeforeDocker(t *testing.T) {
+ 	directory := t.TempDir()
+ 	dumpPath := filepath.Join(directory, "database.dump")
+diff --git a/db/migrations/00095_runtime_startup_reservation.sql b/db/migrations/00095_runtime_startup_reservation.sql
+new file mode 100644
+index 0000000..6894785
+--- /dev/null
++++ b/db/migrations/00095_runtime_startup_reservation.sql
+@@ -0,0 +1,172 @@
++-- +goose Up
++-- This is an immutable first-use reservation, not a Node grant or readiness.
++-- No release/replacement exists until independent process termination and
++-- journal reconciliation can be proved. Lost replies must never mint Fresh.
++CREATE TABLE runtime_startup_reservations (
++    request_id uuid PRIMARY KEY CHECK (request_id <> '00000000-0000-0000-0000-000000000000'),
++    bootstrap_request_id uuid NOT NULL UNIQUE REFERENCES worker_bootstrap_receipts(request_id),
++    node_identity text NOT NULL,
++    actor_identity text NOT NULL,
++    runtime_journal_id uuid NOT NULL UNIQUE,
++    runtime_scope bytea NOT NULL CHECK (octet_length(runtime_scope) = 32),
++    incarnation_id uuid NOT NULL UNIQUE,
++    launch_digest bytea NOT NULL CHECK (octet_length(launch_digest) = 32),
++    owner_observation_digest bytea NOT NULL CHECK (octet_length(owner_observation_digest) = 32),
++    epochs jsonb NOT NULL CHECK (jsonb_typeof(epochs) = 'array' AND jsonb_array_length(epochs) BETWEEN 1 AND 64),
++    reserved_at timestamptz NOT NULL DEFAULT clock_timestamp()
++);
++CREATE TRIGGER runtime_startup_reservations_immutable
++BEFORE UPDATE OR DELETE OR TRUNCATE ON runtime_startup_reservations
++FOR EACH STATEMENT EXECUTE FUNCTION vela_reject_worker_bootstrap_mutation();
++CREATE CONSTRAINT TRIGGER runtime_startup_reservations_require_synchronous_quorum
++AFTER INSERT ON runtime_startup_reservations DEFERRABLE INITIALLY DEFERRED
++FOR EACH ROW EXECUTE FUNCTION vela_enforce_synchronous_quorum();
++CREATE TRIGGER runtime_startup_recovery_admission_gate
++BEFORE INSERT ON runtime_startup_reservations
++FOR EACH ROW EXECUTE FUNCTION vela_require_admission_open();
++
++-- +goose StatementBegin
++CREATE FUNCTION vela_reserve_runtime_startup(
++    p_request uuid, p_bootstrap uuid, p_node text, p_actor text,
++    p_journal uuid, p_scope bytea, p_incarnation uuid, p_launch bytea,
++    p_owner bytea, p_epochs jsonb
++) RETURNS TABLE (fresh boolean, reserved_at timestamptz)
++LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
++DECLARE
++    v_claim public.worker_bootstrap_claims%ROWTYPE;
++    v_worker public.worker_instances%ROWTYPE;
++    v_bundle public.worker_bundles%ROWTYPE;
++    v_existing public.runtime_startup_reservations%ROWTYPE;
++    v_payload jsonb;
++    v_launch jsonb;
++    v_epochs jsonb;
++    v_time timestamptz;
++BEGIN
++    IF p_request IS NULL OR p_request = '00000000-0000-0000-0000-000000000000'
++       OR p_bootstrap IS NULL OR p_journal IS NULL OR p_incarnation IS NULL
++       OR p_incarnation::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
++       OR p_node IS NULL OR length(p_node) NOT BETWEEN 1 AND 253 OR btrim(p_node) <> p_node
++       OR p_actor IS NULL OR length(p_actor) NOT BETWEEN 1 AND 500 OR btrim(p_actor) <> p_actor
++       OR p_scope IS NULL OR octet_length(p_scope) <> 32 OR p_scope = decode(repeat('00',32),'hex')
++       OR p_launch IS NULL OR octet_length(p_launch) <> 32 OR p_launch = decode(repeat('00',32),'hex')
++       OR p_owner IS NULL OR octet_length(p_owner) <> 32 OR p_owner = decode(repeat('00',32),'hex')
++       OR p_epochs IS NULL OR jsonb_typeof(p_epochs) IS DISTINCT FROM 'array' THEN
++        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Runtime startup reservation is invalid';
++    END IF;
++    SELECT * INTO v_claim FROM public.worker_bootstrap_claims
++    WHERE request_id = p_bootstrap AND node_identity = p_node AND actor_identity = p_actor;
++    IF NOT FOUND THEN
++        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'Runtime startup bootstrap does not exist';
++    END IF;
++    -- Same Worker-before-claim order as bootstrap observation, fencing and receipts.
++    SELECT * INTO STRICT v_worker FROM public.worker_instances WHERE id = v_claim.worker_instance_id FOR UPDATE;
++    PERFORM 1 FROM public.worker_bootstrap_claims WHERE request_id = p_bootstrap FOR UPDATE;
++    IF NOT EXISTS (SELECT 1 FROM public.worker_bootstrap_receipts
++        WHERE request_id = p_bootstrap AND runtime_journal_id = p_journal AND runtime_scope = p_scope)
++       OR EXISTS (SELECT 1 FROM public.worker_bootstrap_abandonments WHERE request_id = p_bootstrap) THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup requires the exact retained journal pair';
++    END IF;
++
++    SELECT * INTO v_existing FROM public.runtime_startup_reservations WHERE request_id = p_request;
++    IF FOUND THEN
++        IF v_existing.bootstrap_request_id <> p_bootstrap OR v_existing.node_identity <> p_node
++           OR v_existing.actor_identity <> p_actor OR v_existing.runtime_journal_id <> p_journal
++           OR v_existing.runtime_scope <> p_scope OR v_existing.incarnation_id <> p_incarnation
++           OR v_existing.launch_digest <> p_launch OR v_existing.owner_observation_digest <> p_owner
++           OR v_existing.epochs <> p_epochs THEN
++            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup request identity was reused';
++        END IF;
++        RETURN QUERY SELECT false, v_existing.reserved_at;
++        RETURN;
++    END IF;
++    -- First use only, before any observed/registered Runtime authority. A replay
++    -- above remains history even after fencing; a fresh reservation cannot.
++    IF v_worker.lifecycle_state <> 'PROVISIONING' OR v_worker.instance_epoch <> v_claim.worker_instance_epoch
++       OR v_worker.worker_bundle_id <> v_claim.worker_bundle_id
++       OR v_worker.observed_at IS NOT NULL OR v_worker.device_set_id IS NOT NULL
++       OR v_worker.control_session_epoch <> 1 OR v_worker.control_session_id IS NOT NULL
++       OR EXISTS (SELECT 1 FROM public.worker_instance_epochs WHERE worker_instance_id = v_worker.id)
++       OR EXISTS (SELECT 1 FROM public.worker_members WHERE worker_instance_id = v_worker.id)
++       OR EXISTS (SELECT 1 FROM public.model_residencies WHERE worker_instance_id = v_worker.id)
++       OR EXISTS (SELECT 1 FROM public.active_device_bindings WHERE worker_instance_id = v_worker.id) THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup requires unobserved first-use authority';
++    END IF;
++    SELECT * INTO STRICT v_bundle FROM public.worker_bundles WHERE id = v_claim.worker_bundle_id FOR SHARE;
++    SELECT convert_from(manifest, 'UTF8')::jsonb INTO v_payload
++    FROM public.worker_bootstrap_manifests WHERE worker_bundle_id = v_bundle.id AND layout_digest = v_bundle.layout_digest;
++    IF NOT FOUND OR v_bundle.residency_plan_revision_id IS DISTINCT FROM v_worker.residency_plan_revision_id
++       OR v_bundle.lifecycle_state NOT IN ('APPLYING', 'READY') THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup approved bundle changed';
++    END IF;
++    SELECT entry INTO STRICT v_launch FROM jsonb_array_elements(v_payload #> '{bundle,worker_instances}') AS entry
++    WHERE entry ->> 'id' = v_worker.id::text;
++    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_launch -> 'model_runtimes') AS runtime
++        WHERE (runtime ->> 'model_runtime_epoch_floor')::numeric NOT BETWEEN 1 AND 9223372036854775806
++           OR runtime ->> 'model_runtime_epoch_floor' IS NULL) THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup epoch floor is exhausted or invalid';
++    END IF;
++    SELECT jsonb_agg(jsonb_build_object(
++        'model_residency_id', runtime ->> 'model_residency_id',
++        'model_runtime_identity', runtime ->> 'runtime_identity',
++        'stage_profile_revision_id', runtime ->> 'stage_profile_revision_id',
++        'model_runtime_epoch', (runtime ->> 'model_runtime_epoch_floor')::bigint + 1
++    ) ORDER BY runtime ->> 'model_residency_id') INTO v_epochs
++    FROM jsonb_array_elements(v_launch -> 'model_runtimes') AS runtime;
++    IF v_epochs IS NULL OR jsonb_array_length(v_epochs) NOT BETWEEN 1 AND 64
++       OR v_epochs IS DISTINCT FROM p_epochs THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup epoch vector differs from approved bundle';
++    END IF;
++    INSERT INTO public.runtime_startup_reservations(request_id, bootstrap_request_id, node_identity, actor_identity,
++        runtime_journal_id, runtime_scope, incarnation_id, launch_digest, owner_observation_digest, epochs)
++    VALUES (p_request, p_bootstrap, p_node, p_actor, p_journal, p_scope, p_incarnation, p_launch, p_owner, v_epochs)
++    RETURNING runtime_startup_reservations.reserved_at INTO v_time;
++    RETURN QUERY SELECT true, v_time;
++END
++$$;
++-- +goose StatementEnd
++
++-- +goose StatementBegin
++CREATE FUNCTION vela_lookup_runtime_startup(p_request uuid, p_node text, p_actor text)
++RETURNS SETOF runtime_startup_reservations
++LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
++    SELECT * FROM public.runtime_startup_reservations
++    WHERE request_id = p_request AND node_identity = p_node AND actor_identity = p_actor;
++$$;
++-- +goose StatementEnd
++
++ALTER FUNCTION vela_recovery_inventory() RENAME TO vela_recovery_inventory_v94;
++REVOKE ALL ON FUNCTION vela_recovery_inventory_v94() FROM vela_recovery;
++-- +goose StatementBegin
++CREATE FUNCTION vela_recovery_inventory() RETURNS jsonb
++LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
++    SELECT public.vela_recovery_inventory_v94() || jsonb_build_object(
++        'runtime_startup_reservations', (SELECT count(*) FROM public.runtime_startup_reservations));
++$$;
++-- +goose StatementEnd
++ALTER TABLE runtime_startup_reservations OWNER TO vela_fleet_owner;
++ALTER FUNCTION vela_reserve_runtime_startup(uuid,uuid,text,text,uuid,bytea,uuid,bytea,bytea,jsonb) OWNER TO vela_fleet_owner;
++ALTER FUNCTION vela_lookup_runtime_startup(uuid,text,text) OWNER TO vela_fleet_owner;
++ALTER FUNCTION vela_recovery_inventory() OWNER TO vela_recovery_owner;
++REVOKE ALL ON TABLE runtime_startup_reservations FROM PUBLIC;
++REVOKE ALL ON FUNCTION vela_reserve_runtime_startup(uuid,uuid,text,text,uuid,bytea,uuid,bytea,bytea,jsonb) FROM PUBLIC;
++REVOKE ALL ON FUNCTION vela_lookup_runtime_startup(uuid,text,text) FROM PUBLIC;
++REVOKE ALL ON FUNCTION vela_recovery_inventory() FROM PUBLIC;
++GRANT EXECUTE ON FUNCTION vela_reserve_runtime_startup(uuid,uuid,text,text,uuid,bytea,uuid,bytea,bytea,jsonb) TO vela_fleet;
++GRANT EXECUTE ON FUNCTION vela_lookup_runtime_startup(uuid,text,text) TO vela_fleet;
++GRANT SELECT ON runtime_startup_reservations TO vela_recovery_owner;
++GRANT EXECUTE ON FUNCTION vela_recovery_inventory() TO vela_recovery;
++
++-- +goose Down
++-- +goose StatementBegin
++DO $$ BEGIN
++    IF EXISTS (SELECT 1 FROM runtime_startup_reservations) THEN
++        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'Runtime startup reservation history prohibits rollback';
++    END IF;
++END $$;
++-- +goose StatementEnd
++DROP FUNCTION vela_recovery_inventory();
++ALTER FUNCTION vela_recovery_inventory_v94() RENAME TO vela_recovery_inventory;
++GRANT EXECUTE ON FUNCTION vela_recovery_inventory() TO vela_recovery;
++DROP FUNCTION vela_lookup_runtime_startup(uuid,text,text);
++DROP FUNCTION vela_reserve_runtime_startup(uuid,uuid,text,text,uuid,bytea,uuid,bytea,bytea,jsonb);
++DROP TABLE runtime_startup_reservations;
+diff --git a/internal/fleet/runtime_startup.go b/internal/fleet/runtime_startup.go
+new file mode 100644
+index 0000000..b007794
+--- /dev/null
++++ b/internal/fleet/runtime_startup.go
+@@ -0,0 +1,113 @@
++package fleet
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"slices"
++	"strings"
++	"time"
++
++	"github.com/google/uuid"
++)
++
++// RuntimeStartupEpoch is the complete member-local epoch vector. Fleet derives
++// the same vector from its retained approved bundle; callers cannot allocate an
++// arbitrary epoch or omit an AUX runtime.
++type RuntimeStartupEpoch struct {
++	ModelResidencyID       uuid.UUID `json:"model_residency_id"`
++	ModelRuntimeIdentity   string    `json:"model_runtime_identity"`
++	StageProfileRevisionID uuid.UUID `json:"stage_profile_revision_id"`
++	ModelRuntimeEpoch      int64     `json:"model_runtime_epoch"`
++}
++
++// RuntimeStartupRequest is supplied by trusted Node/Fleet assembly, never by an
++// unauthenticated workload. Digests bind that assembly's exact launch and live
++// owner observation; PostgreSQL cannot attest either preimage or retain a pidfd.
++type RuntimeStartupRequest struct {
++	RequestID              uuid.UUID
++	BootstrapRequestID     uuid.UUID
++	NodeIdentity           string
++	ActorIdentity          string
++	RuntimeJournalID       uuid.UUID
++	RuntimeScope           []byte
++	IncarnationID          uuid.UUID
++	LaunchDigest           []byte
++	OwnerObservationDigest []byte
++	Epochs                 []RuntimeStartupEpoch
++}
++
++// RuntimeStartupReservation is a first-use database reservation, not backend
++// permission, readiness, termination proof or a replacement epoch allocator.
++// Only a committed fresh insert may feed a Node grant transaction. Replays and
++// history lookups always have Fresh=false, including after a lost response.
++type RuntimeStartupReservation struct {
++	RuntimeStartupRequest
++	Fresh      bool
++	ReservedAt time.Time
++}
++
++func (service *Service) ReserveRuntimeStartup(ctx context.Context, request RuntimeStartupRequest) (RuntimeStartupReservation, error) {
++	if service == nil || service.registryPool == nil {
++		return RuntimeStartupReservation{}, errors.New("fleet service is not configured")
++	}
++	if request.RequestID == uuid.Nil || request.BootstrapRequestID == uuid.Nil || request.RuntimeJournalID == uuid.Nil ||
++		request.IncarnationID.Version() != 4 || request.IncarnationID.Variant() != uuid.RFC4122 ||
++		!validText(request.NodeIdentity, 253) || !validText(request.ActorIdentity, 500) ||
++		!startupDigest(request.RuntimeScope) || !startupDigest(request.LaunchDigest) || !startupDigest(request.OwnerObservationDigest) ||
++		len(request.Epochs) == 0 || len(request.Epochs) > 64 {
++		return RuntimeStartupReservation{}, &Failure{Code: FailureInvalid, Message: "Runtime startup reservation is invalid"}
++	}
++	request.Epochs = slices.Clone(request.Epochs)
++	slices.SortFunc(request.Epochs, func(a, b RuntimeStartupEpoch) int {
++		return strings.Compare(a.ModelResidencyID.String(), b.ModelResidencyID.String())
++	})
++	for i, epoch := range request.Epochs {
++		if epoch.ModelResidencyID == uuid.Nil || epoch.StageProfileRevisionID == uuid.Nil || epoch.ModelRuntimeEpoch <= 0 ||
++			!validText(epoch.ModelRuntimeIdentity, 300) || (i > 0 && epoch.ModelResidencyID == request.Epochs[i-1].ModelResidencyID) {
++			return RuntimeStartupReservation{}, &Failure{Code: FailureInvalid, Message: "Runtime startup epoch vector is invalid"}
++		}
++	}
++	epochs, err := json.Marshal(request.Epochs)
++	if err != nil {
++		return RuntimeStartupReservation{}, err
++	}
++	var fresh bool
++	var reservedAt time.Time
++	err = service.registryPool.QueryRow(ctx, `SELECT fresh, reserved_at FROM vela_reserve_runtime_startup(
++		$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, request.RequestID, request.BootstrapRequestID,
++		request.NodeIdentity, request.ActorIdentity, request.RuntimeJournalID, request.RuntimeScope,
++		request.IncarnationID, request.LaunchDigest, request.OwnerObservationDigest, epochs).Scan(&fresh, &reservedAt)
++	if err != nil {
++		// In particular, a deferred commit/quorum error must discard returned rows.
++		return RuntimeStartupReservation{}, mapDatabaseError("reserve Runtime startup", err)
++	}
++	request.RuntimeScope = slices.Clone(request.RuntimeScope)
++	request.LaunchDigest = slices.Clone(request.LaunchDigest)
++	request.OwnerObservationDigest = slices.Clone(request.OwnerObservationDigest)
++	return RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: fresh, ReservedAt: reservedAt}, nil
++}
++
++func (service *Service) LookupRuntimeStartup(ctx context.Context, request WorkerBootstrapLookup) (RuntimeStartupReservation, error) {
++	if service == nil || service.registryPool == nil {
++		return RuntimeStartupReservation{}, errors.New("fleet service is not configured")
++	}
++	if request.RequestID == uuid.Nil || !validText(request.NodeIdentity, 253) || !validText(request.ActorIdentity, 500) {
++		return RuntimeStartupReservation{}, &Failure{Code: FailureInvalid, Message: "Runtime startup lookup is invalid"}
++	}
++	var result RuntimeStartupReservation
++	err := service.registryPool.QueryRow(ctx, `SELECT request_id, bootstrap_request_id, node_identity, actor_identity,
++		runtime_journal_id, runtime_scope, incarnation_id, launch_digest, owner_observation_digest, epochs, reserved_at
++		FROM vela_lookup_runtime_startup($1,$2,$3)`, request.RequestID, request.NodeIdentity, request.ActorIdentity).Scan(
++		&result.RequestID, &result.BootstrapRequestID, &result.NodeIdentity, &result.ActorIdentity,
++		&result.RuntimeJournalID, &result.RuntimeScope, &result.IncarnationID, &result.LaunchDigest,
++		&result.OwnerObservationDigest, &result.Epochs, &result.ReservedAt)
++	if err != nil {
++		return RuntimeStartupReservation{}, mapDatabaseError("lookup Runtime startup", err)
++	}
++	return result, nil
++}
++
++func startupDigest(value []byte) bool {
++	return len(value) == 32 && [32]byte(value) != ([32]byte{})
++}
+diff --git a/internal/integration/runtime_startup_reservation_test.go b/internal/integration/runtime_startup_reservation_test.go
+new file mode 100644
+index 0000000..a4d1838
+--- /dev/null
++++ b/internal/integration/runtime_startup_reservation_test.go
+@@ -0,0 +1,398 @@
++//go:build integration
++
++package integration_test
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"path/filepath"
++	"reflect"
++	"slices"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/pressly/goose/v3"
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/fleetcontroller"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/recovery"
++)
++
++func runtimeStartupRequest(t *testing.T, service *fleet.Service, bootstrap fleet.WorkerBootstrapRequest) fleet.RuntimeStartupRequest {
++	t.Helper()
++	if claim, err := service.ClaimWorkerBootstrap(t.Context(), bootstrap); err != nil || !claim.Fresh {
++		t.Fatalf("bootstrap claim: %+v %v", claim, err)
++	}
++	receipt := fleet.WorkerBootstrapReceipt{RequestID: bootstrap.RequestID, ActorIdentity: bootstrap.ActorIdentity,
++		WorkerJournalID: uuid.New(), RuntimeJournalID: uuid.New(),
++		WorkerScope: bytes.Repeat([]byte{0x31}, 32), RuntimeScope: bytes.Repeat([]byte{0x32}, 32)}
++	if _, err := service.RecordWorkerBootstrapReceipt(t.Context(), receipt); err != nil {
++		t.Fatal(err)
++	}
++	document, err := fleetcontroller.ParseWorkerBundleActuationManifest(bootstrap.BundleManifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	manifest, err := fleetcontroller.WorkerMemberLaunchManifest(document, bootstrap.WorkerInstanceID, bootstrap.WorkerMemberID)
++	if err != nil {
++		t.Fatal(err)
++	}
++	wire, err := modelruntime.EncodeLaunchManifest(manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bindings, err := modelruntime.RemoteStartupBindings(manifest)
++	if err != nil {
++		t.Fatal(err)
++	}
++	request := fleet.RuntimeStartupRequest{RequestID: uuid.New(), BootstrapRequestID: bootstrap.RequestID,
++		NodeIdentity: "h3-node-01", ActorIdentity: bootstrap.ActorIdentity, RuntimeJournalID: receipt.RuntimeJournalID,
++		RuntimeScope: receipt.RuntimeScope, IncarnationID: uuid.New(), LaunchDigest: sha256Bytes(wire),
++		OwnerObservationDigest: sha256Bytes([]byte("fixture owner observation, not kernel attestation"))}
++	for _, binding := range bindings {
++		request.Epochs = append(request.Epochs, fleet.RuntimeStartupEpoch{ModelResidencyID: uuid.MustParse(binding.ModelResidencyID),
++			ModelRuntimeIdentity: binding.ModelRuntimeIdentity, StageProfileRevisionID: uuid.MustParse(binding.StageProfileRevisionID),
++			ModelRuntimeEpoch: binding.ModelRuntimeEpoch})
++	}
++	return request
++}
++
++func TestRuntimeStartupReservationConcurrentFirstUseAndHistory(t *testing.T) {
++	database, service, bootstrap := newWorkerBootstrapFixture(t)
++	request := runtimeStartupRequest(t, service, bootstrap)
++	const contenders = 16
++	results := make(chan fleet.RuntimeStartupReservation, contenders)
++	errorsSeen := make(chan error, contenders)
++	var group sync.WaitGroup
++	for range contenders {
++		group.Go(func() {
++			result, err := service.ReserveRuntimeStartup(t.Context(), request)
++			results <- result
++			errorsSeen <- err
++		})
++	}
++	group.Wait()
++	close(results)
++	close(errorsSeen)
++	for err := range errorsSeen {
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++	fresh := 0
++	var timestamp time.Time
++	for result := range results {
++		if result.Fresh {
++			fresh++
++		}
++		if timestamp.IsZero() {
++			timestamp = result.ReservedAt
++		}
++		if !result.ReservedAt.Equal(timestamp) || !reflect.DeepEqual(result.RuntimeStartupRequest, request) {
++			t.Fatalf("reservation identity changed: %+v", result)
++		}
++	}
++	if fresh != 1 {
++		t.Fatalf("concurrent fresh reservations = %d, want 1", fresh)
++	}
++	// Discard the first response and reconnect, as after client transport loss.
++	// No wire-loss injection or same-process Node reconciliation is claimed here.
++	restarted, err := fleet.NewService(newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	history, err := restarted.LookupRuntimeStartup(t.Context(), fleet.WorkerBootstrapLookup{
++		RequestID: request.RequestID, NodeIdentity: request.NodeIdentity, ActorIdentity: request.ActorIdentity})
++	if err != nil || history.Fresh || !history.ReservedAt.Equal(timestamp) || !reflect.DeepEqual(history.RuntimeStartupRequest, request) {
++		t.Fatalf("lost response history minted authority or changed identity: %+v %v", history, err)
++	}
++	replay, err := restarted.ReserveRuntimeStartup(t.Context(), request)
++	if err != nil || replay.Fresh {
++		t.Fatalf("reconnected retry minted permission: %+v %v", replay, err)
++	}
++	for name, mutate := range map[string]func(*fleet.RuntimeStartupRequest){
++		"new request": func(r *fleet.RuntimeStartupRequest) { r.RequestID = uuid.New() },
++		"incarnation": func(r *fleet.RuntimeStartupRequest) { r.IncarnationID = uuid.New() },
++		"owner":       func(r *fleet.RuntimeStartupRequest) { r.OwnerObservationDigest = sha256Bytes([]byte("replacement")) },
++		"launch":      func(r *fleet.RuntimeStartupRequest) { r.LaunchDigest = sha256Bytes([]byte("changed launch")) },
++		"journal":     func(r *fleet.RuntimeStartupRequest) { r.RuntimeJournalID = uuid.New() },
++		"scope":       func(r *fleet.RuntimeStartupRequest) { r.RuntimeScope = sha256Bytes([]byte("changed scope")) },
++		"epoch":       func(r *fleet.RuntimeStartupRequest) { r.Epochs[0].ModelRuntimeEpoch++ },
++	} {
++		t.Run(name, func(t *testing.T) {
++			changed := request
++			changed.Epochs = slices.Clone(request.Epochs)
++			mutate(&changed)
++			result, err := service.ReserveRuntimeStartup(t.Context(), changed)
++			assertFleetFailure(t, err, fleet.FailureConflict)
++			if result.Fresh {
++				t.Fatal("changed request received fresh reservation")
++			}
++		})
++	}
++	for _, identity := range []fleet.WorkerBootstrapLookup{
++		{RequestID: request.RequestID, NodeIdentity: "other-node", ActorIdentity: request.ActorIdentity},
++		{RequestID: request.RequestID, NodeIdentity: request.NodeIdentity, ActorIdentity: "other-actor"},
++		{RequestID: uuid.New(), NodeIdentity: request.NodeIdentity, ActorIdentity: request.ActorIdentity},
++	} {
++		_, err := service.LookupRuntimeStartup(t.Context(), identity)
++		assertFleetFailure(t, err, fleet.FailureNotFound)
++	}
++	for _, command := range []string{"UPDATE runtime_startup_reservations SET reserved_at = clock_timestamp()",
++		"DELETE FROM runtime_startup_reservations", "TRUNCATE runtime_startup_reservations"} {
++		if _, err := database.Admin.Exec(command); err == nil || !strings.Contains(err.Error(), "immutable") {
++			t.Fatalf("mutable reservation history: %s: %v", command, err)
++		}
++	}
++	role := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
++	for _, command := range []string{"SELECT * FROM runtime_startup_reservations", "DELETE FROM runtime_startup_reservations",
++		"SELECT vela_recovery_inventory_v94()"} {
++		if _, err := role.Exec(t.Context(), command); err == nil || !strings.Contains(err.Error(), "permission denied") {
++			t.Fatalf("Fleet bypassed restricted API: %s: %v", command, err)
++		}
++	}
++	if err := goose.DownTo(database.Admin, filepath.Join(repositoryRoot(t), "db", "migrations"), 94); err == nil ||
++		!strings.Contains(err.Error(), "reservation history prohibits rollback") {
++		t.Fatalf("reservation authority rolled back: %v", err)
++	}
++}
++
++func TestRuntimeStartupReservationRejectsUnapprovedVector(t *testing.T) {
++	_, service, bootstrap := newWorkerBootstrapFixture(t)
++	request := runtimeStartupRequest(t, service, bootstrap)
++	for name, mutate := range map[string]func(*fleet.RuntimeStartupRequest){
++		"epoch":     func(r *fleet.RuntimeStartupRequest) { r.Epochs[0].ModelRuntimeEpoch++ },
++		"residency": func(r *fleet.RuntimeStartupRequest) { r.Epochs[0].ModelResidencyID = uuid.New() },
++		"profile":   func(r *fleet.RuntimeStartupRequest) { r.Epochs[0].StageProfileRevisionID = uuid.New() },
++		"runtime":   func(r *fleet.RuntimeStartupRequest) { r.Epochs[0].ModelRuntimeIdentity = "unapproved" },
++		"extra": func(r *fleet.RuntimeStartupRequest) {
++			extra := r.Epochs[0]
++			extra.ModelResidencyID = uuid.New()
++			r.Epochs = append(r.Epochs, extra)
++		},
++	} {
++		t.Run(name, func(t *testing.T) {
++			changed := request
++			changed.Epochs = slices.Clone(request.Epochs)
++			mutate(&changed)
++			_, err := service.ReserveRuntimeStartup(t.Context(), changed)
++			assertFleetFailure(t, err, fleet.FailureConflict)
++		})
++	}
++	if result, err := service.ReserveRuntimeStartup(t.Context(), request); err != nil || !result.Fresh {
++		t.Fatalf("invalid proposals consumed first use: %+v %v", result, err)
++	}
++}
++
++func TestRuntimeStartupReservationRejectsFencedAndChangedBundle(t *testing.T) {
++	for _, state := range []string{"fenced", "observed", "bundle-retired", "bundle-digest"} {
++		t.Run(state, func(t *testing.T) {
++			database, service, bootstrap := newWorkerBootstrapFixture(t)
++			request := runtimeStartupRequest(t, service, bootstrap)
++			var err error
++			switch state {
++			case "fenced":
++				_, err = service.Fence(t.Context(), fleet.WorkerInstanceFenceRequest{WorkerInstanceID: bootstrap.WorkerInstanceID,
++					ExpectedInstanceEpoch: 1, Reason: "startup-test", ObservedBy: request.ActorIdentity})
++			case "observed":
++				_, err = database.Admin.Exec("UPDATE worker_instances SET observed_at=clock_timestamp() WHERE id=$1", bootstrap.WorkerInstanceID)
++			case "bundle-retired":
++				_, err = database.Admin.Exec("UPDATE worker_bundles SET lifecycle_state='RETIRED'")
++			case "bundle-digest":
++				_, err = database.Admin.Exec("UPDATE worker_bundles SET layout_digest=$1", sha256Bytes([]byte("different bundle")))
++			}
++			if err != nil {
++				t.Fatal(err)
++			}
++			_, err = service.ReserveRuntimeStartup(t.Context(), request)
++			assertFleetFailure(t, err, fleet.FailureConflict)
++		})
++	}
++}
++
++func TestRuntimeStartupReservationRequiresCommittedQuorum(t *testing.T) {
++	database, ordinary, bootstrap := newWorkerBootstrapFixture(t)
++	request := runtimeStartupRequest(t, ordinary, bootstrap)
++	enableStageQuorumRequirement(t, database)
++	guarded, err := fleet.NewService(newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	result, err := guarded.ReserveRuntimeStartup(t.Context(), request)
++	if err == nil || !strings.Contains(err.Error(), "synchronous replication quorum is unavailable") ||
++		!reflect.DeepEqual(result, fleet.RuntimeStartupReservation{}) {
++		t.Fatalf("uncommitted reservation escaped: %+v %v", result, err)
++	}
++	var count int
++	if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 {
++		t.Fatalf("failed commit retained reservation: %d %v", count, err)
++	}
++	if result, err := ordinary.ReserveRuntimeStartup(t.Context(), request); err != nil || !result.Fresh {
++		t.Fatalf("rolled back proposal consumed first use: %+v %v", result, err)
++	}
++}
++
++func TestRuntimeStartupReservationAUXVectorIsAtomic(t *testing.T) {
++	database, service, bootstrap := newConfiguredWorkerBootstrapFixture(t, func(plan *fleet.ApprovedResidencyPlan, bundle *fleetcontroller.WorkerBundleActuation) {
++		worker := &bundle.WorkerInstances[0]
++		worker.Role, worker.SharedSlotException = "aux", "H3_AUX_ENCODER_VAE"
++		encoder := &worker.ModelRuntimes[0]
++		encoder.Component, encoder.RuntimeIdentity = "ENCODER", "cpu-encoder"
++		encoder.StageProfileRevisionID = uuid.MustParse("49000000-0000-0000-0000-000000000040")
++		encoder.ModelRuntimeEpochFloor = 7
++		plan.CapacityPools[0].StageProfileRevisionID = encoder.StageProfileRevisionID
++		plan.WorkerInstances[0].ModelRuntimeRoutes[0].StageProfileRevisionID = encoder.StageProfileRevisionID
++		decoder := *encoder
++		decoder.Component, decoder.RuntimeIdentity = "VAE_DECODER", "cpu-decoder"
++		decoder.ModelResidencyID, decoder.CapacityPoolID = uuid.New(), uuid.New()
++		decoder.StageProfileRevisionID = uuid.MustParse("49000000-0000-0000-0000-000000000042")
++		decoder.ModelRuntimeEpochFloor = 19
++		worker.ModelRuntimes = append(worker.ModelRuntimes, decoder)
++		pool := plan.CapacityPools[0]
++		pool.ID, pool.StableID, pool.StageProfileRevisionID = decoder.CapacityPoolID, "startup-vae-pool", decoder.StageProfileRevisionID
++		plan.CapacityPools = append(plan.CapacityPools, pool)
++		plan.WorkerInstances[0].ModelRuntimeRoutes = append(plan.WorkerInstances[0].ModelRuntimeRoutes,
++			fleet.PlannedModelRuntimeRoute{ModelResidencyID: decoder.ModelResidencyID,
++				CapacityPoolID: decoder.CapacityPoolID, StageProfileRevisionID: decoder.StageProfileRevisionID})
++	})
++	request := runtimeStartupRequest(t, service, bootstrap)
++	if len(request.Epochs) != 2 || request.Epochs[0].ModelRuntimeEpoch != 8 || request.Epochs[1].ModelRuntimeEpoch != 20 {
++		t.Fatalf("fixture lost independent AUX floors: %+v", request.Epochs)
++	}
++	partial := request
++	partial.Epochs = request.Epochs[:1]
++	if _, err := service.ReserveRuntimeStartup(t.Context(), partial); err == nil {
++		t.Fatal("partial AUX reservation accepted")
++	}
++	wrong := request
++	wrong.Epochs = slices.Clone(request.Epochs)
++	wrong.Epochs[1].ModelRuntimeEpoch = wrong.Epochs[0].ModelRuntimeEpoch
++	if _, err := service.ReserveRuntimeStartup(t.Context(), wrong); err == nil {
++		t.Fatal("shared AUX epoch accepted")
++	}
++	var count int
++	if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 {
++		t.Fatalf("partial reservation consumed authority: %d %v", count, err)
++	}
++	result, err := service.ReserveRuntimeStartup(t.Context(), request)
++	if err != nil || !result.Fresh || len(result.Epochs) != 2 {
++		t.Fatalf("complete AUX vector: %+v %v", result, err)
++	}
++	slices.Reverse(request.Epochs)
++	replay, err := service.ReserveRuntimeStartup(t.Context(), request)
++	if err != nil || replay.Fresh || !reflect.DeepEqual(result.Epochs, replay.Epochs) {
++		t.Fatalf("vector ordering changed reservation: %+v %v", replay, err)
++	}
++}
++
++func TestRuntimeStartupReservationRequiresJournalReceipt(t *testing.T) {
++	_, service, bootstrap := newWorkerBootstrapFixture(t)
++	if _, err := service.ClaimWorkerBootstrap(t.Context(), bootstrap); err != nil {
++		t.Fatal(err)
++	}
++	request := fleet.RuntimeStartupRequest{RequestID: uuid.New(), BootstrapRequestID: bootstrap.RequestID,
++		NodeIdentity: "h3-node-01", ActorIdentity: bootstrap.ActorIdentity, RuntimeJournalID: uuid.New(), IncarnationID: uuid.New(),
++		RuntimeScope: sha256Bytes([]byte("scope")), LaunchDigest: sha256Bytes([]byte("launch")),
++		OwnerObservationDigest: sha256Bytes([]byte("owner")), Epochs: []fleet.RuntimeStartupEpoch{{
++			ModelResidencyID: uuid.New(), StageProfileRevisionID: uuid.New(), ModelRuntimeIdentity: "fixture", ModelRuntimeEpoch: 2}}}
++	_, err := service.ReserveRuntimeStartup(t.Context(), request)
++	assertFleetFailure(t, err, fleet.FailureConflict)
++	if _, err := service.AbandonWorkerBootstrap(t.Context(), fleet.WorkerBootstrapLookup{
++		RequestID: bootstrap.RequestID, NodeIdentity: request.NodeIdentity, ActorIdentity: request.ActorIdentity}); err != nil {
++		t.Fatal(err)
++	}
++	_, err = service.ReserveRuntimeStartup(t.Context(), request)
++	assertFleetFailure(t, err, fleet.FailureConflict)
++}
++
++func TestRuntimeStartupReservationWaitsForConcurrentFence(t *testing.T) {
++	database, service, bootstrap := newWorkerBootstrapFixture(t)
++	request := runtimeStartupRequest(t, service, bootstrap)
++	transaction, err := database.Admin.BeginTx(t.Context(), nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = transaction.Rollback() }()
++	if _, err := transaction.Exec("SELECT vela_fence_worker_instance($1,1,'startup-race','fixture')", bootstrap.WorkerInstanceID); err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
++	defer cancel()
++	result := make(chan error, 1)
++	go func() {
++		_, err := service.ReserveRuntimeStartup(ctx, request)
++		result <- err
++	}()
++	// Observe actual PostgreSQL lock waiting before releasing the fence commit.
++	ticker := time.NewTicker(10 * time.Millisecond)
++	defer ticker.Stop()
++	for {
++		var waiting bool
++		if err := database.Admin.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
++			WHERE usename='vela_fleet_login' AND wait_event_type='Lock'
++			AND query LIKE '%vela_reserve_runtime_startup%')`).Scan(&waiting); err != nil {
++			t.Fatal(err)
++		}
++		if waiting {
++			break
++		}
++		select {
++		case <-ctx.Done():
++			t.Fatal("reservation never waited on the fencing transaction")
++		case err := <-result:
++			t.Fatalf("reservation escaped held fence: %v", err)
++		case <-ticker.C:
++		}
++	}
++	if err := transaction.Commit(); err != nil {
++		t.Fatal(err)
++	}
++	assertFleetFailure(t, <-result, fleet.FailureConflict)
++	var count int
++	if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 0 {
++		t.Fatalf("fenced startup retained a reservation: %d %v", count, err)
++	}
++}
++
++func TestRuntimeStartupReservationRecoveryGateAndEmptyMigration(t *testing.T) {
++	database, service, bootstrap := newWorkerBootstrapFixture(t)
++	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
++	if err := goose.DownTo(database.Admin, migrations, 94); err != nil {
++		t.Fatal(err)
++	}
++	if err := goose.UpTo(database.Admin, migrations, 95); err != nil {
++		t.Fatal(err)
++	}
++	request := runtimeStartupRequest(t, service, bootstrap)
++	connection := recoveryConnection(t, database)
++	operationID := uuid.New()
++	closed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
++	if err != nil || closed.SchemaVersion != 95 || closed.Validate() != nil {
++		t.Fatalf("empty reservation quiescence: %+v %v", closed, err)
++	}
++	if _, err := service.ReserveRuntimeStartup(t.Context(), request); err == nil || !strings.Contains(err.Error(), "closed for recovery") {
++		t.Fatalf("startup passed closed recovery gate: %v", err)
++	}
++	if err := recovery.Reopen(t.Context(), connection, operationID, closed.Generation); err != nil {
++		t.Fatal(err)
++	}
++	if result, err := service.ReserveRuntimeStartup(t.Context(), request); err != nil || !result.Fresh {
++		t.Fatalf("reopened gate: %+v %v", result, err)
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
++	defer cancel()
++	if _, err := recovery.Quiesce(ctx, connection, uuid.New(), time.Millisecond); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatalf("unresolved reservation became quiescent: %v", err)
++	}
++	var count int
++	if err := database.Admin.QueryRow("SELECT (vela_recovery_inventory()->>'runtime_startup_reservations')::int").Scan(&count); err != nil || count != 1 {
++		t.Fatalf("missing startup recovery inventory: %d %v", count, err)
++	}
++	if result, err := service.ReserveRuntimeStartup(t.Context(), request); err != nil || result.Fresh {
++		t.Fatalf("closed-gate replay changed history: %+v %v", result, err)
++	}
++}

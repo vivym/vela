@@ -1,0 +1,4 @@
+?   	github.com/vivym/vela/internal/fleet	[no test files]
+ok  	github.com/vivym/vela/internal/recovery	0.003s
+ok  	github.com/vivym/vela/cmd/vela-node-agent	0.003s
+ok  	github.com/vivym/vela/cmd/vela-control	0.002s

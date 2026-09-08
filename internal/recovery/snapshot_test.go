@@ -59,6 +59,27 @@ func TestReceiptRequiresBootstrapInventoryAtSchema91(t *testing.T) {
 	}
 }
 
+func TestReceiptRequiresStartupInventoryAtSchema95(t *testing.T) {
+	receipt := validTestReceipt()
+	receipt.SchemaVersion = 94
+	receipt.Inventory["worker_bootstrap_claims"] = 0
+	if err := receipt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	receipt.SchemaVersion = 95
+	if err := receipt.Validate(); err == nil {
+		t.Fatal("schema 95 receipt omitted startup reservations")
+	}
+	receipt.Inventory["runtime_startup_reservations"] = 1
+	if err := receipt.Validate(); err == nil {
+		t.Fatal("unresolved startup accepted as quiescent")
+	}
+	receipt.Inventory["runtime_startup_reservations"] = 0
+	if err := receipt.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRestoreRejectsCorruptDumpBeforeDocker(t *testing.T) {
 	directory := t.TempDir()
 	dumpPath := filepath.Join(directory, "database.dump")

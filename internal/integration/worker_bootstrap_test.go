@@ -358,12 +358,17 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	completed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
-	if err != nil || completed.SchemaVersion != 94 || completed.Inventory["worker_bootstrap_claims"] != 0 {
+	if err != nil || completed.SchemaVersion != 95 || completed.Inventory["worker_bootstrap_claims"] != 0 {
 		t.Fatalf("completed first use did not release quiescence: %+v %v", completed, err)
 	}
 }
 
 func newWorkerBootstrapFixture(t *testing.T) (testDatabase, *fleet.Service, fleet.WorkerBootstrapRequest) {
+	t.Helper()
+	return newConfiguredWorkerBootstrapFixture(t, nil)
+}
+
+func newConfiguredWorkerBootstrapFixture(t *testing.T, configure func(*fleet.ApprovedResidencyPlan, *fleetcontroller.WorkerBundleActuation)) (testDatabase, *fleet.Service, fleet.WorkerBootstrapRequest) {
 	t.Helper()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -404,6 +409,9 @@ func newWorkerBootstrapFixture(t *testing.T) (testDatabase, *fleet.Service, flee
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000004", PCIBDF: "0000:41:00.0"}},
 			}},
 		}},
+	}
+	if configure != nil {
+		configure(&plan, &bundle)
 	}
 	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
 	if err != nil {
