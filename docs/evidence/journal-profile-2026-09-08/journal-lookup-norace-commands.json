@@ -1,0 +1,142 @@
+[
+  {
+    "label": "old",
+    "revision": "11ce026",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-journal-baseline.c0hbxkf1",
+    "repetition": 1,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-old-1.log",
+    "exit_code": 0
+  },
+  {
+    "label": "forward",
+    "revision": "581d832",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-lookup-baseline.8tq_e9g7",
+    "repetition": 1,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-forward-1.log",
+    "exit_code": 0
+  },
+  {
+    "label": "reverse",
+    "revision": "uncommitted lookup experiment",
+    "cwd": "/Users/viv/projs/vela",
+    "repetition": 1,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-1.log",
+    "exit_code": 0
+  },
+  {
+    "label": "old",
+    "revision": "11ce026",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-journal-baseline.c0hbxkf1",
+    "repetition": 2,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-old-2.log",
+    "exit_code": 0
+  },
+  {
+    "label": "forward",
+    "revision": "581d832",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-lookup-baseline.8tq_e9g7",
+    "repetition": 2,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-forward-2.log",
+    "exit_code": 0
+  },
+  {
+    "label": "reverse",
+    "revision": "uncommitted lookup experiment",
+    "cwd": "/Users/viv/projs/vela",
+    "repetition": 2,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-2.log",
+    "exit_code": 0
+  },
+  {
+    "label": "old",
+    "revision": "11ce026",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-journal-baseline.c0hbxkf1",
+    "repetition": 3,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-old-3.log",
+    "exit_code": 1
+  }
+]

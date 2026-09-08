@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "vela-journal-validation-20260908",
   "status": "in_progress",
-  "phase": "optimization",
+  "phase": "consolidation",
   "createdAt": "2026-09-08T07:18:36.493Z",
-  "updatedAt": "2026-09-08T07:25:53.529Z",
+  "updatedAt": "2026-09-08T07:58:30.619Z",
   "scenario": {
     "description": "Profile the remaining CPU-mock journal validation cost at 32 retained records; preserve complete validation.",
     "metrics": [
@@ -44,6 +44,9 @@
       ]
     }
   ],
-  "decision": null,
-  "_version": 3
+  "decision": {
+    "verdict": "stop",
+    "rationale": "Retain the single lookup-order change: historical identity/renewal and full regressions pass; race median improves 15.3%, no-race median 4.2% in three-run comparisons. Stop further micro-optimization; diagnose the retained old-version stale failure and campaign/production clock policy discrepancy before custody integration."
+  },
+  "_version": 4
 }

@@ -297,7 +297,11 @@ func (store *executionJournal) validateRetainedExecutions() error {
 }
 
 func (store *executionJournal) retainedExecutionIndex(verified stageauthority.Verified) (int, error) {
-	for index, record := range store.state.Executions {
+	// Recovery and publication validate the complete, increasing history. Normal
+	// Status/candidate updates target its newest entry; older recovery targets
+	// remain searchable and every examined envelope is still authenticated.
+	for index := len(store.state.Executions) - 1; index >= 0; index-- {
+		record := store.state.Executions[index]
 		original, err := store.retainedAuthority(record.Authority)
 		if err != nil {
 			return 0, err

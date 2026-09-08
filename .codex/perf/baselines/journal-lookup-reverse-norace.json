@@ -1,0 +1,2033 @@
+{
+  "schema_version": 1,
+  "label": "journal-lookup-reverse-norace",
+  "source_tree_sha256": "f594562668dcf293b5977182f8db61ad0ccaea6f3090f4179bed6a113a7cb992",
+  "run_mode": "oneshot",
+  "run_count": 3,
+  "aggregate": "median",
+  "workload": {
+    "jobs": 32,
+    "waves": 4,
+    "concurrent_arrivals_per_wave": 8,
+    "persistent_workers": 4,
+    "project_running_limit": 2,
+    "go_version": "go1.26.7",
+    "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+    "runtime_binary_sha256": {
+      "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+      "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+    }
+  },
+  "metrics": {
+    "median_wave_seconds": 36.252448,
+    "median_mean_job_latency_seconds": 5.3766231875,
+    "median_mean_queue_seconds": 3.6203546875,
+    "median_wave_jobs_per_second": 0.8826990111122979
+  },
+  "runs": [
+    {
+      "path": "/private/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-1.log",
+      "sha256": "5f57dc778d798a590552cc10b47d44b835911514a0e39a2c78d6da066d642348",
+      "metrics": {
+        "wave_seconds": 35.945555,
+        "mean_job_latency_seconds": 5.35103296875,
+        "mean_queue_seconds": 3.58884446875,
+        "wave_jobs_per_second": 0.8902352460547626
+      },
+      "receipt": {
+        "schema_version": 1,
+        "evidence_class": "LOCAL_CPU_MOCK_RUNTIME_LOAD",
+        "production_gate": false,
+        "started_at": "2026-09-08T07:39:04.532474Z",
+        "jobs": 32,
+        "waves": 4,
+        "concurrent_arrivals_per_wave": 8,
+        "persistent_workers": 4,
+        "project_running_limit": 2,
+        "initial_budget": {
+          "planned_jobs": 32,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 40000,
+          "currency": "CNY"
+        },
+        "elapsed_seconds": 35.945555,
+        "jobs_per_second": 0.8902352460547626,
+        "mean_queue_seconds": 3.58884446875,
+        "max_queue_seconds": 6.976127,
+        "mean_latency_seconds": 5.35103296875,
+        "sampled_peak": {
+          "queued_jobs": 8,
+          "running_jobs": 2,
+          "active_allocations": 2,
+          "active_leases": 2,
+          "reserved_storage": 8,
+          "reserved_storage_bytes": 17179869184,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 2,
+          "visible_completions": 32,
+          "acquire_intents": 137,
+          "database_bytes": 34578959,
+          "test_process_heap_bytes": 39662360,
+          "test_process_goroutines": 155,
+          "runtime_scratch_bytes": 26303,
+          "local_journal_bytes": 1445537,
+          "runtime_input_bytes": 13186,
+          "runtime_output_bytes": 13186,
+          "runtime_watchdog_goroutines": 2,
+          "reserved_credit_minor": 10000,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 18,
+          "active_execution_pins": 24,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128
+        },
+        "before_arrivals": {
+          "observed_at": "2026-09-08T07:39:04.422722Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26638003,
+          "test_process_heap_bytes": 43568768,
+          "test_process_goroutines": 127,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 6603,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 99737,
+              "name": "integration.test",
+              "rss_bytes": 92372992,
+              "open_fds": 131
+            },
+            {
+              "pid": 99759,
+              "name": "h3-encoder",
+              "rss_bytes": 16367616,
+              "open_fds": 12
+            },
+            {
+              "pid": 99760,
+              "name": "h3-dit",
+              "rss_bytes": 16252928,
+              "open_fds": 12
+            },
+            {
+              "pid": 99761,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16400384,
+              "open_fds": 12
+            },
+            {
+              "pid": 99762,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16580608,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_wave": [
+          {
+            "observed_at": "2026-09-08T07:39:13.573205Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30029491,
+            "test_process_heap_bytes": 19504496,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332602,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32,
+            "processes": [
+              {
+                "pid": 99737,
+                "name": "integration.test",
+                "rss_bytes": 103120896,
+                "open_fds": 150
+              },
+              {
+                "pid": 99759,
+                "name": "h3-encoder",
+                "rss_bytes": 19759104,
+                "open_fds": 12
+              },
+              {
+                "pid": 99760,
+                "name": "h3-dit",
+                "rss_bytes": 19611648,
+                "open_fds": 12
+              },
+              {
+                "pid": 99761,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 19791872,
+                "open_fds": 12
+              },
+              {
+                "pid": 99762,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 19988480,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:39:21.795805Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31569587,
+            "test_process_heap_bytes": 25283792,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654806,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64,
+            "processes": [
+              {
+                "pid": 99737,
+                "name": "integration.test",
+                "rss_bytes": 104792064,
+                "open_fds": 152
+              },
+              {
+                "pid": 99759,
+                "name": "h3-encoder",
+                "rss_bytes": 20185088,
+                "open_fds": 12
+              },
+              {
+                "pid": 99760,
+                "name": "h3-dit",
+                "rss_bytes": 20774912,
+                "open_fds": 12
+              },
+              {
+                "pid": 99761,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21118976,
+                "open_fds": 12
+              },
+              {
+                "pid": 99762,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21413888,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:39:31.123133Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 104,
+            "database_bytes": 33669647,
+            "test_process_heap_bytes": 30117008,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 977020,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96,
+            "processes": [
+              {
+                "pid": 99737,
+                "name": "integration.test",
+                "rss_bytes": 107397120,
+                "open_fds": 152
+              },
+              {
+                "pid": 99759,
+                "name": "h3-encoder",
+                "rss_bytes": 21315584,
+                "open_fds": 12
+              },
+              {
+                "pid": 99760,
+                "name": "h3-dit",
+                "rss_bytes": 21168128,
+                "open_fds": 12
+              },
+              {
+                "pid": 99761,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21446656,
+                "open_fds": 12
+              },
+              {
+                "pid": 99762,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21774336,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:39:40.371753Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 137,
+            "database_bytes": 34578959,
+            "test_process_heap_bytes": 18189976,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299284,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128,
+            "processes": [
+              {
+                "pid": 99737,
+                "name": "integration.test",
+                "rss_bytes": 109903872,
+                "open_fds": 152
+              },
+              {
+                "pid": 99759,
+                "name": "h3-encoder",
+                "rss_bytes": 21413888,
+                "open_fds": 12
+              },
+              {
+                "pid": 99760,
+                "name": "h3-dit",
+                "rss_bytes": 21348352,
+                "open_fds": 12
+              },
+              {
+                "pid": 99761,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21446656,
+                "open_fds": 12
+              },
+              {
+                "pid": 99762,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 22020096,
+                "open_fds": 12
+              }
+            ]
+          }
+        ],
+        "after_maintenance": [
+          {
+            "observed_at": "2026-09-08T07:39:13.689478Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30029491,
+            "test_process_heap_bytes": 21803384,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332602,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32
+          },
+          {
+            "observed_at": "2026-09-08T07:39:21.893559Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31602355,
+            "test_process_heap_bytes": 27505680,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654806,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64
+          },
+          {
+            "observed_at": "2026-09-08T07:39:31.224529Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 104,
+            "database_bytes": 33669647,
+            "test_process_heap_bytes": 20267144,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 977020,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96
+          },
+          {
+            "observed_at": "2026-09-08T07:39:40.472891Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 137,
+            "database_bytes": 34587151,
+            "test_process_heap_bytes": 20489520,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299284,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128
+          }
+        ],
+        "maintenance_results": [
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          }
+        ],
+        "after_idle": {
+          "observed_at": "2026-09-08T07:39:41.486288Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 0,
+          "visible_completions": 32,
+          "acquire_intents": 137,
+          "database_bytes": 34587151,
+          "test_process_heap_bytes": 16399328,
+          "test_process_goroutines": 149,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 1299284,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128,
+          "processes": [
+            {
+              "pid": 99737,
+              "name": "integration.test",
+              "rss_bytes": 109920256,
+              "open_fds": 152
+            },
+            {
+              "pid": 99759,
+              "name": "h3-encoder",
+              "rss_bytes": 21413888,
+              "open_fds": 12
+            },
+            {
+              "pid": 99760,
+              "name": "h3-dit",
+              "rss_bytes": 21348352,
+              "open_fds": 12
+            },
+            {
+              "pid": 99761,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 21446656,
+              "open_fds": 12
+            },
+            {
+              "pid": 99762,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 22020096,
+              "open_fds": 12
+            }
+          ]
+        },
+        "acquire_transaction_retries": 0,
+        "acquire_deadlock_retries": 0,
+        "acquire_serialization_retries": 0,
+        "capacity_reports_by_worker": {
+          "dit": 4,
+          "encoder": 5,
+          "thumbnail": 4,
+          "vae": 4
+        },
+        "source_tree_sha256": "f594562668dcf293b5977182f8db61ad0ccaea6f3090f4179bed6a113a7cb992",
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "go_version": "go1.26.7",
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "limitations": [
+          "bounded native CPU mock Job campaign; no GPU certification or Production Gate evidence",
+          "production Run, readiness, capacity, heartbeat, mTLS transport and durable stream execute in the test host process",
+          "Fleet membership and static native mock canary approval use fixture catalog setup; Node custody, protected mounts and production startup issuer remain separate",
+          "application acknowledgement loss occurs after the real mTLS client received ACCEPTED; resident processes and StreamAgent remain live during automatic retry",
+          "retained journal metadata is measured separately from payload scratch; history reclamation and sustained arrivals remain open",
+          "Runtime gRPC is loopback and artifact store is local exact-version storage; remote storage and process isolation are separate",
+          "race detector covers Go test-host components, not native model subprocesses; sampled resources omit Docker VM peaks"
+        ],
+        "durable_stream": true,
+        "replayed_materialization_commits": 4,
+        "durable_records_by_worker": {
+          "dit": 32,
+          "encoder": 32,
+          "thumbnail": 32,
+          "vae": 32
+        },
+        "production_loop": true,
+        "production_workers": {
+          "dit": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 4,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          },
+          "encoder": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 9,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "thumbnail": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 4,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          },
+          "vae": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 4,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          }
+        }
+      }
+    },
+    {
+      "path": "/private/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-2.log",
+      "sha256": "a63da426e15d199315e4810a2f95c1f72250530554e737169e3bdfbeda9b291b",
+      "metrics": {
+        "wave_seconds": 36.252448,
+        "mean_job_latency_seconds": 5.3766231875,
+        "mean_queue_seconds": 3.6203546875,
+        "wave_jobs_per_second": 0.8826990111122979
+      },
+      "receipt": {
+        "schema_version": 1,
+        "evidence_class": "LOCAL_CPU_MOCK_RUNTIME_LOAD",
+        "production_gate": false,
+        "started_at": "2026-09-08T07:41:32.115306Z",
+        "jobs": 32,
+        "waves": 4,
+        "concurrent_arrivals_per_wave": 8,
+        "persistent_workers": 4,
+        "project_running_limit": 2,
+        "initial_budget": {
+          "planned_jobs": 32,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 40000,
+          "currency": "CNY"
+        },
+        "elapsed_seconds": 36.252448,
+        "jobs_per_second": 0.8826990111122979,
+        "mean_queue_seconds": 3.6203546875,
+        "max_queue_seconds": 6.694149,
+        "mean_latency_seconds": 5.3766231875,
+        "sampled_peak": {
+          "queued_jobs": 8,
+          "running_jobs": 2,
+          "active_allocations": 2,
+          "active_leases": 2,
+          "reserved_storage": 8,
+          "reserved_storage_bytes": 17179869184,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 2,
+          "visible_completions": 32,
+          "acquire_intents": 138,
+          "database_bytes": 34562575,
+          "test_process_heap_bytes": 39066976,
+          "test_process_goroutines": 156,
+          "runtime_scratch_bytes": 26303,
+          "local_journal_bytes": 1527687,
+          "runtime_input_bytes": 13186,
+          "runtime_output_bytes": 13186,
+          "runtime_watchdog_goroutines": 2,
+          "reserved_credit_minor": 10000,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 18,
+          "active_execution_pins": 24,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128
+        },
+        "before_arrivals": {
+          "observed_at": "2026-09-08T07:41:31.997314Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26638003,
+          "test_process_heap_bytes": 12092816,
+          "test_process_goroutines": 127,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 6602,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 626,
+              "name": "integration.test",
+              "rss_bytes": 96190464,
+              "open_fds": 131
+            },
+            {
+              "pid": 661,
+              "name": "h3-encoder",
+              "rss_bytes": 16564224,
+              "open_fds": 12
+            },
+            {
+              "pid": 668,
+              "name": "h3-dit",
+              "rss_bytes": 16318464,
+              "open_fds": 12
+            },
+            {
+              "pid": 670,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16203776,
+              "open_fds": 12
+            },
+            {
+              "pid": 672,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16596992,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_wave": [
+          {
+            "observed_at": "2026-09-08T07:41:41.245044Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30054067,
+            "test_process_heap_bytes": 22607936,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332592,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32,
+            "processes": [
+              {
+                "pid": 626,
+                "name": "integration.test",
+                "rss_bytes": 99647488,
+                "open_fds": 151
+              },
+              {
+                "pid": 661,
+                "name": "h3-encoder",
+                "rss_bytes": 19496960,
+                "open_fds": 12
+              },
+              {
+                "pid": 668,
+                "name": "h3-dit",
+                "rss_bytes": 19529728,
+                "open_fds": 12
+              },
+              {
+                "pid": 670,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 19349504,
+                "open_fds": 12
+              },
+              {
+                "pid": 672,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 20185088,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:41:50.260132Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31602355,
+            "test_process_heap_bytes": 21008832,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654767,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64,
+            "processes": [
+              {
+                "pid": 626,
+                "name": "integration.test",
+                "rss_bytes": 100139008,
+                "open_fds": 152
+              },
+              {
+                "pid": 661,
+                "name": "h3-encoder",
+                "rss_bytes": 19906560,
+                "open_fds": 12
+              },
+              {
+                "pid": 668,
+                "name": "h3-dit",
+                "rss_bytes": 21102592,
+                "open_fds": 12
+              },
+              {
+                "pid": 670,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 20922368,
+                "open_fds": 12
+              },
+              {
+                "pid": 672,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21364736,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:41:59.339821Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 104,
+            "database_bytes": 33661455,
+            "test_process_heap_bytes": 29854328,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 976924,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96,
+            "processes": [
+              {
+                "pid": 626,
+                "name": "integration.test",
+                "rss_bytes": 102285312,
+                "open_fds": 152
+              },
+              {
+                "pid": 661,
+                "name": "h3-encoder",
+                "rss_bytes": 21430272,
+                "open_fds": 12
+              },
+              {
+                "pid": 668,
+                "name": "h3-dit",
+                "rss_bytes": 21135360,
+                "open_fds": 12
+              },
+              {
+                "pid": 670,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21610496,
+                "open_fds": 12
+              },
+              {
+                "pid": 672,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21659648,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:42:08.261722Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 138,
+            "database_bytes": 34562575,
+            "test_process_heap_bytes": 29249984,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299225,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128,
+            "processes": [
+              {
+                "pid": 626,
+                "name": "integration.test",
+                "rss_bytes": 105349120,
+                "open_fds": 152
+              },
+              {
+                "pid": 661,
+                "name": "h3-encoder",
+                "rss_bytes": 21692416,
+                "open_fds": 12
+              },
+              {
+                "pid": 668,
+                "name": "h3-dit",
+                "rss_bytes": 21921792,
+                "open_fds": 12
+              },
+              {
+                "pid": 670,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21676032,
+                "open_fds": 12
+              },
+              {
+                "pid": 672,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 22085632,
+                "open_fds": 12
+              }
+            ]
+          }
+        ],
+        "after_maintenance": [
+          {
+            "observed_at": "2026-09-08T07:41:41.365512Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30054067,
+            "test_process_heap_bytes": 24868128,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332592,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32
+          },
+          {
+            "observed_at": "2026-09-08T07:41:50.359812Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31635123,
+            "test_process_heap_bytes": 23248960,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654767,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64
+          },
+          {
+            "observed_at": "2026-09-08T07:41:59.441135Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 104,
+            "database_bytes": 33669647,
+            "test_process_heap_bytes": 16380640,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 976924,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96
+          },
+          {
+            "observed_at": "2026-09-08T07:42:08.362441Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 138,
+            "database_bytes": 34562575,
+            "test_process_heap_bytes": 31579296,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299225,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128
+          }
+        ],
+        "maintenance_results": [
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          }
+        ],
+        "after_idle": {
+          "observed_at": "2026-09-08T07:42:09.379614Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 0,
+          "visible_completions": 32,
+          "acquire_intents": 138,
+          "database_bytes": 34562575,
+          "test_process_heap_bytes": 16447368,
+          "test_process_goroutines": 149,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 1299225,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128,
+          "processes": [
+            {
+              "pid": 626,
+              "name": "integration.test",
+              "rss_bytes": 105381888,
+              "open_fds": 152
+            },
+            {
+              "pid": 661,
+              "name": "h3-encoder",
+              "rss_bytes": 21692416,
+              "open_fds": 12
+            },
+            {
+              "pid": 668,
+              "name": "h3-dit",
+              "rss_bytes": 21921792,
+              "open_fds": 12
+            },
+            {
+              "pid": 670,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 21676032,
+              "open_fds": 12
+            },
+            {
+              "pid": 672,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 22085632,
+              "open_fds": 12
+            }
+          ]
+        },
+        "acquire_transaction_retries": 0,
+        "acquire_deadlock_retries": 0,
+        "acquire_serialization_retries": 0,
+        "capacity_reports_by_worker": {
+          "dit": 5,
+          "encoder": 5,
+          "thumbnail": 4,
+          "vae": 4
+        },
+        "source_tree_sha256": "f594562668dcf293b5977182f8db61ad0ccaea6f3090f4179bed6a113a7cb992",
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "go_version": "go1.26.7",
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "limitations": [
+          "bounded native CPU mock Job campaign; no GPU certification or Production Gate evidence",
+          "production Run, readiness, capacity, heartbeat, mTLS transport and durable stream execute in the test host process",
+          "Fleet membership and static native mock canary approval use fixture catalog setup; Node custody, protected mounts and production startup issuer remain separate",
+          "application acknowledgement loss occurs after the real mTLS client received ACCEPTED; resident processes and StreamAgent remain live during automatic retry",
+          "retained journal metadata is measured separately from payload scratch; history reclamation and sustained arrivals remain open",
+          "Runtime gRPC is loopback and artifact store is local exact-version storage; remote storage and process isolation are separate",
+          "race detector covers Go test-host components, not native model subprocesses; sampled resources omit Docker VM peaks"
+        ],
+        "durable_stream": true,
+        "replayed_materialization_commits": 4,
+        "durable_records_by_worker": {
+          "dit": 32,
+          "encoder": 32,
+          "thumbnail": 32,
+          "vae": 32
+        },
+        "production_loop": true,
+        "production_workers": {
+          "dit": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "encoder": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 10,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "thumbnail": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 4,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          },
+          "vae": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 4,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967299
+          }
+        }
+      }
+    },
+    {
+      "path": "/private/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-3.log",
+      "sha256": "b136fece8096d6a621e716205ef062f8fde2c58e0e1d2e8e58195e5f17c27116",
+      "metrics": {
+        "wave_seconds": 37.494259,
+        "mean_job_latency_seconds": 5.52632521875,
+        "mean_queue_seconds": 3.70657359375,
+        "wave_jobs_per_second": 0.8534639929808988
+      },
+      "receipt": {
+        "schema_version": 1,
+        "evidence_class": "LOCAL_CPU_MOCK_RUNTIME_LOAD",
+        "production_gate": false,
+        "started_at": "2026-09-08T07:48:09.028921Z",
+        "jobs": 32,
+        "waves": 4,
+        "concurrent_arrivals_per_wave": 8,
+        "persistent_workers": 4,
+        "project_running_limit": 2,
+        "initial_budget": {
+          "planned_jobs": 32,
+          "fixed_price_per_job_minor": 1250,
+          "initial_credit_limit_minor": 40000,
+          "currency": "CNY"
+        },
+        "elapsed_seconds": 37.494259,
+        "jobs_per_second": 0.8534639929808988,
+        "mean_queue_seconds": 3.70657359375,
+        "max_queue_seconds": 7.314072,
+        "mean_latency_seconds": 5.52632521875,
+        "sampled_peak": {
+          "queued_jobs": 8,
+          "running_jobs": 2,
+          "active_allocations": 2,
+          "active_leases": 2,
+          "reserved_storage": 8,
+          "reserved_storage_bytes": 17179869184,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 2,
+          "visible_completions": 32,
+          "acquire_intents": 139,
+          "database_bytes": 34513423,
+          "test_process_heap_bytes": 40350800,
+          "test_process_goroutines": 155,
+          "runtime_scratch_bytes": 26303,
+          "local_journal_bytes": 1494459,
+          "runtime_input_bytes": 13186,
+          "runtime_output_bytes": 13186,
+          "runtime_watchdog_goroutines": 2,
+          "reserved_credit_minor": 10000,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 18,
+          "active_execution_pins": 24,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128
+        },
+        "before_arrivals": {
+          "observed_at": "2026-09-08T07:48:08.914475Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 0,
+          "held_buffers": 0,
+          "visible_completions": 0,
+          "acquire_intents": 0,
+          "database_bytes": 26638003,
+          "test_process_heap_bytes": 28392664,
+          "test_process_goroutines": 127,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 6829,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 0,
+          "charges": 0,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 0,
+          "processes": [
+            {
+              "pid": 1817,
+              "name": "integration.test",
+              "rss_bytes": 90996736,
+              "open_fds": 131
+            },
+            {
+              "pid": 1838,
+              "name": "h3-encoder",
+              "rss_bytes": 16596992,
+              "open_fds": 12
+            },
+            {
+              "pid": 1840,
+              "name": "h3-dit",
+              "rss_bytes": 16252928,
+              "open_fds": 12
+            },
+            {
+              "pid": 1841,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 16220160,
+              "open_fds": 12
+            },
+            {
+              "pid": 1842,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 16613376,
+              "open_fds": 12
+            }
+          ]
+        },
+        "after_wave": [
+          {
+            "observed_at": "2026-09-08T07:48:18.168502Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30045875,
+            "test_process_heap_bytes": 29444512,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332607,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32,
+            "processes": [
+              {
+                "pid": 1817,
+                "name": "integration.test",
+                "rss_bytes": 101154816,
+                "open_fds": 151
+              },
+              {
+                "pid": 1838,
+                "name": "h3-encoder",
+                "rss_bytes": 19873792,
+                "open_fds": 12
+              },
+              {
+                "pid": 1840,
+                "name": "h3-dit",
+                "rss_bytes": 19185664,
+                "open_fds": 12
+              },
+              {
+                "pid": 1841,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 19365888,
+                "open_fds": 12
+              },
+              {
+                "pid": 1842,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 20185088,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:48:27.452323Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31610547,
+            "test_process_heap_bytes": 16647512,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654811,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64,
+            "processes": [
+              {
+                "pid": 1817,
+                "name": "integration.test",
+                "rss_bytes": 103186432,
+                "open_fds": 151
+              },
+              {
+                "pid": 1838,
+                "name": "h3-encoder",
+                "rss_bytes": 20398080,
+                "open_fds": 12
+              },
+              {
+                "pid": 1840,
+                "name": "h3-dit",
+                "rss_bytes": 20676608,
+                "open_fds": 12
+              },
+              {
+                "pid": 1841,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 20611072,
+                "open_fds": 12
+              },
+              {
+                "pid": 1842,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21381120,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:48:37.17749Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 105,
+            "database_bytes": 33636879,
+            "test_process_heap_bytes": 28796384,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 977072,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96,
+            "processes": [
+              {
+                "pid": 1817,
+                "name": "integration.test",
+                "rss_bytes": 104742912,
+                "open_fds": 152
+              },
+              {
+                "pid": 1838,
+                "name": "h3-encoder",
+                "rss_bytes": 21381120,
+                "open_fds": 12
+              },
+              {
+                "pid": 1840,
+                "name": "h3-dit",
+                "rss_bytes": 21168128,
+                "open_fds": 12
+              },
+              {
+                "pid": 1841,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 20955136,
+                "open_fds": 12
+              },
+              {
+                "pid": 1842,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21676032,
+                "open_fds": 12
+              }
+            ]
+          },
+          {
+            "observed_at": "2026-09-08T07:48:46.420217Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 139,
+            "database_bytes": 34513423,
+            "test_process_heap_bytes": 28749224,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299344,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 24,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128,
+            "processes": [
+              {
+                "pid": 1817,
+                "name": "integration.test",
+                "rss_bytes": 105250816,
+                "open_fds": 152
+              },
+              {
+                "pid": 1838,
+                "name": "h3-encoder",
+                "rss_bytes": 21495808,
+                "open_fds": 12
+              },
+              {
+                "pid": 1840,
+                "name": "h3-dit",
+                "rss_bytes": 21315584,
+                "open_fds": 12
+              },
+              {
+                "pid": 1841,
+                "name": "h3-vae-decoder",
+                "rss_bytes": 21430272,
+                "open_fds": 12
+              },
+              {
+                "pid": 1842,
+                "name": "vela-lab-cpu-thumbnail-mock",
+                "rss_bytes": 21708800,
+                "open_fds": 12
+              }
+            ]
+          }
+        ],
+        "after_maintenance": [
+          {
+            "observed_at": "2026-09-08T07:48:18.284808Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 108168,
+            "held_buffers": 0,
+            "visible_completions": 8,
+            "acquire_intents": 35,
+            "database_bytes": 30045875,
+            "test_process_heap_bytes": 16202928,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 332607,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 10000,
+            "charges": 8,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 32
+          },
+          {
+            "observed_at": "2026-09-08T07:48:27.551142Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 216336,
+            "held_buffers": 0,
+            "visible_completions": 16,
+            "acquire_intents": 70,
+            "database_bytes": 31643315,
+            "test_process_heap_bytes": 18877296,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 654811,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 20000,
+            "charges": 16,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 64
+          },
+          {
+            "observed_at": "2026-09-08T07:48:37.283042Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 324504,
+            "held_buffers": 0,
+            "visible_completions": 24,
+            "acquire_intents": 105,
+            "database_bytes": 33645071,
+            "test_process_heap_bytes": 16347456,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 977072,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 30000,
+            "charges": 24,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 96
+          },
+          {
+            "observed_at": "2026-09-08T07:48:46.517636Z",
+            "queued_jobs": 0,
+            "running_jobs": 0,
+            "active_allocations": 0,
+            "active_leases": 0,
+            "reserved_storage": 0,
+            "reserved_storage_bytes": 0,
+            "materialized_stage_bytes": 432672,
+            "held_buffers": 0,
+            "visible_completions": 32,
+            "acquire_intents": 139,
+            "database_bytes": 34513423,
+            "test_process_heap_bytes": 31497736,
+            "test_process_goroutines": 149,
+            "runtime_scratch_bytes": 0,
+            "local_journal_bytes": 1299344,
+            "runtime_input_bytes": 0,
+            "runtime_output_bytes": 0,
+            "runtime_watchdog_goroutines": 0,
+            "reserved_credit_minor": 0,
+            "posted_credit_minor": 40000,
+            "charges": 32,
+            "pool_active_counters": 0,
+            "active_execution_pins": 0,
+            "active_finalization_pins": 0,
+            "active_cache_pins": 0,
+            "live_cache_entries": 0,
+            "active_cache_carrying_references": 0,
+            "committed_stage_artifacts": 128
+          }
+        ],
+        "maintenance_results": [
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          },
+          {
+            "RequestContentExpired": 0,
+            "ContentDeletionRequestsCreated": 0,
+            "Claimed": 0,
+            "Completed": 0,
+            "Failed": 0
+          }
+        ],
+        "after_idle": {
+          "observed_at": "2026-09-08T07:48:47.535206Z",
+          "queued_jobs": 0,
+          "running_jobs": 0,
+          "active_allocations": 0,
+          "active_leases": 0,
+          "reserved_storage": 0,
+          "reserved_storage_bytes": 0,
+          "materialized_stage_bytes": 432672,
+          "held_buffers": 0,
+          "visible_completions": 32,
+          "acquire_intents": 139,
+          "database_bytes": 34513423,
+          "test_process_heap_bytes": 17003424,
+          "test_process_goroutines": 149,
+          "runtime_scratch_bytes": 0,
+          "local_journal_bytes": 1299344,
+          "runtime_input_bytes": 0,
+          "runtime_output_bytes": 0,
+          "runtime_watchdog_goroutines": 0,
+          "reserved_credit_minor": 0,
+          "posted_credit_minor": 40000,
+          "charges": 32,
+          "pool_active_counters": 0,
+          "active_execution_pins": 0,
+          "active_finalization_pins": 0,
+          "active_cache_pins": 0,
+          "live_cache_entries": 0,
+          "active_cache_carrying_references": 0,
+          "committed_stage_artifacts": 128,
+          "processes": [
+            {
+              "pid": 1817,
+              "name": "integration.test",
+              "rss_bytes": 105267200,
+              "open_fds": 152
+            },
+            {
+              "pid": 1838,
+              "name": "h3-encoder",
+              "rss_bytes": 21495808,
+              "open_fds": 12
+            },
+            {
+              "pid": 1840,
+              "name": "h3-dit",
+              "rss_bytes": 21315584,
+              "open_fds": 12
+            },
+            {
+              "pid": 1841,
+              "name": "h3-vae-decoder",
+              "rss_bytes": 21430272,
+              "open_fds": 12
+            },
+            {
+              "pid": 1842,
+              "name": "vela-lab-cpu-thumbnail-mock",
+              "rss_bytes": 21708800,
+              "open_fds": 12
+            }
+          ]
+        },
+        "acquire_transaction_retries": 0,
+        "acquire_deadlock_retries": 0,
+        "acquire_serialization_retries": 0,
+        "capacity_reports_by_worker": {
+          "dit": 5,
+          "encoder": 5,
+          "thumbnail": 5,
+          "vae": 5
+        },
+        "source_tree_sha256": "f594562668dcf293b5977182f8db61ad0ccaea6f3090f4179bed6a113a7cb992",
+        "runtime_binary_sha256": {
+          "vela-h3-stage-mock": "2f572c2df6cf7619cb81322569acae2477dc5b8ab6a63ed646976a2a8d167ecd",
+          "vela-lab-cpu-thumbnail-mock": "763aace4542d4a443ae326ad0ab201a39832dafaf42ff6fef48a09c3282f4cce"
+        },
+        "go_version": "go1.26.7",
+        "ffprobe_version": "ffprobe version 8.0.1 Copyright (c) 2007-2025 the FFmpeg developers",
+        "limitations": [
+          "bounded native CPU mock Job campaign; no GPU certification or Production Gate evidence",
+          "production Run, readiness, capacity, heartbeat, mTLS transport and durable stream execute in the test host process",
+          "Fleet membership and static native mock canary approval use fixture catalog setup; Node custody, protected mounts and production startup issuer remain separate",
+          "application acknowledgement loss occurs after the real mTLS client received ACCEPTED; resident processes and StreamAgent remain live during automatic retry",
+          "retained journal metadata is measured separately from payload scratch; history reclamation and sustained arrivals remain open",
+          "Runtime gRPC is loopback and artifact store is local exact-version storage; remote storage and process isolation are separate",
+          "race detector covers Go test-host components, not native model subprocesses; sampled resources omit Docker VM peaks"
+        ],
+        "durable_stream": true,
+        "replayed_materialization_commits": 4,
+        "durable_records_by_worker": {
+          "dit": 32,
+          "encoder": 32,
+          "thumbnail": 32,
+          "vae": 32
+        },
+        "production_loop": true,
+        "production_workers": {
+          "dit": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "encoder": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 11,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "thumbnail": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          },
+          "vae": {
+            "accepted_registrations": 8,
+            "accepted_capacity_reports": 5,
+            "accepted_heartbeats": 32,
+            "confirmed_stale_acquires": 0,
+            "control_session_epoch": 3,
+            "capacity_observation_sequence": 4294967300
+          }
+        }
+      }
+    }
+  ],
+  "production_gate": false,
+  "limitations": [
+    "medians of run metrics, not pooled Job latency percentiles",
+    "logs do not prove exclusive host resources, randomized order or absence of profiling",
+    "finite drained CPU mock waves, not sustained production throughput"
+  ]
+}

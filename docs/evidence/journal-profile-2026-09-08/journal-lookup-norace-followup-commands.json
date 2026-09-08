@@ -1,0 +1,42 @@
+[
+  {
+    "label": "forward",
+    "revision": "581d832",
+    "cwd": "/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/vela-lookup-baseline.8tq_e9g7",
+    "repetition": 3,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-forward-3.log",
+    "exit_code": 0
+  },
+  {
+    "label": "reverse",
+    "revision": "lookup experiment",
+    "cwd": "/Users/viv/projs/vela",
+    "repetition": 3,
+    "command": [
+      "go",
+      "test",
+      "-tags=integration",
+      "./internal/integration",
+      "-run",
+      "^TestCPUMockProductionLoopJobCampaign$",
+      "-count=1",
+      "-timeout=8m",
+      "-v"
+    ],
+    "race": false,
+    "log": "/tmp/vela-startup-validation.syiSMk/journal-lookup-norace-reverse-3.log",
+    "exit_code": 0
+  }
+]

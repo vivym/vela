@@ -7,6 +7,16 @@ Current local migration: `94`
 Status: In progress
 
 Latest production-code checkpoint (2026-09-08):
+[profile-guided history lookup](journal-lookup-evidence-2026-09-08.md) preserves
+full validation and exact historical identity while checking the newest record
+first. All focused/full ModelRuntime and ordinary repository checks pass, as do
+three race and three no-race 32-Job final-source campaigns plus exact-cache
+compatibility. A separate old-version no-race run failed with a stale assignment;
+its evidence is retained. The campaign's zero clock-skew defaults differ from
+production's shared policy, requiring deterministic follow-up validation. No
+full custody, process-replacement or sustained-operation closure is claimed.
+
+The preceding
 [local proof reuse](journal-proof-reuse-evidence-2026-09-08.md) avoids repeated
 verification of identical authority bytes within one complete journal check.
 New calls use fresh verifier/scope context. Current-source full ModelRuntime race,
