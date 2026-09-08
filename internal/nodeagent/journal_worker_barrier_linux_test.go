@@ -179,8 +179,12 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
 				t.Fatalf("Worker drain: %v %v", result, err)
 			}
 			report.Checkpoint = result.GetResult().GetCheckpoint() != nil
-		case "drain-unavailable":
-			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		case "drain-unavailable", "drain-held":
+			wait := 100 * time.Millisecond
+			if request.WorkerAction == "drain-held" {
+				wait = 1500 * time.Millisecond
+			}
+			readCtx, cancel := context.WithTimeout(ctx, wait)
 			result, err := client.DrainStageExecution(readCtx, &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
 			cancel()
 			if err == nil || result.GetResult().GetCheckpoint() != nil {

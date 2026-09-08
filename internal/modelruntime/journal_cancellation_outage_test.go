@@ -5,12 +5,65 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
+
+func TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait(t *testing.T) {
+	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 5*time.Second)
+	authority := f.authorities[0]
+	prepareFloorRuntime(t, f.supervisor, authority)
+	started, err := f.supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: authority})
+	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("initial start: %v %v", started, err)
+	}
+	before := f.backend.calls.Load()
+	entered, release := make(chan struct{}), make(chan struct{})
+	var enterOnce, releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	transport.beforeRead = func(ctx context.Context) error {
+		enterOnce.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	readDone := make(chan error, 1)
+	go func() {
+		member := authority.Members[0]
+		_, err := f.supervisor.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
+			WorkerInstanceId: authority.WorkerInstanceId, WorkerInstanceEpoch: authority.WorkerInstanceEpoch,
+			WorkerMemberId: member.WorkerMemberId, WorkerMemberEpoch: member.MemberEpoch})
+		readDone <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("discovery did not enter journal while holding admission")
+	}
+	f.clock.Advance(2 * time.Minute)
+	// The fixture's stop budget is one second. The independently accepted
+	// discovery remains blocked longer than that, then finishes normally.
+	time.Sleep(1500 * time.Millisecond)
+	unblock()
+	if err := <-readDone; err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for f.backend.calls.Load() == before && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if f.backend.calls.Load() != before+1 {
+		t.Fatalf("watchdog lost stop after unrelated journal lock wait: before=%d after=%d", before, f.backend.calls.Load())
+	}
+}
 
 func TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads(t *testing.T) {
 	for _, operation := range []string{"cancel", "watchdog"} {

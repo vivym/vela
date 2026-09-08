@@ -1,0 +1,6 @@
+=== RUN   TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait
+    journal_cancellation_outage_test.go:64: watchdog lost stop after unrelated journal lock wait: before=2 after=2
+--- FAIL: TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait (3.58s)
+FAIL
+FAIL	github.com/vivym/vela/internal/modelruntime	4.221s
+FAIL

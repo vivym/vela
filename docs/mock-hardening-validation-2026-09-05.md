@@ -6,7 +6,17 @@ Work branch: `feature/vela-mock-hardening`
 Current local migration: `94`
 Status: In progress
 
-Latest production-code increment (2026-09-08):
+Latest production-code increment (2026-09-09):
+[watchdog admission wait](watchdog-lock-wait-evidence-2026-09-09.md)
+fixes a second reproduced lost-stop case: another journal read held admission
+longer than the backend stop budget. The pending watchdog now starts its backend
+budget after cancellation admission. Actual Linux held-read expiry dispatches
+one stop after the read exits, retaining durable drain requirements. This does
+not make lock/fsync waits bounded; the current
+[remaining validation plan](remaining-validation-2026-09-09.md) identifies the
+production assembly, complete remote Job, replacement and sustained-run gaps.
+
+Preceding production-code increment (2026-09-08):
 [stop during an unresponsive journal read](journal-stop-outage-evidence-2026-09-08.md)
 fixes reproduced explicit Cancel and watchdog failures after journal I/O exhausted
 their stop budgets. Verified installed-execution cancellation avoids its own

@@ -855,13 +855,17 @@ func (service *Service) expire(generation uint64) {
 	}
 	verified := service.active.verified
 	service.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
-	defer cancel()
-	_, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
+	// Admission serialization can wait behind another resident's journal I/O.
+	// Expiry is a pending stop, not a caller deadline: start the backend stop
+	// budget only after admission accepts it, so waiting cannot lose the
+	// one-shot watchdog event. Closing admission still refuses new operations.
+	_, release, err := service.executionAdmission().begin(context.Background(), service, &verified, true)
 	if err != nil {
 		return
 	}
 	defer release()
+	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
+	defer cancel()
 	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
 	if err == nil {
 		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)

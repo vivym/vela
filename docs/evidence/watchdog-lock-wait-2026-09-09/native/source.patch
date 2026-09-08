@@ -1,0 +1,176 @@
+diff --git a/internal/modelruntime/journal_cancellation_outage_test.go b/internal/modelruntime/journal_cancellation_outage_test.go
+index 1e9cb1d..b0ef3b3 100644
+--- a/internal/modelruntime/journal_cancellation_outage_test.go
++++ b/internal/modelruntime/journal_cancellation_outage_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"context"
+ 	"os"
+ 	"path/filepath"
++	"sync"
+ 	"sync/atomic"
+ 	"testing"
+ 	"time"
+@@ -12,6 +13,58 @@ import (
+ 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+ )
+ 
++func TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait(t *testing.T) {
++	f, _, transport, _ := remoteSupervisorContextFixture(t, t.Context(), 5*time.Second)
++	authority := f.authorities[0]
++	prepareFloorRuntime(t, f.supervisor, authority)
++	started, err := f.supervisor.StartStage(t.Context(), &velav1.ModelRuntimeServiceStartStageRequest{Authority: authority})
++	if err != nil || started.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
++		t.Fatalf("initial start: %v %v", started, err)
++	}
++	before := f.backend.calls.Load()
++	entered, release := make(chan struct{}), make(chan struct{})
++	var enterOnce, releaseOnce sync.Once
++	unblock := func() { releaseOnce.Do(func() { close(release) }) }
++	defer unblock()
++	transport.beforeRead = func(ctx context.Context) error {
++		enterOnce.Do(func() { close(entered) })
++		select {
++		case <-release:
++			return nil
++		case <-ctx.Done():
++			return ctx.Err()
++		}
++	}
++	readDone := make(chan error, 1)
++	go func() {
++		member := authority.Members[0]
++		_, err := f.supervisor.DiscoverRuntimeIdentities(t.Context(), &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
++			WorkerInstanceId: authority.WorkerInstanceId, WorkerInstanceEpoch: authority.WorkerInstanceEpoch,
++			WorkerMemberId: member.WorkerMemberId, WorkerMemberEpoch: member.MemberEpoch})
++		readDone <- err
++	}()
++	select {
++	case <-entered:
++	case <-time.After(2 * time.Second):
++		t.Fatal("discovery did not enter journal while holding admission")
++	}
++	f.clock.Advance(2 * time.Minute)
++	// The fixture's stop budget is one second. The independently accepted
++	// discovery remains blocked longer than that, then finishes normally.
++	time.Sleep(1500 * time.Millisecond)
++	unblock()
++	if err := <-readDone; err != nil {
++		t.Fatal(err)
++	}
++	deadline := time.Now().Add(2 * time.Second)
++	for f.backend.calls.Load() == before && time.Now().Before(deadline) {
++		time.Sleep(time.Millisecond)
++	}
++	if f.backend.calls.Load() != before+1 {
++		t.Fatalf("watchdog lost stop after unrelated journal lock wait: before=%d after=%d", before, f.backend.calls.Load())
++	}
++}
++
+ func TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads(t *testing.T) {
+ 	for _, operation := range []string{"cancel", "watchdog"} {
+ 		t.Run(operation, func(t *testing.T) {
+diff --git a/internal/modelruntime/service.go b/internal/modelruntime/service.go
+index a67f726..8f6ae2b 100644
+--- a/internal/modelruntime/service.go
++++ b/internal/modelruntime/service.go
+@@ -855,13 +855,17 @@ func (service *Service) expire(generation uint64) {
+ 	}
+ 	verified := service.active.verified
+ 	service.mu.Unlock()
+-	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
+-	defer cancel()
+-	_, release, err := service.executionAdmission().begin(ctx, service, &verified, true)
++	// Admission serialization can wait behind another resident's journal I/O.
++	// Expiry is a pending stop, not a caller deadline: start the backend stop
++	// budget only after admission accepts it, so waiting cannot lose the
++	// one-shot watchdog event. Closing admission still refuses new operations.
++	_, release, err := service.executionAdmission().begin(context.Background(), service, &verified, true)
+ 	if err != nil {
+ 		return
+ 	}
+ 	defer release()
++	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
++	defer cancel()
+ 	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
+ 	if err == nil {
+ 		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)
+diff --git a/internal/nodeagent/journal_cancellation_outage_linux_test.go b/internal/nodeagent/journal_cancellation_outage_linux_test.go
+index a0e3ee3..db5639a 100644
+--- a/internal/nodeagent/journal_cancellation_outage_linux_test.go
++++ b/internal/nodeagent/journal_cancellation_outage_linux_test.go
+@@ -15,7 +15,7 @@ import (
+ )
+ 
+ func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
+-	for _, operation := range []string{"cancel", "watchdog"} {
++	for _, operation := range []string{"cancel", "watchdog", "watchdog-queued"} {
+ 		t.Run(operation, func(t *testing.T) {
+ 			f := newJournalEndpointFixture(t)
+ 			server, done := startJournalTestServer(t, f, 30*time.Second)
+@@ -59,16 +59,32 @@ func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
+ 			}
+ 			// Establish that the actual RPC/Unix journal read stalls and fails
+ 			// without producing a drain checkpoint, before the stop attempt.
+-			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority}); report.Error == "" {
++			var held *net.UnixConn
++			if operation == "watchdog-queued" {
++				if err := f.worker.input.Encode(journalEndpointControl{WorkerAction: "drain-held", Authority: f.authority}); err != nil {
++					t.Fatal(err)
++				}
++				// Accept proves Runtime has connected inside its locked journal
++				// read. Withhold the challenge until the longer RPC deadline.
++				held = journalEndpointAccept(t, listener)
++				defer func() { _ = held.Close() }()
++			} else if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority}); report.Error == "" {
+ 				t.Fatal("unserved socket did not expose journal outage")
+ 			}
+ 			reason := velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP
+-			if operation == "watchdog" {
++			if operation != "cancel" {
+ 				reason = velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE
+ 				journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "expire"})
+ 			} else {
+ 				journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "cancel", Authority: f.authority})
+ 			}
++			if held != nil {
++				var report journalEndpointReport
++				if err := f.worker.reports.Decode(&report); err != nil || report.Error == "" {
++					t.Fatalf("held drain did not time out: %+v %v", report, err)
++				}
++				_ = held.Close()
++			}
+ 			deadline := time.Now().Add(2 * time.Second)
+ 			var calls journalEndpointReport
+ 			for {
+@@ -93,7 +109,11 @@ func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
+ 			}
+ 			f.listener = listener
+ 			restored, restoredDone := startJournalTestServer(t, f, 30*time.Second)
+-			waitJournalServer(t, restored, func(s JournalServerStats) bool { return s.Accepted >= 2 && s.InFlight == 0 })
++			pending := uint64(2)
++			if held != nil {
++				pending = 1 // The parent already accepted the held read.
++			}
++			waitJournalServer(t, restored, func(s JournalServerStats) bool { return s.Accepted >= pending && s.InFlight == 0 })
+ 			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain", Authority: f.authority}); !report.Checkpoint {
+ 				t.Fatalf("same owner could not persist actual stopped execution: %+v", report)
+ 			}
+diff --git a/internal/nodeagent/journal_worker_barrier_linux_test.go b/internal/nodeagent/journal_worker_barrier_linux_test.go
+index 170a867..827c68f 100644
+--- a/internal/nodeagent/journal_worker_barrier_linux_test.go
++++ b/internal/nodeagent/journal_worker_barrier_linux_test.go
+@@ -179,8 +179,12 @@ func journalEndpointRunWorker(t *testing.T, socket string, request journalEndpoi
+ 				t.Fatalf("Worker drain: %v %v", result, err)
+ 			}
+ 			report.Checkpoint = result.GetResult().GetCheckpoint() != nil
+-		case "drain-unavailable":
+-			readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
++		case "drain-unavailable", "drain-held":
++			wait := 100 * time.Millisecond
++			if request.WorkerAction == "drain-held" {
++				wait = 1500 * time.Millisecond
++			}
++			readCtx, cancel := context.WithTimeout(ctx, wait)
+ 			result, err := client.DrainStageExecution(readCtx, &velav1.ModelRuntimeServiceDrainStageExecutionRequest{Scope: scope})
+ 			cancel()
+ 			if err == nil || result.GetResult().GetCheckpoint() != nil {

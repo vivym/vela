@@ -15,7 +15,7 @@ import (
 )
 
 func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
-	for _, operation := range []string{"cancel", "watchdog"} {
+	for _, operation := range []string{"cancel", "watchdog", "watchdog-queued"} {
 		t.Run(operation, func(t *testing.T) {
 			f := newJournalEndpointFixture(t)
 			server, done := startJournalTestServer(t, f, 30*time.Second)
@@ -59,15 +59,31 @@ func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
 			}
 			// Establish that the actual RPC/Unix journal read stalls and fails
 			// without producing a drain checkpoint, before the stop attempt.
-			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority}); report.Error == "" {
+			var held *net.UnixConn
+			if operation == "watchdog-queued" {
+				if err := f.worker.input.Encode(journalEndpointControl{WorkerAction: "drain-held", Authority: f.authority}); err != nil {
+					t.Fatal(err)
+				}
+				// Accept proves Runtime has connected inside its locked journal
+				// read. Withhold the challenge until the longer RPC deadline.
+				held = journalEndpointAccept(t, listener)
+				defer func() { _ = held.Close() }()
+			} else if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain-unavailable", Authority: f.authority}); report.Error == "" {
 				t.Fatal("unserved socket did not expose journal outage")
 			}
 			reason := velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP
-			if operation == "watchdog" {
+			if operation != "cancel" {
 				reason = velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE
 				journalServerRequest(t, f.runtime, journalEndpointControl{SupervisorAction: "expire"})
 			} else {
 				journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "cancel", Authority: f.authority})
+			}
+			if held != nil {
+				var report journalEndpointReport
+				if err := f.worker.reports.Decode(&report); err != nil || report.Error == "" {
+					t.Fatalf("held drain did not time out: %+v %v", report, err)
+				}
+				_ = held.Close()
 			}
 			deadline := time.Now().Add(2 * time.Second)
 			var calls journalEndpointReport
@@ -93,7 +109,11 @@ func TestJournalServerCancellationSurvivesUnresponsiveNode(t *testing.T) {
 			}
 			f.listener = listener
 			restored, restoredDone := startJournalTestServer(t, f, 30*time.Second)
-			waitJournalServer(t, restored, func(s JournalServerStats) bool { return s.Accepted >= 2 && s.InFlight == 0 })
+			pending := uint64(2)
+			if held != nil {
+				pending = 1 // The parent already accepted the held read.
+			}
+			waitJournalServer(t, restored, func(s JournalServerStats) bool { return s.Accepted >= pending && s.InFlight == 0 })
 			if report := journalServerRequest(t, f.worker, journalEndpointControl{WorkerAction: "drain", Authority: f.authority}); !report.Checkpoint {
 				t.Fatalf("same owner could not persist actual stopped execution: %+v", report)
 			}

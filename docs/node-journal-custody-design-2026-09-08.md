@@ -29,6 +29,10 @@ removes journal I/O from cancellation of an already installed signed execution.
 Native unresponsive-socket tests show explicit stop/watchdog dispatch and retain
 pending durable history until communication and exact drain recover. Concurrent
 lock waits and actual backend containment remain separate obligations.
+The next [watchdog wait correction](watchdog-lock-wait-evidence-2026-09-09.md)
+retains the one-shot expiry event across admission lock waiting by starting the
+backend stop budget after admission. Native held-read validation proves eventual
+dispatch when the lock releases; it does not establish a fixed stop bound.
 Production composition, separate Worker journal custody,
 protected startup assembly and startup permission integration remain open.
 The full objective remains correct, recoverable Stage execution with bounded

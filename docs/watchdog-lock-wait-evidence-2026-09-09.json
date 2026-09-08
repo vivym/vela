@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "43f95a0b7b8e6407b4b6c1ff9544d7f52ce543ad",
+  "source_tree_sha256": "567dcdabbb37dffd27aa2c7831b67f9ecdecd977332d5e17d82b7180f4f8a805",
+  "source_file_count": 954,
+  "source_digest_method": "SHA256 of sorted tracked and untracked Go/SQL/go.mod/go.sum path + NUL + hex SHA256(file bytes) + newline",
+  "campaign_source_tree_sha256": "7e9063b031d79fa854e5f06704028b384e83e04a3ea26cd5fda3a44ac13d8f3d",
+  "campaign_source_file_count": 951,
+  "campaign_digest_method": "cpuLoadSourceDigest: SHA256 of compact sorted JSON path-to-file-SHA256 map for cmd/internal/proto/gen/db Go and SQL plus go.mod, go.sum and the three pinned media fixtures",
+  "native_runner_sha256": "daf2836517f72c93d47508beb7aeb3d3d4b11b05a6c608e94694dcfc06568bbf",
+  "postgres_schema": 94,
+  "worker_journal_schema": 5,
+  "runtime_journal_schema": 8,
+  "production_gates": "0/9",
+  "artifacts": [
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/baseline.log",
+      "bytes": 327,
+      "sha256": "a6597f374f88e30273622403a93cc56ba35b6288646e702ca398c08ba43bd86d"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/baseline.patch",
+      "bytes": 2815,
+      "sha256": "0fa4ee6079a26f6f1b65cfb41ac9befa3fd5598d015892129d9e1e584dcff86e"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/campaigns.log",
+      "bytes": 63971,
+      "sha256": "93419331ea9bb8f75989aff54bf9943f8917c7a8a218a706450f158723281a07"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/focused.log",
+      "bytes": 57,
+      "sha256": "908bdbe3214975023f4a6574756daa29dba79f3fac316ab03e4a6439ae55ce31"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/linux-cross.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/linux-lint.log",
+      "bytes": 10,
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/modelruntime-race.log",
+      "bytes": 57,
+      "sha256": "ad503c72a215f433ab623d08d6bcb7346b97f55042c39fced817e269f4c132f1"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/binaries.sha256",
+      "bytes": 305,
+      "sha256": "edf3dd0f60c3cb2807b9f3aa08184de5b41c514eca39b49d72667c26a6bf6e3e"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/build-modelruntime.log",
+      "bytes": 1724,
+      "sha256": "1a3f025a754655407d6894fbb8f422cc69c296d5d9b2b3a8ca2096074337d767"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/build-nodeagent.log",
+      "bytes": 1721,
+      "sha256": "8e070cba445a24ddd62d5c3c3c8fd8244a96489ca08b2d4c20551df04ef3150b"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/docker-version.txt",
+      "bytes": 754,
+      "sha256": "8d8544da68ce921a4da67fa7c49f361c927d0580841dfac592b5f3a5d8cb7e5d"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/image.txt",
+      "bytes": 72,
+      "sha256": "996cd03bae07f15ce6daeca3cf160607974659c24897ff9de8caacb8b6a44526"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/modelruntime.log",
+      "bytes": 38015,
+      "sha256": "96071396f960f49933a3da5bc429b051797fc4a12ab1350455cb44759457e8eb"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/node-startup.log",
+      "bytes": 25451,
+      "sha256": "8a94e67fae8a4b2d17667cba9c2785ea445fc12ace43f1a2ad03cc03cf92444e"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/source-patch.sha256",
+      "bytes": 136,
+      "sha256": "35e80e8cad6c793003a45c0f5e14ba385afc19ce1ba7de6aaab803370c1aad2f"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/source.patch",
+      "bytes": 8496,
+      "sha256": "fdf9d45a3487643f1344d4e3bd1b8fea20a5d9dc134d902075a573c5ca3f03af"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native/source.txt",
+      "bytes": 261,
+      "sha256": "551b749e4ce3fb8d79df0cb96ae081684b1f18bf4689e643f5e0239e5883ad63"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/native-runner.log",
+      "bytes": 93,
+      "sha256": "9e3f69bc2c7df717c0251413c51cd3c36d25bf5b2db45ac1a96e0a8411d45e48"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/repository-tests.log",
+      "bytes": 6835,
+      "sha256": "0cd6596474ec08a12c62f30e0f4d4bd186fffbdec31c77f580ec3823b206b02a"
+    },
+    {
+      "path": "docs/evidence/watchdog-lock-wait-2026-09-09/vet.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
