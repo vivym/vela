@@ -1,0 +1,68 @@
+File: journal-profile.test
+Type: cpu
+Time: 2026-09-08 15:17:01 CST
+Duration: 108.17s, Total samples = 147.36s (136.23%)
+Showing nodes accounting for 85.39s, 57.95% of 147.36s total
+Dropped 1400 nodes (cum <= 0.74s)
+Showing top 60 nodes out of 263
+      flat  flat%   sum%        cum   cum%
+    45.38s 30.80% 30.80%     45.38s 30.80%  runtime._ExternalCode
+         0     0% 30.80%     45.38s 30.80%  runtime._System
+    29.81s 20.23% 51.02%     29.81s 20.23%  syscall.rawsyscalln
+         0     0% 51.02%     29.77s 20.20%  syscall.syscalln
+         0     0% 51.02%     28.54s 19.37%  google.golang.org/grpc.(*Server).handleStream
+         0     0% 51.02%     28.54s 19.37%  google.golang.org/grpc.(*Server).serveStreams.func2.1
+         0     0% 51.02%     27.24s 18.49%  google.golang.org/grpc.(*Server).processUnaryRPC
+         0     0% 51.02%     26.21s 17.79%  syscall.syscall
+         0     0% 51.02%     23.11s 15.68%  github.com/vivym/vela/internal/modelruntime.(*executionStateFile).transition
+         0     0% 51.02%     22.59s 15.33%  github.com/vivym/vela/internal/stageauthority.(*Validator).ValidateEnvelopeSignature
+         0     0% 51.02%     20.41s 13.85%  os.ignoringEINTR (inline)
+         0     0% 51.02%     18.59s 12.62%  testing.tRunner
+         0     0% 51.02%     18.57s 12.60%  github.com/vivym/vela/internal/integration_test.TestCPUMockProductionLoopJobCampaign
+         0     0% 51.02%     18.57s 12.60%  github.com/vivym/vela/internal/integration_test.runCPUMockRuntimeCampaign
+         0     0% 51.02%     17.72s 12.02%  github.com/vivym/vela/internal/modelruntime.(*executionJournal).retainedAuthority
+         0     0% 51.02%     17.53s 11.90%  crypto/ed25519.Verify (inline)
+         0     0% 51.02%     17.53s 11.90%  crypto/ed25519.VerifyWithOptions
+         0     0% 51.02%     17.28s 11.73%  github.com/vivym/vela/internal/integration_test.observeCPULoad
+         0     0% 51.02%     17.28s 11.73%  github.com/vivym/vela/internal/modelruntime.(*executionStateFile).saveCandidates (inline)
+         0     0% 51.02%     16.79s 11.39%  crypto/internal/fips140/ed25519.Verify (inline)
+         0     0% 51.02%     16.79s 11.39%  crypto/internal/fips140/ed25519.verify
+         0     0% 51.02%     16.79s 11.39%  crypto/internal/fips140/ed25519.verifyWithDom
+         0     0% 51.02%     16.50s 11.20%  path/filepath.WalkDir
+         0     0% 51.02%     16.26s 11.03%  path/filepath.walkDir
+     0.23s  0.16% 51.18%     15.98s 10.84%  crypto/internal/fips140/edwards25519.(*Point).VarTimeDoubleScalarBaseMult
+         0     0% 51.18%     13.92s  9.45%  github.com/vivym/vela/internal/modelruntime.(*Service).Status
+         0     0% 51.18%     13.92s  9.45%  github.com/vivym/vela/internal/modelruntime.(*Supervisor).Status
+         0     0% 51.18%     13.92s  9.45%  github.com/vivym/vela/proto/gen/vela/v1._ModelRuntimeService_Status_Handler
+         0     0% 51.18%     13.53s  9.18%  os.Lstat
+         0     0% 51.18%     13.53s  9.18%  os.lstatNolog
+         0     0% 51.18%     13.50s  9.16%  os.lstatNolog.func1 (inline)
+         0     0% 51.18%     13.50s  9.16%  syscall.Lstat
+     0.01s 0.0068% 51.19%     13.11s  8.90%  runtime.goschedImpl
+         0     0% 51.19%     12.97s  8.80%  runtime.newstack
+         0     0% 51.19%     12.92s  8.77%  runtime.gopreempt_m (inline)
+         0     0% 51.19%     12.90s  8.75%  runtime.morestack
+         0     0% 51.19%     12.62s  8.56%  github.com/vivym/vela/internal/modelruntime.(*executionStateFile).persist
+     0.01s 0.0068% 51.19%     12.40s  8.41%  runtime.systemstack
+     0.03s  0.02% 51.21%     11.60s  7.87%  runtime.wakep
+         0     0% 51.21%     11.37s  7.72%  github.com/vivym/vela/internal/integration_test.(*cpuLoadWorker).run
+         0     0% 51.21%     11.37s  7.72%  github.com/vivym/vela/internal/integration_test.runCPUMockRuntimeCampaign.func2
+         0     0% 51.21%     11.37s  7.72%  github.com/vivym/vela/internal/stageworkeragent.(*ProductionAgent).Run
+         0     0% 51.21%     11.29s  7.66%  github.com/vivym/vela/internal/stageworkeragent.(*ProductionAgent).startAndMonitor
+         0     0% 51.21%     10.75s  7.30%  runtime.lock (inline)
+     0.18s  0.12% 51.34%     10.75s  7.30%  runtime.lock2
+         0     0% 51.34%     10.75s  7.30%  runtime.lockWithRank (inline)
+     0.02s 0.014% 51.35%     10.43s  7.08%  runtime.schedule
+     0.06s 0.041% 51.39%      9.74s  6.61%  runtime.findRunnable
+         0     0% 51.39%      9.66s  6.56%  github.com/vivym/vela/internal/modelruntime.(*Service).confirmBackendAuthority
+         0     0% 51.39%      9.42s  6.39%  github.com/vivym/vela/internal/stageworkeragent.(*FileAssignmentAdmission).commit
+     9.13s  6.20% 57.59%      9.13s  6.20%  runtime.usleep
+         0     0% 57.59%      9.11s  6.18%  github.com/vivym/vela/internal/modelruntime.(*executionJournal).validateProofs (inline)
+         0     0% 57.59%      9.11s  6.18%  github.com/vivym/vela/internal/modelruntime.(*executionJournal).validateProofsWithAuthorityCache
+         0     0% 57.59%      9.04s  6.13%  github.com/vivym/vela/internal/modelruntime.(*executionJournal).validateRetainedExecutions
+         0     0% 57.59%      8.99s  6.10%  github.com/vivym/vela/internal/modelruntime.(*executionJournal).retainedExecutionIndex
+         0     0% 57.59%      8.98s  6.09%  runtime.osyield (inline)
+         0     0% 57.59%      8.85s  6.01%  github.com/vivym/vela/internal/integration_test.observeCPULoad.func1
+     0.52s  0.35% 57.94%      8.84s  6.00%  crypto/internal/fips140/edwards25519.(*projP1xP1).Double
+     0.01s 0.0068% 57.95%      8.84s  6.00%  github.com/vivym/vela/internal/modelruntime.(*executionJournalDraft).recordCandidates
+         0     0% 57.95%      8.81s  5.98%  os.(*unixDirent).Info

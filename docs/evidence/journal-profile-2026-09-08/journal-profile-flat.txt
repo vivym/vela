@@ -1,0 +1,48 @@
+File: journal-profile.test
+Type: cpu
+Time: 2026-09-08 15:17:01 CST
+Duration: 108.17s, Total samples = 147.36s (136.23%)
+Showing nodes accounting for 134.06s, 90.97% of 147.36s total
+Dropped 1400 nodes (cum <= 0.74s)
+Showing top 40 nodes out of 263
+      flat  flat%   sum%        cum   cum%
+    45.38s 30.80% 30.80%     45.38s 30.80%  runtime._ExternalCode
+    29.81s 20.23% 51.02%     29.81s 20.23%  syscall.rawsyscalln
+     9.13s  6.20% 57.22%      9.13s  6.20%  runtime.usleep
+     8.22s  5.58% 62.80%      8.22s  5.58%  racecall
+     7.19s  4.88% 67.68%      7.19s  4.88%  racecalladdr
+     5.57s  3.78% 71.46%      5.57s  3.78%  runtime.pthread_cond_signal
+     5.17s  3.51% 74.97%      5.17s  3.51%  runtime.kevent
+     3.53s  2.40% 77.36%      3.53s  2.40%  runtime.pthread_cond_wait
+     2.26s  1.53% 78.90%      2.26s  1.53%  runtime.pthread_kill
+     1.54s  1.05% 79.94%      1.54s  1.05%  runtime.procyieldAsm
+     1.47s     1% 80.94%      1.47s     1%  runtime.raceread
+     1.37s  0.93% 81.87%      3.66s  2.48%  crypto/internal/fips140/edwards25519/field.(*Element).carryPropagate (inline)
+     1.34s  0.91% 82.78%      4.58s  3.11%  crypto/internal/fips140/edwards25519/field.(*Element).Subtract
+     1.30s  0.88% 83.66%      1.30s  0.88%  runtime.memclrNoHeapPointers
+     1.22s  0.83% 84.49%      4.54s  3.08%  crypto/internal/fips140/edwards25519/field.(*Element).Add
+     1.11s  0.75% 85.24%      1.11s  0.75%  internal/runtime/atomic.(*UnsafePointer).StoreNoWB (inline)
+     0.94s  0.64% 85.88%      0.94s  0.64%  runtime.madvise
+     0.92s  0.62% 86.50%      3.42s  2.32%  crypto/internal/fips140/edwards25519/field.feMulGeneric
+     0.92s  0.62% 87.13%      2.54s  1.72%  crypto/internal/fips140/edwards25519/field.feSquareGeneric
+     0.84s  0.57% 87.70%      1.02s  0.69%  runtime.tryDeferToSpanScan
+     0.68s  0.46% 88.16%      1.05s  0.71%  runtime.findObject
+     0.52s  0.35% 88.51%      8.84s  6.00%  crypto/internal/fips140/edwards25519.(*projP1xP1).Double
+     0.47s  0.32% 88.83%      1.45s  0.98%  runtime.checkptrBase
+     0.36s  0.24% 89.07%      0.82s  0.56%  runtime.scanObjectsSmall
+     0.34s  0.23% 89.31%      3.76s  2.55%  crypto/internal/fips140/edwards25519/field.(*Element).Multiply (inline)
+     0.32s  0.22% 89.52%      2.95s  2.00%  google.golang.org/protobuf/internal/impl.(*MessageInfo).mergePointer
+     0.30s   0.2% 89.73%      1.11s  0.75%  runtime.scanObject
+     0.23s  0.16% 89.88%     15.98s 10.84%  crypto/internal/fips140/edwards25519.(*Point).VarTimeDoubleScalarBaseMult
+     0.22s  0.15% 90.03%      1.18s   0.8%  google.golang.org/protobuf/internal/impl.(*MessageInfo).sizePointerSlow
+     0.19s  0.13% 90.16%      1.92s  1.30%  google.golang.org/protobuf/internal/impl.(*MessageInfo).marshalAppendPointer
+     0.19s  0.13% 90.29%      1.27s  0.86%  runtime.checkptrStraddles
+     0.18s  0.12% 90.41%     10.75s  7.30%  runtime.lock2
+     0.17s  0.12% 90.53%      2.11s  1.43%  crypto/internal/fips140/edwards25519.(*projP2).FromP1xP1
+     0.15s   0.1% 90.63%      2.69s  1.83%  crypto/internal/fips140/edwards25519/field.(*Element).Square (inline)
+     0.14s 0.095% 90.72%      1.44s  0.98%  runtime.checkptrAlignment
+     0.09s 0.061% 90.78%      1.41s  0.96%  crypto/internal/fips140/edwards25519.(*projP1xP1).Add
+     0.08s 0.054% 90.84%      1.06s  0.72%  google.golang.org/protobuf/internal/impl.(*MessageInfo).unmarshalPointerEager
+     0.08s 0.054% 90.89%      3.24s  2.20%  runtime.mallocgc
+     0.06s 0.041% 90.93%      0.85s  0.58%  github.com/vivym/vela/internal/stageauthority.validateShape
+     0.06s 0.041% 90.97%      9.74s  6.61%  runtime.findRunnable

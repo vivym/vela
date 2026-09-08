@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "vela-journal-validation-20260908",
   "status": "in_progress",
-  "phase": "profiling",
+  "phase": "baseline",
   "createdAt": "2026-09-08T07:18:36.493Z",
-  "updatedAt": "2026-09-08T07:18:36.494Z",
+  "updatedAt": "2026-09-08T07:22:02.063Z",
   "scenario": {
     "description": "Profile the remaining CPU-mock journal validation cost at 32 retained records; preserve complete validation.",
     "metrics": [
@@ -23,7 +23,25 @@
   "breakingPoint": null,
   "breakingPointHistory": [],
   "constraintResults": [],
-  "profilingResults": [],
+  "profilingResults": [
+    {
+      "tool": "Go pprof CPU profile with race instrumentation",
+      "command": "VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=4 VELA_CPU_MOCK_WIDTH=8 VELA_CPU_MOCK_TIMEOUT=5m go test -race -tags=integration ./internal/integration -run ^TestCPUMockProductionLoopJobCampaign$ -count=1 -timeout=8m -cpuprofile=/tmp/vela-startup-validation.syiSMk/journal-profile.cpu -o /tmp/vela-startup-validation.syiSMk/journal-profile.test -v",
+      "artifacts": [
+        "docs/evidence/journal-profile-2026-09-08/journal-profile.cpu",
+        "docs/evidence/journal-profile-2026-09-08/journal-profile-flat.txt",
+        "docs/evidence/journal-profile-2026-09-08/journal-profile-cumulative.txt",
+        "docs/evidence/journal-profile-2026-09-08/journal-profile-lines.txt"
+      ],
+      "hotspots": [
+        "147.36 CPU sample seconds over 108.17 wall seconds; percentages are not wall-time partitions",
+        "recordCandidates retainedExecutionIndex: 7.43 cumulative sample seconds",
+        "complete candidate verification: 9.11 cumulative sample seconds",
+        "observeCPULoad: 17.28 cumulative sample seconds; observer perturbs load",
+        "runtime._ExternalCode: 45.38 flat seconds; not attributed wholesale to application or race"
+      ]
+    }
+  ],
   "decision": null,
-  "_version": 1
+  "_version": 2
 }

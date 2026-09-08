@@ -1,0 +1,160 @@
+Total: 147.36s
+ROUTINE ======================== github.com/vivym/vela/internal/modelruntime.(*executionJournalDraft).recordCandidates in /Users/viv/projs/vela/internal/modelruntime/execution_candidates.go
+      10ms      8.84s (flat, cum)  6.00% of Total
+         .          .    104:func (store *executionJournalDraft) recordCandidates(accepted stageauthority.Verified, confirmed *stageauthority.Verified) error {
+         .          .    105:	var err error
+         .      230ms    106:	accepted, err = store.verifyMutationAuthority(accepted)
+         .          .    107:	if err != nil {
+         .          .    108:		return err
+         .          .    109:	}
+         .          .    110:	if confirmed != nil {
+         .      250ms    111:		checked, err := store.verifyMutationAuthority(*confirmed)
+         .          .    112:		if err != nil {
+         .          .    113:			return err
+         .          .    114:		}
+         .          .    115:		confirmed = &checked
+         .          .    116:	}
+         .      7.43s    117:	index, err := store.retainedExecutionIndex(accepted)
+      10ms       10ms    118:	if err != nil {
+         .          .    119:		return err
+         .          .    120:	}
+         .          .    121:	previous := store.state.Executions[index]
+         .          .    122:	if previous.Candidates == nil {
+         .          .    123:		return errors.New("legacy execution has unknown renewal history")
+         .          .    124:	}
+         .       10ms    125:	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(accepted.Authority)
+         .          .    126:	if err != nil {
+         .          .    127:		return err
+         .          .    128:	}
+         .          .    129:	candidates := &executionDiskCandidates{Accepted: wire}
+         .          .    130:	if confirmed != nil {
+         .       20ms    131:		candidates.Confirmed, err = proto.MarshalOptions{Deterministic: true}.Marshal(confirmed.Authority)
+         .          .    132:		if err != nil {
+         .          .    133:			return err
+         .          .    134:		}
+         .          .    135:	}
+         .          .    136:	if bytes.Equal(candidates.Accepted, previous.Candidates.Accepted) && bytes.Equal(candidates.Confirmed, previous.Candidates.Confirmed) {
+         .          .    137:		return nil
+         .          .    138:	}
+         .          .    139:	if previous.Drain != nil || previous.Seal != nil {
+         .          .    140:		return errors.New("sealed or drained execution candidate history is immutable")
+         .          .    141:	}
+         .          .    142:	if len(previous.Candidates.Confirmed) != 0 && !bytes.Equal(previous.Candidates.Confirmed, candidates.Confirmed) &&
+         .          .    143:		!bytes.Equal(candidates.Accepted, candidates.Confirmed) {
+         .          .    144:		return errors.New("confirmed backend authority cannot regress")
+         .          .    145:	}
+         .      160ms    146:	original, err := store.retainedAuthority(previous.Authority)
+         .          .    147:	if err != nil {
+         .          .    148:		return err
+         .          .    149:	}
+         .      450ms    150:	if err := store.validateCandidates(original, candidates); err != nil {
+         .          .    151:		return err
+         .          .    152:	}
+         .      260ms    153:	before, err := store.retainedAuthority(previous.Candidates.Accepted)
+         .          .    154:	if err != nil {
+         .          .    155:		return err
+         .          .    156:	}
+         .          .    157:	if before.Digest != accepted.Digest {
+         .          .    158:		if !bytes.Equal(previous.Candidates.Accepted, previous.Candidates.Confirmed) ||
+         .          .    159:			!bytes.Equal(previous.Candidates.Confirmed, candidates.Confirmed) || stageauthority.ValidateRenewal(before.Authority, accepted.Authority) != nil {
+         .          .    160:			return errBackendAuthorityUncertain
+         .          .    161:		}
+         .          .    162:	}
+         .          .    163:	state := store.state
+         .       20ms    164:	state.Executions = slices.Clone(state.Executions)
+         .          .    165:	state.Executions[index].Candidates = candidates
+         .          .    166:	return store.replace(state)
+         .          .    167:}
+ROUTINE ======================== github.com/vivym/vela/internal/modelruntime.(*executionStateFile).persist in /Users/viv/projs/vela/internal/modelruntime/execution_state_file.go
+         0     12.62s (flat, cum)  8.56% of Total
+         .          .    299:func (store *executionStateFile) persist(state executionDiskState) error {
+         .      1.74s    300:	if err := store.check(); err != nil {
+         .          .    301:		return err
+         .          .    302:	}
+         .          .    303:	// Every publication, including initialization, upgrades and non-admission
+         .          .    304:	// checkpoints, must be recoverable by the same complete semantic verifier.
+         .          .    305:	scope, err := store.scope.digest()
+         .          .    306:	if err != nil {
+         .          .    307:		return err
+         .          .    308:	}
+         .          .    309:	if state.SchemaVersion != 8 || state.ID == uuid.Nil || state.ID != store.lockID || state.Scope != scope ||
+         .          .    310:		state.Root != executionIdentity(store.rootInfo) || state.Lock != executionIdentity(store.lockInfo) {
+         .          .    311:		return errors.New("ModelRuntime execution candidate ownership or schema changed")
+         .          .    312:	}
+         .          .    313:	candidate := executionJournal{scope: store.scope, state: state}
+         .      9.11s    314:	if err := candidate.validateProofs(); err != nil {
+         .          .    315:		return err
+         .          .    316:	}
+         .      450ms    317:	document, err := json.Marshal(state)
+         .          .    318:	if err != nil || len(document) > maxExecutionStateBytes {
+         .          .    319:		return errors.New("ModelRuntime execution state exceeds its bound")
+         .          .    320:	}
+         .          .    321:	name := ".execution-admission-" + state.ID.String() + "-" + uuid.NewString() + ".tmp"
+         .      440ms    322:	file, err := store.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o600)
+         .          .    323:	if err != nil {
+         .          .    324:		return err
+         .          .    325:	}
+         .          .    326:	defer func() { _ = file.Close(); _ = store.root.Remove(name) }()
+         .       60ms    327:	if _, err := file.Write(document); err != nil {
+         .          .    328:		return err
+         .          .    329:	}
+         .      140ms    330:	if err := file.Sync(); err != nil {
+         .          .    331:		return err
+         .          .    332:	}
+         .          .    333:	publishedInfo, err := file.Stat()
+         .          .    334:	if err != nil || !executionPrivateFile(publishedInfo, maxExecutionStateBytes, false) {
+         .          .    335:		return errors.New("ModelRuntime execution temporary state binding changed")
+         .          .    336:	}
+         .          .    337:	if err := file.Close(); err != nil {
+         .          .    338:		return err
+         .          .    339:	}
+         .      210ms    340:	if err := store.root.Rename(name, executionStateName); err != nil {
+         .          .    341:		return err
+         .          .    342:	}
+         .       60ms    343:	if err := store.syncDirectory(store.root); err != nil {
+         .          .    344:		return err
+         .          .    345:	}
+         .          .    346:	info, err := store.root.Lstat(executionStateName)
+         .          .    347:	if err != nil || !os.SameFile(info, publishedInfo) {
+         .          .    348:		return errors.New("ModelRuntime execution state was replaced after rename")
+         .          .    349:	}
+         .       20ms    350:	store.stateInfo, store.stateDigest = info, sha256.Sum256(document)
+         .      300ms    351:	if err := store.check(); err != nil {
+         .          .    352:		return err
+         .          .    353:	}
+         .          .    354:	store.state = state
+         .          .    355:	return nil
+         .       90ms    356:}
+         .          .    357:
+         .          .    358:// Under the lifetime lock, files tagged with this journal's UUID can only be
+         .          .    359:// unpublished writes from an interrupted transaction. They granted no admission.
+         .          .    360:func (store *executionStateFile) removeUnpublished() error {
+         .          .    361:	directory, err := store.root.Open(".")
+ROUTINE ======================== github.com/vivym/vela/internal/modelruntime.(*executionStateFile).persist.func1 in /Users/viv/projs/vela/internal/modelruntime/execution_state_file.go
+         0       90ms (flat, cum) 0.061% of Total
+         .       90ms    326:	defer func() { _ = file.Close(); _ = store.root.Remove(name) }()
+         .          .    327:	if _, err := file.Write(document); err != nil {
+         .          .    328:		return err
+         .          .    329:	}
+         .          .    330:	if err := file.Sync(); err != nil {
+         .          .    331:		return err
+ROUTINE ======================== github.com/vivym/vela/internal/modelruntime.(*executionStateFile).transition in /Users/viv/projs/vela/internal/modelruntime/execution_journal_transition.go
+         0     23.11s (flat, cum) 15.68% of Total
+         .          .     40:func (store *executionStateFile) transition(mutate func(*executionJournalDraft) error) error {
+         .      540ms     41:	if err := store.check(); err != nil {
+         .          .     42:		return err
+         .          .     43:	}
+         .          .     44:	draft := &executionJournalDraft{executionJournal: store.executionJournal}
+         .      9.95s     45:	if err := mutate(draft); err != nil {
+         .          .     46:		return err
+         .          .     47:	}
+         .          .     48:	if !draft.changed {
+         .          .     49:		return nil
+         .          .     50:	}
+         .          .     51:	// persist validates the complete candidate once, before any filesystem write.
+         .     12.62s     52:	return store.persist(draft.state)
+         .          .     53:}
+         .          .     54:
+         .          .     55:func (store *executionStateFile) saveHighest(authority *velav1.StageAuthority, maxClockSkew time.Duration) error {
+         .          .     56:	return store.transition(func(draft *executionJournalDraft) error { return draft.admit(authority, maxClockSkew) })
+         .          .     57:}

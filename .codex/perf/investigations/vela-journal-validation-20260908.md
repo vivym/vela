@@ -31,3 +31,17 @@ The 32-record retention limit is already explicit; safe reclamation and sustaine
 **Evidence**
 - Repo map: direct rg/source inspection
 - Paths count: 4
+## Profiling - 2026-09-08
+
+**User Quote:** "请彻底完善并验证 vela，可以先 mock 验证，暂时不用 gpu 验证。要全面的验证 vela 的正确性、科学性。如果发现更优的架构，也要去优化架构。"
+
+**Summary**
+- Tool: Go pprof CPU profile with race instrumentation
+- Command: `VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=4 VELA_CPU_MOCK_WIDTH=8 VELA_CPU_MOCK_TIMEOUT=5m go test -race -tags=integration ./internal/integration -run ^TestCPUMockProductionLoopJobCampaign$ -count=1 -timeout=8m -cpuprofile=/tmp/vela-startup-validation.syiSMk/journal-profile.cpu -o /tmp/vela-startup-validation.syiSMk/journal-profile.test -v`
+
+**Evidence**
+- Artifacts: docs/evidence/journal-profile-2026-09-08/journal-profile.cpu, docs/evidence/journal-profile-2026-09-08/journal-profile-flat.txt, docs/evidence/journal-profile-2026-09-08/journal-profile-cumulative.txt, docs/evidence/journal-profile-2026-09-08/journal-profile-lines.txt
+- Hotspots: 147.36 CPU sample seconds over 108.17 wall seconds; percentages are not wall-time partitions, recordCandidates retainedExecutionIndex: 7.43 cumulative sample seconds, complete candidate verification: 9.11 cumulative sample seconds, observeCPULoad: 17.28 cumulative sample seconds; observer perturbs load, runtime._ExternalCode: 45.38 flat seconds; not attributed wholesale to application or race
+## Decision after profiling
+
+One production change to test: search validated retained history newest-first while still verifying every examined envelope and the selected exact identity. Full pre-publication history validation stays unchanged. Older-history lookup remains linear. Extend the unprofiled 581d832 baseline to three serial runs, using the already captured same-source run plus two new runs; aggregate median. No performance conclusion from the diagnostic profile alone.
