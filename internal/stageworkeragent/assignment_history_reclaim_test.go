@@ -75,6 +75,30 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if snapshot.Watermark != 2 || len(snapshot.Pending) != 0 || snapshot.Latest == nil {
 		t.Fatalf("unexpected post-reclaim snapshot: %+v", snapshot)
 	}
+	firstDigest, err := cutoff.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondCutoff := cutoff
+	secondCutoff.FromSequence, secondCutoff.ThroughSequence = 2, 2
+	secondCutoff.PreviousCutoffDigest = firstDigest
+	secondCutoff.CumulativeDigest = sha256.Sum256([]byte("history-2"))
+	secondCutoff.TerminalProofDigest = sha256.Sum256([]byte("terminal-2"))
+	secondCutoff.InputProofDigest = sha256.Sum256([]byte("input-2"))
+	secondCutoff.MaterializationProofDigest = sha256.Sum256([]byte("materialization-2"))
+	if err := gate.RecordAssignmentHistoryCutoff(t.Context(), secondCutoff); err != nil {
+		t.Fatal(err)
+	}
+	if err := gate.ReclaimAssignmentHistory(t.Context(), secondCutoff); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = gate.Snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Watermark != 2 || len(snapshot.Pending) != 0 || snapshot.Latest != nil {
+		t.Fatalf("unexpected post-second-reclaim snapshot: %+v", snapshot)
+	}
 	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +112,7 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 		t.Fatal(err)
 	}
 	cutoffs, ok := decoded["history_cutoffs"].([]any)
-	if !ok || len(cutoffs) != 1 {
+	if !ok || len(cutoffs) != 2 {
 		t.Fatalf("decode persisted cutoff: %#v", decoded["history_cutoffs"])
 	}
 	cutoffDocument, ok := cutoffs[0].(map[string]any)
