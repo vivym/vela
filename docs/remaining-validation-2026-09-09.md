@@ -198,8 +198,9 @@ assignment，仍在 `30s` authority skew 上限内，未产生错误接受或额
 scope/Worker identity/epoch、连续 sequence range、累计 digest、terminal/input/
 materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝缺 proof、gap、
 身份漂移和错误链。追加 cutoff 时还要求范围内历史连续保留、execution 已关闭且
-具备 input-drain proof；恢复会重新验证整条链。当前仍未实现 cutoff 驱动的原子
-历史删除、删除后 digest 对账和完整 recovery 的故障注入验证；`8da611a` 已增加
+具备 input-drain proof；恢复会重新验证整条链。`8da611a` 已实现 cutoff 驱动的原子
+连续前缀删除，并保留 proof 链、推进 `HistoryBase`；当前仍需补齐删除后 digest
+对账和完整 recovery 的更多故障注入验证；
 `HistoryBase` 及按已持久 cutoff 删除连续前缀的实现，删除后仍保留 proof 链并允许
 从新 base 继续校验；`7733c27` 已验证删除后关闭 journal、重开并继续接纳下一条
 execution，`efd96fe` 又覆盖了 rename 后 directory sync 失败并重开恢复的边界。
@@ -277,7 +278,7 @@ control session 上 replay request identity 后收敛，scratch、journal 和 al
 | 3 | 同一装配下完整 remote-owner CPU Job | 真实 PostgreSQL、Control、ProductionAgent、Node、Runtime 完成四 Stage Job；同一路径覆盖 cache miss/admission/hit/reuse、transfer、终态清理与每 Job 一次 Charge；故障恢复由实际执行循环驱动 |
 | 4 | Node/Runtime/Worker 故障与替换 | 对各持久写入、回包、读回边界注入退出/丢包；验证不确定写不能重执行，同 owner 的对账规则明确；替换进程不能借用旧 pidfd/epoch，旧进程及后代停止证据完整 |
 | 5 | 多成员部分失败与停止时限 | 当前 native Worker barrier 仅单成员；补部分成员已 Start、另一成员失败、取消失败、并发锁等待和不可配合后台；证明不虚报 all-stopped、不恢复共享容量，并测出可支持的停止时限 |
-| 6 | 历史记录安全回收 | 当前 `maxRetainedExecutions=32`，满后拒绝准入；按 [reclamation design](assignment-history-reclamation-design-2026-09-09.md) 实现并验证持久 cutoff、历史精确证明和重启语义，再测试超过上限后的长期合法执行；不能用简单删除历史消除安全边界 |
+| 6 | 历史记录安全回收 | 当前 `maxRetainedExecutions=32`，满后拒绝准入；持久 cutoff、连续前缀回收、`HistoryBase`、proof 链、重启/中断/篡改/连续 arrival 语义已有 CPU/mock 证据；仍需删除后 digest 对账、更多 power-loss 等价故障边界和长期合法执行压力，不能用简单删除历史消除安全边界 |
 | 7 | 持续到达与资源上界 | 在第 3、4、6 项成立后持续施加 offered arrivals；记录队列、处理/拒绝速率、journal 大小、scratch、RSS、FD、goroutine 的趋势及故障恢复；有限批次成功和波次末 scratch=0 不能代替持续运行证明 |
 | 8 | 整体验收矩阵和遗留失败 | 将每条架构断言对应到固定 source/config、明确输入和原始证据；单独定位 `11ce026` STALE 历史失败，并处理 integration-tag lint 遗留项；禁止把后续相似测试通过写成旧失败已解释 |
 
