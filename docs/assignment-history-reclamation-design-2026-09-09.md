@@ -65,3 +65,30 @@ arrivals 的实现。
 
 在这组验收通过前，`MaxRecords` 满后拒绝准入仍是正确行为；当前有限 campaign
 不能被解释为 sustained throughput 或长期资源上界证明。
+
+## 当前实现暴露的空间上界问题
+
+当前实现确实删除逐条 assignment，但永久保留每一条 `history_cutoffs`。实测
+40 条连续 cutoff 令 state 文件从 `540` 增长到 `41,398` bytes，增长来自 proof
+chain 本身，而不是 goroutine 或 heap 泄漏。因此“删除逐条历史后空间由 proof
+控制”的原目标尚未成立：proof chain 仍然是随 arrival 线性增长的历史。
+
+下一版应引入可验证的 **checkpoint compaction**，而不是直接截断数组：
+
+1. 在固定 `through_sequence` 生成 `HistoryCheckpoint`，包含 scope/Worker identity、
+   `from_sequence`、`through_sequence`、累计 history digest、terminal/input/materialization
+   汇总 digest、最后 cutoff digest、schema/revision 和 owner signature；
+2. checkpoint 先独立 fsync，再由 journal 原子提交 `checkpoint_digest` 与新的
+   `HistoryBase`；提交记录同时声明被覆盖的 cutoff digest 区间；
+3. 只保留 checkpoint 加最近有限数量的 cutoff，后续 cutoff 的
+   `PreviousCutoffDigest` 绑定 checkpoint digest；旧 cutoff 被压缩后不能再被静默
+   伪造或跳过；
+4. 恢复时必须验证 checkpoint 与保留 cutoff 的连续范围、identity、累计 digest 和
+   schema revision。checkpoint 缺失、范围重叠、digest 不匹配或 signature 失效都
+   fail closed；
+5. compaction 失败时允许旧链继续运行，不能先删除旧 proof 再等待新 checkpoint。
+
+验收标准是 cutoff 数量和 state 字节数在固定窗口后趋于上界，同时历史 digest 对账、
+跨 checkpoint renewal/拒绝旧 authority、重启和 response-loss 语义保持不变。在
+该协议实现并通过故障矩阵前，不能把当前 bounded campaign 宣称为长期 sustained
+arrival 证明。
