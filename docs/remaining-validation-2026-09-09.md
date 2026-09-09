@@ -175,6 +175,11 @@ authority 拒绝并由 durable replay 收敛；这验证了幂等拒绝/收敛�
 绝不会发出重复请求。该 campaign 仍将 Node custody、protected mount、真实
 ProductionAgent 进程隔离、remote storage 和 sustained arrivals 留作未完成项。
 
+同一套当前源码的 [clock-offset campaign](cpu-production-loop-clock-offset-evidence-2026-09-09.md)
+又以 verifier `-1s` 偏移运行 6 个 Job：所有 worker 都观察到 future-issued
+assignment，仍在 `30s` authority skew 上限内，未产生错误接受或额外 Charge。这
+只关闭允许偏移的 CPU/mock freshness 检查；超限、跨主机时钟同步和生产装配仍未验证。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
