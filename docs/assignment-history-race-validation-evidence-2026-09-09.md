@@ -24,6 +24,8 @@ go test -race ./internal/stageworkeragent \
 - `-race` 下的 terminal recovery、lost proof 和不可用 session 场景。
 - 两个连续 cutoff 的目录同步故障注入；第二次回收在重开后允许且区分两种
   正确结果：rename 已落盘则恢复到新的 `HistoryBase`，否则保留旧前缀并可安全重试。
+- 最终持久文件的独立 JSON 对账：`HistoryBase`、两条 cutoff、第二条的
+  `PreviousCutoffDigest` 与内存中期望 proof 逐项匹配。
 
 campaign 日志报告 goroutine `2 -> 2`，heap allocation 增量约 `118,568` bytes。该值只支持本次有限 campaign 没有观察到明显泄漏；它不构成 open-loop 长期吞吐、journal/history 空间上界、掉电 durability 或真实多进程生产证明。
 

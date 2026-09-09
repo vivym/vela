@@ -152,6 +152,21 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var reconciled struct {
+		HistoryBase    int64                                      `json:"history_base"`
+		HistoryCutoffs []stageworkeragent.AssignmentHistoryCutoff `json:"history_cutoffs"`
+	}
+	if err := json.Unmarshal(original, &reconciled); err != nil {
+		t.Fatal(err)
+	}
+	if reconciled.HistoryBase != 2 || len(reconciled.HistoryCutoffs) != 2 {
+		t.Fatalf("persisted reclamation proof summary mismatch: %+v", reconciled)
+	}
+	firstDigest, err = cutoff.Digest()
+	if err != nil || reconciled.HistoryCutoffs[0] != cutoff || reconciled.HistoryCutoffs[1] != secondCutoff ||
+		reconciled.HistoryCutoffs[1].PreviousCutoffDigest != firstDigest {
+		t.Fatalf("persisted cutoff proof chain mismatch: %+v", reconciled.HistoryCutoffs)
+	}
 	var decoded map[string]any
 	if err := json.Unmarshal(original, &decoded); err != nil {
 		t.Fatal(err)
