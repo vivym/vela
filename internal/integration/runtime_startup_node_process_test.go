@@ -134,6 +134,12 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				Record        json.RawMessage
 				HasReceipt    bool
 				WorkerJournal stageworkeragent.AssignmentJournalStatus
+				GrantAttempt  *struct {
+					OperationID         string            `json:"operation_id"`
+					JournalID           string            `json:"journal_id"`
+					StartupDigest       [sha256.Size]byte `json:"startup_digest"`
+					AuthorizationDigest [sha256.Size]byte `json:"authorization_digest"`
+				}
 			}
 			found := false
 			for _, line := range strings.Split(string(output), "\n") {
@@ -155,6 +161,15 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				t.Fatalf("Registry pair is not bound to actual held Worker journal: %v", err)
 			}
 			digest := sha256.Sum256(report.Record)
+			if lose {
+				if report.GrantAttempt != nil {
+					t.Fatal("lost reservation reply created a grant fence")
+				}
+			} else if report.GrantAttempt == nil || report.GrantAttempt.OperationID != report.Request.RequestID.String() ||
+				report.GrantAttempt.JournalID != report.Request.RuntimeJournalID.String() || report.GrantAttempt.StartupDigest != digest ||
+				report.GrantAttempt.AuthorizationDigest != sha256.Sum256([]byte("fixture startup authorization evidence; no permit")) {
+				t.Fatal("grant fence is not bound to original Node/Fleet operation and fixture evidence")
+			}
 			if !bytes.Equal(digest[:], report.Request.OwnerObservationDigest) {
 				t.Fatal("database owner digest does not bind the full original Node record")
 			}
@@ -166,7 +181,7 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 			if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 1 {
 				t.Fatalf("expected one immutable reservation: %d %v", count, err)
 			}
-			t.Logf("actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=%v; calls=1 rows=1 receipt=%v; original record SHA256=%x; no grant", lose, report.HasReceipt, digest)
+			t.Logf("actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=%v; calls=1 rows=1 receipt=%v; original record SHA256=%x; no activation; consumption fence=%v", lose, report.HasReceipt, digest, report.GrantAttempt != nil)
 		})
 	}
 }

@@ -73,29 +73,31 @@ type runtimeStartupHeader struct {
 }
 
 type runtimeStartupEntry struct {
-	Startup     *RuntimeStartupRecord            `json:"startup,omitempty"`
-	Exit        *RuntimeStartupExit              `json:"exit,omitempty"`
-	Reservation *RuntimeStartupReservationRecord `json:"reservation,omitempty"`
+	Startup      *RuntimeStartupRecord            `json:"startup,omitempty"`
+	Exit         *RuntimeStartupExit              `json:"exit,omitempty"`
+	Reservation  *RuntimeStartupReservationRecord `json:"reservation,omitempty"`
+	GrantAttempt *RuntimeStartupGrantAttempt      `json:"grant_attempt,omitempty"`
 }
 
 // RuntimeStartupLedger owns one root-only append journal and its lifetime lock.
 // Initialization is explicit and only accepts an empty pre-existing directory.
 // Lost files are never recreated on recovery. No method issues a startup grant.
 type RuntimeStartupLedger struct {
-	mu           sync.Mutex
-	path         string
-	root         *os.Root
-	file         *os.File
-	header       runtimeStartupHeader
-	digest       [sha256.Size]byte
-	size         int64
-	failed       error
-	closed       bool
-	starts       map[uuid.UUID]RuntimeStartupRecord
-	exits        map[uuid.UUID]RuntimeStartupExit
-	owners       map[uuid.UUID]*RuntimeNamespaceOwner
-	reservations map[uuid.UUID]RuntimeStartupReservationRecord
-	boundary     func(string) error
+	mu            sync.Mutex
+	path          string
+	root          *os.Root
+	file          *os.File
+	header        runtimeStartupHeader
+	digest        [sha256.Size]byte
+	size          int64
+	failed        error
+	closed        bool
+	starts        map[uuid.UUID]RuntimeStartupRecord
+	exits         map[uuid.UUID]RuntimeStartupExit
+	owners        map[uuid.UUID]*RuntimeNamespaceOwner
+	reservations  map[uuid.UUID]RuntimeStartupReservationRecord
+	grantAttempts map[uuid.UUID]RuntimeStartupGrantAttempt
+	boundary      func(string) error
 }
 
 func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity string, initialize bool) (*RuntimeStartupLedger, error) {
@@ -120,7 +122,7 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 	}
 	ledger := &RuntimeStartupLedger{path: directory, root: root,
 		starts: make(map[uuid.UUID]RuntimeStartupRecord), exits: make(map[uuid.UUID]RuntimeStartupExit), owners: make(map[uuid.UUID]*RuntimeNamespaceOwner),
-		reservations: make(map[uuid.UUID]RuntimeStartupReservationRecord)}
+		reservations: make(map[uuid.UUID]RuntimeStartupReservationRecord), grantAttempts: make(map[uuid.UUID]RuntimeStartupGrantAttempt)}
 	success := false
 	defer func() {
 		if !success {
@@ -152,7 +154,7 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 		return nil, err
 	}
 	if initialize {
-		ledger.header = runtimeStartupHeader{SchemaVersion: 2, ID: uuid.New(), NodeIdentity: nodeIdentity,
+		ledger.header = runtimeStartupHeader{SchemaVersion: 3, ID: uuid.New(), NodeIdentity: nodeIdentity,
 			Root: runtimeStartupIdentity(info), File: runtimeStartupIdentity(fileInfo)}
 		wire, err := json.Marshal(ledger.header)
 		if err != nil {
@@ -168,7 +170,7 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 	}
 	lines := bufio.NewScanner(bytes.NewReader(document))
 	lines.Buffer(make([]byte, 4096), maxLedgerRecordBytes)
-	if !lines.Scan() || decodeRuntimeStartupLine(lines.Bytes(), &ledger.header) != nil || (ledger.header.SchemaVersion != 1 && ledger.header.SchemaVersion != 2) || ledger.header.ID == uuid.Nil ||
+	if !lines.Scan() || decodeRuntimeStartupLine(lines.Bytes(), &ledger.header) != nil || (ledger.header.SchemaVersion < 1 || ledger.header.SchemaVersion > 3) || ledger.header.ID == uuid.Nil ||
 		ledger.header.NodeIdentity != nodeIdentity || ledger.header.Root != runtimeStartupIdentity(info) || ledger.header.File != runtimeStartupIdentity(fileInfo) {
 		return nil, ErrRuntimeStartupLedger
 	}
@@ -225,7 +227,7 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
 	if request.NodeIdentity != ledger.header.NodeIdentity || len(ledger.starts) >= maxRuntimeStartupRecords {
 		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
 	}
-	if remote != nil && ledger.header.SchemaVersion != 2 {
+	if remote != nil && ledger.header.SchemaVersion < 2 {
 		return RuntimeStartupRecord{}, ErrRuntimeStartupLedger
 	}
 	if _, exists := ledger.starts[request.JournalID]; exists {
@@ -557,14 +559,20 @@ func (ledger *RuntimeStartupLedger) apply(entry runtimeStartupEntry) error {
 	if entry.Reservation != nil {
 		count++
 	}
+	if entry.GrantAttempt != nil {
+		count++
+	}
 	if count != 1 {
 		return ErrRuntimeStartupLedger
+	}
+	if entry.GrantAttempt != nil {
+		return ledger.applyGrantAttempt(*entry.GrantAttempt)
 	}
 	if entry.Reservation != nil {
 		return ledger.applyReservation(*entry.Reservation)
 	}
 	if record := entry.Startup; record != nil {
-		if record.Remote != nil && ledger.header.SchemaVersion != 2 {
+		if record.Remote != nil && ledger.header.SchemaVersion < 2 {
 			return ErrRuntimeStartupLedger
 		}
 		if err := validateRuntimeStartupRecord(*record, ledger.header.NodeIdentity); err != nil {

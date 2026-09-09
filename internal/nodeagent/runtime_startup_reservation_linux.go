@@ -286,7 +286,7 @@ func (ledger *RuntimeStartupLedger) applyReservation(record RuntimeStartupReserv
 	startup, ok := ledger.starts[record.JournalID]
 	_, duplicate := ledger.reservations[record.JournalID]
 	_, exited := ledger.exits[record.JournalID]
-	if ledger.header.SchemaVersion != 2 || !ok || duplicate || exited || record.OperationID != startup.OperationID ||
+	if ledger.header.SchemaVersion < 2 || !ok || duplicate || exited || record.OperationID != startup.OperationID ||
 		record.ReservedAt.IsZero() || record.RecordedAt.Before(startup.RecordedAt) ||
 		record.ReservedAt.Location() != time.UTC || record.RecordedAt.Location() != time.UTC {
 		return ErrRuntimeStartupLedger

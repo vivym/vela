@@ -166,6 +166,14 @@ endpoint 的内存单次 capability，激活前只读，激活后再次使用、
 作为替代。当前只完成 Node API/CPU fixture 验证，grant 的真实 Fleet/TLS/
 PostgreSQL 来源和 production route assembly 仍需接入。
 
+后续 [统一启动协调设计与持久消费边界](runtime-startup-coordinator-design-2026-09-09.md)
+增加了 schema 3 `grant_attempt`：完整 startup/reservation 摘要与独立证据摘要绑定
+同一 operation/journal，消费前要求原始 Runtime owner 仍在；重复、重开及不确定
+append 都不能重新消费。六组原生 race 测试、三处实际 Node SIGKILL 和真实
+PostgreSQL/TLS 的正常/丢回包/缺权限场景通过。旧 schema 1/2 可读取但不能消费；
+这只是持久限制记录，不验证授权摘要、不激活 endpoint、不发 Permit。统一入口
+仍须把独立批准、执行连续性与消费后激活绑定，不能把本增量当作生产 grant 闭合。
+
 当前代码的 [CPU exact-cache campaign](cpu-exact-cache-evidence-2026-09-09.md)
 已重新执行：source miss/admit 后 target 两轮 hit/reuse，5 次 Transfer consume，
 两 Job 各一次 Charge，总计 2500 minor units，终态 queue/allocation/lease/

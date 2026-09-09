@@ -62,7 +62,7 @@ func TestRuntimeStartupReservationProcessCrashRecovery(t *testing.T) {
 			if phase == "before-append" {
 				appends++
 			}
-			if appends == 1 && fault == "intent-"+phase || appends == 2 && fault == "receipt-"+phase {
+			if appends == 1 && fault == "intent-"+phase || appends == 2 && fault == "receipt-"+phase || appends == 3 && fault == "grant-"+phase {
 				kill()
 			}
 			return nil
@@ -85,7 +85,10 @@ func TestRuntimeStartupReservationProcessCrashRecovery(t *testing.T) {
 			}
 			return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC()}, nil
 		}
-		_, err = ledger.ReserveRemote(t.Context(), config)
+		reservation, err := ledger.ReserveRemote(t.Context(), config)
+		if err == nil && strings.HasPrefix(fault, "grant-") {
+			_, err = ledger.ConsumeJournalGrantAttempt(t.Context(), reservation.JournalID, reservation.OperationID, [32]byte{1})
+		}
 		t.Fatalf("crash boundary was not reached: %v", err)
 	}
 	if os.Geteuid() != 0 {
@@ -95,7 +98,7 @@ func TestRuntimeStartupReservationProcessCrashRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fault := range []string{"intent-before-append", "intent-after-append", "intent-after-sync", "fleet-reply", "receipt-before-append", "receipt-after-append", "receipt-after-sync"} {
+	for _, fault := range []string{"intent-before-append", "intent-after-append", "intent-after-sync", "fleet-reply", "receipt-before-append", "receipt-after-append", "receipt-after-sync", "grant-before-append", "grant-after-append", "grant-after-sync"} {
 		t.Run(fault, func(t *testing.T) {
 			root, err := os.MkdirTemp("/tmp", "vela-reservation-crash-")
 			if err != nil {
@@ -171,13 +174,23 @@ func TestRuntimeStartupReservationProcessCrashRecovery(t *testing.T) {
 				wantStarts = 0
 			}
 			wantReceipts := 0
-			if fault == "receipt-after-append" || fault == "receipt-after-sync" {
+			if fault == "receipt-after-append" || fault == "receipt-after-sync" || strings.HasPrefix(fault, "grant-") {
 				wantReceipts = 1
 			}
 			if len(recovered.starts) != wantStarts || len(recovered.reservations) != wantReceipts || len(recovered.owners) != 0 {
 				t.Fatalf("crash changed durable intent/receipt or recreated pidfd: %d/%d/%d", len(recovered.starts), len(recovered.reservations), len(recovered.owners))
 			}
+			wantGrants := 0
+			if fault == "grant-after-append" || fault == "grant-after-sync" {
+				wantGrants = 1
+			}
+			if len(recovered.grantAttempts) != wantGrants {
+				t.Fatalf("recovered grants=%d want=%d", len(recovered.grantAttempts), wantGrants)
+			}
 			for id, record := range recovered.starts {
+				if _, err := recovered.ConsumeJournalGrantAttempt(t.Context(), id, record.OperationID, [32]byte{1}); err == nil {
+					t.Fatal("crash recovery consumed a new grant attempt")
+				}
 				if wantCall && record.OperationID.String() != string(calls) {
 					t.Fatal("Fleet marker is not bound to the persisted original intent")
 				}
@@ -354,7 +367,7 @@ func TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter(t *test
 				if err != nil {
 					t.Fatal(err)
 				}
-				wire = bytes.Replace(wire, []byte(`"schema_version":2`), []byte(`"schema_version":1`), 1)
+				wire = bytes.Replace(wire, []byte(`"schema_version":3`), []byte(`"schema_version":1`), 1)
 				if err := os.WriteFile(path, wire, 0o600); err != nil {
 					t.Fatal(err)
 				}

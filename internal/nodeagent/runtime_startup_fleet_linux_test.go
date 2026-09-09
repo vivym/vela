@@ -207,6 +207,17 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 		if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
 			t.Fatalf("database history differs from original Node record: %v", err)
 		}
+		// This digest is explicitly fixture evidence. Consumption is only a
+		// negative fence, so it cannot turn this fixture into a startup permit.
+		authorizationDigest := sha256.Sum256([]byte("fixture startup authorization evidence; no permit"))
+		attempt, attemptErr := ledger.ConsumeJournalGrantAttempt(ctx, journal.JournalID, record.OperationID, authorizationDigest)
+		if input.LoseResponse {
+			if !errors.Is(attemptErr, ErrRuntimeStartupLedger) || attempt != (RuntimeStartupGrantAttempt{}) {
+				t.Fatalf("remote history replaced missing local receipt: %v", attemptErr)
+			}
+		} else if attemptErr != nil {
+			t.Fatalf("consume after exact real Fleet reservation: %v", attemptErr)
+		}
 		if err := ledger.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -229,6 +240,21 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 		} else if err != nil || receipt != result {
 			t.Fatalf("lost local receipt: %v", err)
 		}
+		grantHistory, grantErr := recovered.InspectJournalGrantAttempt(ctx, journal.JournalID)
+		var grantReport *RuntimeStartupGrantAttempt
+		if input.LoseResponse {
+			if !errors.Is(grantErr, os.ErrNotExist) {
+				t.Fatalf("lost response created grant fence: %v", grantErr)
+			}
+		} else {
+			if grantErr != nil || grantHistory != attempt {
+				t.Fatalf("recovered grant fence mismatch: %v", grantErr)
+			}
+			grantReport = &grantHistory
+		}
+		if _, err := recovered.ConsumeJournalGrantAttempt(ctx, journal.JournalID, record.OperationID, authorizationDigest); err == nil {
+			t.Fatal("reopened ledger consumed a new grant attempt")
+		}
 		recordWire, err := json.Marshal(record)
 		if err != nil {
 			t.Fatal(err)
@@ -238,7 +264,8 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			Record        json.RawMessage
 			HasReceipt    bool
 			WorkerJournal stageworkeragent.AssignmentJournalStatus
-		}{expected, recordWire, !input.LoseResponse, worker})
+			GrantAttempt  *RuntimeStartupGrantAttempt
+		}{expected, recordWire, !input.LoseResponse, worker, grantReport})
 		if err != nil {
 			t.Fatal(err)
 		}
