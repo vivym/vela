@@ -244,6 +244,13 @@ Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器
 Docker 沙箱禁止测试 helper 的 fork/exec，故 pidfd/ptrace/namespace/Node startup
 运行语义仍缺真实 Linux runner 证据。
 
+本轮在当前工作树重新编译并运行了三个特权 `linux/arm64` test binary：
+`internal/runtimechannel`、`internal/nodeagent` 和 `internal/modelruntime` 的
+`-race` binary 均 `PASS`。首次复验因 `golang:1.26-bookworm` 的 `bash -lc` PATH
+没有包含 `/usr/local/go/bin` 而得到 `go: command not found`；显式设置 PATH 后重跑
+通过。该工具链入口问题已确认并清除，不能计为源码失败；显式跳过的 native exec
+observer、actual CLI、CRI/Fleet 外部装配仍保持未验证。
+
 随后将 test binary 输出到可执行 workspace 路径后，完整 Linux
 [Node/Runtime test binary](linux-nodeagent-runtime-evidence-2026-09-09.md) 已在
 特权 `linux/arm64` 容器中实际 `PASS`。这关闭了大部分 Linux journal/channel/
