@@ -529,3 +529,6 @@ Stage authority 分片
 已通过，耗时约 99 秒；覆盖 Stage cutover 的零 backlog/evidence fencing、worker control
 renewal/replay、session capacity 和 observation lifecycle。该分片补充了调度 authority 的
 持久化、并发和 fail-closed 证据，仍不替代全量 integration。
+
+权限与撤销安全分片
+`go test -tags=integration ./internal/integration -run '^TestBreakGlass|^TestLegalHold|^TestCancellation'` 已通过，耗时约 62 秒；覆盖 break-glass 独立 principal/approval、legal-hold 的不可逆释放与并发序列化，以及 cancellation credential 变化后的 fail-closed/no-mutation 语义。这些分片补充了高风险 authority 和副作用边界证据，但全量 integration 仍未闭合。
