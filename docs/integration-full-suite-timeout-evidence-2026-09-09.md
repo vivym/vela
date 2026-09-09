@@ -30,6 +30,20 @@ checkpoint 代码。
 和资源问题。推荐先用 `VELA_INTEGRATION_SHARDS_DRY_RUN=1` 检查分配，再运行 2
 shards；4 shards 需要重新观察 Docker 资源压力。
 
+## Re-run after runner hardening
+
+在 runner 增加失败日志保留和空 shard 收敛后，用相同的 2-shard 分配再次执行：
+
+```bash
+VELA_INTEGRATION_TIMEOUT=20m hack/run-integration-shards.sh 2
+```
+
+结果为 `shard 1 passed`、`shard 2 passed`。这证明 505 个 integration tests
+可以在两个相互隔离的 PostgreSQL fixture 进程中完成；它仍不改变单进程全套运行
+曾经超过 20 分钟的事实，也不把两进程分片结果提升为生产 readiness 或
+Production Gates 证据。若再次出现单 shard 失败，应优先读取 runner 保留的日志，
+区分具体测试失败、Docker 资源压力和 fixture 启动失败。
+
 ## Isolated reproduction
 
 ```bash
