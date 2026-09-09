@@ -180,6 +180,15 @@ ProductionAgent 进程隔离、remote storage 和 sustained arrivals 留作未�
 assignment，仍在 `30s` authority skew 上限内，未产生错误接受或额外 Charge。这
 只关闭允许偏移的 CPU/mock freshness 检查；超限、跨主机时钟同步和生产装配仍未验证。
 
+[Multi-member barrier](multi-member-barrier-evidence-2026-09-09.md) 的当前 Agent/RPC
+状态机也已通过定向 `-race` 验证：部分 Start 失败会取消全 allocation，取消 ACK
+不会冒充 `AllStopped`，部分 drain 不会恢复共享容量。真实生产后代停止与隔离仍未
+覆盖。
+
+[Assignment history retention](assignment-history-retention-evidence-2026-09-09.md)
+已验证达到 `MaxRecords` 后 fail closed，重启不丢 watermark/profile/closed history。
+持久 cutoff 和安全 reclamation 仍未实现，因此 sustained arrivals 仍受该上限约束。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
