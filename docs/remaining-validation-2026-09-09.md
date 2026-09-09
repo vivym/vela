@@ -556,3 +556,6 @@ Stage execution 核心分片
 
 支持系统分片
 `go test -tags=integration ./internal/integration -run '^TestBilling|^TestInvoice|^TestSettlement|^TestCloudNative|^TestNATS|^TestSchedulerConsumer|^TestS3|^TestProtected|^TestPublic|^TestLocalWorker|^TestNodeAgent'` 已通过，耗时约 65 秒；覆盖 billing/invoice/settlement、CloudNativePG failover、NATS workload identity、S3 artifact version/multipart、protected provisioning 和 Node Agent/worker bootstrap。
+
+Schema/legacy/cache 分片
+`go test -tags=integration ./internal/integration -run '^TestFoundation|^TestAtomic|^TestHierarchical|^TestModelRuntime|^TestResidency|^TestLegacy|^TestStageExecutionCatalog|^TestStageCache|^TestStageTelemetry|^TestStageTerminal|^TestStageTransfer|^TestStageSuccessful|^TestStageRun|^TestStageQuorum|^TestStageAttempt'` 已通过，耗时约 189 秒；覆盖 migration round-trip/rollback refusal、legacy H3 contraction、execution catalog authority、exact cache identity/quota、telemetry privilege、terminal history、transfer clock、storage reservation 和 stage attempt authority。
