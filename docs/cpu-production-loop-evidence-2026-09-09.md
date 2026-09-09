@@ -38,3 +38,20 @@ startup issuer、remote object storage、真实 UID/mount isolation、GPU、掉�
 **0/9**。
 
 原始日志：[campaign.log](evidence/cpu-production-loop-2026-09-09/campaign.log)
+
+## Exact-cache production-loop rerun
+
+另一次执行：
+
+```bash
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 go test -tags=integration ./internal/integration \
+  -run TestCPUMockExactCacheProductionLoopCampaign -count=1 -v
+```
+
+通过。该次 PostgreSQL schema 95、四个 CPU mock Runtime 和实际 `ProductionAgent`
+loop 均启动；source miss/admit 与 target hit/reuse 成功，`consumed_transfers=5`，
+两次 Charge 合计 `2500` minor units，committed response replay 为 4，最终
+queue/running/allocation/lease/scratch 均为 0。日志中的 `AlreadyExists` 是重复
+提交被 authority 拒绝后的 durable replay 收敛证据，不代表不存在重复 RPC。该次仍
+是 bounded CPU/mock + loopback fixture，不能提升为生产 Node/Fleet 或 sustained
+throughput 证据。
