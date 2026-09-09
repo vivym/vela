@@ -127,6 +127,18 @@ make validate-deployment
 装载检查，后者成功渲染 control-storage、vela-control、stage-worker、
 fleet-controller 和 observability 的 Kustomize 配置。
 
+本轮重新尝试单进程全量 integration：
+
+```text
+go test -tags=integration ./internal/integration -count=1 -timeout=15m
+```
+
+结果仍未闭合，运行 15 分钟后在
+`TestStageExecutionCatalogActiveGraphOptionsAreImmutable` 创建 PostgreSQL
+Testcontainer 时超时。超时栈停在 Docker API `ContainerStart` 的 HTTP round trip，
+没有业务 assertion failure；结束后 Docker 容器已清理。并行 6 分片仍是当前完整
+测试集合的可靠运行方式，不能把这次单进程基础设施超时记为 PASS。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
