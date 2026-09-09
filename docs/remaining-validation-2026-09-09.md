@@ -493,3 +493,22 @@ CLI/CRI/Fleet 路径验证 reservation、grant consumption、observed activation
 新增了消耗性输入 preflight 和空闲 listener shutdown 回归；Linux/arm64 native runner
 再次通过 31 个 top-level tests，且无 `DATA RACE`。本轮 runner 证据位于
 `/tmp/vela-lifecycle-fixes2-20260909/native.log`。
+
+### Integration 全量运行边界（2026-09-09）
+
+对 `internal/integration` 做了 build-tag 编译、相关 runtime startup focused 测试和全量运行。
+`TestRuntimeStartupMutualTLSReservationPreservesLostResponse`、
+`TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce` 以及
+`TestStatisticalSLOMigrationEmptyDownUpAndDurableEvidenceRefusal` 均独立通过，说明相关
+PostgreSQL/TLS、JetStream 和 migration 逻辑在隔离进程中可运行。
+
+全量 `go test -tags=integration ./internal/integration -count=1` 仍未闭合：在长套件运行约
+15 分钟后，Docker Desktop 中的 PostgreSQL 容器在 goose migration 39 写入
+`goose_db_version` 时停止响应，最终由 package timeout 终止。失败栈显示是
+PostgreSQL/Docker I/O 阻塞，不是 Go assertion 或稳定的单测试失败。为避免基础设施故障
+无限占用套件，integration fixtures 已给 PostgreSQL 连接加入 `lock_timeout=30s`、
+`statement_timeout=120s`，并给 PostgreSQL/MinIO/NATS Testcontainers cleanup 加入 30 秒
+deadline；Docker daemon 整体无响应时仍需要宿主恢复后重跑全量套件。
+
+因此 focused integration 证据不能升级为“全库 integration 通过”；完整套件仍是开放验证项，
+Production Gates 继续为 `0/9`。
