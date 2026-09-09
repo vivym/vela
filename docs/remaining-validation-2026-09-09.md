@@ -79,6 +79,17 @@ exact-cache miss/admit/hit/reuse、ProductionAgent reattach、并发 admission�
 allocation/lease/charge 与 scratch 收敛；仍属于受界定的 CPU/mock campaign，
 不等于长期 open-loop 压力或真实多节点执行。
 
+本轮还以 `VELA_CPU_MOCK_WAVES=8`、`VELA_CPU_MOCK_WIDTH=8` 重跑 64 Job 的
+bounded long campaign：
+
+```text
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=8 VELA_CPU_MOCK_WIDTH=8 go test -tags=integration ./internal/integration -run '^TestCPUMockConcurrentAdmissionRuntimeCampaign$' -count=1 -timeout=15m
+```
+
+结果：通过，耗时约 22.224s。该运行确认 8 波并发 arrival 下 queue、running、
+allocation、lease、credit 与 scratch 能在每波结束收敛；它仍是有界压力测试，
+不能证明长期 open-loop 资源上界或历史数据无限增长安全。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
