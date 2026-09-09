@@ -28,3 +28,20 @@ TransferTicket 消费、一次 Charge 与终态资源清理在该装配中成立
 Production Gates。
 
 原始日志：[campaign.log](evidence/cpu-exact-cache-2026-09-09/campaign.log)
+
+## 2026-09-09 durable-stream rerun
+
+另外执行了：
+
+```bash
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 go test -tags=integration ./internal/integration \
+  -run TestCPUMockDurableStreamExactCacheCampaign -count=1 -v
+```
+
+该次真实启动 PostgreSQL 17 Testcontainer 并完成 schema 95 migration，四个 CPU
+mock Runtime 通过 durable stream 执行 source miss/admit 与 target exact-cache
+hit/reuse；`consumed_transfers=5`、两次 Charge 共 `2500` minor units、终态
+queue/running/allocation/lease/scratch 均为 0，committed response replay 为 4。
+进程采样中四个 mock subprocess 的 RSS 与 FD 均保持有限增长，campaign 用时约
+`2.655s`（不含容器启动）。这是一次 bounded rerun；它不证明长期开放环资源上界、
+生产 Node/Fleet custody 或 history reclamation（后者由独立测试覆盖）。
