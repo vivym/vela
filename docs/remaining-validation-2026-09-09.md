@@ -194,6 +194,12 @@ Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器
 Docker 沙箱禁止测试 helper 的 fork/exec，故 pidfd/ptrace/namespace/Node startup
 运行语义仍缺真实 Linux runner 证据。
 
+随后将 test binary 输出到可执行 workspace 路径后，完整 Linux
+[Node/Runtime test binary](linux-nodeagent-runtime-evidence-2026-09-09.md) 已在
+特权 `linux/arm64` 容器中实际 `PASS`。这关闭了大部分 Linux journal/channel/
+pid namespace/bootstrap/startup ledger 运行证据；仍被显式 `SKIP` 的 native exec
+observer、actual CLI、CRI Node Agent 和 host Fleet orchestrator 仍不能视为已验证。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
