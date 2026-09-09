@@ -251,6 +251,14 @@ Stage Worker 负责：
 - 在 materialization authority 下提交 durable StageArtifact；最终 ArtifactSet 由非 GPU Finalizer 处理。
 - 在 StageLease 被拒绝或收到 `StopStage` 后终止执行并清理临时资源。
 
+Worker 的本地 admission journal 是 append-only 的执行历史边界，不把达到
+`MaxRecords` 后的简单删除当作回收。历史只能在 terminal、input-drain 和
+materialization proof 已完成后，由与当前 `ScopeDigest`、Worker instance/member
+及 epoch 绑定的连续 `AssignmentHistoryCutoff` 推进；journal 保留 cutoff digest
+链与 `HistoryBase`，恢复时重新验证两者，跨 Worker 重放、sequence gap、身份漂移
+和 proof 篡改都 fail closed。回收只移除已证明的连续前缀，不能恢复执行授权，也
+不代表生产 Node/Fleet custody 已成立。
+
 Coordinator 的 StageAssignment / heartbeat 响应除持久化的 `expires_at` 外，还必须提供可映射到本地 monotonic watchdog 的剩余 authority。Stage Worker 在发出对应请求前记录 monotonic timestamp，并使网络往返时间只能缩短、不能延长可执行窗口；它不使用本地 wall clock 延长 StageLease，收不到续租响应时必须在本地 deadline 前停止推进和提交。
 
 ### 6.6 Node Health Controller 与 vela-node-agent
