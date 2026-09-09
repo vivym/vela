@@ -224,7 +224,10 @@ sustained arrivals 仍受该上限约束。
 terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同步故障注入。故障后
 重开会根据 rename 是否已落盘，安全地看到旧 `HistoryBase` 或新 `HistoryBase`，均不
 接受损坏状态；最终持久文件还逐项对账了 `HistoryBase`、cutoff 记录和 digest chain。
-该轮仍未关闭长期 history 压力、掉电 durability 或真实 Node/Fleet/CRI 装配。
+同一 bounded campaign 还测得 state 文件从 `540` 增长到 `41,398` bytes；这确认
+增长来自完整 cutoff proof chain 的保留。它不是 goroutine/heap 泄漏，但暴露了长期
+空间上界缺口。需要设计并验证 checkpoint/压缩协议后，才能关闭长期 history 压力；
+掉电 durability 和真实 Node/Fleet/CRI 装配仍未闭合。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，

@@ -26,9 +26,14 @@ go test -race ./internal/stageworkeragent \
   正确结果：rename 已落盘则恢复到新的 `HistoryBase`，否则保留旧前缀并可安全重试。
 - 最终持久文件的独立 JSON 对账：`HistoryBase`、两条 cutoff、第二条的
   `PreviousCutoffDigest` 与内存中期望 proof 逐项匹配。
+- 40 条连续回收的 state 文件从 `540` 增长到 `41,398` bytes（约 `40,858`
+  bytes 增量），说明当前实现保留完整 cutoff proof chain，增长主要来自持久
+  proof 历史，而不是 goroutine/heap 泄漏。
 
 campaign 日志报告 goroutine `2 -> 2`，heap allocation 增量约 `118,568` bytes。该值只支持本次有限 campaign 没有观察到明显泄漏；它不构成 open-loop 长期吞吐、journal/history 空间上界、掉电 durability 或真实多进程生产证明。
 
 ## 边界
 
-本证据不关闭多 cutoff 连续中断故障注入、删除后独立 digest 对账、长期 history reclamation 压力、真实 Node/Fleet/CRI 装配、power-loss durability 或 GPU 验证。Production Gates 仍为 `0/9`。
+本证据不关闭 cutoff proof chain 的长期空间上界；当前测量暴露了需要 checkpoint/
+压缩协议的架构缺口。它也不关闭真实 Node/Fleet/CRI 装配、power-loss durability
+或 GPU 验证。Production Gates 仍为 `0/9`。

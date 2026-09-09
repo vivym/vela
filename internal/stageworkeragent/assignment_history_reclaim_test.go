@@ -273,6 +273,7 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	initialStateBytes := len(document)
 	var persisted struct {
 		Scope []byte `json:"scope"`
 	}
@@ -331,4 +332,9 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	if heapDelta > 8<<20 {
 		t.Fatalf("heap allocation grew across bounded arrival campaign: %d bytes", heapDelta)
 	}
+	finalState, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("bounded arrival journal state: %d -> %d bytes (delta=%d), retained cutoffs=%d", initialStateBytes, finalState.Size(), finalState.Size()-int64(initialStateBytes), 40)
 }
