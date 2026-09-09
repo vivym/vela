@@ -550,3 +550,6 @@ Finance/catalog/H3 分片
 
 Stage execution 核心分片
 `go test -tags=integration ./internal/integration -run '^TestStageScheduler|^TestStageGraph|^TestStageMaterialization|^TestStageLease|^TestStageJob'` 已通过，耗时约 304 秒；覆盖 scheduler lock order/claim/replay/capacity、graph cancellation/finalization/public-copy、materialization retry/expiry/replay、lease recovery 及 job expiry convergence。
+
+并发与幂等分片
+`go test -tags=integration ./internal/integration -run '^TestAttemptCoordinator|^TestIdempotency|^TestQueued|^TestConcurrent|^TestServiceClass'` 已通过，耗时约 47 秒；覆盖 attempt claim/replay、idempotency request distinction、queued cancellation、并发 admission/credit/webhook/invoice 以及 retry budget contract。
