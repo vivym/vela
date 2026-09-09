@@ -100,6 +100,12 @@ go test ./internal/stageworkeragent -run '^TestAssignmentHistoryReclaimPersistsB
 重启恢复、bounded arrival 和篡改 checkpoint 拒绝。该结果支持安全回收组件的
 有限证据，但长期 journal/history 空间上界仍需持续运行数据确认。
 
+质量收口检查也已重跑：`go test ./... -count=1 -timeout=15m` 全部通过，所有
+仓库 shell 脚本均通过 `bash -n`，`git diff --check` 通过。当前主机上的
+`golangci-lint` 未能启动，错误为其二进制由 Go 1.25 构建而目标 Go 为 1.26.7；
+这是 lint 工具链版本不匹配，没有产生源码 lint 结果，不能记录为 lint PASS 或
+源码失败。此前在匹配工具链环境中已有 `golangci-lint v2.13.1: 0 issues` 的证据。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
