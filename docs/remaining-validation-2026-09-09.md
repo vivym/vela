@@ -241,6 +241,10 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 外部签名和长期上界仍需继续验证；本轮还直接篡改最终 checkpoint 的
 `cumulative_digest`，重开按预期拒绝，随后恢复原始文件。
 
+checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test ./...`、
+`go vet ./...`；其中 `internal/stageworkeragent` 包含完整 compaction/race campaign。
+这只证明当前源码没有观测到回归，不替代 power-loss 或真实生产装配验证。
+
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
 确认 Fleet 及其他 service role 的精确 privilege boundary 当前仍通过。该结果不替代
