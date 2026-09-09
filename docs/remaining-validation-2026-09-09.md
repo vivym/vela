@@ -235,8 +235,9 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 通过。现在 bounded 40-arrival campaign 还实际执行了单 checkpoint compaction，
 并在重开后确认 `HistoryBase=40`、`HistoryCutoffs=0`、无 retained execution。
 本轮还注入了 compaction 后的 directory sync failure，重开后能安全区分旧链和
-完整 checkpoint 两种结果；多 checkpoint、掉电级别故障、外部签名和长期上界仍需
-继续验证。
+完整 checkpoint 两种结果，并验证压缩前缀后 retained suffix 的每一条
+`PreviousCutoffDigest` 都重新链接到新的 checkpoint anchor；多 checkpoint、掉电级别
+故障、外部签名和长期上界仍需继续验证。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，

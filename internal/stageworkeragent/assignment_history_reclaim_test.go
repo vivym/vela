@@ -283,7 +283,7 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		t.Fatal(err)
 	}
 	var previous [sha256.Size]byte
-	var lastCutoff stageworkeragent.AssignmentHistoryCutoff
+	var prefixCutoff stageworkeragent.AssignmentHistoryCutoff
 	for sequence := int64(1); sequence <= 40; sequence++ {
 		assignment := f.assignment
 		acquireID := f.acquireID
@@ -311,7 +311,9 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		if err := gate.ReclaimAssignmentHistory(t.Context(), cutoff); err != nil {
 			t.Fatal(err)
 		}
-		lastCutoff = cutoff
+		if sequence == 32 {
+			prefixCutoff = cutoff
+		}
 		previous, err = cutoff.Digest()
 		if err != nil {
 			t.Fatal(err)
@@ -341,17 +343,17 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("bounded arrival journal state: %d -> %d bytes (delta=%d), retained cutoffs=%d", initialStateBytes, finalState.Size(), finalState.Size()-int64(initialStateBytes), 40)
-	lastCutoffDigest, err := lastCutoff.Digest()
+	lastCutoffDigest, err := prefixCutoff.Digest()
 	if err != nil {
 		t.Fatal(err)
 	}
 	checkpoint := stageworkeragent.AssignmentHistoryCheckpoint{
 		ScopeDigest: persistedScope(persisted.Scope), WorkerInstanceID: f.config.WorkerInstanceID,
 		WorkerInstanceEpoch: f.config.WorkerInstanceEpoch, WorkerMemberID: f.config.WorkerMemberID,
-		FromSequence: 1, ThroughSequence: 40, CumulativeDigest: lastCutoff.CumulativeDigest,
-		TerminalProofDigest: lastCutoff.TerminalProofDigest, InputProofDigest: lastCutoff.InputProofDigest,
-		MaterializationProofDigest: lastCutoff.MaterializationProofDigest, LastCutoffDigest: lastCutoffDigest,
-		CompactedCutoffCount: 40, Revision: 1,
+		FromSequence: 1, ThroughSequence: 32, CumulativeDigest: prefixCutoff.CumulativeDigest,
+		TerminalProofDigest: prefixCutoff.TerminalProofDigest, InputProofDigest: prefixCutoff.InputProofDigest,
+		MaterializationProofDigest: prefixCutoff.MaterializationProofDigest, LastCutoffDigest: lastCutoffDigest,
+		CompactedCutoffCount: 32, Revision: 1,
 	}
 	failed := true
 	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
@@ -387,8 +389,8 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		if err := gate.CompactAssignmentHistory(t.Context(), checkpoint); err != nil {
 			t.Fatal(err)
 		}
-	} else if len(recovered.HistoryCutoffs) != 0 {
-		t.Fatalf("checkpoint committed with an untrimmed prefix: %d", len(recovered.HistoryCutoffs))
+	} else if len(recovered.HistoryCutoffs) != 8 {
+		t.Fatalf("checkpoint committed with an unexpected retained suffix: %d", len(recovered.HistoryCutoffs))
 	}
 	compactedState, err := os.Stat(statePath)
 	if err != nil {
@@ -401,7 +403,7 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), f.config)
-	if err != nil || prepared.HistoryBase != 40 || prepared.HistoryCutoffs != 0 || prepared.RetainedExecutions != 0 {
+	if err != nil || prepared.HistoryBase != 40 || prepared.HistoryCutoffs != 8 || prepared.RetainedExecutions != 0 {
 		t.Fatalf("checkpoint compaction recovery mismatch: %+v %v", prepared, err)
 	}
 }

@@ -259,7 +259,14 @@ func (gate *FileAssignmentAdmission) CompactAssignmentHistory(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		next.HistoryCutoffs[0].PreviousCutoffDigest = checkpointDigest
+		previousDigest := checkpointDigest
+		for index := range next.HistoryCutoffs {
+			next.HistoryCutoffs[index].PreviousCutoffDigest = previousDigest
+			previousDigest, err = next.HistoryCutoffs[index].Digest()
+			if err != nil {
+				return err
+			}
+		}
 	}
 	if err := gate.commit(ctx, next); err != nil {
 		return err
