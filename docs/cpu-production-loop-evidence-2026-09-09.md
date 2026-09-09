@@ -55,3 +55,14 @@ queue/running/allocation/lease/scratch 均为 0。日志中的 `AlreadyExists` �
 提交被 authority 拒绝后的 durable replay 收敛证据，不代表不存在重复 RPC。该次仍
 是 bounded CPU/mock + loopback fixture，不能提升为生产 Node/Fleet 或 sustained
 throughput 证据。
+
+随后以同一测试入口增加 `-race` 重跑：
+
+```bash
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 go test -race -tags=integration ./internal/integration \
+  -run TestCPUMockExactCacheProductionLoopCampaign -count=1 -v
+```
+
+也通过；PostgreSQL schema 95、4 个 Runtime、response-loss replay、exact-cache
+结果和终态清理均再次成立，未观测到 Go data race。该 race 结果不覆盖 native
+subprocess 内部或真实远程进程隔离。
