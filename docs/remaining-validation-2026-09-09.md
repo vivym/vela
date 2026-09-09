@@ -154,6 +154,12 @@ ptrace stop；`Start` 单次释放，`Check` challenge/response，SIGSTOP、通�
 队列取消和撤销均有实际测试。实际 CLI runner 新增 6 个 custody 场景和 7 个
 descriptor 场景，生产创建关系、持久恢复和 once-only grant 仍未闭合。
 
+新增的 grant transition 已把这条缺口收窄：`JournalWriteGrant` 是绑定具体
+endpoint 的内存单次 capability，激活前只读，激活后再次使用、错 endpoint、
+过期或进程句柄失效均拒绝；它不接受序列化 receipt、历史记录或 caller reply
+作为替代。当前只完成 Node API/CPU fixture 验证，grant 的真实 Fleet/TLS/
+PostgreSQL 来源和 production route assembly 仍需接入。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |

@@ -2,11 +2,13 @@ package nodeagent
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/runtimechannel"
@@ -18,11 +20,80 @@ import (
 // Namespace-owner correlation alone is not Registry/Fleet startup approval;
 // trusted Node orchestration must establish that authority before construction.
 type JournalEndpoint struct {
-	mu       sync.Mutex
-	owner    *modelruntime.ExecutionJournalOwner
-	runtime  *os.File
-	worker   *os.File
-	readOnly bool
+	mu        sync.Mutex
+	owner     *modelruntime.ExecutionJournalOwner
+	runtime   *os.File
+	worker    *os.File
+	readOnly  bool
+	grantUsed bool
+}
+
+// JournalWriteGrant is an in-memory, single-use capability issued only by
+// trusted Node orchestration after an external startup decision. It carries no
+// serializable permit and cannot be reconstructed from a receipt or history.
+type JournalWriteGrant struct {
+	endpoint *JournalEndpoint
+	nonce    [32]byte
+	expires  time.Time
+}
+
+// IssueJournalWriteGrant is the narrow trusted boundary between an external
+// startup authorization and the journal route. The caller must retain custody
+// of the same original processes; this function does not contact Fleet or issue
+// authorization itself.
+func IssueJournalWriteGrant(ctx context.Context, endpoint *JournalEndpoint, runtimeOwner, workerOwner *RuntimeNamespaceOwner, lifetime time.Duration) (*JournalWriteGrant, error) {
+	if endpoint == nil || lifetime <= 0 || lifetime > 5*time.Minute || runtimeOwner == nil || workerOwner == nil {
+		return nil, ErrRuntimeObserverCustody
+	}
+	endpoint.mu.Lock()
+	defer endpoint.mu.Unlock()
+	if endpoint.runtime == nil || endpoint.worker == nil || !endpoint.readOnly || endpoint.grantUsed {
+		return nil, ErrRuntimeObserverCustody
+	}
+	if err := errors.Join(contextError(ctx), runtimechannel.PollLivePIDFD(int(endpoint.runtime.Fd())), runtimechannel.PollLivePIDFD(int(endpoint.worker.Fd()))); err != nil {
+		return nil, err
+	}
+	runtimeFD, err := retainJournalProcess(ctx, runtimeOwner)
+	if err != nil {
+		return nil, err
+	}
+	workerFD, err := retainJournalProcess(ctx, workerOwner)
+	if err != nil {
+		_ = runtimeFD.Close()
+		return nil, err
+	}
+	defer func() { _ = runtimeFD.Close() }()
+	defer func() { _ = workerFD.Close() }()
+	if err := errors.Join(runtimechannel.SameLiveProcess(int(endpoint.runtime.Fd()), int(runtimeFD.Fd())), runtimechannel.SameLiveProcess(int(endpoint.worker.Fd()), int(workerFD.Fd()))); err != nil {
+		return nil, err
+	}
+	grant := &JournalWriteGrant{endpoint: endpoint, expires: time.Now().Add(lifetime)}
+	if _, err := rand.Read(grant.nonce[:]); err != nil {
+		return nil, err
+	}
+	return grant, nil
+}
+
+// ActivateJournalWriteGrant consumes grant exactly once after rechecking both
+// original process handles. It is the only transition from startup read-only to
+// writable routing; a caller reply, Fleet record or serialized receipt cannot
+// activate it.
+func (endpoint *JournalEndpoint) ActivateJournalWriteGrant(ctx context.Context, grant *JournalWriteGrant) error {
+	if endpoint == nil || grant == nil {
+		return ErrRuntimeObserverCustody
+	}
+	endpoint.mu.Lock()
+	defer endpoint.mu.Unlock()
+	if grant.endpoint != endpoint || endpoint.grantUsed || !endpoint.readOnly || grant.expires.Before(time.Now()) || grant.nonce == ([32]byte{}) {
+		return ErrRuntimeObserverCustody
+	}
+	if err := errors.Join(contextError(ctx), runtimechannel.PollLivePIDFD(int(endpoint.runtime.Fd())), runtimechannel.PollLivePIDFD(int(endpoint.worker.Fd()))); err != nil {
+		return err
+	}
+	endpoint.readOnly = false
+	endpoint.grantUsed = true
+	grant.nonce = [32]byte{}
+	return nil
 }
 
 // NewJournalEndpoint retains independent pidfds. Closing the observations after
