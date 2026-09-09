@@ -553,3 +553,6 @@ Stage execution 核心分片
 
 并发与幂等分片
 `go test -tags=integration ./internal/integration -run '^TestAttemptCoordinator|^TestIdempotency|^TestQueued|^TestConcurrent|^TestServiceClass'` 已通过，耗时约 47 秒；覆盖 attempt claim/replay、idempotency request distinction、queued cancellation、并发 admission/credit/webhook/invoice 以及 retry budget contract。
+
+支持系统分片
+`go test -tags=integration ./internal/integration -run '^TestBilling|^TestInvoice|^TestSettlement|^TestCloudNative|^TestNATS|^TestSchedulerConsumer|^TestS3|^TestProtected|^TestPublic|^TestLocalWorker|^TestNodeAgent'` 已通过，耗时约 65 秒；覆盖 billing/invoice/settlement、CloudNativePG failover、NATS workload identity、S3 artifact version/multipart、protected provisioning 和 Node Agent/worker bootstrap。
