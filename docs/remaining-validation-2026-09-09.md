@@ -538,3 +538,6 @@ renewal/replay、session capacity 和 observation lifecycle。该分片补充了
 
 业务一致性分片
 `go test -tags=integration ./internal/integration -run '^TestAdmission|^TestWebhook|^TestOutbox|^TestInbox'` 已通过，耗时约 101 秒；覆盖 Admission 无副作用拒绝与幂等、Webhook 重放/权限、Outbox 提交后重投、Inbox exactly-once/版本边界。
+
+Finance/catalog/H3 分片
+`go test -tags=integration ./internal/integration -run '^TestFinance|^TestUsage|^TestCatalog|^TestH3|^TestRuntimeUsage'` 已通过，耗时约 109 秒；覆盖 finance reconciliation、usage cost ledger、catalog promotion production gates、H3 campaign evidence，以及 runtime usage 的无 GPU 时间边界。
