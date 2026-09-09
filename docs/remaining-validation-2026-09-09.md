@@ -230,6 +230,9 @@ journal，并在追加、恢复、回收三条路径都 fail closed；跨 journa
 cutoff 不能被接受。`e4f4ba1` 增加了直接篡改磁盘 `worker_member_id` 后 recovery
 拒绝的测试。
 
+随后 `go test -race ./...` 全库通过，未观测到 identity binding 变更引入的 Go
+data race；native subprocess、Docker VM 和 PostgreSQL 内部仍不在该检测范围内。
+
 `9045e8e` 的 16-job、两波并发 arrival campaign，以及 `13d7bbe` 的同装配 `-race`
 重跑均通过：16 个 completion、16 次 Charge、无 acquire deadlock/serialization
 retry，终态队列/运行/分配/租约清零。它们仍是 bounded CPU/mock PostgreSQL campaign，
