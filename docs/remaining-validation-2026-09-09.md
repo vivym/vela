@@ -5,6 +5,12 @@
 
 ## 当前结论
 
+截至本报告更新，当前分支已完成一次新的基础回归：`go test ./...`、`go vet ./...`
+和 `git diff --check` 均通过；`go test -tags=integration ./internal/integration -run '^$'`
+也通过，说明 integration build tag 下的测试代码可编译。默认回归没有启动
+PostgreSQL、原生 mock 子进程或 Linux 特权环境，因此这些命令只证明源码/状态机
+回归，没有提升下方端到端、故障恢复或生产启动的证据等级。
+
 控制平面持久 authority、Stage 分解、常驻 Runtime、Node 保管 journal 的职责
 划分可以继续推进，目前没有证据要求推倒整套架构。主要缺口是这些边界尚未在
 同一条完整执行与恢复路径中全部成立，不能仅凭组件测试宣布架构正确。
