@@ -325,3 +325,9 @@ campaign 需显式环境变量，不能由这次无界运行推断已完成。
 campaign 在 race 调度下对 source drain 做即时采样，可能在后台清理完成前误报
 `ScratchBytes`；提交 `43bf104` 将 source/target drain 改为 30 秒有界轮询，并保留
 最终 allocation、lease、credit、watchdog 等断言。修复后 race campaign 通过。
+
+随后以 `VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=2
+VELA_CPU_MOCK_WIDTH=8` 运行 `TestCPUMockConcurrentAdmissionRuntimeCampaign` 的
+`-race` 版本并通过：`16` 个 Job、`16` 次 Charge、两波并发 arrival，队列/运行中
+分配/lease/credit/scratch 清零，acquire deadlock/serialization retry 均为 `0`。
+该证据仍是 bounded CPU/mock campaign，不是长期 open-loop 资源上界。
