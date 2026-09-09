@@ -306,3 +306,11 @@ campaign 来替代尚缺的装配和故障路径。
 因此不能记为全仓库 integration PASS。此前的
 `go test -tags=integration ./internal/integration -run '^$'` 编译检查仍有效；真实
 campaign 需显式环境变量，不能由这次无界运行推断已完成。
+
+之后将 integration 测试按列出的 `506` 个测试拆成批次运行。前 `80` 个测试通过；
+第二批最初暴露 `TestDatabasePoolsFailClosedOnRoleConfusion/Fleet` 的权限契约漂移：
+最终 schema 授予 `vela_fleet` 的 worker-bootstrap 和 runtime-startup 函数没有进入
+`verifyFleetPrivileges` 的精确允许集合。提交 `d3d0128` 补齐这 `7` 个实际授权函数，
+并以同一第二批（`80` 个测试，约 `189s`）复跑通过。该结果关闭了一个真实的
+生产装配拒绝问题，但尚未覆盖剩余 integration 测试，也不改变 Production Gates
+`0/9` 的状态。
