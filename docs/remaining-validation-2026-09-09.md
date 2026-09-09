@@ -201,7 +201,8 @@ materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝�
 具备 input-drain proof；恢复会重新验证整条链。当前仍未实现 cutoff 驱动的原子
 历史删除、删除后 digest 对账和完整 recovery 的故障注入验证；`8da611a` 已增加
 `HistoryBase` 及按已持久 cutoff 删除连续前缀的实现，删除后仍保留 proof 链并允许
-从新 base 继续校验。安全 reclamation 仍需补齐重启/中断边界和长期压力验证，
+从新 base 继续校验；`7733c27` 已验证删除后关闭 journal、重开并继续接纳下一条
+execution。安全 reclamation 仍需补齐中断边界、digest 对账攻击和长期压力验证，
 sustained arrivals 仍受该上限约束。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
