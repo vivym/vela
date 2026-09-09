@@ -96,8 +96,42 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.RecordAssignmentHistoryCutoff(t.Context(), secondCutoff); err != nil {
 		t.Fatal(err)
 	}
-	if err := gate.ReclaimAssignmentHistory(t.Context(), secondCutoff); err != nil {
+	failed = true
+	restore = stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
+		if failed {
+			failed = false
+			return os.ErrInvalid
+		}
+		return sync()
+	})
+	if err := gate.ReclaimAssignmentHistory(t.Context(), secondCutoff); err == nil {
+		t.Fatal("second reclamation unexpectedly succeeded across directory sync failure")
+	}
+	restore()
+	if err := gate.Close(); err != nil {
 		t.Fatal(err)
+	}
+	gate = f.open(t)
+	snapshot, err = gate.Snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Watermark != 2 || len(snapshot.Pending) != 0 {
+		t.Fatalf("failed second reclamation corrupted retained history: %+v", snapshot)
+	}
+	if snapshot.Latest != nil {
+		if err := gate.ReclaimAssignmentHistory(t.Context(), secondCutoff); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		if err := gate.Close(); err != nil {
+			t.Fatal(err)
+		}
+		prepared, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), f.config)
+		if err != nil || prepared.HistoryBase != 2 {
+			t.Fatalf("failed second reclamation recovered without a valid committed base: %+v %v", prepared, err)
+		}
+		gate = f.open(t)
 	}
 	snapshot, err = gate.Snapshot(t.Context())
 	if err != nil {

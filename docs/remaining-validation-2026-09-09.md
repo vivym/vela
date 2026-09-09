@@ -221,8 +221,10 @@ sustained arrivals 仍受该上限约束。
 新增 [assignment history race validation evidence](assignment-history-race-validation-evidence-2026-09-09.md)：
 `go test -race ./internal/stageworkeragent -run 'AssignmentHistory|History' -count=1 -v`
 通过，覆盖 cutoff 链、持久恢复、40 条 bounded arrival、完整 history preflight、
-terminal drain/recovery 与未知输入保留。该轮仍未关闭多 cutoff 连续中断、删除后独立
-digest 对账、长期 history 压力、掉电 durability 或真实 Node/Fleet/CRI 装配。
+terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同步故障注入。故障后
+重开会根据 rename 是否已落盘，安全地看到旧 `HistoryBase` 或新 `HistoryBase`，均不
+接受损坏状态。该轮仍未关闭删除后独立 digest 对账、长期 history 压力、掉电 durability
+或真实 Node/Fleet/CRI 装配。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
