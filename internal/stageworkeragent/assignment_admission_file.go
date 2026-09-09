@@ -51,6 +51,7 @@ type assignmentAdmissionState struct {
 	Directories         [3]admissionDirectoryIdentity `json:"directories"`
 	Lock                admissionDirectoryIdentity    `json:"lock"`
 	MaxRecords          int                           `json:"max_records"`
+	HistoryBase         int64                         `json:"history_base,omitempty"`
 	Watermark           int64                         `json:"watermark"`
 	Floor               int64                         `json:"floor"`
 	FloorWire           []byte                        `json:"floor_disposition"`

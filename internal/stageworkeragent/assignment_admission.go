@@ -588,8 +588,8 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
 	if state.SchemaVersion != 5 || !bytes.Equal(state.Scope, gate.scopeDigest[:]) || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
-		state.MaxRecords < 1 || state.MaxRecords > 64 || state.Watermark < 0 || len(state.Pending) >= state.MaxRecords ||
-		(state.Latest == nil && (state.Watermark != 0 || len(state.Pending) != 0)) {
+		state.MaxRecords < 1 || state.MaxRecords > 64 || state.HistoryBase < 0 || state.HistoryBase > state.Watermark || len(state.Pending) >= state.MaxRecords ||
+		(state.Latest == nil && (state.Watermark != state.HistoryBase || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")
 	}
 	if state.Floor < 0 || (state.Floor == 0) != (len(state.FloorWire) == 0) {
@@ -601,7 +601,7 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 		}
 	}
 	entries := admissionEntries(state)
-	var previous int64
+	previous := state.HistoryBase
 	for index, entry := range entries {
 		if entry.InputDrain != nil && (entry.InputDrain.Contract != AssignmentInputDrainContract || entry.InputDrain.ObservedAt.IsZero() || entry.InputDrain.ObservedAt.Location() != time.UTC) {
 			return ErrInputWritersUnproven

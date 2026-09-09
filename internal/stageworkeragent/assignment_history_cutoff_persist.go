@@ -83,3 +83,99 @@ func validateAssignmentHistoryCutoffsForAppend(gate *FileAssignmentAdmission, cu
 	}
 	return nil
 }
+
+// ReclaimAssignmentHistory removes only the contiguous, terminal prefix named
+// by an already persisted cutoff. The proof remains in the journal so recovery
+// can establish the new HistoryBase without trusting deleted records.
+func (gate *FileAssignmentAdmission) ReclaimAssignmentHistory(ctx context.Context, cutoff AssignmentHistoryCutoff) error {
+	if gate == nil || ctx == nil {
+		return errors.New("assignment history reclamation requires a gate and context")
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if err := gate.available(ctx); err != nil {
+		return err
+	}
+	if err := cutoff.Validate(); err != nil {
+		return err
+	}
+	if len(gate.state.HistoryCutoffs) == 0 || gate.state.HistoryBase+1 != cutoff.FromSequence {
+		return errors.New("assignment history reclamation cutoff is not the next persisted prefix")
+	}
+	var persisted *AssignmentHistoryCutoff
+	for index := range gate.state.HistoryCutoffs {
+		candidate := &gate.state.HistoryCutoffs[index]
+		if candidate.FromSequence == cutoff.FromSequence {
+			persisted = candidate
+			break
+		}
+	}
+	if persisted == nil {
+		return errors.New("assignment history reclamation cutoff is not persisted")
+	}
+	lastDigest, err := persisted.Digest()
+	if err != nil || lastDigest != cutoffDigestOrZero(cutoff) {
+		return errors.New("assignment history reclamation cutoff is not the persisted proof")
+	}
+	if err := validateAssignmentHistoryReclaimRange(gate, cutoff); err != nil {
+		return err
+	}
+	next := cloneAdmissionState(gate.state)
+	next.HistoryBase = cutoff.ThroughSequence
+	filtered := next.Pending[:0]
+	for _, entry := range next.Pending {
+		record, err := gate.record(entry)
+		if err != nil {
+			return err
+		}
+		if record.Original.GetExecutionSequence() > cutoff.ThroughSequence {
+			filtered = append(filtered, entry)
+		}
+	}
+	next.Pending = filtered
+	if next.Latest != nil {
+		record, err := gate.record(*next.Latest)
+		if err != nil {
+			return err
+		}
+		if record.Original.GetExecutionSequence() <= cutoff.ThroughSequence {
+			next.Latest = nil
+		}
+	}
+	if err := gate.commit(ctx, next); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func cutoffDigestOrZero(cutoff AssignmentHistoryCutoff) [32]byte {
+	digest, _ := cutoff.Digest()
+	return digest
+}
+
+func validateAssignmentHistoryReclaimRange(gate *FileAssignmentAdmission, cutoff AssignmentHistoryCutoff) error {
+	if cutoff.ThroughSequence > gate.state.Watermark {
+		return errors.New("assignment history reclamation exceeds admission watermark")
+	}
+	seen := make(map[int64]bool)
+	for _, entry := range admissionEntries(gate.state) {
+		record, err := gate.record(entry)
+		if err != nil {
+			return err
+		}
+		sequence := record.Original.GetExecutionSequence()
+		if sequence < cutoff.FromSequence || sequence > cutoff.ThroughSequence {
+			continue
+		}
+		if entry.Phase != AssignmentClosed || entry.InputDrain == nil {
+			return errors.New("assignment history reclamation includes unproven execution")
+		}
+		seen[sequence] = true
+	}
+	for sequence := cutoff.FromSequence; sequence <= cutoff.ThroughSequence; sequence++ {
+		if !seen[sequence] {
+			return errors.New("assignment history reclamation range is incomplete")
+		}
+	}
+	return nil
+}
