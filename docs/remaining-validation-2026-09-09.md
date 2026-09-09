@@ -314,3 +314,9 @@ campaign 需显式环境变量，不能由这次无界运行推断已完成。
 并以同一第二批（`80` 个测试，约 `189s`）复跑通过。该结果关闭了一个真实的
 生产装配拒绝问题，但尚未覆盖剩余 integration 测试，也不改变 Production Gates
 `0/9` 的状态。
+
+随后完成全部 `505` 个 integration 测试的分批复跑：批次大小为
+`80 + 80 + 80 + 80 + 80 + 105`，每批均使用独立 PostgreSQL 17 Testcontainer、
+`-count=1` 和有界 `-timeout`，全部通过。该结果证明当前提交链下的 integration
+契约集合可在本地 Docker 环境完整运行；它仍然是单机 Testcontainers 证据，不等价
+于真实多节点 Fleet/CRI、进程替换、长期 soak 或 Production Gates。
