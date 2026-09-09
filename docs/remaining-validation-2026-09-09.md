@@ -193,12 +193,14 @@ assignment，仍在 `30s` authority skew 上限内，未产生错误接受或额
 
 [Assignment history retention](assignment-history-retention-evidence-2026-09-09.md)
 已验证达到 `MaxRecords` 后 fail closed，重启不丢 watermark/profile/closed history。
-本轮新增 `AssignmentHistoryCutoff` proof contract（commit `d25429e`）：固定
+本轮新增 `AssignmentHistoryCutoff` proof contract（commit `d25429e`），并在
+`582fdb4` 接入 admission journal 持久状态：固定
 scope/Worker identity/epoch、连续 sequence range、累计 digest、terminal/input/
 materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝缺 proof、gap、
-身份漂移和错误链。它仍是只读契约，尚未接入 `FileAssignmentAdmission` 的持久
-cutoff 记录、原子删除或 recovery，因此安全 reclamation 仍未完成，sustained
-arrivals 仍受该上限约束。
+身份漂移和错误链。追加 cutoff 时还要求范围内历史连续保留、execution 已关闭且
+具备 input-drain proof；恢复会重新验证整条链。当前仍未实现 cutoff 驱动的原子
+历史删除、删除后 digest 对账和完整 recovery，因此安全 reclamation 仍未完成，
+sustained arrivals 仍受该上限约束。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
 Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器中编译，但当前
