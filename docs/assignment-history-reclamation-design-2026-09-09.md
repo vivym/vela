@@ -92,3 +92,7 @@ chain 本身，而不是 goroutine 或 heap 泄漏。因此“删除逐条历史
 跨 checkpoint renewal/拒绝旧 authority、重启和 response-loss 语义保持不变。在
 该协议实现并通过故障矩阵前，不能把当前 bounded campaign 宣称为长期 sustained
 arrival 证明。
+
+当前已先落地 `AssignmentHistoryCheckpoint` 的 canonical JSON、identity、范围、
+proof digest、compacted-count 和 revision 校验层；它尚未接入 journal state 或
+删除事务，因此不会改变现有 recovery 语义。

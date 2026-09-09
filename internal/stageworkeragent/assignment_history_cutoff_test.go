@@ -56,3 +56,42 @@ func TestAssignmentHistoryCutoffRejectsNonzeroInitialSequence(t *testing.T) {
 		t.Fatal("accepted an initial cutoff that skipped sequence one")
 	}
 }
+
+func checkpointFixture() AssignmentHistoryCheckpoint {
+	return AssignmentHistoryCheckpoint{
+		ScopeDigest: sha256.Sum256([]byte("scope")), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 7,
+		WorkerMemberID: uuid.New(), FromSequence: 1, ThroughSequence: 128,
+		CumulativeDigest: sha256.Sum256([]byte("history")), TerminalProofDigest: sha256.Sum256([]byte("terminal")),
+		InputProofDigest: sha256.Sum256([]byte("input")), MaterializationProofDigest: sha256.Sum256([]byte("materialization")),
+		LastCutoffDigest: sha256.Sum256([]byte("last-cutoff")), CompactedCutoffCount: 64, Revision: 1,
+	}
+}
+
+func TestAssignmentHistoryCheckpointCanonicalAndRejectsIncompleteProof(t *testing.T) {
+	checkpoint := checkpointFixture()
+	wire, err := checkpoint.CanonicalJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(wire, mustMarshal(checkpoint)) {
+		t.Fatal("checkpoint canonical encoding changed")
+	}
+	if digest, err := checkpoint.Digest(); err != nil || digest == ([sha256.Size]byte{}) {
+		t.Fatalf("checkpoint digest invalid: %x %v", digest, err)
+	}
+	for name, mutate := range map[string]func(*AssignmentHistoryCheckpoint){
+		"identity": func(value *AssignmentHistoryCheckpoint) { value.WorkerMemberID = uuid.Nil },
+		"range":    func(value *AssignmentHistoryCheckpoint) { value.ThroughSequence = 0 },
+		"proof":    func(value *AssignmentHistoryCheckpoint) { value.CumulativeDigest = [sha256.Size]byte{} },
+		"count":    func(value *AssignmentHistoryCheckpoint) { value.CompactedCutoffCount = 0 },
+		"revision": func(value *AssignmentHistoryCheckpoint) { value.Revision = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := checkpoint
+			mutate(&value)
+			if err := value.Validate(); err == nil {
+				t.Fatal("accepted invalid checkpoint")
+			}
+		})
+	}
+}

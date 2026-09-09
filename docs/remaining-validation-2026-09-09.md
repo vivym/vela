@@ -229,6 +229,10 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 空间上界缺口。需要设计并验证 checkpoint/压缩协议后，才能关闭长期 history 压力；
 掉电 durability 和真实 Node/Fleet/CRI 装配仍未闭合。
 
+已先加入 `AssignmentHistoryCheckpoint` 的 canonical/identity/range/proof 校验层，
+并通过 `go test -race ./internal/stageworkeragent -run 'AssignmentHistory(Cutoff|Checkpoint)'`。
+该类型尚未接入持久 journal，因此这一步只固定协议边界，不宣称压缩已经完成。
+
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
 确认 Fleet 及其他 service role 的精确 privilege boundary 当前仍通过。该结果不替代
