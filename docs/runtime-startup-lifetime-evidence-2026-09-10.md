@@ -69,3 +69,8 @@ observer 和 endpoint 清理。`Shutdown(ctx)` 的等待可超时，后台清理
    `cmd/vela-node-agent`。本轮正常测试仍使用批准和 inventory fixture。
 4. 全链 remote-owner CPU Job、独立 Worker journal 保管权限、真实进程替换与后代隔离、
    长期资源上界、power-loss 恢复，以及此前未通过的完整 CI integration 分片仍未闭合。
+
+后续单次握手增量见[单次认证连接证据](runtime-startup-single-handshake-evidence-2026-09-10.md)：
+`Prepare` 保留的 caller 现在可直接进入 `ServeCaller`，并在 activation 前绑定
+reservation 的原始 Runtime pidfd；同 UID 的另一进程被拒绝。生产 Node 仍未构造这些
+对象，故 Production Gates 不变。

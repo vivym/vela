@@ -1,0 +1,5 @@
+c27578e35243d37837e7ae986b91d29133cbb5c9db21d4438d873c02acc06ea2  /tmp/vela-startup-single-handshake-20260910/image/rootfs/nodeagent.test
+aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854  /tmp/vela-startup-single-handshake-20260910/image/rootfs/runtime-command.test
+db8d9ad86defb3f0071144a1ae15898091be480fae6aad902c3c6ad72fde129c  /tmp/vela-startup-single-handshake-20260910/image/rootfs/vela-model-runtime
+343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02  /tmp/vela-startup-single-handshake-20260910/image/rootfs/exec-observer
+33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2  /tmp/vela-startup-single-handshake-20260910/image/rootfs/exec-probe

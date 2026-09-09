@@ -14,6 +14,7 @@ import (
 type RuntimeStartupOrchestration struct {
 	coordinator *RuntimeStartupCoordinator
 	server      *RuntimeStartupServer
+	caller      *RuntimeCaller
 }
 
 type RuntimeStartupOrchestrationConfig struct {
@@ -26,6 +27,7 @@ type RuntimeStartupOrchestrationConfig struct {
 	ObserverInterval time.Duration
 	ObserverTimeout  time.Duration
 	ExchangeTimeout  time.Duration
+	Caller           *RuntimeCaller
 }
 
 func NewRuntimeStartupOrchestration(config RuntimeStartupOrchestrationConfig) (*RuntimeStartupOrchestration, error) {
@@ -38,7 +40,7 @@ func NewRuntimeStartupOrchestration(config RuntimeStartupOrchestrationConfig) (*
 		_ = coordinator.Close()
 		return nil, err
 	}
-	return &RuntimeStartupOrchestration{coordinator: coordinator, server: server}, nil
+	return &RuntimeStartupOrchestration{coordinator: coordinator, server: server, caller: config.Caller}, nil
 }
 
 // Serve uses the protected listener supplied by trusted Node assembly. This
@@ -49,6 +51,17 @@ func (orchestration *RuntimeStartupOrchestration) Serve(ctx context.Context, lis
 	}
 	return orchestration.server.Serve(ctx, listener)
 }
+
+// ServeCaller completes the one authenticated handshake retained by Node
+// reservation. It is the only production startup path; Serve remains a
+// transport adapter for callers that own a protected listener.
+func (orchestration *RuntimeStartupOrchestration) ServeCaller(ctx context.Context) error {
+	if orchestration == nil || orchestration.caller == nil {
+		return ErrRuntimeCallerIdentity
+	}
+	return orchestration.server.HandleCaller(ctx, orchestration.caller)
+}
+
 func (orchestration *RuntimeStartupOrchestration) Shutdown(ctx context.Context) error {
 	if orchestration == nil || ctx == nil {
 		return ErrRuntimeCallerIdentity

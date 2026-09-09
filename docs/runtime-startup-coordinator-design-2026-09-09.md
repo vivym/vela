@@ -158,3 +158,11 @@ observation 的关闭顺序。缺少输入没有 fallback。现有 `cmd/vela-nod
 与新增测试的反证复现了四项失败。真实 CLI 仍需把 Prepare 的已认证 caller 与
 server 回包合并到同次握手，且显式绑定回复对象的原始 pidfd；生产 authority 来源
 与完整 Job 装配仍未完成，不能把本轮局部修复当作统一启动协议闭合。
+
+## 后续修复：单次认证 caller
+
+[2026-09-10 单次握手证据](runtime-startup-single-handshake-evidence-2026-09-10.md)
+把 `Prepare` 保留的 `RuntimeCaller` 接入 `ServeCaller`，避免 listener adapter
+再次读取 challenge；激活前还通过原始 caller pidfd 与 reservation Runtime owner
+pidfd 的 live-process 检查。42 项 native race 检查通过。真实 `cmd/vela-node-agent`
+authority 来源、CRI/Fleet/observer 装配和 Production Gates 仍未完成。

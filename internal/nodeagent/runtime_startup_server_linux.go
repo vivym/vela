@@ -65,6 +65,16 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
 		server.failed.Add(1)
 		return err
 	}
+	return server.HandleCaller(exchange, caller)
+}
+
+// HandleCaller consumes an already authenticated RuntimeCaller. It is the
+// single-handshake production path used after Node reservation; it never reads
+// another challenge or reconstructs identity from a request.
+func (server *RuntimeStartupServer) HandleCaller(ctx context.Context, caller *RuntimeCaller) error {
+	if server == nil || ctx == nil || caller == nil {
+		return ErrRuntimeCallerIdentity
+	}
 	defer func() { _ = caller.Close() }()
 	server.authenticated.Add(1)
 	request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
@@ -72,12 +82,12 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
 		server.failed.Add(1)
 		return err
 	}
-	wire, err := server.coordinator.HandleBackendStartup(exchange, request)
+	wire, err := server.coordinator.HandleBackendStartupWithCaller(ctx, caller, request)
 	if err != nil {
 		server.failed.Add(1)
 		return err
 	}
-	if err := caller.Reply(exchange, wire); err != nil {
+	if err := caller.Reply(ctx, wire); err != nil {
 		server.failed.Add(1)
 		server.coordinator.stop()
 		return err

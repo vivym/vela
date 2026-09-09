@@ -126,3 +126,47 @@ func TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange(t *testing.T) {
 		t.Fatal("closed coordinator permitted startup")
 	}
 }
+
+func TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess(t *testing.T) {
+	f, custody := observedActivationFixture(t)
+	_, other := newRemoteReservationFixture(t, false)
+	expected := f.ledger.starts[f.identity.JournalID].Request
+	coordinator, err := NewRuntimeStartupCoordinator(f.ledger, f.plan, expected, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = coordinator.Close() }()
+	wire, err := coordinator.HandleBackendStartupWithCaller(t.Context(), other.Caller, expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decision modelruntime.BackendStartupDecision
+	if err := json.Unmarshal(wire, &decision); err != nil || decision.Permit {
+		t.Fatalf("different process received permit: %+v err=%v", decision, err)
+	}
+	if _, err := f.ledger.InspectJournalGrantAttempt(t.Context(), f.identity.JournalID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("different process consumed grant: %v", err)
+	}
+	f.write(t, false)
+}
+
+func TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce(t *testing.T) {
+	f, custody := observedActivationFixture(t)
+	expected := f.ledger.starts[f.identity.JournalID].Request
+	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
+		Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
+		Caller: f.caller, Credentials: []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
+		ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := orchestration.ServeCaller(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, true)
+	if err := orchestration.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, false)
+}

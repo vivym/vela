@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimechannel"
 )
 
 // RuntimeStartupCoordinator is the Node-side bridge for the authenticated
@@ -50,12 +51,28 @@ func NewRuntimeStartupCoordinator(ledger *RuntimeStartupLedger, plan *RuntimeLau
 // returns deny; the coordinator is one-shot and must not be retried after an
 // uncertain response.
 func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.Context, request modelruntime.BackendStartupRequest) ([]byte, error) {
+	return coordinator.handleBackendStartup(ctx, nil, request)
+}
+
+// HandleBackendStartupWithCaller is the production seam: the caller was
+// authenticated exactly once before reservation and is bound to the retained
+// Runtime owner by pidfd. A request digest or matching UID cannot substitute
+// for this check.
+func (coordinator *RuntimeStartupCoordinator) HandleBackendStartupWithCaller(ctx context.Context, caller *RuntimeCaller, request modelruntime.BackendStartupRequest) ([]byte, error) {
+	if err := coordinator.matchCaller(caller); err != nil {
+		return coordinator.decision(request, false)
+	}
+	return coordinator.handleBackendStartup(ctx, caller, request)
+}
+
+func (coordinator *RuntimeStartupCoordinator) handleBackendStartup(ctx context.Context, caller *RuntimeCaller, request modelruntime.BackendStartupRequest) ([]byte, error) {
 	if coordinator == nil {
 		return nil, ErrRuntimeObserverCustody
 	}
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
+	_ = caller // the caller was checked by HandleBackendStartupWithCaller
 	coordinator.mu.Lock()
 	if coordinator.handled || coordinator.closed {
 		coordinator.mu.Unlock()
@@ -91,6 +108,24 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
 		}
 	}
 	return coordinator.decision(request, permit)
+}
+
+func (coordinator *RuntimeStartupCoordinator) matchCaller(caller *RuntimeCaller) error {
+	if caller == nil || coordinator == nil || coordinator.grant == nil || coordinator.grant.endpoint == nil {
+		return ErrRuntimeCallerIdentity
+	}
+	caller.mu.Lock()
+	defer caller.mu.Unlock()
+	if caller.pidfd == nil {
+		return ErrRuntimeCallerIdentity
+	}
+	endpoint := coordinator.grant.endpoint
+	endpoint.mu.Lock()
+	defer endpoint.mu.Unlock()
+	if endpoint.runtime == nil || endpoint.grantUsed || endpoint.grantPending {
+		return ErrRuntimeCallerIdentity
+	}
+	return runtimechannel.SameLiveProcess(int(caller.pidfd.Fd()), int(endpoint.runtime.Fd()))
 }
 
 func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.BackendStartupRequest, permit bool) ([]byte, error) {

@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-10",
+  "scope": "Linux/arm64 CPU native race validation for single-handshake startup seam",
+  "source_base": "b653ee854d5f28ad0c443e45ce1f5869c5a4257e",
+  "source_patch": "evidence/startup-single-handshake-2026-09-10/source.patch",
+  "source_patch_sha256": "1b8fd5639c7431caff64ba2f1a9ed937bce1085e28bbfea4136e63e9c1d2ff20",
+  "native_command": "VELA_REMOTE_CLI_EVIDENCE=/tmp/vela-startup-single-handshake-20260910 VELA_REMOTE_CLI_BUILD_CACHE=/tmp/vela-grant-native-20260909/go-cache hack/run-remote-runtime-cli-native.sh",
+  "image": "sha256:2b6a51fa045d62bce055be4b22b35e780d8e1eebfad6e32b954c194e3e48f4da",
+  "raw_log": "evidence/startup-single-handshake-2026-09-10/native.log",
+  "expected_tests": [
+    "TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess",
+    "TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce",
+    "TestRuntimeStartupOrchestrationStopsListenerAndRoutes",
+    "TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange",
+    "TestRuntimeStartupOrchestrationShutdownDuringPersistence",
+    "TestRuntimeStartupServerCancellationClosesIdleListener",
+    "TestRuntimeStartupServerShutdownBeforeServeIsTerminal",
+    "TestRuntimeStartupServerOwnsPostReplyLifetime",
+    "TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs",
+    "TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs",
+    "TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput",
+    "TestRuntimeStartupServerRejectsInvalidConfiguration",
+    "TestRuntimeStartupServerShutdownClosesIdleListener",
+    "TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation",
+    "TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption",
+    "TestRuntimeStartupCoordinatorCloseReleasesObserverCustody",
+    "TestRuntimeJournalObservationCancellationWithBusyEndpoint",
+    "TestRuntimeJournalObservationConcurrentClose",
+    "TestRuntimeJournalObservationPreservesRevocationError",
+    "TestRuntimeJournalObservation",
+    "TestRuntimeJournalObservationRejectsWrongTarget",
+    "TestRuntimeJournalObservationPersistenceOutage",
+    "TestRuntimeJournalObservationRejectsExpiredCheck",
+    "TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites",
+    "TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches",
+    "TestRuntimeStartupGrantActivationFailsClosedDuringPersistence",
+    "TestRuntimeStartupGrantActivationConcurrent",
+    "TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend",
+    "TestRuntimeObserverCustody",
+    "TestRuntimeObserverProcessOfferDescriptors",
+    "TestJournalReadOnlyEndpoint",
+    "TestJournalServerExecObservedRemoteCLI",
+    "TestJournalServerActualRemoteCLI",
+    "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+    "TestRuntimeBootstrapPublication",
+    "TestRuntimeBootstrapPublicationPreflight",
+    "TestRuntimeBootstrapPublicationBoundaries",
+    "TestRuntimeBootstrapPublicationConcurrent",
+    "TestRuntimeBootstrapPublicationChanged",
+    "TestRuntimeBootstrapPublicationCustodyLoss",
+    "TestRuntimeBootstrapPublicationActualCLI",
+    "TestRuntimeBootstrapPublicationProcessCrash"
+  ],
+  "results": [
+    {
+      "status": "PASS",
+      "test": "TestJournalServerExecObservedRemoteCLI",
+      "seconds": 3.16
+    },
+    {
+      "status": "PASS",
+      "test": "TestJournalReadOnlyEndpoint",
+      "seconds": 0.19
+    },
+    {
+      "status": "PASS",
+      "test": "TestJournalServerActualRemoteCLI",
+      "seconds": 3.31
+    },
+    {
+      "status": "PASS",
+      "test": "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+      "seconds": 0.39
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublication",
+      "seconds": 1.06
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationPreflight",
+      "seconds": 0.13
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationBoundaries",
+      "seconds": 0.1
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationConcurrent",
+      "seconds": 0.03
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationProcessCrash",
+      "seconds": 0.25
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationChanged",
+      "seconds": 0.27
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationCustodyLoss",
+      "seconds": 0.09
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeBootstrapPublicationActualCLI",
+      "seconds": 2.31
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservation",
+      "seconds": 2.23
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationRejectsWrongTarget",
+      "seconds": 0.43
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationPersistenceOutage",
+      "seconds": 1.79
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationRejectsExpiredCheck",
+      "seconds": 0.24
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationConcurrentClose",
+      "seconds": 1.8
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationPreservesRevocationError",
+      "seconds": 0.22
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeJournalObservationCancellationWithBusyEndpoint",
+      "seconds": 0.22
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeObserverCustody",
+      "seconds": 0.49
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeObserverProcessOfferDescriptors",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites",
+      "seconds": 0.23
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches",
+      "seconds": 1.87
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupGrantActivationFailsClosedDuringPersistence",
+      "seconds": 1.84
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupGrantActivationConcurrent",
+      "seconds": 0.21
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend",
+      "seconds": 0.4
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation",
+      "seconds": 0.22
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption",
+      "seconds": 0.21
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupCoordinatorCloseReleasesObserverCustody",
+      "seconds": 0.22
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange",
+      "seconds": 0.43
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess",
+      "seconds": 0.25
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce",
+      "seconds": 0.22
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupOrchestrationShutdownDuringPersistence",
+      "seconds": 0.33
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupOrchestrationStopsListenerAndRoutes",
+      "seconds": 0.45
+    },
+    {
+      "status": "PASS",
+      "test": "TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupServerRejectsInvalidConfiguration",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupServerShutdownClosesIdleListener",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupServerCancellationClosesIdleListener",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupServerShutdownBeforeServeIsTerminal",
+      "seconds": 0.0
+    },
+    {
+      "status": "PASS",
+      "test": "TestRuntimeStartupServerOwnsPostReplyLifetime",
+      "seconds": 0.66
+    }
+  ],
+  "totals": {
+    "PASS": 42,
+    "FAIL": 0,
+    "SKIP": 0,
+    "MISSING": 0,
+    "duplicate": 0,
+    "race_reports": 0
+  },
+  "tests_added": [
+    "TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess",
+    "TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce"
+  ],
+  "claims": [
+    "HandleBackendStartupWithCaller matches caller pidfd to reserved Runtime owner pidfd before activation",
+    "ServeCaller consumes the already authenticated RuntimeCaller and does not receive a second challenge",
+    "UID/GID and request digest alone are insufficient"
+  ],
+  "limitations": [
+    "cmd/vela-node-agent still does not construct this orchestration from real plan/Fleet/CRI authority sources",
+    "listener Serve remains a compatibility adapter and should not be selected as production path",
+    "No GPU, production gate, full integration closure, power-loss, or descendant-exit proof"
+  ],
+  "production_gates": "0/9",
+  "additional_validation": [
+    {
+      "command": "go test ./internal/nodeagent ./cmd/vela-node-agent ./hack -count=1",
+      "result": "PASS"
+    },
+    {
+      "command": "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 /tmp/vela-tools/golangci-lint run ./internal/nodeagent",
+      "result": "0 issues"
+    },
+    {
+      "command": "bash -n hack/run-remote-runtime-cli-native.sh",
+      "result": "PASS"
+    },
+    {
+      "command": "git diff --check (excluding raw source.patch context)",
+      "result": "PASS"
+    }
+  ]
+}

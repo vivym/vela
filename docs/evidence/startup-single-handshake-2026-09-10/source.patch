@@ -1,0 +1,247 @@
+diff --git a/hack/run-remote-runtime-cli-native.sh b/hack/run-remote-runtime-cli-native.sh
+index bbcf297..f13657b 100755
+--- a/hack/run-remote-runtime-cli-native.sh
++++ b/hack/run-remote-runtime-cli-native.sh
+@@ -54,7 +54,7 @@ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --securi
+   --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
+   -test.run '^(TestPrepareRemoteStartupOrchestration.*|TestRuntimeStartupOrchestration.*|TestRuntimeStartupServer.*|TestRuntimeStartupCoordinator.*|TestRuntimeJournalObservation.*|TestRuntimeStartupGrantActivation.*|TestRuntimeObserverCustody|TestRuntimeObserverProcessOfferDescriptors|TestJournalReadOnlyEndpoint|TestJournalServerExecObservedRemoteCLI|TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
+   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
+-for remote_test in TestRuntimeStartupOrchestrationStopsListenerAndRoutes TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange TestRuntimeStartupOrchestrationShutdownDuringPersistence TestRuntimeStartupServerCancellationClosesIdleListener TestRuntimeStartupServerShutdownBeforeServeIsTerminal TestRuntimeStartupServerOwnsPostReplyLifetime TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput TestRuntimeStartupServerRejectsInvalidConfiguration TestRuntimeStartupServerShutdownClosesIdleListener TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption TestRuntimeStartupCoordinatorCloseReleasesObserverCustody TestRuntimeJournalObservationCancellationWithBusyEndpoint TestRuntimeJournalObservationConcurrentClose TestRuntimeJournalObservationPreservesRevocationError TestRuntimeJournalObservation TestRuntimeJournalObservationRejectsWrongTarget TestRuntimeJournalObservationPersistenceOutage TestRuntimeJournalObservationRejectsExpiredCheck TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches TestRuntimeStartupGrantActivationFailsClosedDuringPersistence TestRuntimeStartupGrantActivationConcurrent TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend TestRuntimeObserverCustody TestRuntimeObserverProcessOfferDescriptors TestJournalReadOnlyEndpoint TestJournalServerExecObservedRemoteCLI TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
++for remote_test in TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce TestRuntimeStartupOrchestrationStopsListenerAndRoutes TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange TestRuntimeStartupOrchestrationShutdownDuringPersistence TestRuntimeStartupServerCancellationClosesIdleListener TestRuntimeStartupServerShutdownBeforeServeIsTerminal TestRuntimeStartupServerOwnsPostReplyLifetime TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput TestRuntimeStartupServerRejectsInvalidConfiguration TestRuntimeStartupServerShutdownClosesIdleListener TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption TestRuntimeStartupCoordinatorCloseReleasesObserverCustody TestRuntimeJournalObservationCancellationWithBusyEndpoint TestRuntimeJournalObservationConcurrentClose TestRuntimeJournalObservationPreservesRevocationError TestRuntimeJournalObservation TestRuntimeJournalObservationRejectsWrongTarget TestRuntimeJournalObservationPersistenceOutage TestRuntimeJournalObservationRejectsExpiredCheck TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches TestRuntimeStartupGrantActivationFailsClosedDuringPersistence TestRuntimeStartupGrantActivationConcurrent TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend TestRuntimeObserverCustody TestRuntimeObserverProcessOfferDescriptors TestJournalReadOnlyEndpoint TestJournalServerExecObservedRemoteCLI TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
+   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
+ done
+ for remote_case in permit deny observer-lost-before-permit observer-lost-after-permit observer-stopped-before-permit observer-stopped-after-permit; do
+diff --git a/internal/nodeagent/runtime_startup_activation_linux_test.go b/internal/nodeagent/runtime_startup_activation_linux_test.go
+index 28cd8e8..f815607 100644
+--- a/internal/nodeagent/runtime_startup_activation_linux_test.go
++++ b/internal/nodeagent/runtime_startup_activation_linux_test.go
+@@ -23,6 +23,7 @@ type startupActivationFixture struct {
+ 	owner       *modelruntime.ExecutionJournalOwner
+ 	endpoint    *JournalEndpoint
+ 	grant       *JournalWriteGrant
++	caller      *RuntimeCaller
+ 	peers       journalEndpointFixture
+ 	identity    modelruntime.ExecutionJournalIdentity
+ 	floor       modelruntime.JournalCommand
+@@ -73,6 +74,7 @@ func startupActivationFromReservation(t *testing.T, config RuntimeStartupReserva
+ 	_, floor := journalEndpointCommands(t, manifest, routes[0], signer, time.Now(), "authority")
+ 	return startupActivationFixture{ledger: ledger, directory: directory, plan: config.Plan, owner: config.Journal, endpoint: endpoint, grant: grant, peers: peers,
+ 		identity: ledger.starts[reservation.JournalID].Remote.JournalIdentity,
++		caller:   config.Caller,
+ 		floor:    modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: floor}}, reservation: reservation}
+ }
+ 
+diff --git a/internal/nodeagent/runtime_startup_coordinator_linux.go b/internal/nodeagent/runtime_startup_coordinator_linux.go
+index 183bde5..e36af5d 100644
+--- a/internal/nodeagent/runtime_startup_coordinator_linux.go
++++ b/internal/nodeagent/runtime_startup_coordinator_linux.go
+@@ -10,6 +10,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/runtimechannel"
+ )
+ 
+ // RuntimeStartupCoordinator is the Node-side bridge for the authenticated
+@@ -50,12 +51,28 @@ func NewRuntimeStartupCoordinator(ledger *RuntimeStartupLedger, plan *RuntimeLau
+ // returns deny; the coordinator is one-shot and must not be retried after an
+ // uncertain response.
+ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.Context, request modelruntime.BackendStartupRequest) ([]byte, error) {
++	return coordinator.handleBackendStartup(ctx, nil, request)
++}
++
++// HandleBackendStartupWithCaller is the production seam: the caller was
++// authenticated exactly once before reservation and is bound to the retained
++// Runtime owner by pidfd. A request digest or matching UID cannot substitute
++// for this check.
++func (coordinator *RuntimeStartupCoordinator) HandleBackendStartupWithCaller(ctx context.Context, caller *RuntimeCaller, request modelruntime.BackendStartupRequest) ([]byte, error) {
++	if err := coordinator.matchCaller(caller); err != nil {
++		return coordinator.decision(request, false)
++	}
++	return coordinator.handleBackendStartup(ctx, caller, request)
++}
++
++func (coordinator *RuntimeStartupCoordinator) handleBackendStartup(ctx context.Context, caller *RuntimeCaller, request modelruntime.BackendStartupRequest) ([]byte, error) {
+ 	if coordinator == nil {
+ 		return nil, ErrRuntimeObserverCustody
+ 	}
+ 	if err := contextError(ctx); err != nil {
+ 		return nil, err
+ 	}
++	_ = caller // the caller was checked by HandleBackendStartupWithCaller
+ 	coordinator.mu.Lock()
+ 	if coordinator.handled || coordinator.closed {
+ 		coordinator.mu.Unlock()
+@@ -93,6 +110,24 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
+ 	return coordinator.decision(request, permit)
+ }
+ 
++func (coordinator *RuntimeStartupCoordinator) matchCaller(caller *RuntimeCaller) error {
++	if caller == nil || coordinator == nil || coordinator.grant == nil || coordinator.grant.endpoint == nil {
++		return ErrRuntimeCallerIdentity
++	}
++	caller.mu.Lock()
++	defer caller.mu.Unlock()
++	if caller.pidfd == nil {
++		return ErrRuntimeCallerIdentity
++	}
++	endpoint := coordinator.grant.endpoint
++	endpoint.mu.Lock()
++	defer endpoint.mu.Unlock()
++	if endpoint.runtime == nil || endpoint.grantUsed || endpoint.grantPending {
++		return ErrRuntimeCallerIdentity
++	}
++	return runtimechannel.SameLiveProcess(int(caller.pidfd.Fd()), int(endpoint.runtime.Fd()))
++}
++
+ func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.BackendStartupRequest, permit bool) ([]byte, error) {
+ 	wire, err := modelruntime.EncodeBackendStartupRequest(request)
+ 	if err != nil {
+diff --git a/internal/nodeagent/runtime_startup_coordinator_linux_test.go b/internal/nodeagent/runtime_startup_coordinator_linux_test.go
+index d77d45a..e6212b8 100644
+--- a/internal/nodeagent/runtime_startup_coordinator_linux_test.go
++++ b/internal/nodeagent/runtime_startup_coordinator_linux_test.go
+@@ -126,3 +126,47 @@ func TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange(t *testing.T) {
+ 		t.Fatal("closed coordinator permitted startup")
+ 	}
+ }
++
++func TestRuntimeStartupCoordinatorRejectsSameUIDDifferentProcess(t *testing.T) {
++	f, custody := observedActivationFixture(t)
++	_, other := newRemoteReservationFixture(t, false)
++	expected := f.ledger.starts[f.identity.JournalID].Request
++	coordinator, err := NewRuntimeStartupCoordinator(f.ledger, f.plan, expected, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = coordinator.Close() }()
++	wire, err := coordinator.HandleBackendStartupWithCaller(t.Context(), other.Caller, expected)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var decision modelruntime.BackendStartupDecision
++	if err := json.Unmarshal(wire, &decision); err != nil || decision.Permit {
++		t.Fatalf("different process received permit: %+v err=%v", decision, err)
++	}
++	if _, err := f.ledger.InspectJournalGrantAttempt(t.Context(), f.identity.JournalID); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("different process consumed grant: %v", err)
++	}
++	f.write(t, false)
++}
++
++func TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce(t *testing.T) {
++	f, custody := observedActivationFixture(t)
++	expected := f.ledger.starts[f.identity.JournalID].Request
++	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
++		Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
++		Caller: f.caller, Credentials: []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
++		ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := orchestration.ServeCaller(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	f.write(t, true)
++	if err := orchestration.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.write(t, false)
++}
+diff --git a/internal/nodeagent/runtime_startup_orchestration_linux.go b/internal/nodeagent/runtime_startup_orchestration_linux.go
+index b5d6161..051d866 100644
+--- a/internal/nodeagent/runtime_startup_orchestration_linux.go
++++ b/internal/nodeagent/runtime_startup_orchestration_linux.go
+@@ -14,6 +14,7 @@ import (
+ type RuntimeStartupOrchestration struct {
+ 	coordinator *RuntimeStartupCoordinator
+ 	server      *RuntimeStartupServer
++	caller      *RuntimeCaller
+ }
+ 
+ type RuntimeStartupOrchestrationConfig struct {
+@@ -26,6 +27,7 @@ type RuntimeStartupOrchestrationConfig struct {
+ 	ObserverInterval time.Duration
+ 	ObserverTimeout  time.Duration
+ 	ExchangeTimeout  time.Duration
++	Caller           *RuntimeCaller
+ }
+ 
+ func NewRuntimeStartupOrchestration(config RuntimeStartupOrchestrationConfig) (*RuntimeStartupOrchestration, error) {
+@@ -38,7 +40,7 @@ func NewRuntimeStartupOrchestration(config RuntimeStartupOrchestrationConfig) (*
+ 		_ = coordinator.Close()
+ 		return nil, err
+ 	}
+-	return &RuntimeStartupOrchestration{coordinator: coordinator, server: server}, nil
++	return &RuntimeStartupOrchestration{coordinator: coordinator, server: server, caller: config.Caller}, nil
+ }
+ 
+ // Serve uses the protected listener supplied by trusted Node assembly. This
+@@ -49,6 +51,17 @@ func (orchestration *RuntimeStartupOrchestration) Serve(ctx context.Context, lis
+ 	}
+ 	return orchestration.server.Serve(ctx, listener)
+ }
++
++// ServeCaller completes the one authenticated handshake retained by Node
++// reservation. It is the only production startup path; Serve remains a
++// transport adapter for callers that own a protected listener.
++func (orchestration *RuntimeStartupOrchestration) ServeCaller(ctx context.Context) error {
++	if orchestration == nil || orchestration.caller == nil {
++		return ErrRuntimeCallerIdentity
++	}
++	return orchestration.server.HandleCaller(ctx, orchestration.caller)
++}
++
+ func (orchestration *RuntimeStartupOrchestration) Shutdown(ctx context.Context) error {
+ 	if orchestration == nil || ctx == nil {
+ 		return ErrRuntimeCallerIdentity
+diff --git a/internal/nodeagent/runtime_startup_prepare_linux.go b/internal/nodeagent/runtime_startup_prepare_linux.go
+index d5cb61e..3c82d4d 100644
+--- a/internal/nodeagent/runtime_startup_prepare_linux.go
++++ b/internal/nodeagent/runtime_startup_prepare_linux.go
+@@ -86,7 +86,7 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
+ 		return nil, record, ErrRuntimeStartupLedger
+ 	}
+ 	expected := startup.Request
+-	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{Ledger: ledger, Plan: config.Reservation.Plan, ExpectedRequest: expected, Grant: grant, Observer: config.Observer, Credentials: config.Credentials, ObserverInterval: config.ObserverInterval, ObserverTimeout: config.ObserverTimeout, ExchangeTimeout: config.ExchangeTimeout})
++	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{Ledger: ledger, Plan: config.Reservation.Plan, ExpectedRequest: expected, Grant: grant, Observer: config.Observer, Credentials: config.Credentials, ObserverInterval: config.ObserverInterval, ObserverTimeout: config.ObserverTimeout, ExchangeTimeout: config.ExchangeTimeout, Caller: config.Reservation.Caller})
+ 	if err != nil {
+ 		return nil, record, errors.Join(err, ErrRuntimeStartupLedger)
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_server_linux.go b/internal/nodeagent/runtime_startup_server_linux.go
+index 73ca9ba..287da03 100644
+--- a/internal/nodeagent/runtime_startup_server_linux.go
++++ b/internal/nodeagent/runtime_startup_server_linux.go
+@@ -65,6 +65,16 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
+ 		server.failed.Add(1)
+ 		return err
+ 	}
++	return server.HandleCaller(exchange, caller)
++}
++
++// HandleCaller consumes an already authenticated RuntimeCaller. It is the
++// single-handshake production path used after Node reservation; it never reads
++// another challenge or reconstructs identity from a request.
++func (server *RuntimeStartupServer) HandleCaller(ctx context.Context, caller *RuntimeCaller) error {
++	if server == nil || ctx == nil || caller == nil {
++		return ErrRuntimeCallerIdentity
++	}
+ 	defer func() { _ = caller.Close() }()
+ 	server.authenticated.Add(1)
+ 	request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
+@@ -72,12 +82,12 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
+ 		server.failed.Add(1)
+ 		return err
+ 	}
+-	wire, err := server.coordinator.HandleBackendStartup(exchange, request)
++	wire, err := server.coordinator.HandleBackendStartupWithCaller(ctx, caller, request)
+ 	if err != nil {
+ 		server.failed.Add(1)
+ 		return err
+ 	}
+-	if err := caller.Reply(exchange, wire); err != nil {
++	if err := caller.Reply(ctx, wire); err != nil {
+ 		server.failed.Add(1)
+ 		server.coordinator.stop()
+ 		return err

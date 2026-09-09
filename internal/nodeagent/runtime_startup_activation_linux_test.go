@@ -23,6 +23,7 @@ type startupActivationFixture struct {
 	owner       *modelruntime.ExecutionJournalOwner
 	endpoint    *JournalEndpoint
 	grant       *JournalWriteGrant
+	caller      *RuntimeCaller
 	peers       journalEndpointFixture
 	identity    modelruntime.ExecutionJournalIdentity
 	floor       modelruntime.JournalCommand
@@ -73,6 +74,7 @@ func startupActivationFromReservation(t *testing.T, config RuntimeStartupReserva
 	_, floor := journalEndpointCommands(t, manifest, routes[0], signer, time.Now(), "authority")
 	return startupActivationFixture{ledger: ledger, directory: directory, plan: config.Plan, owner: config.Journal, endpoint: endpoint, grant: grant, peers: peers,
 		identity: ledger.starts[reservation.JournalID].Remote.JournalIdentity,
+		caller:   config.Caller,
 		floor:    modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: floor}}, reservation: reservation}
 }
 
