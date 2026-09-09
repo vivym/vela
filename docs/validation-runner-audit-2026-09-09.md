@@ -76,6 +76,25 @@
 原始日志、逐测试 TSV 与发现列表保留于摘要中的私有 evidence directory。
 本轮不是 GPU 验证，也没有提升 Production Gates 或真实启动装配的证据等级。
 
+## 全部 CI 分片审计（未闭合）
+
+按 CI 入口以并发 4 运行 20 个分片时，19 个分片完成，`shard 19` 的
+`TestConcurrentCredentialIssueAndServicePrincipalDisableLeaveNoActiveCredential`
+在 PostgreSQL container ready 后，Testcontainers 的 Docker `inspect` mapped-port
+请求以 `context deadline exceeded` 失败（约 54 秒）；没有业务断言失败。分片摘要
+为 `FAIL=1`，所以这次整体不能记为通过。原始目录为
+`/tmp/vela-ci-shards-audit.4o5ic3`。
+
+随后单独重跑该精确测试：
+
+```text
+go test -v -tags=integration ./internal/integration -run '^TestConcurrentCredentialIssueAndServicePrincipalDisableLeaveNoActiveCredential$' -count=1 -timeout=5m
+```
+
+结果通过，约 3.766s。该对照支持“并发 Docker 宿主压力下的 Testcontainers
+inspect 超时”解释，但不证明整体 CI 分片已通过；仍需在稳定宿主上重新完成全部
+20 个 CI 分片。
+
 ## CI 入口回归
 
 同一终态校验已接入 `hack/test-integration-shard.sh`，它覆盖 CI 发现的多个
