@@ -209,6 +209,9 @@ non-admission。外部 Fast H3 driver 与 non-root permission 单项仍显式跳
 通过，真实验证 pidfd interruption retry、目标进程退出和 descriptor error；它仍只
 是底层包证据，不代表 containerd/observer 创建关系已经完成。
 
+为避免科学性误报，CPU campaign 入口现在对 `exactCache && productionLoop` 明确
+fail closed：该组合尚未由同一执行循环实现，测试不会生成看似完整的组合 receipt。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |

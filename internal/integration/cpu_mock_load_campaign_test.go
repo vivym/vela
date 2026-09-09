@@ -149,6 +149,9 @@ type cpuCampaignMode struct {
 func runCPUMockRuntimeCampaign(t *testing.T, mode cpuCampaignMode) {
 	t.Helper()
 	exactCache, durableStream := mode.exactCache, mode.durableStream
+	if exactCache && mode.productionLoop {
+		t.Fatal("CPU exact-cache campaign does not yet drive the ProductionAgent loop; combined evidence is intentionally unsupported")
+	}
 	if os.Getenv("VELA_RUN_CPU_MOCK_CAMPAIGN") != "1" {
 		t.Skip("set VELA_RUN_CPU_MOCK_CAMPAIGN=1 for the bounded subprocess campaign")
 	}
