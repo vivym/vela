@@ -57,6 +57,16 @@ go test -race ./cmd/vela-node-agent ./internal/nodeagent -count=1 -timeout=5m
 和 startup library 的并发测试稳定；它不改变真实 startup authority 尚未从生产
 配置/Fleet/CRI 来源接入的结论。
 
+本轮随后执行全仓库默认测试的 race 检查：
+
+```text
+go test -race ./... -count=1 -timeout=15m
+```
+
+结果：所有有测试的 command/internal 包均通过，未报告 `DATA RACE`；无测试包按
+Go 标准显示 `[no test files]`。该结果提升了 CPU/mock 与控制面并发正确性的证据
+等级，但不包含 integration tag、真实多节点部署、GPU 或 Production Gate 放行。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
