@@ -253,6 +253,11 @@ checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test .
 随后单独执行 `go test -tags=integration ./internal/integration -run '^$'`，integration
 build-tag 编译通过，未运行测试用例。
 
+本轮尝试完整 `go test -tags=integration ./internal/integration -count=1 -timeout=20m`
+未在 20 分钟内完成，堆栈停在 materialization cancellation fixture 的数据库 seed；
+同一测试隔离运行约 6.6 秒通过。详见 [integration full-suite timeout evidence](integration-full-suite-timeout-evidence-2026-09-09.md)。
+因此当前不能宣称本轮 `505/505` 全套通过，需要继续做 suite 分片和资源趋势检查。
+
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
 确认 Fleet 及其他 service role 的精确 privilege boundary 当前仍通过。该结果不替代
