@@ -41,6 +41,10 @@ func (ledger *RuntimeStartupLedger) ConsumeJournalGrantAttempt(ctx context.Conte
 	}
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
+	return ledger.consumeJournalGrantAttemptLocked(ctx, journalID, operationID, authorizationDigest)
+}
+
+func (ledger *RuntimeStartupLedger) consumeJournalGrantAttemptLocked(ctx context.Context, journalID, operationID uuid.UUID, authorizationDigest [sha256.Size]byte) (RuntimeStartupGrantAttempt, error) {
 	if err := errors.Join(ledger.check(), context.Cause(ctx)); err != nil {
 		return RuntimeStartupGrantAttempt{}, err
 	}

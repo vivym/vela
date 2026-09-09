@@ -130,11 +130,13 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				return
 			}
 			var report struct {
-				Request       fleet.RuntimeStartupRequest
-				Record        json.RawMessage
-				HasReceipt    bool
-				WorkerJournal stageworkeragent.AssignmentJournalStatus
-				GrantAttempt  *struct {
+				Request             fleet.RuntimeStartupRequest
+				Record              json.RawMessage
+				HasReceipt          bool
+				WorkerJournal       stageworkeragent.AssignmentJournalStatus
+				Activated, Revoked  bool
+				PostActivationFloor int64
+				GrantAttempt        *struct {
 					OperationID         string            `json:"operation_id"`
 					JournalID           string            `json:"journal_id"`
 					StartupDigest       [sha256.Size]byte `json:"startup_digest"`
@@ -155,6 +157,9 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 			}
 			if !found || report.HasReceipt == lose || calls.Load() != 1 || tlsVersion.Load() != tls.VersionTLS13 || dropped.Load() != lose {
 				t.Fatalf("Node result/call count/TLS/loss mismatch: found=%v calls=%d TLS=%x", found, calls.Load(), tlsVersion.Load())
+			}
+			if report.Activated != !lose || report.Revoked != !lose || !lose && report.PostActivationFloor != 1 || lose && report.PostActivationFloor != 0 {
+				t.Fatalf("activation/write/revocation mismatch: activated=%v revoked=%v floor=%d", report.Activated, report.Revoked, report.PostActivationFloor)
 			}
 			bootstrapHistory, err := clients[0].bootstrap.LookupWorkerBootstrap(t.Context(), request.RequestID)
 			if err != nil || bootstrapHistory.Receipt == nil || bootstrapHistory.Receipt.WorkerJournalID != report.WorkerJournal.JournalID || !bytes.Equal(bootstrapHistory.Receipt.WorkerScope, report.WorkerJournal.Scope[:]) || !report.WorkerJournal.Storage.Valid() || report.WorkerJournal.SchemaVersion != 5 {
@@ -181,7 +186,7 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 			if err := database.Admin.QueryRow("SELECT count(*) FROM runtime_startup_reservations").Scan(&count); err != nil || count != 1 {
 				t.Fatalf("expected one immutable reservation: %d %v", count, err)
 			}
-			t.Logf("actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=%v; calls=1 rows=1 receipt=%v; original record SHA256=%x; no activation; consumption fence=%v", lose, report.HasReceipt, digest, report.GrantAttempt != nil)
+			t.Logf("actual root Node/non-root PID-1 -> TLS1.3 -> PostgreSQL95; lost=%v; calls=1 rows=1 receipt=%v; original record SHA256=%x; consumption fence=%v activated=%v revoked=%v floor=%d; fixture issuer, no backend Permit", lose, report.HasReceipt, digest, report.GrantAttempt != nil, report.Activated, report.Revoked, report.PostActivationFloor)
 		})
 	}
 }

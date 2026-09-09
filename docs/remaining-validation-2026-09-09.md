@@ -174,6 +174,15 @@ PostgreSQL/TLS 的正常/丢回包/缺权限场景通过。旧 schema 1/2 可读
 这只是持久限制记录，不验证授权摘要、不激活 endpoint、不发 Permit。统一入口
 仍须把独立批准、执行连续性与消费后激活绑定，不能把本增量当作生产 grant 闭合。
 
+后续 [持久消费与 journal 激活](runtime-startup-activation-evidence-2026-09-09.md)
+已将独立签发的 operation-bound 内存 grant、原始 Runtime/具体 endpoint、持久
+消费与最后复核后的角色写入连接到同次调用；ledger Close 撤销关联路由，且不会
+等待另一启动的 ledger append/fsync 才撤销。普通 grant 无法绕过已 claim 的
+endpoint，历史记录不能恢复激活。真实 PostgreSQL/TLS 正常分支完成 Worker
+RPC 的 `Floor=1` 写入及关闭后拒绝；丢回包分支拒绝消费并实际观察 `Floor=0`。
+这补齐了上述消费边界的正向转换；独立 issuer 仍为 fixture，生产批准、observer
+连续监控、Permit 回包与真实 CLI/CRI 的统一装配仍未完成。
+
 当前代码的 [CPU exact-cache campaign](cpu-exact-cache-evidence-2026-09-09.md)
 已重新执行：source miss/admit 后 target 两轮 hit/reuse，5 次 Transfer consume，
 两 Job 各一次 Charge，总计 2500 minor units，终态 queue/allocation/lease/

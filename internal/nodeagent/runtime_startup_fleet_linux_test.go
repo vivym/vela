@@ -207,26 +207,85 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 		if err != nil || history.Fresh || !reflect.DeepEqual(history.RuntimeStartupRequest, expected) {
 			t.Fatalf("database history differs from original Node record: %v", err)
 		}
-		// This digest is explicitly fixture evidence. Consumption is only a
-		// negative fence, so it cannot turn this fixture into a startup permit.
+		// The issuer is explicitly a trusted-Node fixture, not production policy.
+		// Normal mode now exercises actual consumption, activation and Worker RPC.
 		authorizationDigest := sha256.Sum256([]byte("fixture startup authorization evidence; no permit"))
-		attempt, attemptErr := ledger.ConsumeJournalGrantAttempt(ctx, journal.JournalID, record.OperationID, authorizationDigest)
+		var attempt RuntimeStartupGrantAttempt
+		var activated, revoked bool
+		var floorAfter int64
+		var activationEndpoint *JournalEndpoint
+		var peers journalEndpointFixture
+		var floorCommand modelruntime.JournalCommand
+		identity := modelruntime.ExecutionJournalIdentity{JournalID: journal.JournalID, Scope: journal.Scope, Storage: journal.Storage}
 		if input.LoseResponse {
+			var attemptErr error
+			attempt, attemptErr = ledger.ConsumeJournalGrantAttempt(ctx, journal.JournalID, record.OperationID, authorizationDigest)
 			if !errors.Is(attemptErr, ErrRuntimeStartupLedger) || attempt != (RuntimeStartupGrantAttempt{}) {
 				t.Fatalf("remote history replaced missing local receipt: %v", attemptErr)
 			}
-		} else if attemptErr != nil {
-			t.Fatalf("consume after exact real Fleet reservation: %v", attemptErr)
+		} else {
+			peers = newJournalEndpointOwnerFixture(t, 0, nil, true, true)
+			activationEndpoint, err = NewReadOnlyJournalEndpoint(ctx, owner, ledger.owners[journal.JournalID], peers.worker.owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = activationEndpoint.Close() }()
+			signer, err := stageauthority.NewSigner(map[string][]byte{"authority": make([]byte, 32)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, floor := journalEndpointCommands(t, manifest, routes[0], signer, time.Now(), "authority")
+			floorCommand = modelruntime.JournalCommand{SchemaVersion: 1, Floor: &modelruntime.JournalFloorCommand{Disposition: floor}}
+			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error == "" {
+				t.Fatal("pregrant Worker wrote journal")
+			}
+			grant, err := IssueReservedJournalWriteGrant(ctx, activationEndpoint, ledger.owners[journal.JournalID], peers.worker.owner, record.OperationID, authorizationDigest, time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempt, err = ledger.ActivateReservedJournalWriteGrant(ctx, plan, grant)
+			if err != nil {
+				t.Fatalf("activate after real Fleet reservation: %v", err)
+			}
+			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error != "" {
+				t.Fatalf("postgrant Worker write: %+v", reply)
+			}
+			current, err := owner.Status(ctx)
+			if err != nil || current.Floor != 1 {
+				t.Fatalf("postgrant durable floor: %+v %v", current, err)
+			}
+			activated, floorAfter = true, current.Floor
+		}
+		// Report an actual journal observation in the lost-response branch too;
+		// a default zero in the report is not evidence of an unchanged floor.
+		if input.LoseResponse {
+			current, err := owner.Status(ctx)
+			if err != nil || current.Floor != 0 {
+				t.Fatalf("lost response changed journal floor: %+v %v", current, err)
+			}
+			floorAfter = current.Floor
 		}
 		if err := ledger.Close(); err != nil {
 			t.Fatal(err)
+		}
+		if activationEndpoint != nil {
+			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error == "" {
+				t.Fatal("closed ledger retained writable route")
+			}
+			revoked = true
 		}
 		recovered, err := OpenRuntimeStartupLedger(ctx, ledgerPath, registry.NodeIdentity(), false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _ = recovered.Close() }()
-		if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, ErrRuntimeStartupRecorded) {
+		expectedRetryError := ErrRuntimeStartupRecorded
+		if activated {
+			// The postgrant floor write has already made first-startup inspection
+			// ineligible, so this path must stop even before the ledger replay check.
+			expectedRetryError = modelruntime.ErrBackendStartupDenied
+		}
+		if _, err := recovered.ReserveRemote(ctx, config); !errors.Is(err, expectedRetryError) {
 			t.Fatalf("reopen retry: %v", err)
 		}
 		if _, err := recovered.RecordExit(ctx, journal.JournalID); !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
@@ -260,12 +319,14 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		report, err := json.Marshal(struct {
-			Request       fleet.RuntimeStartupRequest
-			Record        json.RawMessage
-			HasReceipt    bool
-			WorkerJournal stageworkeragent.AssignmentJournalStatus
-			GrantAttempt  *RuntimeStartupGrantAttempt
-		}{expected, recordWire, !input.LoseResponse, worker, grantReport})
+			Request             fleet.RuntimeStartupRequest
+			Record              json.RawMessage
+			HasReceipt          bool
+			WorkerJournal       stageworkeragent.AssignmentJournalStatus
+			GrantAttempt        *RuntimeStartupGrantAttempt
+			Activated, Revoked  bool
+			PostActivationFloor int64
+		}{expected, recordWire, !input.LoseResponse, worker, grantReport, activated, revoked, floorAfter})
 		if err != nil {
 			t.Fatal(err)
 		}

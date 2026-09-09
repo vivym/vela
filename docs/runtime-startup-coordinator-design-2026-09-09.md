@@ -94,5 +94,23 @@ ModelRuntime 默认回归、integration 编译检查、shell 语法与 diff 检�
 可写；不得跨网络检查持有阻塞 watchdog 的共享锁。这个对象不能从历史或 JSON
 构造，生产 CLI 只能通过该入口获得许可。随后才接完整 remote-owner CPU Job。
 
+## 后续增量：活 grant 的消费与激活
+
+在上述 `c07a3f9` 消费边界之后，
+[持久消费与 journal 激活](runtime-startup-activation-evidence-2026-09-09.md)
+实现了 `ActivateReservedJournalWriteGrant`。它只接受独立签发、绑定 operation 的
+内存 grant，核对计划/原始 Runtime/held journal 后 claim 只读 endpoint，持久消费，
+再次检查后激活；不能从 `InspectJournalGrantAttempt` 的返回值继续授权。
+
+已激活 endpoint 关联到活 ledger。Close 使用独立 activation guard 先封禁新激活
+并撤销已激活路由，再等待 ledger I/O；一条启动的持久化阻塞不会延迟另一条路由
+因 ledger 关闭而撤销。协调失败会烧毁 grant 且维持只读/关闭状态。
+
+上文的测试结果保留为消费阶段的历史证据；最新同源结果见后续报告及 JSON。
+该增量实现表中 Grant activated 的局部转换，仍未发出 backend Permit，也没有
+生产策略、observer watchdog 或真实 CLI/CRI/Fleet 全链协调。下一步应将可信
+observer 的当前检查与运行期撤销接到同一对象，再统一实际 CLI/CRI/Fleet 入口；
+不能将一次 pidfd 检查当作执行连续性证明。
+
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。

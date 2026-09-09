@@ -83,21 +83,24 @@ type runtimeStartupEntry struct {
 // Initialization is explicit and only accepts an empty pre-existing directory.
 // Lost files are never recreated on recovery. No method issues a startup grant.
 type RuntimeStartupLedger struct {
-	mu            sync.Mutex
-	path          string
-	root          *os.Root
-	file          *os.File
-	header        runtimeStartupHeader
-	digest        [sha256.Size]byte
-	size          int64
-	failed        error
-	closed        bool
-	starts        map[uuid.UUID]RuntimeStartupRecord
-	exits         map[uuid.UUID]RuntimeStartupExit
-	owners        map[uuid.UUID]*RuntimeNamespaceOwner
-	reservations  map[uuid.UUID]RuntimeStartupReservationRecord
-	grantAttempts map[uuid.UUID]RuntimeStartupGrantAttempt
-	boundary      func(string) error
+	mu                 sync.Mutex
+	path               string
+	root               *os.Root
+	file               *os.File
+	header             runtimeStartupHeader
+	digest             [sha256.Size]byte
+	size               int64
+	failed             error
+	closed             bool
+	starts             map[uuid.UUID]RuntimeStartupRecord
+	exits              map[uuid.UUID]RuntimeStartupExit
+	owners             map[uuid.UUID]*RuntimeNamespaceOwner
+	reservations       map[uuid.UUID]RuntimeStartupReservationRecord
+	grantAttempts      map[uuid.UUID]RuntimeStartupGrantAttempt
+	activationMu       sync.Mutex
+	activationClosed   bool
+	activatedEndpoints map[uuid.UUID]*JournalEndpoint
+	boundary           func(string) error
 }
 
 func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity string, initialize bool) (*RuntimeStartupLedger, error) {
@@ -526,13 +529,23 @@ func (ledger *RuntimeStartupLedger) Close() error {
 	if ledger == nil {
 		return nil
 	}
+	// Revoke routes before waiting for ledger I/O. Another startup may be stuck
+	// in fsync while an already active endpoint needs prompt shutdown.
+	ledger.activationMu.Lock()
+	ledger.activationClosed = true
+	endpoints := ledger.activatedEndpoints
+	ledger.activatedEndpoints = nil
+	ledger.activationMu.Unlock()
+	var err error
+	for _, endpoint := range endpoints {
+		err = errors.Join(err, endpoint.Close())
+	}
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 	if ledger.closed {
-		return nil
+		return err
 	}
 	ledger.closed = true
-	var err error
 	for _, owner := range ledger.owners {
 		err = errors.Join(err, owner.Close())
 	}
