@@ -227,7 +227,8 @@ sustained arrivals 仍受该上限约束。
 历史前缀。
 `797facb` 将每个 cutoff 的 scope、Worker instance/member 和 epoch 绑定到当前
 journal，并在追加、恢复、回收三条路径都 fail closed；跨 journal identity 的
-cutoff 不能被接受。
+cutoff 不能被接受。`e4f4ba1` 增加了直接篡改磁盘 `worker_member_id` 后 recovery
+拒绝的测试。
 
 `9045e8e` 的 16-job、两波并发 arrival campaign，以及 `13d7bbe` 的同装配 `-race`
 重跑均通过：16 个 completion、16 次 Charge、无 acquire deadlock/serialization
