@@ -547,3 +547,6 @@ Finance/catalog/H3 分片
 
 恢复、保留与 remediation 分片
 `go test -tags=integration ./internal/integration -run '^TestRetention|^TestNonContent|^TestRecovery|^TestRemediation'` 已通过，耗时约 88 秒；覆盖 retention/content expiry、non-content hold/expiry、recovery gate/snapshot/role isolation，以及 remediation claim、quarantine、approval、replay 和 recovery。
+
+Stage execution 核心分片
+`go test -tags=integration ./internal/integration -run '^TestStageScheduler|^TestStageGraph|^TestStageMaterialization|^TestStageLease|^TestStageJob'` 已通过，耗时约 304 秒；覆盖 scheduler lock order/claim/replay/capacity、graph cancellation/finalization/public-copy、materialization retry/expiry/replay、lease recovery 及 job expiry convergence。
