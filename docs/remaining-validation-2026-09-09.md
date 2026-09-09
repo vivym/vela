@@ -90,6 +90,16 @@ VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=8 VELA_CPU_MOCK_WIDTH=8 go test
 allocation、lease、credit 与 scratch 能在每波结束收敛；它仍是有界压力测试，
 不能证明长期 open-loop 资源上界或历史数据无限增长安全。
 
+本轮还重跑了 Assignment history 安全回收核心测试：
+
+```text
+go test ./internal/stageworkeragent -run '^TestAssignmentHistoryReclaimPersistsBaseAndRecovers$|^TestAssignmentHistoryReclaimBoundedArrivalCampaign$|^TestAssignmentHistoryReclaimRejectsTamperedCheckpoint$' -count=1 -timeout=5m
+```
+
+结果：通过，耗时约 2.968s。覆盖 cutoff proof chain、HistoryBase、checkpoint
+重启恢复、bounded arrival 和篡改 checkpoint 拒绝。该结果支持安全回收组件的
+有限证据，但长期 journal/history 空间上界仍需持续运行数据确认。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
