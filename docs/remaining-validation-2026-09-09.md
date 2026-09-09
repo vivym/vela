@@ -223,6 +223,8 @@ sustained arrivals 仍受该上限约束。
 
 `499fd9d` 收紧了恢复不变量：`HistoryBase` 必须为零或落在已持久 cutoff 的边界
 上，且不能超过 cutoff 链的末端；新增的磁盘 base 篡改测试确认 recovery fail closed。
+`204acb3` 又要求首个 cutoff 从 execution sequence `1` 开始，拒绝跳过未证明的
+历史前缀。
 
 `9045e8e` 的 16-job、两波并发 arrival campaign，以及 `13d7bbe` 的同装配 `-race`
 重跑均通过：16 个 completion、16 次 Charge、无 acquire deadlock/serialization
