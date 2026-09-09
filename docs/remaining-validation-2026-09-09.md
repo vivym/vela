@@ -204,7 +204,8 @@ materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝�
 从新 base 继续校验；`7733c27` 已验证删除后关闭 journal、重开并继续接纳下一条
 execution，`efd96fe` 又覆盖了 rename 后 directory sync 失败并重开恢复的边界。
 `1e99ea5` 覆盖了调用者篡改 cutoff digest 时的拒绝路径，`13a0402` 又验证了
-磁盘中持久 cutoff 被直接篡改后 recovery 拒绝。安全 reclamation 仍需补齐多 cutoff
+磁盘中持久 cutoff 被直接篡改后 recovery 拒绝；`0ca81e9` 又验证了两个连续
+cutoff 的 digest 链、分段回收和继续准入。安全 reclamation 仍需补齐多 cutoff
 连续中断和长期压力验证，
 sustained arrivals 仍受该上限约束。
 
