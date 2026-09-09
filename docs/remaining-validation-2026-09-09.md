@@ -160,6 +160,12 @@ endpoint 的内存单次 capability，激活前只读，激活后再次使用、
 作为替代。当前只完成 Node API/CPU fixture 验证，grant 的真实 Fleet/TLS/
 PostgreSQL 来源和 production route assembly 仍需接入。
 
+当前代码的 [CPU exact-cache campaign](cpu-exact-cache-evidence-2026-09-09.md)
+已重新执行：source miss/admit 后 target 两轮 hit/reuse，5 次 Transfer consume，
+两 Job 各一次 Charge，总计 2500 minor units，终态 queue/allocation/lease/
+scratch 清零。该证据仍是 local CPU/mock，不替代真实 Fleet/Node/Pod→CRI 或
+持续运行验证。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
