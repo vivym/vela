@@ -205,8 +205,10 @@ materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝�
 execution，`efd96fe` 又覆盖了 rename 后 directory sync 失败并重开恢复的边界。
 `1e99ea5` 覆盖了调用者篡改 cutoff digest 时的拒绝路径，`13a0402` 又验证了
 磁盘中持久 cutoff 被直接篡改后 recovery 拒绝；`0ca81e9` 又验证了两个连续
-cutoff 的 digest 链、分段回收和继续准入。安全 reclamation 仍需补齐多 cutoff
-连续中断和长期压力验证，
+cutoff 的 digest 链、分段回收和继续准入。`bc4544f` 增加了 40 个连续 CPU/mock
+arrival，逐条完成 input drain、关闭、记录 cutoff、回收并检查 journal 保持空保留
+前缀。该测试证明的是有限本地 campaign，不是开放环长期吞吐或资源上界；安全
+reclamation 仍需补齐多 cutoff 连续中断和长期压力验证，
 sustained arrivals 仍受该上限约束。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
