@@ -384,7 +384,7 @@ func cpuDurableStreamLimitations() []string {
 		"Worker readiness/Registry setup uses fixture services; production Fleet activation, Node custody/startup and ProductionAgent orchestration are separate",
 		"lost committed responses reconstruct StreamAgent/file journal and replace mTLS transport in the same fixture session; processes remain live; production session reattachment is separate",
 		"bounded harness retries confirmed STALE Acquire results with new command IDs; production discovery orchestration is not exercised",
-		"input/output payload retirement is measured separately from retained journal metadata; history reclamation is not implemented",
+		"input/output payload retirement is measured separately from retained journal metadata; this campaign does not exercise the separate history reclamation protocol",
 		"local exact-version object store, not remote S3; physical isolation and power-cut durability are separate",
 		"host race instrumentation does not instrument native mock subprocesses; sampled resources are not full VM peaks"}
 }
