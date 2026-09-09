@@ -256,7 +256,16 @@ build-tag 编译通过，未运行测试用例。
 本轮尝试完整 `go test -tags=integration ./internal/integration -count=1 -timeout=20m`
 未在 20 分钟内完成，堆栈停在 materialization cancellation fixture 的数据库 seed；
 同一测试隔离运行约 6.6 秒通过。详见 [integration full-suite timeout evidence](integration-full-suite-timeout-evidence-2026-09-09.md)。
-因此当前不能宣称本轮 `505/505` 全套通过，需要继续做 suite 分片和资源趋势检查。
+随后 `535ea5d` 记录两 shard 进程均成功退出。分配覆盖 505 个顶层测试名称，
+但需要 image 或原生环境的 opt-in 测试仍可能跳过，不能将进程通过换算成
+505 条实际执行通过。本轮另以源码对应 image 显式执行 Node/Fleet/PostgreSQL/TLS
+正常、提交后丢回包和缺少 ptrace 权限三种情景，均通过。
+
+新增的 [grant 原生验证](journal-grant-transition-evidence-2026-09-09.md) 修正了
+此前直接构造内部 grant 的测试缺口，改用公开签发 API、真实原始进程/pidfd 和
+角色写入 RPC，并覆盖过期、取消、退出及并发激活。它与上述 Fleet 预留仍是
+两套独立验证；不能把 reservation receipt 自动解释为 backend Permit，生产
+同次启动授权、执行连续性与 grant 接线仍是第 1 项的未完成工作。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，

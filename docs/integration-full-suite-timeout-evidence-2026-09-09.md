@@ -20,13 +20,14 @@ checkpoint 代码。
 为验证执行层面的加速，而不改变测试的数据库隔离边界，使用
 `hack/run-integration-shards.sh 2` 将 `go test -list '^Test'` 发现的 505 个测试
 按 round-robin 分到两个独立进程；每个进程自行创建 PostgreSQL testcontainers。
-实跑约 `942.876s`（约 15.7 分钟）后，shard 1 通过，shard 2 失败，故这次实验
+shard 2 的 Go package 输出报告 `942.876s`（约 15.7 分钟）；shard 1 通过，
+shard 2 失败。该数值不是经过独立测量的 runner 总 wall-clock，故这次实验
 不能算完整 integration pass，也不能只凭失败结果断言业务代码错误。它证明了
 分片可以在相同隔离模型下并发推进，但当前 Docker/fixture 成本仍然很高，且至少
 有一组分片需要单独收敛失败原因。
 
 脚本随后补充了两个执行保护：请求的 shard 数超过发现的测试数时自动收敛，避免
-空 shard 的正则意外匹配全部测试；失败时保留 shard 日志目录，便于定位具体测试
+空 shard 没有执行测试却显示通过；失败时保留 shard 日志目录，便于定位具体测试
 和资源问题。推荐先用 `VELA_INTEGRATION_SHARDS_DRY_RUN=1` 检查分配，再运行 2
 shards；4 shards 需要重新观察 Docker 资源压力。
 
@@ -38,8 +39,10 @@ shards；4 shards 需要重新观察 Docker 资源压力。
 VELA_INTEGRATION_TIMEOUT=20m hack/run-integration-shards.sh 2
 ```
 
-结果为 `shard 1 passed`、`shard 2 passed`。这证明 505 个 integration tests
-可以在两个相互隔离的 PostgreSQL fixture 进程中完成；它仍不改变单进程全套运行
+结果为 `shard 1 passed`、`shard 2 passed`。两个进程成功退出，分配覆盖 505 个
+顶层测试名称；其中依赖环境的 opt-in 测试可能 SKIP，不能表述为 505 条实际
+执行 PASS。例如未设置 `VELA_RUNTIME_STARTUP_NODE_IMAGE` 时会跳过真实 Node
+进程与 PostgreSQL/TLS 的组合测试。它仍不改变单进程全套运行
 曾经超过 20 分钟的事实，也不把两进程分片结果提升为生产 readiness 或
 Production Gates 证据。若再次出现单 shard 失败，应优先读取 runner 保留的日志，
 区分具体测试失败、Docker 资源压力和 fixture 启动失败。

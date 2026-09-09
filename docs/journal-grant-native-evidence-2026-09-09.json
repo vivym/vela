@@ -1,0 +1,434 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-09",
+  "baseline_commit": "535ea5d2e0ac5db4657a9d588bcae052609b4d52",
+  "source_tree_sha256": "55440f4210792253c4d35fe846ad596449a057b4725be6e09f5a6be3d431bc7b",
+  "source_file_count": 1021,
+  "source_digest_method": "SHA256 of sorted tracked Go/SQL/proto/go.mod/go.sum/native runner path + NUL + hex SHA256(file bytes) + newline",
+  "changed_source_sha256": {
+    "internal/nodeagent/journal_endpoint_linux.go": "ca51a90568583d999d8292821037d9afe1193e29991f07904a0143da0eeea3f8",
+    "internal/nodeagent/journal_endpoint_linux_test.go": "0f32ad6474f845443b06e49611ad7ca897cee3829a3b52c2b46da9729e967034",
+    "internal/nodeagent/journal_grant_transition_linux_test.go": "2a8a8585cf6f8202089bb67a7d63797cef89d83ffb6ed49c116130586451b0c8",
+    "hack/run-journal-owner-native.sh": "ffaa47901d0b543fdf4ac4589599dd31cccd5b4e5366773cd17e05a18a3d8bde"
+  },
+  "source_patch_sha256": "f172b8024c709dc05e7fcb8edb70821e64efe882fa7e3319aadb1c6797a4b354",
+  "native_image_id": "sha256:a5f726c9d94339837e5736ec7dcfdc15de8d2b120393a3e3db891b52f2b869a6",
+  "native_binaries_sha256": {
+    "modelruntime.test": "3cd9ec3ccb5b67a56cd7f8ef3df0e4d10c59a17d382840babf72001d5aa34b32",
+    "nodeagent.test": "da74c381920fa357d98efbf76c5bbff27b4dbcaf1094b66b48a9bf7a30fdca9d"
+  },
+  "native_goos": "linux",
+  "native_goarch": "arm64",
+  "native_race": true,
+  "native_runner_exit_code": 0,
+  "integration_exit_code": 0,
+  "suites": {
+    "modelruntime": {
+      "top_level_passes": [
+        {
+          "name": "TestJournalResponseBindsDurableAcknowledgement",
+          "elapsed": "0.01s"
+        },
+        {
+          "name": "TestJournalResponseReadFailuresAreNotTransportUnavailable",
+          "elapsed": "0.00s"
+        },
+        {
+          "name": "TestJournalOwnerNonAdmissionRejectsWithoutPublishing",
+          "elapsed": "0.47s"
+        },
+        {
+          "name": "TestJournalOwnerNonAdmissionRecomputesDigestAndReplaysExactProof",
+          "elapsed": "0.04s"
+        },
+        {
+          "name": "TestJournalOwnerStartupBindsManifestAndPreservesUnresolvedIntent",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalOwnerTerminalExpiryDoesNotPoisonSubsequentCheckpoint",
+          "elapsed": "0.02s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionRequiresDurableFloorAndNeverClaimsPersistedIntent",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionDoesNotInferHistoricalCoverageAfterRestart",
+          "elapsed": "0.02s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionPersistenceFailureAndLostResponseRecover",
+          "elapsed": "0.05s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionRejectsConcurrentAcceptedPrepare",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionHistoryRejectsCorruption",
+          "elapsed": "0.36s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionHistoryBoundsWithoutEvictingProof",
+          "elapsed": "0.68s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionSchemaUpgradeRejectsUnverifiableSource",
+          "elapsed": "0.05s"
+        },
+        {
+          "name": "TestExecutionNonAdmissionSchemaUpgradePreservesHistoryAndRequiresOptIn",
+          "elapsed": "0.12s"
+        },
+        {
+          "name": "TestJournalRemoteWatchdogRetainsStopAfterAdmissionLockWait",
+          "elapsed": "1.61s"
+        },
+        {
+          "name": "TestJournalRemoteCancellationDoesNotSpendStopBudgetOnUnavailableReads",
+          "elapsed": "0.29s"
+        },
+        {
+          "name": "TestJournalRemoteCandidatePersistenceRetainsLifetimeFence",
+          "elapsed": "0.16s"
+        },
+        {
+          "name": "TestJournalOwnerAPIWorkflowAndLostReplyReplay",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestJournalOwnerAPIWorkerCheckpoints",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestJournalOwnerAPIRejectsWithoutPoisoning",
+          "elapsed": "0.12s"
+        },
+        {
+          "name": "TestJournalCommandRejectsWireAuthorityInjection",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestJournalOwnerAPIStorageUncertaintyAndCancellation",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestJournalOwnerAPIHistoryBoundAndHealth",
+          "elapsed": "0.61s"
+        },
+        {
+          "name": "TestJournalOwnerAPITrustedRouteAndClose",
+          "elapsed": "0.01s"
+        },
+        {
+          "name": "TestJournalOwnerPublicationKeysRemainBoundToHeldVerifier",
+          "elapsed": "0.01s"
+        },
+        {
+          "name": "TestJournalOwnerInspectStartupRequiresHeldExactFirstUse",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalRemoteReadContentionDoesNotPoisonAdmission",
+          "elapsed": "0.10s"
+        },
+        {
+          "name": "TestJournalRemoteReadUnavailableDoesNotWeakenMutationFence",
+          "elapsed": "0.09s"
+        },
+        {
+          "name": "TestJournalRemoteReadIntegrityFailuresRemainFenced",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestJournalRemoteReadRetryObservesNewWorkerFloor",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalRemoteCancellationBoundsAdmission",
+          "elapsed": "0.10s"
+        },
+        {
+          "name": "TestJournalRemoteWriteReadbackSharesDeadline",
+          "elapsed": "0.05s"
+        },
+        {
+          "name": "TestJournalRemoteReadTimeoutCanRetry",
+          "elapsed": "0.11s"
+        },
+        {
+          "name": "TestJournalRemoteSupervisorExecutesAndReplaysSealedHistory",
+          "elapsed": "0.17s"
+        },
+        {
+          "name": "TestJournalRemoteUncertainAdmissionNeverEntersBackend",
+          "elapsed": "0.09s"
+        },
+        {
+          "name": "TestJournalRemoteFloorWaitsForAlreadyAdmittedOperation",
+          "elapsed": "0.10s"
+        },
+        {
+          "name": "TestJournalRemoteWorkerFloorAndNonAdmissionUseSeparateRole",
+          "elapsed": "0.09s"
+        },
+        {
+          "name": "TestJournalReadRejectsMixedPagesAndPreservesSnapshot",
+          "elapsed": "0.11s"
+        },
+        {
+          "name": "TestRuntimeServerRetainsBackendOwnershipAfterFailedOrIdleStartup",
+          "elapsed": "0.12s"
+        },
+        {
+          "name": "TestRuntimeServerFreezesLaunchBeforeBackendCallbacks",
+          "elapsed": "0.02s"
+        },
+        {
+          "name": "TestRuntimeServerDrainDoesNotRetireBackendIncarnation",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestRuntimeServerBackendStartupPersistenceFailureDoesNotDispatch",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestRuntimeServerRejectsMalformedBackendLifecycleBeforeFactories",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestRuntimeServerRemoteStartupBeforeFactories",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestRuntimeServerRemoteStartupRejectsMixedCustody",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRPCRejectsInvalidScopes",
+          "elapsed": "0.12s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionCoversUnsignedAllocationWithoutEnteringBackend",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRecoveryNeverInfersMissingOldEpochProof",
+          "elapsed": "0.04s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionReplayBindsExactHistoricalScope",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionSerializesWithAcceptedPrepare",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence",
+          "elapsed": "0.03s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionPersistenceFailureAndLostReplyRecover",
+          "elapsed": "0.04s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRejectsConflictingProofsInBothOrders",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionBoundNeverEvictsOldProof",
+          "elapsed": "1.12s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionRecoveryRejectsCorruptProofs",
+          "elapsed": "0.22s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionSchema3UpgradePreservesEvidence",
+          "elapsed": "0.16s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionSurvivesAbruptProcessExit",
+          "elapsed": "1.06s"
+        },
+        {
+          "name": "TestTerminalNonAdmissionProcessHelper",
+          "elapsed": "0.00s"
+        }
+      ],
+      "top_level_pass_count": 59,
+      "includes_helper_tests": true,
+      "skip_count": 0,
+      "log_path": "/tmp/vela-grant-native-final-20260909/modelruntime.log",
+      "log_sha256": "83349b0f113ceafe9e22cfffe4e85c8a4bac1fa6c40d9c321a465cfd5bbbd7e1"
+    },
+    "nodeagent": {
+      "top_level_passes": [
+        {
+          "name": "TestJournalServerCancellationSurvivesUnresponsiveNode",
+          "elapsed": "2.80s"
+        },
+        {
+          "name": "TestJournalEndpoint",
+          "elapsed": "0.32s"
+        },
+        {
+          "name": "TestJournalReadOnlyGrantTransition",
+          "elapsed": "0.09s"
+        },
+        {
+          "name": "TestJournalWriteGrantRejectsInvalidIssuance",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalWriteGrantRejectsInvalidActivation",
+          "elapsed": "0.43s"
+        },
+        {
+          "name": "TestJournalWriteGrantConcurrentActivation",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalReadOnlyEndpoint",
+          "elapsed": "0.19s"
+        },
+        {
+          "name": "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+          "elapsed": "0.41s"
+        },
+        {
+          "name": "TestJournalServer",
+          "elapsed": "0.32s"
+        },
+        {
+          "name": "TestJournalServerLiveSupervisorRecoversAfterOverload",
+          "elapsed": "0.29s"
+        },
+        {
+          "name": "TestJournalServerTimeoutAndJoin",
+          "elapsed": "0.62s"
+        },
+        {
+          "name": "TestJournalServerListenerFailure",
+          "elapsed": "0.07s"
+        },
+        {
+          "name": "TestJournalServerConfiguration",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestJournalServerWorkerBarrierRecoversAfterOverload",
+          "elapsed": "1.04s"
+        },
+        {
+          "name": "TestRuntimeCallerRejectsInvalidMessages",
+          "elapsed": "2.18s"
+        },
+        {
+          "name": "TestRuntimeChannelRoundTrip",
+          "elapsed": "2.05s"
+        },
+        {
+          "name": "TestRuntimeChannelLargeRequestBounds",
+          "elapsed": "3.09s"
+        },
+        {
+          "name": "TestRuntimeChannelRejectsUntrustedExchange",
+          "elapsed": "29.22s"
+        },
+        {
+          "name": "TestRuntimeChannelReplyRejectsLostLifetime",
+          "elapsed": "1.06s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerBeforeActualFactory",
+          "elapsed": "4.42s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerRetainsExactOwnerExit",
+          "elapsed": "0.08s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerRestartDoesNotReconstructOwner",
+          "elapsed": "0.06s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerReservesExitCapacity",
+          "elapsed": "21.71s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerRejectsUnboundRequests",
+          "elapsed": "0.15s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerUncertainAppendRemainsConsumed",
+          "elapsed": "0.25s"
+        },
+        {
+          "name": "TestRuntimeStartupLedgerRejectsMissingAndChangedState",
+          "elapsed": "0.01s"
+        },
+        {
+          "name": "TestRuntimeStartupReservationProcessCrashRecovery",
+          "elapsed": "0.93s"
+        },
+        {
+          "name": "TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal",
+          "elapsed": "0.16s"
+        },
+        {
+          "name": "TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter",
+          "elapsed": "0.12s"
+        },
+        {
+          "name": "TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent",
+          "elapsed": "1.52s"
+        }
+      ],
+      "top_level_pass_count": 30,
+      "includes_helper_tests": true,
+      "skip_count": 0,
+      "log_path": "/tmp/vela-grant-native-final-20260909/node-startup.log",
+      "log_sha256": "090527aa35672da2d5c5294d15fe4b3d91f7ea486c8cadada5c684935c38cfa9"
+    },
+    "postgres_tls": {
+      "top_level_passes": [
+        {
+          "name": "TestRuntimeStartupNodeProcessPostgresTLS",
+          "elapsed": "15.05s"
+        }
+      ],
+      "top_level_pass_count": 1,
+      "includes_helper_tests": false,
+      "skip_count": 0,
+      "log_path": "/tmp/vela-grant-native-final-20260909/postgres-tls.log",
+      "log_sha256": "7dc85ef077b34516795228cdd96939403b2c9a44ea0a04b48020cb63afb35846",
+      "scenarios": [
+        [
+          "normal",
+          "5.33s"
+        ],
+        [
+          "committed-response-lost",
+          "4.86s"
+        ],
+        [
+          "missing-ptrace",
+          "4.87s"
+        ]
+      ],
+      "native_node_race": true
+    }
+  },
+  "focused_default_tests": "go test ./internal/nodeagent ./internal/modelruntime: PASS (Darwin; excludes Linux-only files)",
+  "linux_vet": "GOOS=linux GOARCH=arm64 go vet ./internal/nodeagent: PASS",
+  "linux_lint": "golangci-lint v2.13.1 built with go1.26.7: 0 issues (nodeagent/runtimechannel)",
+  "production_gates": "0/9",
+  "boundary": "Native journal grant and real Fleet/PostgreSQL/TLS reservation are separate tests. No production authorization issuer, CLI/CRI same-start assembly, durable grant recovery or full remote-owner Job is established."
+}

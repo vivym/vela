@@ -84,7 +84,7 @@ func (endpoint *JournalEndpoint) ActivateJournalWriteGrant(ctx context.Context, 
 	}
 	endpoint.mu.Lock()
 	defer endpoint.mu.Unlock()
-	if grant.endpoint != endpoint || endpoint.grantUsed || !endpoint.readOnly || grant.expires.Before(time.Now()) || grant.nonce == ([32]byte{}) {
+	if endpoint.runtime == nil || endpoint.worker == nil || grant.endpoint != endpoint || endpoint.grantUsed || !endpoint.readOnly || !time.Now().Before(grant.expires) || grant.nonce == ([32]byte{}) {
 		return ErrRuntimeObserverCustody
 	}
 	if err := errors.Join(contextError(ctx), runtimechannel.PollLivePIDFD(int(endpoint.runtime.Fd())), runtimechannel.PollLivePIDFD(int(endpoint.worker.Fd()))); err != nil {
@@ -107,9 +107,9 @@ func NewJournalEndpoint(ctx context.Context, owner *modelruntime.ExecutionJourna
 
 // NewReadOnlyJournalEndpoint enrolls original processes for snapshot reads only.
 // Every mutation, including restrictive Worker floors, is rejected before Apply.
-// Its access mode is immutable: a Fleet receipt, caller reply or restart cannot
-// upgrade it. Trusted Node orchestration must separately establish the eventual
-// grant and writable route; this constructor does not provide that transition.
+// A Fleet receipt, caller reply or restart cannot upgrade it. Only trusted Node
+// orchestration can issue and activate an in-memory JournalWriteGrant after an
+// independent startup authorization; this constructor supplies no such authority.
 func NewReadOnlyJournalEndpoint(ctx context.Context, owner *modelruntime.ExecutionJournalOwner, runtimeOwner, workerOwner *RuntimeNamespaceOwner) (*JournalEndpoint, error) {
 	return newJournalEndpoint(ctx, owner, runtimeOwner, workerOwner, true)
 }

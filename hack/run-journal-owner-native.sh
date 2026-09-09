@@ -48,11 +48,13 @@ docker run --rm --network none --user 10001:10001 --cap-drop ALL --cpus 4 --memo
   "$owner_image" /modelruntime.test -test.run "$owner_selected" -test.count=1 -test.v -test.timeout=3m \
   > "$owner_evidence/modelruntime.log" 2>&1
 
-# This existing test creates an actual non-root PID-1 child. It needs PID namespace
+# Actual CLI/exec-observer tests require run-remote-runtime-cli-native.sh;
+# do not select them into this two-binary image and silently accept their skips.
+# This suite creates actual non-root PID-1 children. It needs PID namespace
 # creation and process inspection; its permit is explicitly mocked, not a new issuer.
 docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE \
   --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256 \
-  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupReservation.*|TestRuntimeStartupLedger(BeforeActualFactory|RetainsExactOwnerExit|RestartDoesNotReconstructOwner|ReservesExitCapacity|RejectsUnboundRequests|UncertainAppendRemainsConsumed|RejectsMissingAndChangedState)|TestJournalEndpoint|TestJournalServer.*|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
+  "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupReservation.*|TestRuntimeStartupLedger(BeforeActualFactory|RetainsExactOwnerExit|RestartDoesNotReconstructOwner|ReservesExitCapacity|RejectsUnboundRequests|UncertainAppendRemainsConsumed|RejectsMissingAndChangedState)|TestJournalEndpoint|TestJournalReadOnly.*|TestJournalWriteGrant.*|TestJournalServer(|LiveSupervisorRecoversAfterOverload|TimeoutAndJoin|ListenerFailure|Configuration|CancellationSurvivesUnresponsiveNode|StartsRemoteRuntimeBeforeActualWorkerExecution|WorkerBarrierRecoversAfterOverload)|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
   -test.count=1 -test.v -test.timeout=3m > "$owner_evidence/node-startup.log" 2>&1
 if rg -q -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
   echo 'Selected native checks unexpectedly skipped; inspect evidence' >&2

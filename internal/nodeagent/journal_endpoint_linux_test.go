@@ -329,6 +329,11 @@ func newJournalEndpointFixtureWithEpochOffset(t *testing.T, epochOffset int64) j
 
 func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string), readOnly ...bool) journalEndpointFixture {
 	t.Helper()
+	return newJournalEndpointOwnerFixture(t, epochOffset, configure, len(readOnly) == 1 && readOnly[0], false)
+}
+
+func newJournalEndpointOwnerFixture(t *testing.T, epochOffset int64, configure func(*modelruntime.LaunchManifest, string), readOnly, retainOwners bool) journalEndpointFixture {
+	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
 	}
@@ -394,7 +399,7 @@ func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, config
 	worker := journalEndpointStart(t, listener, state)
 	sibling := journalEndpointStart(t, listener, state)
 	construct := NewJournalEndpoint
-	if len(readOnly) == 1 && readOnly[0] {
+	if readOnly {
 		construct = NewReadOnlyJournalEndpoint
 	}
 	if endpoint, err := construct(t.Context(), owner, runtime.owner, runtime.owner); err == nil || endpoint != nil {
@@ -406,8 +411,10 @@ func newJournalEndpointConfiguredFixture(t *testing.T, epochOffset int64, config
 	}
 	t.Cleanup(func() { _ = endpoint.Close() })
 	// Endpoint keeps independent original pidfds after enrollment is discarded.
-	if err := errors.Join(runtime.owner.Close(), worker.owner.Close(), sibling.owner.Close()); err != nil {
-		t.Fatal(err)
+	if !retainOwners {
+		if err := errors.Join(runtime.owner.Close(), worker.owner.Close(), sibling.owner.Close()); err != nil {
+			t.Fatal(err)
+		}
 	}
 	authority, floor := journalEndpointCommands(t, fixture.launch, routes[0], signer, now)
 	return journalEndpointFixture{owner: owner, endpoint: endpoint, listener: listener, runtime: runtime, worker: worker, sibling: sibling, identity: identity, manifest: fixture.launch, startup: startup, authority: authority, floor: floor}
