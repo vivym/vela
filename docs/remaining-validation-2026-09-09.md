@@ -331,3 +331,11 @@ VELA_CPU_MOCK_WIDTH=8` 运行 `TestCPUMockConcurrentAdmissionRuntimeCampaign` �
 `-race` 版本并通过：`16` 个 Job、`16` 次 Charge、两波并发 arrival，队列/运行中
 分配/lease/credit/scratch 清零，acquire deadlock/serialization retry 均为 `0`。
 该证据仍是 bounded CPU/mock campaign，不是长期 open-loop 资源上界。
+
+另外对 Worker bootstrap、Worker Registry、runtime startup、Node Agent reporter 和
+Postgres reattachment 相关 fixture integration 做了组合 `-race` 重跑：
+`go test -race -tags=integration ./internal/integration -run
+'^(TestWorkerBootstrap|TestWorkerRegistry|TestRuntimeStartup|TestPostgresReattachmentBackend|TestNodeAgentWorkerInstanceReporter)'`
+通过（约 `216s`）。这加强了 Node/Fleet authority、epoch、bootstrap、reservation
+和 reattachment 状态机的并发证据；Linux native provisioning、真实 CRI/containerd
+和 source-matched runtime image 仍由显式跳过项保持未验证。
