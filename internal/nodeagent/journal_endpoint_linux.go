@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ type JournalEndpoint struct {
 	readOnly     bool
 	grantUsed    bool
 	grantPending bool
+	observation  atomic.Pointer[RuntimeJournalObservation]
 }
 
 // JournalWriteGrant is an in-memory, single-use capability issued only by
@@ -108,7 +110,7 @@ func (endpoint *JournalEndpoint) ActivateJournalWriteGrant(ctx context.Context, 
 }
 
 func (endpoint *JournalEndpoint) activateJournalWriteGrantLocked(ctx context.Context, grant *JournalWriteGrant, reserved bool) error {
-	if endpoint.runtime == nil || endpoint.worker == nil || grant.endpoint != endpoint || endpoint.grantUsed || !endpoint.readOnly || endpoint.grantPending != reserved || (grant.operationID != uuid.Nil) != reserved || !time.Now().Before(grant.expires) || grant.nonce == ([32]byte{}) {
+	if !endpoint.observation.Load().valid() || endpoint.runtime == nil || endpoint.worker == nil || grant.endpoint != endpoint || endpoint.grantUsed || !endpoint.readOnly || endpoint.grantPending != reserved || (grant.operationID != uuid.Nil) != reserved || !time.Now().Before(grant.expires) || grant.nonce == ([32]byte{}) {
 		return ErrRuntimeObserverCustody
 	}
 	if err := errors.Join(contextError(ctx), runtimechannel.PollLivePIDFD(int(endpoint.runtime.Fd())), runtimechannel.PollLivePIDFD(int(endpoint.worker.Fd()))); err != nil {
@@ -189,7 +191,7 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
 	}
 	endpoint.mu.Lock()
 	defer endpoint.mu.Unlock()
-	if endpoint.runtime == nil || endpoint.worker == nil {
+	if !endpoint.observation.Load().valid() || endpoint.runtime == nil || endpoint.worker == nil {
 		return nil, ErrRuntimeNamespaceOwnerLost
 	}
 	caller.mu.Lock()
@@ -242,6 +244,11 @@ func (endpoint *JournalEndpoint) Handle(ctx context.Context, caller *RuntimeCall
 			return nil, ErrRuntimeNamespaceOwnerLost
 		}
 	}
+	// Identity/journal inspection can take time. Recheck the observation at
+	// write dispatch as well as entry; an already dispatched Apply is not undone.
+	if !endpoint.observation.Load().valid() {
+		return nil, ErrRuntimeObserverCustody
+	}
 	receipt, err := endpoint.owner.Apply(ctx, role, payload)
 	response := modelruntime.JournalEndpointResponse{SchemaVersion: 1, RequestDigest: sha256.Sum256(payload)}
 	if err == nil {
@@ -258,16 +265,26 @@ func (endpoint *JournalEndpoint) Close() error {
 	if endpoint == nil {
 		return nil
 	}
-	endpoint.mu.Lock()
-	defer endpoint.mu.Unlock()
 	var err error
+	initial := endpoint.observation.Load()
+	if initial != nil {
+		err = initial.revoke(ErrRuntimeObserverCustody)
+	}
+	endpoint.mu.Lock()
+	// Re-read under the attachment lock: Close may have initially observed nil
+	// immediately before an observation was attached. Never revoke under this lock.
+	current := endpoint.observation.Load()
 	if endpoint.runtime != nil {
-		err = endpoint.runtime.Close()
+		err = errors.Join(err, endpoint.runtime.Close())
 		endpoint.runtime = nil
 	}
 	if endpoint.worker != nil {
 		err = errors.Join(err, endpoint.worker.Close())
 		endpoint.worker = nil
+	}
+	endpoint.mu.Unlock()
+	if current != nil && current != initial {
+		err = errors.Join(err, current.revoke(ErrRuntimeObserverCustody))
 	}
 	return err
 }

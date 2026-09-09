@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,7 +214,7 @@ func (registry *startupReservationRegistryFixture) ReserveRuntimeStartup(ctx con
 	return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC()}, nil
 }
 
-func newRemoteReservationFixture(t *testing.T, oldRoutes bool) (runtimeStartupFixture, RuntimeStartupReservationConfig) {
+func newRemoteReservationFixture(t *testing.T, oldRoutes bool, custody ...**RuntimeObserverCustody) (runtimeStartupFixture, RuntimeStartupReservationConfig) {
 	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and non-root PID-1 Runtime")
@@ -275,7 +276,13 @@ func newRemoteReservationFixture(t *testing.T, oldRoutes bool) (runtimeStartupFi
 		t.Fatal(err)
 	}
 	credentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
-	connection, process, _ := runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", wire, credentials, true)
+	var connection *net.UnixConn
+	var process *os.Process
+	if len(custody) == 1 {
+		connection, process, *custody[0] = observedRuntimeCallerConnection(t, wire, credentials)
+	} else {
+		connection, process, _ = runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", wire, credentials, true)
+	}
 	caller, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
 	if err != nil {
 		t.Fatal(err)

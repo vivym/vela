@@ -183,6 +183,13 @@ RPC 的 `Floor=1` 写入及关闭后拒绝；丢回包分支拒绝消费并实�
 这补齐了上述消费边界的正向转换；独立 issuer 仍为 fixture，生产批准、observer
 连续监控、Permit 回包与真实 CLI/CRI 的统一装配仍未完成。
 
+新增 [observer 连续检查与路由撤销](runtime-journal-observation-evidence-2026-09-09.md)
+已将原始 target pidfd 匹配、消费前后 Check、运行期有界监控及不可逆过期封禁
+接入 `ActivateObservedJournalWriteGrant`。实际 observer 挂起/退出/通道丢失和
+服务取消会撤销路由并请求终止原始进程，ledger 持久化阻塞不阻止撤销；Close
+并发附加和撤销失败也有回归。新增场景的 Fleet/CRI/issuer 仍为 fixture，实际
+CLI、生产 observer 创建交付、批准策略及 Permit 尚未合并为统一入口。
+
 当前代码的 [CPU exact-cache campaign](cpu-exact-cache-evidence-2026-09-09.md)
 已重新执行：source miss/admit 后 target 两轮 hit/reuse，5 次 Transfer consume，
 两 Job 各一次 Charge，总计 2500 minor units，终态 queue/allocation/lease/

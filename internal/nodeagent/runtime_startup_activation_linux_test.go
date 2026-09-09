@@ -32,6 +32,11 @@ type startupActivationFixture struct {
 func newStartupActivationFixture(t *testing.T, existing ...*RuntimeStartupLedger) startupActivationFixture {
 	t.Helper()
 	_, config := newRemoteReservationFixture(t, false)
+	return startupActivationFromReservation(t, config, existing...)
+}
+
+func startupActivationFromReservation(t *testing.T, config RuntimeStartupReservationConfig, existing ...*RuntimeStartupLedger) startupActivationFixture {
+	t.Helper()
 	var ledger *RuntimeStartupLedger
 	var directory string
 	if len(existing) == 1 {

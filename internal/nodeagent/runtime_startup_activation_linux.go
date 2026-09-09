@@ -90,6 +90,11 @@ func (ledger *RuntimeStartupLedger) ActivateReservedJournalWriteGrant(ctx contex
 		endpoint.mu.Unlock()
 	}()
 	checkJournal := func() error {
+		if observation := endpoint.observation.Load(); observation != nil {
+			if err := observation.check(ctx); err != nil {
+				return err
+			}
+		}
 		// Loss of the ledger's custody during persistence cannot be masked by
 		// the temporary duplicate retained earlier in this call.
 		retained, err := retainJournalProcess(ctx, ledger.owners[startup.Request.JournalID])

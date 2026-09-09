@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "275be0a3c3efe39d32d790c0495ccd9de7c11594",
+  "source_sha256": "9afdcd24501b2b3b3687061321eff8ff00c9ceff83ff5ac3f2f841a09774aaf2",
+  "source_file_count": 1060,
+  "source_digest_method": "SHA256(sorted tracked/untracked Go SQL proto C shell + go.mod go.sum: path NUL file SHA256 newline)",
+  "native_source_patch_sha256": "22debaf25449071b35bd8dcba7abfe67adce68be752846e18f6ae3a9e4077d04",
+  "image_id": "sha256:254bfcc845fb861690b8d3bba5a484de6f0a7ba53692c08248e4193ba0561c6e",
+  "binary_sha256": {
+    "exec-observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
+    "exec-probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2",
+    "nodeagent.test": "920e67241ce1c8016f8f05b601a357efa819ae017fa8cd3f0ab97790cdeff04e",
+    "runtime-command.test": "aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854",
+    "vela-model-runtime": "0c0ecb7a913711d263506c02cab4dad9c651d34bd5746c03d8ee778a674921e8"
+  },
+  "platform": "linux/arm64",
+  "native_race": true,
+  "suites": {
+    "native": {
+      "exit_code": 0,
+      "top_level_pass_count": 26,
+      "passes": [
+        {
+          "name": "TestJournalServerExecObservedRemoteCLI",
+          "elapsed_seconds": 3.24
+        },
+        {
+          "name": "TestJournalReadOnlyEndpoint",
+          "elapsed_seconds": 0.22
+        },
+        {
+          "name": "TestJournalServerActualRemoteCLI",
+          "elapsed_seconds": 3.64
+        },
+        {
+          "name": "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
+          "elapsed_seconds": 0.45
+        },
+        {
+          "name": "TestRuntimeBootstrapPublication",
+          "elapsed_seconds": 1.06
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationPreflight",
+          "elapsed_seconds": 0.12
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationBoundaries",
+          "elapsed_seconds": 0.1
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationConcurrent",
+          "elapsed_seconds": 0.03
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationProcessCrash",
+          "elapsed_seconds": 0.28
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationChanged",
+          "elapsed_seconds": 0.31
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationCustodyLoss",
+          "elapsed_seconds": 0.1
+        },
+        {
+          "name": "TestRuntimeBootstrapPublicationActualCLI",
+          "elapsed_seconds": 2.33
+        },
+        {
+          "name": "TestRuntimeJournalObservation",
+          "elapsed_seconds": 2.4
+        },
+        {
+          "name": "TestRuntimeJournalObservationRejectsWrongTarget",
+          "elapsed_seconds": 0.51
+        },
+        {
+          "name": "TestRuntimeJournalObservationPersistenceOutage",
+          "elapsed_seconds": 1.85
+        },
+        {
+          "name": "TestRuntimeJournalObservationRejectsExpiredCheck",
+          "elapsed_seconds": 0.25
+        },
+        {
+          "name": "TestRuntimeJournalObservationConcurrentClose",
+          "elapsed_seconds": 2.04
+        },
+        {
+          "name": "TestRuntimeJournalObservationPreservesRevocationError",
+          "elapsed_seconds": 0.24
+        },
+        {
+          "name": "TestRuntimeJournalObservationCancellationWithBusyEndpoint",
+          "elapsed_seconds": 0.25
+        },
+        {
+          "name": "TestRuntimeObserverCustody",
+          "elapsed_seconds": 0.47
+        },
+        {
+          "name": "TestRuntimeObserverProcessOfferDescriptors",
+          "elapsed_seconds": 0.0
+        },
+        {
+          "name": "TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites",
+          "elapsed_seconds": 0.25
+        },
+        {
+          "name": "TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches",
+          "elapsed_seconds": 2.11
+        },
+        {
+          "name": "TestRuntimeStartupGrantActivationFailsClosedDuringPersistence",
+          "elapsed_seconds": 2.1
+        },
+        {
+          "name": "TestRuntimeStartupGrantActivationConcurrent",
+          "elapsed_seconds": 0.24
+        },
+        {
+          "name": "TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend",
+          "elapsed_seconds": 0.48
+        }
+      ],
+      "skip_count": 0,
+      "log_path": "/tmp/vela-observed-grant-closure-20260909/native.log",
+      "log_sha256": "90ae85c68d6ba87c95521fdd87d392da419442988bbc61f789a7f7804dcacd69"
+    },
+    "postgres_tls": {
+      "exit_code": 0,
+      "top_level_pass_count": 1,
+      "passes": [
+        {
+          "name": "TestRuntimeStartupNodeProcessPostgresTLS",
+          "elapsed_seconds": 16.52
+        }
+      ],
+      "skip_count": 0,
+      "log_path": "/tmp/vela-observed-grant-closure-20260909/postgres-tls.log",
+      "log_sha256": "7c3265d452d8182d3b0e2212087bd8430968b1f4d4f1f94d093574efe993090b",
+      "scenarios": [
+        [
+          "normal",
+          "5.84"
+        ],
+        [
+          "committed-response-lost",
+          "5.31"
+        ],
+        [
+          "missing-ptrace",
+          "5.38"
+        ]
+      ],
+      "observed_outcomes": [
+        "consumption fence=true activated=true revoked=true floor=1; fixture issuer, no backend Permit",
+        "consumption fence=false activated=false revoked=false floor=0; fixture issuer, no backend Permit"
+      ],
+      "package_elapsed_seconds": 19.119
+    },
+    "default_all": {
+      "exit_code": 0,
+      "command": "go test ./...",
+      "passed_package_count": 88,
+      "cache_may_be_used": true,
+      "platform": "darwin/arm64",
+      "log_path": "/tmp/vela-observed-grant-default-final-20260909.log",
+      "log_sha256": "c8c6f30ace3740f347f19cf54c07d16f5ad4dccf3c6434a15ead08d79b90f4f8"
+    }
+  },
+  "additional_checks": {
+    "linux_arm64_vet": "passed",
+    "linux_arm64_lint": "golangci-lint v2.13.1; 0 issues",
+    "shell_syntax": "passed",
+    "diff_check": "passed"
+  },
+  "review": {
+    "standards": "three concurrency/error findings fixed; follow-up review clear",
+    "spec": "expiry revival and concurrent close findings fixed; follow-up review clear",
+    "concurrent_close_test_limit": "Eight racing iterations do not guarantee the exact old interleaving; the lock-protected reload is also reviewed."
+  },
+  "scope": {
+    "observed_activation": "Actual trusted fixture C observer, nonroot PID-1 caller, root Node journals, durable consumption, Worker RPC and original-target exit. Registry/Pod/CRI/Fleet/issuer fixtures; no backend Permit.",
+    "postgres_tls": "Same image regression of ordinary reserved-grant activation; real PostgreSQL/TLS, NOT observed CLI/CRI/Fleet unification.",
+    "process_stop": "Original target pidfd exit observed; no proof of every production descendant or hardware stop.",
+    "persistence": "Ledger append/fsync boundary blocking and endpoint mutex blocking tested; dispatched Apply may commit after fencing; no power-loss proof."
+  },
+  "production_gates": "0/9"
+}
