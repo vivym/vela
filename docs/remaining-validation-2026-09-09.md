@@ -67,6 +67,18 @@ go test -race ./... -count=1 -timeout=15m
 Go 标准显示 `[no test files]`。该结果提升了 CPU/mock 与控制面并发正确性的证据
 等级，但不包含 integration tag、真实多节点部署、GPU 或 Production Gate 放行。
 
+本轮又以 race detector 重跑两条端到端 CPU/mock campaign：
+
+```text
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 go test -race -tags=integration ./internal/integration -run '^TestCPUMockExactCacheProductionLoopCampaign$' -count=1 -timeout=10m
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=2 VELA_CPU_MOCK_WIDTH=8 go test -race -tags=integration ./internal/integration -run '^TestCPUMockConcurrentAdmissionRuntimeCampaign$' -count=1 -timeout=10m
+```
+
+两条均通过，分别耗时约 14.673s 与 15.339s，未报告 `DATA RACE`。这再次验证
+exact-cache miss/admit/hit/reuse、ProductionAgent reattach、并发 admission、
+allocation/lease/charge 与 scratch 收敛；仍属于受界定的 CPU/mock campaign，
+不等于长期 open-loop 压力或真实多节点执行。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
