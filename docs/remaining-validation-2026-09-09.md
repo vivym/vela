@@ -512,3 +512,8 @@ deadline；Docker daemon 整体无响应时仍需要宿主恢复后重跑全量�
 
 因此 focused integration 证据不能升级为“全库 integration 通过”；完整套件仍是开放验证项，
 Production Gates 继续为 `0/9`。
+
+全量套件按领域分片后，`go test -tags=integration ./internal/integration -run '^TestRuntimeStartup'`
+已在约 35 秒内通过；该分片覆盖 10 个 runtime startup 顶层测试及其 PostgreSQL/TLS、并发、
+quorum、拒绝、journal receipt 和 recovery 子场景。分片结果可以作为 runtime startup 的
+有效证据，但不能替代剩余领域和全量套件的闭合运行。
