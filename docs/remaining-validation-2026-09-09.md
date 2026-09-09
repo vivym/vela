@@ -221,6 +221,9 @@ sustained arrivals 仍受该上限约束。
 状态，恢复审计可以直接确认已回收前缀，而不必读取私有 JSON 文件；该状态仍只报告
 经过校验的本地 journal，不代表生产启动授权或远程 owner 已成立。
 
+`499fd9d` 收紧了恢复不变量：`HistoryBase` 必须为零或落在已持久 cutoff 的边界
+上，且不能超过 cutoff 链的末端；新增的磁盘 base 篡改测试确认 recovery fail closed。
+
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
 Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器中编译，但当前
 Docker 沙箱禁止测试 helper 的 fork/exec，故 pidfd/ptrace/namespace/Node startup
