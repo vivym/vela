@@ -149,6 +149,18 @@ Testcontainer 时超时。超时栈停在 Docker API `ContainerStart` 的 HTTP r
 粒度的并行运行在当前 Docker 环境下也稳定，可作为本地/CI 的加速验证路径；它
 仍不改变单进程全量运行因 Docker API I/O 超时而未闭合的事实。
 
+为降低 Docker Desktop 本地同时启动过多 PostgreSQL 容器造成的宿主压力，
+`hack/run-integration-shards.sh` 新增 `VELA_INTEGRATION_CONCURRENCY`。默认值仍
+等于分片数，不改变 CI 行为；本轮用并发上限 4 重跑：
+
+```text
+VELA_INTEGRATION_CONCURRENCY=4 ./hack/run-integration-shards.sh 20
+```
+
+20 个分片全部通过。脚本同时增加了正整数配置校验，并在分批窗口内等待分片，
+失败分片仍会保留日志并返回非零状态。这是对本地验证基础设施的实际架构改进，
+不改变测试隔离和完整覆盖范围。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
