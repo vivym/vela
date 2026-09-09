@@ -224,6 +224,11 @@ sustained arrivals 仍受该上限约束。
 `499fd9d` 收紧了恢复不变量：`HistoryBase` 必须为零或落在已持久 cutoff 的边界
 上，且不能超过 cutoff 链的末端；新增的磁盘 base 篡改测试确认 recovery fail closed。
 
+`9045e8e` 的 16-job、两波并发 arrival campaign，以及 `13d7bbe` 的同装配 `-race`
+重跑均通过：16 个 completion、16 次 Charge、无 acquire deadlock/serialization
+retry，终态队列/运行/分配/租约清零。它们仍是 bounded CPU/mock PostgreSQL campaign，
+不是 production soak 或开放环长期资源上界。
+
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
 Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器中编译，但当前
 Docker 沙箱禁止测试 helper 的 fork/exec，故 pidfd/ptrace/namespace/Node startup
