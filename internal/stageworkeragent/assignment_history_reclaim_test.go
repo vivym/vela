@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/google/uuid"
@@ -161,6 +162,10 @@ func persistedScope(scope []byte) [sha256.Size]byte {
 func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	f := newAdmissionFixture(t)
 	gate := f.open(t)
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	goroutinesBefore := runtime.NumGoroutine()
 	statePath := filepath.Join(f.config.Directory, admissionTestState)
 	document, err := os.ReadFile(statePath)
 	if err != nil {
@@ -211,5 +216,17 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		if snapshot.Watermark != sequence || len(snapshot.Pending) != 0 || snapshot.Latest != nil {
 			t.Fatalf("sequence %d retained unexpected history: %+v", sequence, snapshot)
 		}
+	}
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	goroutinesAfter := runtime.NumGoroutine()
+	heapDelta := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	t.Logf("bounded arrival resources: goroutines %d -> %d, heap_alloc %d -> %d (delta=%d)", goroutinesBefore, goroutinesAfter, before.HeapAlloc, after.HeapAlloc, heapDelta)
+	if goroutinesAfter > goroutinesBefore+8 {
+		t.Fatalf("goroutine count grew across bounded arrival campaign: %d -> %d", goroutinesBefore, goroutinesAfter)
+	}
+	if heapDelta > 8<<20 {
+		t.Fatalf("heap allocation grew across bounded arrival campaign: %d bytes", heapDelta)
 	}
 }
