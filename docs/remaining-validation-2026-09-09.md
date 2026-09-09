@@ -47,6 +47,16 @@ observer custody、grant activation、read-only journal、publication 与 proces
 场景；无 `SKIP`、无 `DATA RACE`。它证明 native 测试装配稳定，但仍不证明
 `cmd/vela-node-agent` 已完成生产 startup listener 接线。
 
+另外重跑 Node Agent 入口与底层 Node Agent 包的竞态回归：
+
+```text
+go test -race ./cmd/vela-node-agent ./internal/nodeagent -count=1 -timeout=5m
+```
+
+结果：两个包均通过，未报告 `DATA RACE`。这确认现有 gRPC、bootstrap、reporter
+和 startup library 的并发测试稳定；它不改变真实 startup authority 尚未从生产
+配置/Fleet/CRI 来源接入的结论。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
