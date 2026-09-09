@@ -218,6 +218,12 @@ sustained arrivals 仍受该上限约束。
 这些结果证明当前
 实现没有观测到 Go 数据竞争或源码回归，但仍不替代真实多进程/远程故障验证。
 
+新增 [assignment history race validation evidence](assignment-history-race-validation-evidence-2026-09-09.md)：
+`go test -race ./internal/stageworkeragent -run 'AssignmentHistory|History' -count=1 -v`
+通过，覆盖 cutoff 链、持久恢复、40 条 bounded arrival、完整 history preflight、
+terminal drain/recovery 与未知输入保留。该轮仍未关闭多 cutoff 连续中断、删除后独立
+digest 对账、长期 history 压力、掉电 durability 或真实 Node/Fleet/CRI 装配。
+
 `0973e59` 将 `HistoryBase` 和 cutoff 数量加入 `PrepareAssignmentJournal` 的只读
 状态，恢复审计可以直接确认已回收前缀，而不必读取私有 JSON 文件；该状态仍只报告
 经过校验的本地 journal，不代表生产启动授权或远程 owner 已成立。
