@@ -242,6 +242,8 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 `cumulative_digest`，重开按预期拒绝，随后恢复原始文件。
 同一 campaign 还覆盖了 state 截断、空文件和 trailing bytes，均按预期拒绝；这些
 是本地损坏恢复证据，不等同于真实 power-loss durability。
+此外，错误 `CompactedCutoffCount` 的 checkpoint 在提交前被拒绝，且 state 文件大小
+保持不变，随后合法 compaction 才继续执行。
 
 checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test ./...`、
 `go vet ./...`；其中 `internal/stageworkeragent` 包含完整 compaction/race campaign。

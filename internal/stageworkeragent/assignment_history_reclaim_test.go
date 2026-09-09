@@ -359,6 +359,18 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		MaterializationProofDigest: prefixCutoff.MaterializationProofDigest, LastCutoffDigest: lastCutoffDigest,
 		CompactedCutoffCount: 32, Revision: 1,
 	}
+	invalidCheckpoint := checkpoint
+	invalidCheckpoint.CompactedCutoffCount = 31
+	if err := gate.CompactAssignmentHistory(t.Context(), invalidCheckpoint); err == nil {
+		t.Fatal("accepted a checkpoint with an incomplete cutoff prefix")
+	}
+	unchangedState, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchangedState.Size() != finalState.Size() {
+		t.Fatalf("rejected checkpoint changed journal size: before=%d after=%d", finalState.Size(), unchangedState.Size())
+	}
 	failed := true
 	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
 		if failed {
