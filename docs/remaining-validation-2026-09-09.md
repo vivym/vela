@@ -166,6 +166,15 @@ PostgreSQL 来源和 production route assembly 仍需接入。
 scratch 清零。该证据仍是 local CPU/mock，不替代真实 Fleet/Node/Pod→CRI 或
 持续运行验证。
 
+新增 [CPU mock ProductionAgent loop campaign](cpu-production-loop-evidence-2026-09-09.md)
+已在 schema 95 上用 4 个 persistent CPU mock workers 完成 2 波、8 个 Job 的真实
+ProductionAgent loop：readiness、capacity、heartbeat、mTLS、durable stream、
+materialization replay 和每 Job 一次 Charge 均通过，终态 queue/running/allocation/
+lease/credit/scratch 清零。日志中 4 次 `AlreadyExists` 是回包丢失后的重复提交被
+authority 拒绝并由 durable replay 收敛；这验证了幂等拒绝/收敛，不等于远端执行
+绝不会发出重复请求。该 campaign 仍将 Node custody、protected mount、真实
+ProductionAgent 进程隔离、remote storage 和 sustained arrivals 留作未完成项。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
