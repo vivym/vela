@@ -15,6 +15,21 @@ fixture database seed 写入，同时已有多个 PostgreSQL testcontainers 被�
 因此不能把这次运行记为 full integration pass，也不能直接把 timeout 归因于
 checkpoint 代码。
 
+## Two-shard acceleration experiment
+
+为验证执行层面的加速，而不改变测试的数据库隔离边界，使用
+`hack/run-integration-shards.sh 2` 将 `go test -list '^Test'` 发现的 505 个测试
+按 round-robin 分到两个独立进程；每个进程自行创建 PostgreSQL testcontainers。
+实跑约 `942.876s`（约 15.7 分钟）后，shard 1 通过，shard 2 失败，故这次实验
+不能算完整 integration pass，也不能只凭失败结果断言业务代码错误。它证明了
+分片可以在相同隔离模型下并发推进，但当前 Docker/fixture 成本仍然很高，且至少
+有一组分片需要单独收敛失败原因。
+
+脚本随后补充了两个执行保护：请求的 shard 数超过发现的测试数时自动收敛，避免
+空 shard 的正则意外匹配全部测试；失败时保留 shard 日志目录，便于定位具体测试
+和资源问题。推荐先用 `VELA_INTEGRATION_SHARDS_DRY_RUN=1` 检查分配，再运行 2
+shards；4 shards 需要重新观察 Docker 资源压力。
+
 ## Isolated reproduction
 
 ```bash
