@@ -59,8 +59,10 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.ReclaimAssignmentHistory(t.Context(), tamperedIdentity); err == nil {
 		t.Fatal("reclamation accepted a cutoff from another journal identity")
 	}
-	failed := true
-	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
+	failed := false
+	var restore func()
+	failed = true
+	restore = stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
 		if failed {
 			failed = false
 			return os.ErrInvalid
@@ -351,8 +353,42 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		MaterializationProofDigest: lastCutoff.MaterializationProofDigest, LastCutoffDigest: lastCutoffDigest,
 		CompactedCutoffCount: 40, Revision: 1,
 	}
-	if err := gate.CompactAssignmentHistory(t.Context(), checkpoint); err != nil {
+	failed := true
+	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
+		if failed {
+			failed = false
+			return os.ErrInvalid
+		}
+		return sync()
+	})
+	if err := gate.CompactAssignmentHistory(t.Context(), checkpoint); err == nil {
+		t.Fatal("checkpoint compaction unexpectedly succeeded across directory sync failure")
+	}
+	restore()
+	if err := gate.Close(); err != nil {
 		t.Fatal(err)
+	}
+	gate = f.open(t)
+	compactionState, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recovered struct {
+		HistoryCheckpoint *stageworkeragent.AssignmentHistoryCheckpoint `json:"history_checkpoint"`
+		HistoryCutoffs    []stageworkeragent.AssignmentHistoryCutoff    `json:"history_cutoffs"`
+	}
+	if err := json.Unmarshal(compactionState, &recovered); err != nil {
+		t.Fatal(err)
+	}
+	if recovered.HistoryCheckpoint == nil {
+		if len(recovered.HistoryCutoffs) != 40 {
+			t.Fatalf("failed compaction lost cutoff proofs: %d", len(recovered.HistoryCutoffs))
+		}
+		if err := gate.CompactAssignmentHistory(t.Context(), checkpoint); err != nil {
+			t.Fatal(err)
+		}
+	} else if len(recovered.HistoryCutoffs) != 0 {
+		t.Fatalf("checkpoint committed with an untrimmed prefix: %d", len(recovered.HistoryCutoffs))
 	}
 	compactedState, err := os.Stat(statePath)
 	if err != nil {
