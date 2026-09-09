@@ -517,3 +517,9 @@ Production Gates 继续为 `0/9`。
 已在约 35 秒内通过；该分片覆盖 10 个 runtime startup 顶层测试及其 PostgreSQL/TLS、并发、
 quorum、拒绝、journal receipt 和 recovery 子场景。分片结果可以作为 runtime startup 的
 有效证据，但不能替代剩余领域和全量套件的闭合运行。
+
+CPU/mock 相关分片
+`go test -tags=integration ./internal/integration -run '^TestCPUMock|^TestRuntimeUsageRecordsAllocationAndCacheWithoutInventingGPUTime$|^TestWorkerBootstrap'`
+也已通过，耗时约 104 秒；覆盖 durable stream campaign、exact-cache campaign、runtime
+usage 的无 GPU 时间声明，以及 Worker bootstrap mTLS/lost-response 三个场景。该结果仍是
+领域分片证据，不改变全量 integration 尚未闭合的结论。
