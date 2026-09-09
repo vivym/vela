@@ -213,7 +213,8 @@ arrival，逐条完成 input drain、关闭、记录 cutoff、回收并检查 jo
 sustained arrivals 仍受该上限约束。
 
 本轮还通过了回收相关测试的 `go test -race`、integration build-tag 编译检查、
-全库 `go test ./...`、`go vet ./...` 和 `git diff --check`。这些结果证明当前
+全库 `go test -race ./...`、`go test ./...`、`go vet ./...` 和 `git diff --check`。
+这些结果证明当前
 实现没有观测到 Go 数据竞争或源码回归，但仍不替代真实多进程/远程故障验证。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
