@@ -1,6 +1,7 @@
 package stageworkeragent_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"os"
@@ -75,6 +76,46 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 		t.Fatalf("unexpected post-reclaim snapshot: %+v", snapshot)
 	}
 	if err := gate.Close(); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(f.config.Directory, admissionTestState)
+	original, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(original, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	cutoffs, ok := decoded["history_cutoffs"].([]any)
+	if !ok || len(cutoffs) != 1 {
+		t.Fatalf("decode persisted cutoff: %#v", decoded["history_cutoffs"])
+	}
+	cutoffDocument, ok := cutoffs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("decode persisted cutoff entry: %#v", cutoffs[0])
+	}
+	tamperedDigest := sha256.Sum256([]byte("disk-tampered"))
+	digestValues := make([]any, len(tamperedDigest))
+	for index, value := range tamperedDigest {
+		digestValues[index] = float64(value)
+	}
+	cutoffDocument["cumulative_digest"] = digestValues
+	tamperedDocument, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(original, tamperedDocument) {
+		t.Fatal("tamper did not change journal")
+	}
+	if err := os.WriteFile(statePath, tamperedDocument, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := stageworkeragent.NewFileAssignmentAdmission(f.config); err == nil {
+		_ = reopened.Close()
+		t.Fatal("recovery accepted a tampered persisted cutoff")
+	}
+	if err := os.WriteFile(statePath, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	gate = f.open(t)
