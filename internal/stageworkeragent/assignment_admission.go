@@ -642,7 +642,10 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 	if previous != state.Watermark {
 		return ErrAdmissionClosed
 	}
-	return gate.validateRetirements(state)
+	if err := gate.validateRetirements(state); err != nil {
+		return err
+	}
+	return validateAssignmentHistoryCutoffs(state)
 }
 
 func admissionEntries(state assignmentAdmissionState) []assignmentAdmissionEntry {

@@ -57,6 +57,7 @@ type assignmentAdmissionState struct {
 	Latest              *assignmentAdmissionEntry     `json:"latest"`
 	Pending             []assignmentAdmissionEntry    `json:"pending"`
 	Retirements         []terminalRetirementEntry     `json:"retirements,omitempty"`
+	HistoryCutoffs      []AssignmentHistoryCutoff     `json:"history_cutoffs,omitempty"`
 }
 
 type assignmentAdmissionFiles struct {
@@ -370,6 +371,7 @@ func cloneAdmissionState(state assignmentAdmissionState) assignmentAdmissionStat
 	state.Scope = bytes.Clone(state.Scope)
 	state.Pending = slices.Clone(state.Pending)
 	state.Retirements = slices.Clone(state.Retirements)
+	state.HistoryCutoffs = slices.Clone(state.HistoryCutoffs)
 	if state.Latest != nil {
 		latest := *state.Latest
 		state.Latest = &latest
