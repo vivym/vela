@@ -199,7 +199,9 @@ scope/Worker identity/epoch、连续 sequence range、累计 digest、terminal/i
 materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝缺 proof、gap、
 身份漂移和错误链。追加 cutoff 时还要求范围内历史连续保留、execution 已关闭且
 具备 input-drain proof；恢复会重新验证整条链。当前仍未实现 cutoff 驱动的原子
-历史删除、删除后 digest 对账和完整 recovery，因此安全 reclamation 仍未完成，
+历史删除、删除后 digest 对账和完整 recovery 的故障注入验证；`8da611a` 已增加
+`HistoryBase` 及按已持久 cutoff 删除连续前缀的实现，删除后仍保留 proof 链并允许
+从新 base 继续校验。安全 reclamation 仍需补齐重启/中断边界和长期压力验证，
 sustained arrivals 仍受该上限约束。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
