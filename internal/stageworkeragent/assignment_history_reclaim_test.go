@@ -104,6 +104,10 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
+	prepared, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), f.config)
+	if err != nil || prepared.HistoryBase != 2 || prepared.Watermark != 2 || prepared.HistoryCutoffs != 2 || prepared.RetainedExecutions != 0 {
+		t.Fatalf("prepared status lost reclaimed prefix: %+v %v", prepared, err)
+	}
 	statePath := filepath.Join(f.config.Directory, admissionTestState)
 	original, err := os.ReadFile(statePath)
 	if err != nil {

@@ -17,7 +17,9 @@ type AssignmentJournalStatus struct {
 	SchemaVersion      int                            `json:"schema_version"`
 	Scope              [sha256.Size]byte              `json:"scope"`
 	Watermark          int64                          `json:"watermark"`
+	HistoryBase        int64                          `json:"history_base"`
 	Floor              int64                          `json:"floor"`
+	HistoryCutoffs     int                            `json:"history_cutoffs"`
 	RetainedExecutions int                            `json:"retained_executions"`
 	UnprovenInputs     int                            `json:"unproven_inputs"`
 	RetirementIntents  int                            `json:"retirement_intents"`
@@ -59,7 +61,8 @@ func WithPreparedAssignmentJournal(ctx context.Context, config AssignmentAdmissi
 		Storage: journalbinding.StorageIdentity{Root: journalbinding.FileIdentity(admissionFileIdentity(gate.files.infos[0])),
 			Lock: journalbinding.FileIdentity(admissionFileIdentity(gate.files.lockInfo))},
 		JournalID: gate.state.ID, SchemaVersion: gate.state.SchemaVersion, Scope: gate.scopeDigest,
-		Watermark: gate.state.Watermark, Floor: gate.state.Floor,
+		Watermark: gate.state.Watermark, HistoryBase: gate.state.HistoryBase, Floor: gate.state.Floor,
+		HistoryCutoffs: len(gate.state.HistoryCutoffs),
 	}
 	for _, entry := range admissionEntries(gate.state) {
 		result.RetainedExecutions++
