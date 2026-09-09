@@ -544,3 +544,6 @@ Finance/catalog/H3 分片
 
 身份与租户隔离分片
 `go test -tags=integration ./internal/integration -run '^TestHuman|^TestOrganization|^TestServicePrincipal|^TestCredential|^TestRequestContext|^TestScope|^TestOpenAPI|^TestDatabasePools'` 已通过，耗时约 136 秒；覆盖 human/OIDC/RLS、service principal/credential revocation、request context scope revalidation、organization isolation 和 OpenAPI error contract。
+
+恢复、保留与 remediation 分片
+`go test -tags=integration ./internal/integration -run '^TestRetention|^TestNonContent|^TestRecovery|^TestRemediation'` 已通过，耗时约 88 秒；覆盖 retention/content expiry、non-content hold/expiry、recovery gate/snapshot/role isolation，以及 remediation claim、quarantine、approval、replay 和 recovery。
