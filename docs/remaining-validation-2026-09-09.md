@@ -106,6 +106,16 @@ go test ./internal/stageworkeragent -run '^TestAssignmentHistoryReclaimPersistsB
 这是 lint 工具链版本不匹配，没有产生源码 lint 结果，不能记录为 lint PASS 或
 源码失败。此前在匹配工具链环境中已有 `golangci-lint v2.13.1: 0 issues` 的证据。
 
+本轮按 CI 固定版本重新安装并执行 lint：
+
+```text
+GOBIN=/tmp/vela-tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+/tmp/vela-tools/golangci-lint run ./...
+```
+
+工具由当前 Go 1.26.7 构建，结果为 `0 issues`。因此 lint 项现在有当前主机上
+与 CI 一致版本的直接通过证据。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
