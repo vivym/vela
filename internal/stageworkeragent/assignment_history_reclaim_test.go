@@ -148,6 +148,32 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if !ok {
 		t.Fatalf("decode persisted cutoff entry: %#v", cutoffs[0])
 	}
+	cutoffDocument["worker_member_id"] = uuid.NewString()
+	tamperedIdentityDocument, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, tamperedIdentityDocument, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := stageworkeragent.NewFileAssignmentAdmission(f.config); err == nil {
+		_ = reopened.Close()
+		t.Fatal("recovery accepted a persisted cutoff from another journal identity")
+	}
+	if err := os.WriteFile(statePath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(original, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	cutoffs, ok = decoded["history_cutoffs"].([]any)
+	if !ok || len(cutoffs) != 2 {
+		t.Fatalf("decode restored persisted cutoffs: %#v", decoded["history_cutoffs"])
+	}
+	cutoffDocument, ok = cutoffs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("decode restored cutoff entry: %#v", cutoffs[0])
+	}
 	tamperedDigest := sha256.Sum256([]byte("disk-tampered"))
 	digestValues := make([]any, len(tamperedDigest))
 	for index, value := range tamperedDigest {
