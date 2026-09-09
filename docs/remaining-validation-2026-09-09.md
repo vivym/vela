@@ -147,6 +147,13 @@ request size/deadline 和 bounded shutdown，再将 canonical request 交给
 作授权。原生 runner 已覆盖其无效配置拒绝与 coordinator/observer 组合；生产 Node
 入口还需将真实 listener 创建、权限发布和该 server 设为唯一装配。
 
+对 `cmd/vela-node-agent` 的当前入口做了架构核对：它只装配 WorkerInstance 证据、
+remediation 和 gRPC 服务，没有 Runtime startup ledger、launch plan/Fleet reservation、
+grant issuer 或 observer custody。因而不能直接把新 startup server 塞入该入口并
+生成默认 Permit；下一项必须先定义真实 Node startup orchestration 的配置、来源
+和 shutdown 所有权，再把 listener 设为唯一路径。当前 library/server 测试证据不提升
+生产装配等级。
+
 ## 依赖顺序与通过标准
 
 执行连续性的 [旧 mem 句柄候选实验](runtime-execution-continuity-evidence-2026-09-09.md)

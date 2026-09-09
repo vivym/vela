@@ -126,6 +126,9 @@ challenge，限制 request payload 大小和 exchange deadline，再把 canonica
 和 shutdown，`HandleConnection` 可被受保护的现有 listener 直接调用。
 
 Linux runner 已重新编译并通过 `TestRuntimeStartupServerRejectsInvalidConfiguration`
-以及协调器/observer/CLI 组合测试；固定 lint 为 `0 issues`。当前仍没有把所有生产
-Node 启动代码强制改为该 server，真实 socket 路径、权限发布和 listener 创建仍需
-由上层 Node 入口合并后再做 PostgreSQL/TLS 同次回归。
+以及协调器/observer/CLI 组合测试；固定 lint 为 `0 issues`。当前仍没有把所有生产 Node 启动代码强制改为该 server。审查 `cmd/vela-node-agent`
+后确认其现有入口只装配 WorkerInstance/Remediation；它没有 Runtime startup ledger、
+plan/Fleet reservation、grant issuer 或 observer custody 来源。直接在该入口构造
+默认授权会扩大权限并破坏证据边界，因此真实 socket 路径、权限发布和这些生命周期
+来源仍需先作为明确的 Node startup orchestration 配置接入，再做 PostgreSQL/TLS
+同次回归。

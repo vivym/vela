@@ -136,5 +136,11 @@ operation-bound grant 与 observer custody。它只在观察、持久消费和 j
 canonical request 交给上述 coordinator；它不拥有 socket 路径、权限发布或批准策略。
 生产 Node 入口仍需把该 listener 与真实 publication/CRI/Fleet 装配合并为唯一路径。
 
+对 `cmd/vela-node-agent` 的入口审查显示，它目前没有 startup ledger、plan/Fleet
+reservation、grant issuer 或 observer custody 生命周期，因此不能隐式接入该 server。
+下一阶段应先把这些对象的真实来源、配置校验和关闭所有权加入 Node orchestration，
+再把 `RuntimeStartupServer.Serve` 作为唯一 startup socket 路径；不能从现有 Worker
+Agent 配置推导启动许可。
+
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。
