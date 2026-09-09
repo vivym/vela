@@ -234,7 +234,7 @@ control session 上 replay request identity 后收敛，scratch、journal 和 al
 | 3 | 同一装配下完整 remote-owner CPU Job | 真实 PostgreSQL、Control、ProductionAgent、Node、Runtime 完成四 Stage Job；同一路径覆盖 cache miss/admission/hit/reuse、transfer、终态清理与每 Job 一次 Charge；故障恢复由实际执行循环驱动 |
 | 4 | Node/Runtime/Worker 故障与替换 | 对各持久写入、回包、读回边界注入退出/丢包；验证不确定写不能重执行，同 owner 的对账规则明确；替换进程不能借用旧 pidfd/epoch，旧进程及后代停止证据完整 |
 | 5 | 多成员部分失败与停止时限 | 当前 native Worker barrier 仅单成员；补部分成员已 Start、另一成员失败、取消失败、并发锁等待和不可配合后台；证明不虚报 all-stopped、不恢复共享容量，并测出可支持的停止时限 |
-| 6 | 历史记录安全回收 | 当前 `maxRetainedExecutions=32`，满后拒绝准入；设计并验证持久 cutoff、历史精确证明和重启语义，再测试超过上限后的长期合法执行；不能用简单删除历史消除安全边界 |
+| 6 | 历史记录安全回收 | 当前 `maxRetainedExecutions=32`，满后拒绝准入；按 [reclamation design](assignment-history-reclamation-design-2026-09-09.md) 实现并验证持久 cutoff、历史精确证明和重启语义，再测试超过上限后的长期合法执行；不能用简单删除历史消除安全边界 |
 | 7 | 持续到达与资源上界 | 在第 3、4、6 项成立后持续施加 offered arrivals；记录队列、处理/拒绝速率、journal 大小、scratch、RSS、FD、goroutine 的趋势及故障恢复；有限批次成功和波次末 scratch=0 不能代替持续运行证明 |
 | 8 | 整体验收矩阵和遗留失败 | 将每条架构断言对应到固定 source/config、明确输入和原始证据；单独定位 `11ce026` STALE 历史失败，并处理 integration-tag lint 遗留项；禁止把后续相似测试通过写成旧失败已解释 |
 
