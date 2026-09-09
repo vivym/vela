@@ -35,6 +35,18 @@ go test -tags=integration ./internal/integration -run '^TestRecoverySnapshotRest
 及旧 operation fencing，并验证 restore receipt 不可覆盖。它仍是本地
 Testcontainers recovery 证据，不是生产灾备或对象存储恢复证明。
 
+随后以修复 executable bit 后的 native runner 重跑 Linux/arm64 运行时边界：
+
+```text
+VELA_REMOTE_CLI_EVIDENCE=/tmp/vela-native-rerun-20260909 ./hack/run-remote-runtime-cli-native.sh
+```
+
+结果：通过。该 runner 在隔离 Docker 容器中编译并运行 Node Agent、Runtime CLI、
+observer 和实际 process backend，覆盖 startup orchestration、server/coordinator、
+observer custody、grant activation、read-only journal、publication 与 process-crash
+场景；无 `SKIP`、无 `DATA RACE`。它证明 native 测试装配稳定，但仍不证明
+`cmd/vela-node-agent` 已完成生产 startup listener 接线。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
