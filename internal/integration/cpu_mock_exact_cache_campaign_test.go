@@ -8,8 +8,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,6 +24,10 @@ import (
 
 func TestCPUMockExactCacheSourceTargetCampaign(t *testing.T) {
 	runCPUMockRuntimeCampaign(t, cpuCampaignMode{exactCache: true})
+}
+
+func TestCPUMockExactCacheProductionLoopCampaign(t *testing.T) {
+	runCPUMockRuntimeCampaign(t, cpuCampaignMode{exactCache: true, durableStream: true, productionLoop: true})
 }
 
 type cpuExactCacheBinding struct {
@@ -63,9 +69,39 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 	}); err != nil {
 		t.Fatal(err)
 	}
+	productionLoop := len(workers) > 0 && workers[0].durable != nil && workers[0].durable.production != nil
+	if productionLoop {
+		// Commit-response-loss replay is covered by the standalone production
+		// campaign. This composition isolates the exact-cache scheduling path
+		// until production session reattachment is implemented in the real entry.
+		for _, worker := range workers {
+			worker.durable.control.armed.Store(false)
+		}
+	}
+	loopCtx, cancelLoops := context.WithCancel(ctx)
+	defer cancelLoops()
+	var loops sync.WaitGroup
+	loopErrors := make(chan error, len(workers))
+	if productionLoop {
+		for _, worker := range workers {
+			worker := worker
+			loops.Add(1)
+			go func() {
+				defer loops.Done()
+				if err := worker.durable.production.Run(loopCtx); err != nil && loopCtx.Err() == nil {
+					loopErrors <- fmt.Errorf("%s ProductionAgent.Run: %w", worker.stage.key, err)
+				}
+			}()
+		}
+		waitCPUProductionReady(t, ctx, workers)
+	}
 	source, sourceAttempt := instantiateH3IntegrationGraph(t, database, serverURL, "cpu-exact-source")
-	for _, worker := range workers {
-		executeCPUExactCacheStage(t, ctx, worker, source.JobID)
+	if !productionLoop {
+		for _, worker := range workers {
+			executeCPUExactCacheStage(t, ctx, worker, source.JobID)
+		}
+	} else {
+		waitCPUExactCacheStages(t, ctx, database, sourceAttempt.String(), 4, loopErrors)
 	}
 	completeCPUExactCacheJob(t, ctx, finalizer, uuid.MustParse(source.JobID))
 	afterSource := observeCPULoad(t, database, root)
@@ -128,10 +164,23 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 	if len(bindings) != 2 || bindings[0].Stage != "dit" || bindings[1].Stage != "encoder" {
 		t.Fatalf("exact source bindings/pins: %+v", bindings)
 	}
-	for _, worker := range workers[2:] {
-		executeCPUExactCacheStage(t, ctx, worker, target.JobID)
+	if !productionLoop {
+		for _, worker := range workers[2:] {
+			executeCPUExactCacheStage(t, ctx, worker, target.JobID)
+		}
+	} else {
+		waitCPUExactCacheStages(t, ctx, database, targetAttempt.String(), 2, loopErrors)
 	}
 	completeCPUExactCacheJob(t, ctx, finalizer, uuid.MustParse(target.JobID))
+	if productionLoop {
+		cancelLoops()
+		loops.Wait()
+		select {
+		case err := <-loopErrors:
+			t.Fatal(err)
+		default:
+		}
+	}
 	var sourcePhysical, targetPhysical, transfers, usage, cacheProgress, jobFailures, creditMismatch int
 	if err := database.Admin.QueryRow(`SELECT
 		(SELECT count(*) FROM stage_attempts attempt JOIN stage_runs run ON run.id=attempt.stage_run_id WHERE run.attempt_id=$1),
@@ -186,7 +235,7 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 			"Reconciler drives real ADMIT/HIT before target physical Acquire; this does not benchmark a cache/scheduler race",
 			"real ffprobe verifies media; host execution does not prove Linux sandboxing; native subprocesses are not race-instrumented"}}
 	if workers[0].durable != nil {
-		receipt["durable_records_by_worker"] = assertCPUDurableJournals(t, workers)
+		receipt["durable_records_by_worker"] = assertCPUDurableJournals(t, workers, !productionLoop)
 		replayed := int64(0)
 		for _, worker := range workers {
 			replayed += worker.replayedCommits.Load()
@@ -196,12 +245,58 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 		receipt["limitations"] = append(cpuDurableStreamLimitations(),
 			"BITWISE policy is a fixture declaration; native payloads, exact versions, ADMIT/HIT and billing are measured",
 			"Reconciler drives ADMIT/HIT before target Acquire; cache/scheduler races and organization isolation are separate tests")
+		if productionLoop {
+			receipt["limitations"] = append(receipt["limitations"].([]string),
+				"combined ProductionAgent exact-cache composition disables the injected lost-commit response; standalone production campaign covers replay, while production session reattachment remains open")
+		}
 	}
 	encoded, err := json.Marshal(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("CPU_MOCK_EXACT_CACHE_RECEIPT %s", encoded)
+}
+
+func waitCPUProductionReady(t *testing.T, ctx context.Context, workers []*cpuLoadWorker) {
+	t.Helper()
+	for {
+		ready := true
+		for _, worker := range workers {
+			if worker.durable == nil || worker.durable.control.registrations.Load() == 0 || worker.capacityReports.Load() == 0 {
+				ready = false
+				break
+			}
+		}
+		if ready {
+			return
+		}
+		if err := waitCPULoad(ctx, 25*time.Millisecond); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func waitCPUExactCacheStages(t *testing.T, ctx context.Context, database testDatabase, jobID string, want int, loopErrors <-chan error) {
+	t.Helper()
+	for {
+		select {
+		case err := <-loopErrors:
+			t.Fatal(err)
+		default:
+		}
+		var succeeded int
+		if err := database.Admin.QueryRowContext(ctx, `SELECT count(*) FROM stage_attempts attempt
+			JOIN stage_runs run ON run.id=attempt.stage_run_id
+			WHERE run.attempt_id=$1 AND attempt.state='SUCCEEDED'`, jobID).Scan(&succeeded); err != nil {
+			t.Fatal(err)
+		}
+		if succeeded >= want {
+			return
+		}
+		if err := waitCPULoad(ctx, 25*time.Millisecond); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func executeCPUExactCacheStage(t *testing.T, ctx context.Context, worker *cpuLoadWorker, jobID string) {

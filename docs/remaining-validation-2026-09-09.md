@@ -216,7 +216,13 @@ non-admission。外部 Fast H3 driver 与 non-root permission 单项仍显式跳
 是底层包证据，不代表 containerd/observer 创建关系已经完成。
 
 为避免科学性误报，CPU campaign 入口现在对 `exactCache && productionLoop` 明确
-fail closed：该组合尚未由同一执行循环实现，测试不会生成看似完整的组合 receipt。
+由同一 `ProductionAgent.Run` 执行循环驱动。新增组合 campaign 在真实
+PostgreSQL 17、四个常驻 CPU mock Runtime、source miss/admit、target hit/reuse、
+TransferTicket、materialization 和终态清理上通过；source/target 阶段成功数按
+真实 `attempt_id` 等待，避免把 `job_id` 误当成 attempt。该组合为隔离调度路径而
+关闭注入的 committed-response loss；独立 ProductionAgent campaign 仍验证 replay。
+因此组合证据已成立，但 ProductionAgent 的真实 control-session reattach 仍未闭合，
+不能把两种故障证据合并成生产恢复证明。
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |

@@ -312,12 +312,12 @@ func (worker *cpuLoadWorker) executeDurable(ctx context.Context, assignment *vel
 	return nil
 }
 
-func assertCPUDurableJournals(t *testing.T, workers []*cpuLoadWorker) map[string]int {
+func assertCPUDurableJournals(t *testing.T, workers []*cpuLoadWorker, requireReplay bool) map[string]int {
 	t.Helper()
 	counts := make(map[string]int, len(workers))
 	for _, worker := range workers {
 		durable := worker.durable
-		if durable == nil || durable.control.dropped.Load() != 1 || worker.replayedCommits.Load() != 1 {
+		if durable == nil || requireReplay && (durable.control.dropped.Load() != 1 || worker.replayedCommits.Load() != 1) {
 			t.Fatalf("%s did not recover its actual lost commit", worker.stage.key)
 		}
 		state, err := durable.admission.Snapshot(t.Context())
