@@ -116,6 +116,17 @@ GOBIN=/tmp/vela-tools go install github.com/golangci/golangci-lint/v2/cmd/golang
 工具由当前 Go 1.26.7 构建，结果为 `0 issues`。因此 lint 项现在有当前主机上
 与 CI 一致版本的直接通过证据。
 
+本轮还执行了 CI 的交叉编译与部署契约检查：
+
+```text
+make test-cross
+make validate-deployment
+```
+
+两项均通过。前者完成 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0` 的全仓库测试
+装载检查，后者成功渲染 control-storage、vela-control、stage-worker、
+fleet-controller 和 observability 的 Kustomize 配置。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
