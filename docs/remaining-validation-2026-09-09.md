@@ -523,3 +523,9 @@ CPU/mock 相关分片
 也已通过，耗时约 104 秒；覆盖 durable stream campaign、exact-cache campaign、runtime
 usage 的无 GPU 时间声明，以及 Worker bootstrap mTLS/lost-response 三个场景。该结果仍是
 领域分片证据，不改变全量 integration 尚未闭合的结论。
+
+Stage authority 分片
+`go test -tags=integration ./internal/integration -run '^TestStageCutover|^TestStageWorkerControl|^TestStageCapacity'`
+已通过，耗时约 99 秒；覆盖 Stage cutover 的零 backlog/evidence fencing、worker control
+renewal/replay、session capacity 和 observation lifecycle。该分片补充了调度 authority 的
+持久化、并发和 fail-closed 证据，仍不替代全量 integration。
