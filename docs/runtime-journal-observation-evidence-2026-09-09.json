@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "baseline_commit": "275be0a3c3efe39d32d790c0495ccd9de7c11594",
-  "source_sha256": "ab10651daefda8d01463f0d4ea8d43167de3f9db700b9c01866f20f6dc096831",
+  "source_sha256": "3114bf05c53fe7f245793024e6944cd0b76b974d247794f32b009de77cd6799a",
   "source_file_count": 1068,
   "source_digest_method": "SHA256(sorted tracked/untracked Go SQL proto C shell + go.mod go.sum: path NUL file SHA256 newline)",
-  "native_source_patch_sha256": "0264b4edd3f7c7f4e0c21ebfbcaa678d7c0ddd982c38e48bebb2a438731e7f06",
-  "image_id": "sha256:461ddf5dd80aae2719d5bc72a17cf7505476ac8d3943ea9e5b7a15f635974116",
+  "native_source_patch_sha256": "cc9957b391df5a73a43e12d3f9c6edffc9ff2b03f123a39d144c6bd765beb1ac",
+  "image_id": "sha256:29622f3fc081ef6267d0f51c1727fea16ce442b0633e9f3d2139c2f79f1caa23",
   "binary_sha256": {
-    "nodeagent.test": "ced2ed67fb5a9668ecf88e5ff4106351178f62098343340d6fa81c20fc5fda81",
+    "nodeagent.test": "bcb5e51cd2ce334d2f3c1cd4b0639188eaea33de2fe4ae318960bdc45d1ed3ed",
     "runtime-command.test": "aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854",
-    "vela-model-runtime": "689ffd0254e31975fa0e6f7deb2d84ef2e5161f4923d436c10bda26ada9da245",
+    "vela-model-runtime": "219ae9d92823bb52ede98119683bd2100ac5bbd675c0e520ca7a8bfe7bb6fb0a",
     "exec-observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
     "exec-probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2"
   },
@@ -18,7 +18,7 @@
   "suites": {
     "native": {
       "exit_code": 0,
-      "top_level_pass_count": 33,
+      "top_level_pass_count": 34,
       "passes": [
         {
           "name": "TestJournalServerExecObservedRemoteCLI",
@@ -26,15 +26,15 @@
         },
         {
           "name": "TestJournalReadOnlyEndpoint",
-          "elapsed_seconds": 0.2
+          "elapsed_seconds": 0.22
         },
         {
           "name": "TestJournalServerActualRemoteCLI",
-          "elapsed_seconds": 3.44
+          "elapsed_seconds": 3.54
         },
         {
           "name": "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
-          "elapsed_seconds": 0.43
+          "elapsed_seconds": 0.44
         },
         {
           "name": "TestRuntimeBootstrapPublication",
@@ -42,55 +42,55 @@
         },
         {
           "name": "TestRuntimeBootstrapPublicationPreflight",
-          "elapsed_seconds": 0.11
+          "elapsed_seconds": 0.12
         },
         {
           "name": "TestRuntimeBootstrapPublicationBoundaries",
-          "elapsed_seconds": 0.1
+          "elapsed_seconds": 0.12
         },
         {
           "name": "TestRuntimeBootstrapPublicationConcurrent",
-          "elapsed_seconds": 0.02
+          "elapsed_seconds": 0.06
         },
         {
           "name": "TestRuntimeBootstrapPublicationProcessCrash",
-          "elapsed_seconds": 0.27
+          "elapsed_seconds": 0.28
         },
         {
           "name": "TestRuntimeBootstrapPublicationChanged",
-          "elapsed_seconds": 0.3
+          "elapsed_seconds": 0.31
         },
         {
           "name": "TestRuntimeBootstrapPublicationCustodyLoss",
-          "elapsed_seconds": 0.09
+          "elapsed_seconds": 0.11
         },
         {
           "name": "TestRuntimeBootstrapPublicationActualCLI",
-          "elapsed_seconds": 2.33
+          "elapsed_seconds": 2.34
         },
         {
           "name": "TestRuntimeJournalObservation",
-          "elapsed_seconds": 2.43
+          "elapsed_seconds": 2.42
         },
         {
           "name": "TestRuntimeJournalObservationRejectsWrongTarget",
-          "elapsed_seconds": 0.5
+          "elapsed_seconds": 0.51
         },
         {
           "name": "TestRuntimeJournalObservationPersistenceOutage",
-          "elapsed_seconds": 1.85
+          "elapsed_seconds": 1.87
         },
         {
           "name": "TestRuntimeJournalObservationRejectsExpiredCheck",
-          "elapsed_seconds": 0.25
+          "elapsed_seconds": 0.26
         },
         {
           "name": "TestRuntimeJournalObservationConcurrentClose",
-          "elapsed_seconds": 2.28
+          "elapsed_seconds": 2.1
         },
         {
           "name": "TestRuntimeJournalObservationPreservesRevocationError",
-          "elapsed_seconds": 0.26
+          "elapsed_seconds": 0.25
         },
         {
           "name": "TestRuntimeJournalObservationCancellationWithBusyEndpoint",
@@ -98,7 +98,7 @@
         },
         {
           "name": "TestRuntimeObserverCustody",
-          "elapsed_seconds": 0.46
+          "elapsed_seconds": 0.47
         },
         {
           "name": "TestRuntimeObserverProcessOfferDescriptors",
@@ -110,7 +110,7 @@
         },
         {
           "name": "TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches",
-          "elapsed_seconds": 2.1
+          "elapsed_seconds": 2.11
         },
         {
           "name": "TestRuntimeStartupGrantActivationFailsClosedDuringPersistence",
@@ -122,7 +122,7 @@
         },
         {
           "name": "TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend",
-          "elapsed_seconds": 0.46
+          "elapsed_seconds": 0.47
         },
         {
           "name": "TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation",
@@ -130,6 +130,10 @@
         },
         {
           "name": "TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption",
+          "elapsed_seconds": 0.25
+        },
+        {
+          "name": "TestRuntimeStartupCoordinatorCloseReleasesObserverCustody",
           "elapsed_seconds": 0.24
         },
         {
@@ -154,8 +158,8 @@
         }
       ],
       "skip_count": 0,
-      "log_path": "/tmp/vela-lifecycle-fixes3-20260909/native.log",
-      "log_sha256": "dbb5b086f94221bc145e5c206e629f9b0e8b2f4e9669043ddfbbcb23f26f3c33"
+      "log_path": "/tmp/vela-lifecycle-fixes4-20260909/native.log",
+      "log_sha256": "8369d9ae7477cc240dc1aebf2e0b4fe2bd8a0fd1cd685b2c37f76ab0cfda8234"
     },
     "postgres_tls": {
       "exit_code": 0,
@@ -207,7 +211,7 @@
     "coordinator_native": "2 top-level tests passed: exact permit and mismatch deny/no-consumption",
     "startup_server_native": "invalid configuration rejection passed; actual runner exit 0",
     "orchestration_composition_root": "missing authority input rejection passed; runner exit 0",
-    "native_runner": "passed; 33 top-level tests; lifecycle cleanup, preflight and idle-listener shutdown included; no DATA RACE",
+    "native_runner": "passed; 34 top-level tests; lifecycle cleanup, preflight, idle-listener shutdown and custody handle release included; no DATA RACE",
     "prepare_lifecycle": "preflight before reservation; observer cleanup on all post-attempt errors; owner lookup mutex-protected",
     "startup_server_shutdown": "idle listener shutdown regression passed; listener close wakes AcceptUnix",
     "orchestration_close": "coordinator close also closes observer custody after observation"

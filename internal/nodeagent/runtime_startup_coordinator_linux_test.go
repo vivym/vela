@@ -70,3 +70,28 @@ func TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption(t *testing.T)
 	}
 	f.write(t, false)
 }
+
+func TestRuntimeStartupCoordinatorCloseReleasesObserverCustody(t *testing.T) {
+	f, custody := observedActivationFixture(t)
+	expected := f.ledger.starts[f.identity.JournalID].Request
+	coordinator, err := NewRuntimeStartupCoordinator(f.ledger, f.plan, expected, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := coordinator.HandleBackendStartup(t.Context(), expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decision modelruntime.BackendStartupDecision
+	if err := json.Unmarshal(wire, &decision); err != nil || !decision.Permit {
+		t.Fatalf("permit=%+v err=%v", decision, err)
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	custody.mu.Lock()
+	defer custody.mu.Unlock()
+	if custody.connection != nil || custody.observer != nil || custody.target != nil {
+		t.Fatal("coordinator close leaked observer custody handles")
+	}
+}
