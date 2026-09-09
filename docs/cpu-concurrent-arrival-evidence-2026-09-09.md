@@ -25,3 +25,14 @@ CPU mock worker 处理 2 波、每波 8 个并发 arrival，共 16 个 Job；`jo
 清理路径能收敛。它不是 production soak：PostgreSQL/Docker VM 资源未完整采样，
 没有真实 Node/Fleet custody、远程对象存储、GPU 或 power-loss recovery；长期开放环
 资源上界仍未得到证明。
+
+随后用同一参数增加 `-race` 重跑：
+
+```bash
+VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=2 VELA_CPU_MOCK_WIDTH=8 \
+  go test -race -tags=integration ./internal/integration \
+  -run TestCPUMockConcurrentAdmissionRuntimeCampaign -count=1 -v
+```
+
+也通过，16 个 Job 的终态、计费和清理不变量保持成立，未观测到 Go data race；
+native subprocess 和 Docker/PostgreSQL 内部仍不在 race detector 覆盖范围内。
