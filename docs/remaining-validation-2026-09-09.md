@@ -339,6 +339,11 @@ VELA_CPU_MOCK_WIDTH=8` 运行 `TestCPUMockConcurrentAdmissionRuntimeCampaign` �
 分配/lease/credit/scratch 清零，acquire deadlock/serialization retry 均为 `0`。
 该证据仍是 bounded CPU/mock campaign，不是长期 open-loop 资源上界。
 
+新增 [CPU mock concurrent long campaign evidence](cpu-concurrent-long-campaign-evidence-2026-09-09.md)：
+8 波 × 8 并发、共 64 个 Job 的当前提交运行通过，短期 goroutine/worker FD 和每波
+scratch/watchdog 收敛稳定；同时记录了 `MaterializedBytes`/PostgreSQL size 随保留
+历史增长的事实。因此它加强了有限长压证据，但没有关闭长期 journal/history 上界。
+
 另外对 Worker bootstrap、Worker Registry、runtime startup、Node Agent reporter 和
 Postgres reattachment 相关 fixture integration 做了组合 `-race` 重跑：
 `go test -race -tags=integration ./internal/integration -run
