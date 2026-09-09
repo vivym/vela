@@ -756,7 +756,11 @@ type testDatabase struct {
 func newPostgres(t *testing.T) testDatabase {
 	t.Helper()
 
-	ctx := context.Background()
+	// Keep a broken Docker/Testcontainers runtime from hanging the entire
+	// integration package. The database bootstrap is test infrastructure; it
+	// must fail with a bounded diagnostic before the package-level test timeout.
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
 	container, err := postgrescontainer.Run(
 		ctx,
 		"postgres:17-alpine",
@@ -767,8 +771,8 @@ func newPostgres(t *testing.T) testDatabase {
 			wait.ForAll(
 				wait.ForLog("database system is ready to accept connections").
 					WithOccurrence(2).
-					WithStartupTimeout(2*time.Minute),
-				wait.ForMappedPort("5432/tcp").WithStartupTimeout(2*time.Minute),
+					WithStartupTimeout(45*time.Second),
+				wait.ForMappedPort("5432/tcp").WithStartupTimeout(45*time.Second),
 			),
 		),
 	)
