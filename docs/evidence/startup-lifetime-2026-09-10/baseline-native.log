@@ -1,0 +1,36 @@
+=== RUN   TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange
+    runtime_startup_coordinator_linux_test.go:117: exchange completion revoked live backend: context canceled
+    runtime_journal_observation_linux_test.go:67: ROOT 16
+        EXEC 16
+        DENY clone 16 38
+        CHILD 17
+        CHILD 18
+        CHILD 19
+        CHILD 20
+        CHILD 21
+        
+--- FAIL: TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange (0.25s)
+=== RUN   TestRuntimeStartupServerCancellationClosesIdleListener
+    runtime_startup_server_linux_test.go:73: canceled Serve remained in AcceptUnix
+--- FAIL: TestRuntimeStartupServerCancellationClosesIdleListener (1.00s)
+=== RUN   TestRuntimeStartupServerShutdownBeforeServeIsTerminal
+    runtime_startup_server_linux_test.go:92: Serve after Shutdown: accept unixpacket /tmp/TestRuntimeStartupServerShutdownBeforeServeIsTerminal75498933/001/startup.sock: i/o timeout
+--- FAIL: TestRuntimeStartupServerShutdownBeforeServeIsTerminal (1.01s)
+=== RUN   TestRuntimeStartupServerOwnsPostReplyLifetime
+=== RUN   TestRuntimeStartupServerOwnsPostReplyLifetime/delivered
+    runtime_startup_server_linux_test.go:145: successful transport canceled backend: context canceled
+    runtime_journal_observation_linux_test.go:67: ROOT 45
+        EXEC 45
+        DENY clone 45 38
+        CHILD 46
+        CHILD 47
+        CHILD 48
+        CHILD 49
+        CHILD 50
+        CHILD 51
+        
+=== RUN   TestRuntimeStartupServerOwnsPostReplyLifetime/connection-lost
+--- FAIL: TestRuntimeStartupServerOwnsPostReplyLifetime (0.49s)
+    --- FAIL: TestRuntimeStartupServerOwnsPostReplyLifetime/delivered (0.24s)
+    --- PASS: TestRuntimeStartupServerOwnsPostReplyLifetime/connection-lost (0.24s)
+FAIL

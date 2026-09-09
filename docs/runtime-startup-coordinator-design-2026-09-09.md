@@ -149,3 +149,12 @@ observation 的关闭顺序。缺少输入没有 fallback。现有 `cmd/vela-nod
 
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。
+
+## 后续修复：请求与运行期寿命及关闭
+
+[2026-09-10 生命周期验证](runtime-startup-lifetime-evidence-2026-09-10.md)
+修复了成功 startup 回包结束 exchange 就取消 observer 的问题，并让取消/关闭
+同时停止 listener 和路由，在等待持久化前先撤销。40 项原生 race 检查通过；旧实现
+与新增测试的反证复现了四项失败。真实 CLI 仍需把 Prepare 的已认证 caller 与
+server 回包合并到同次握手，且显式绑定回复对象的原始 pidfd；生产 authority 来源
+与完整 Job 装配仍未完成，不能把本轮局部修复当作统一启动协议闭合。

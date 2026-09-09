@@ -25,6 +25,12 @@ type RuntimeStartupCoordinator struct {
 	interval, timeout time.Duration
 	mu                sync.Mutex
 	handled           bool
+	closed            bool
+	lifetime          context.Context
+	cancel            context.CancelFunc
+	active            chan struct{}
+	closeDone         chan struct{}
+	closeErr          error
 	observation       *RuntimeJournalObservation
 }
 
@@ -35,7 +41,8 @@ func NewRuntimeStartupCoordinator(ledger *RuntimeStartupLedger, plan *RuntimeLau
 	if err := expected.Validate(); err != nil {
 		return nil, err
 	}
-	return &RuntimeStartupCoordinator{ledger: ledger, plan: plan, expected: expected, grant: grant, custody: custody, interval: interval, timeout: timeout}, nil
+	lifetime, cancel := context.WithCancel(context.Background())
+	return &RuntimeStartupCoordinator{lifetime: lifetime, cancel: cancel, ledger: ledger, plan: plan, expected: expected, grant: grant, custody: custody, interval: interval, timeout: timeout}, nil
 }
 
 // HandleBackendStartup validates the exact request sent by ModelRuntime. It
@@ -46,12 +53,19 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
 	if coordinator == nil {
 		return nil, ErrRuntimeObserverCustody
 	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
 	coordinator.mu.Lock()
-	defer coordinator.mu.Unlock()
-	if coordinator.handled {
+	if coordinator.handled || coordinator.closed {
+		coordinator.mu.Unlock()
 		return coordinator.decision(request, false)
 	}
 	coordinator.handled = true
+	coordinator.active = make(chan struct{})
+	coordinator.mu.Unlock()
+	defer close(coordinator.active)
+
 	wire, err := modelruntime.EncodeBackendStartupRequest(request)
 	if err != nil {
 		return coordinator.decision(request, false)
@@ -60,12 +74,23 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
 	if err != nil || !bytes.Equal(wire, expected) {
 		return coordinator.decision(request, false)
 	}
-	observation, _, err := coordinator.ledger.ActivateObservedJournalWriteGrant(ctx, coordinator.plan, coordinator.grant, coordinator.custody, coordinator.interval, coordinator.timeout)
-	if err != nil {
-		return coordinator.decision(request, false)
-	}
+	// The exchange can cancel activation, but a successful exchange must not
+	// become the running backend's lifetime. Close owns that lifetime instead.
+	activation, cancel := coordinator.lifetime, coordinator.cancel
+	stopExchange := context.AfterFunc(ctx, cancel)
+	observation, _, err := coordinator.ledger.ActivateObservedJournalWriteGrant(activation, coordinator.plan, coordinator.grant, coordinator.custody, coordinator.interval, coordinator.timeout)
+	detached := stopExchange()
+	coordinator.mu.Lock()
 	coordinator.observation = observation
-	return coordinator.decision(request, true)
+	permit := err == nil && detached && ctx.Err() == nil && !coordinator.closed && activation.Err() == nil
+	coordinator.mu.Unlock()
+	if !permit {
+		cancel()
+		if observation != nil {
+			_ = observation.Close()
+		}
+	}
+	return coordinator.decision(request, permit)
 }
 
 func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.BackendStartupRequest, permit bool) ([]byte, error) {
@@ -76,14 +101,42 @@ func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.Back
 	return json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(wire), Permit: permit})
 }
 
+// stop fences the lifetime before joining activation or journal I/O. Cleanup
+// happens once in the background so callers with a deadline can bound the join.
+func (coordinator *RuntimeStartupCoordinator) stop() <-chan struct{} {
+	coordinator.mu.Lock()
+	defer coordinator.mu.Unlock()
+	if coordinator.closeDone != nil {
+		return coordinator.closeDone
+	}
+	coordinator.closed = true
+	coordinator.closeDone = make(chan struct{})
+	coordinator.cancel()
+	// Revoke uses independent process handles and never takes the ledger lock.
+	revokeErr := coordinator.custody.Revoke()
+	active := coordinator.active
+	go func() {
+		if active != nil {
+			<-active
+		}
+		var err error
+		if coordinator.observation != nil {
+			err = coordinator.observation.Close()
+		}
+		// Also close an unactivated endpoint owned by this attempt.
+		if coordinator.grant != nil {
+			err = errors.Join(err, coordinator.grant.endpoint.Close())
+		}
+		coordinator.closeErr = errors.Join(revokeErr, err, coordinator.custody.Close())
+		close(coordinator.closeDone)
+	}()
+	return coordinator.closeDone
+}
+
 func (coordinator *RuntimeStartupCoordinator) Close() error {
 	if coordinator == nil {
 		return nil
 	}
-	coordinator.mu.Lock()
-	defer coordinator.mu.Unlock()
-	if coordinator.observation != nil {
-		return errors.Join(coordinator.observation.Close(), coordinator.custody.Close())
-	}
-	return coordinator.custody.Close()
+	<-coordinator.stop()
+	return coordinator.closeErr
 }

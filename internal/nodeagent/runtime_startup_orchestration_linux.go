@@ -2,9 +2,7 @@ package nodeagent
 
 import (
 	"context"
-	"errors"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/vivym/vela/internal/modelruntime"
@@ -16,8 +14,6 @@ import (
 type RuntimeStartupOrchestration struct {
 	coordinator *RuntimeStartupCoordinator
 	server      *RuntimeStartupServer
-	mu          sync.Mutex
-	closed      bool
 }
 
 type RuntimeStartupOrchestrationConfig struct {
@@ -51,39 +47,30 @@ func (orchestration *RuntimeStartupOrchestration) Serve(ctx context.Context, lis
 	if orchestration == nil {
 		return ErrRuntimeCallerIdentity
 	}
-	orchestration.mu.Lock()
-	if orchestration.closed {
-		orchestration.mu.Unlock()
-		return net.ErrClosed
-	}
-	orchestration.mu.Unlock()
 	return orchestration.server.Serve(ctx, listener)
 }
 func (orchestration *RuntimeStartupOrchestration) Shutdown(ctx context.Context) error {
 	if orchestration == nil || ctx == nil {
 		return ErrRuntimeCallerIdentity
 	}
-	orchestration.mu.Lock()
-	if orchestration.closed {
-		orchestration.mu.Unlock()
-		return nil
-	}
-	orchestration.mu.Unlock()
+	// Stop admission and revoke before waiting for either handlers or storage.
+	done := orchestration.coordinator.stop()
 	if err := orchestration.server.Shutdown(ctx); err != nil {
 		return err
 	}
-	return orchestration.Close()
+	select {
+	case <-done:
+		return orchestration.coordinator.closeErr
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	}
 }
+
+// Close joins all owned work. Use Shutdown to bound the wait for outstanding
+// I/O; a timeout leaves the attempt revoked and cleanup continues in background.
 func (orchestration *RuntimeStartupOrchestration) Close() error {
 	if orchestration == nil {
 		return nil
 	}
-	orchestration.mu.Lock()
-	if orchestration.closed {
-		orchestration.mu.Unlock()
-		return nil
-	}
-	orchestration.closed = true
-	orchestration.mu.Unlock()
-	return errors.Join(orchestration.coordinator.Close())
+	return orchestration.Shutdown(context.Background())
 }

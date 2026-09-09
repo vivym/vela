@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/vivym/vela/internal/runtimechannel"
 	"io"
 	"net"
 	"os"
@@ -351,7 +352,25 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	var response [4]byte
-	_, _ = io.ReadFull(connection, response[:])
+	repeatStartup := false
+	if mode == "hold-after-disconnect" {
+		packet := make([]byte, runtimeCallerMaximum+256)
+		count, err := connection.Read(packet)
+		repeatStartup = err == nil && bytes.Equal(packet[:count], append(append([]byte(runtimechannel.ResponseProtocol), challenge...), []byte("next")...))
+	} else {
+		_, _ = io.ReadFull(connection, response[:])
+	}
+	if repeatStartup {
+		// Reauthenticate the same original process for startup transport tests
+		// after the reservation fixture has consumed its first challenge.
+		if count, err := connection.Read(challenge); err == nil && count == len(challenge) {
+			packet = append(challenge, runtimeCallerPayload(t, "test-startup-request")...)
+			if _, _, err := connection.WriteMsgUnix(packet, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = io.ReadFull(connection, response[:])
+		}
+	}
 	if mode == "hold-after-disconnect" {
 		time.Sleep(30 * time.Second)
 	}

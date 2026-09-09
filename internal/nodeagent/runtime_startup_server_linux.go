@@ -79,6 +79,7 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
 	}
 	if err := caller.Reply(exchange, wire); err != nil {
 		server.failed.Add(1)
+		server.coordinator.stop()
 		return err
 	}
 	server.replied.Add(1)
@@ -100,9 +101,14 @@ func (server *RuntimeStartupServer) Serve(ctx context.Context, listener *net.Uni
 	server.listener = listener
 	server.done = make(chan struct{})
 	server.mu.Unlock()
+	stopListener := context.AfterFunc(ctx, func() { _ = listener.Close() })
+	defer stopListener()
 	var wg sync.WaitGroup
 	defer func() {
 		cancel()
+		if server.coordinator != nil {
+			server.coordinator.stop()
+		}
 		_ = listener.Close()
 		wg.Wait()
 		server.mu.Lock()
@@ -131,15 +137,7 @@ func (server *RuntimeStartupServer) Shutdown(ctx context.Context) error {
 	if server == nil || ctx == nil {
 		return ErrRuntimeCallerIdentity
 	}
-	server.mu.Lock()
-	if server.cancel != nil {
-		server.cancel()
-	}
-	if server.listener != nil {
-		_ = server.listener.Close()
-	}
-	done := server.done
-	server.mu.Unlock()
+	done := server.stop()
 	if done == nil {
 		return nil
 	}
@@ -150,6 +148,25 @@ func (server *RuntimeStartupServer) Shutdown(ctx context.Context) error {
 		return context.Cause(ctx)
 	}
 }
+
+// stop is terminal even before Serve has started. It closes admission and
+// cancels active exchanges without waiting for handlers to return.
+func (server *RuntimeStartupServer) stop() <-chan struct{} {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.stopped = true
+	if server.cancel != nil {
+		server.cancel()
+	}
+	if server.listener != nil {
+		_ = server.listener.Close()
+	}
+	if server.coordinator != nil {
+		server.coordinator.stop()
+	}
+	return server.done
+}
+
 func (server *RuntimeStartupServer) Stats() (accepted, authenticated, replied, failed uint64) {
 	return server.accepted.Load(), server.authenticated.Load(), server.replied.Load(), server.failed.Load()
 }

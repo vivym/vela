@@ -95,3 +95,34 @@ func TestRuntimeStartupCoordinatorCloseReleasesObserverCustody(t *testing.T) {
 		t.Fatal("coordinator close leaked observer custody handles")
 	}
 }
+
+func TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange(t *testing.T) {
+	f, custody := observedActivationFixture(t)
+	expected := f.ledger.starts[f.identity.JournalID].Request
+	coordinator, err := NewRuntimeStartupCoordinator(f.ledger, f.plan, expected, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = coordinator.Close() }()
+	exchange, cancel := context.WithCancel(t.Context())
+	wire, err := coordinator.HandleBackendStartup(exchange, expected)
+	cancel() // The transport always cancels its per-exchange context on return.
+	var decision modelruntime.BackendStartupDecision
+	if err != nil || json.Unmarshal(wire, &decision) != nil || !decision.Permit {
+		t.Fatalf("activation: %s %v", wire, err)
+	}
+	// Observe several monitor cycles after the exchange context has ended.
+	select {
+	case <-coordinator.observation.Done():
+		t.Fatalf("exchange completion revoked live backend: %v", coordinator.observation.Err())
+	case <-time.After(200 * time.Millisecond):
+	}
+	f.write(t, true)
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, false)
+	if wire := mustCoordinatorWire(t, coordinator, expected); json.Unmarshal(wire, &decision) != nil || decision.Permit {
+		t.Fatal("closed coordinator permitted startup")
+	}
+}

@@ -1,0 +1,641 @@
+diff --git a/hack/run-remote-runtime-cli-native.sh b/hack/run-remote-runtime-cli-native.sh
+index 8cf8e79..bbcf297 100755
+--- a/hack/run-remote-runtime-cli-native.sh
++++ b/hack/run-remote-runtime-cli-native.sh
+@@ -54,7 +54,7 @@ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE --securi
+   --cpus 4 --memory 4g --pids-limit 256 "$remote_image" /nodeagent.test \
+   -test.run '^(TestPrepareRemoteStartupOrchestration.*|TestRuntimeStartupOrchestration.*|TestRuntimeStartupServer.*|TestRuntimeStartupCoordinator.*|TestRuntimeJournalObservation.*|TestRuntimeStartupGrantActivation.*|TestRuntimeObserverCustody|TestRuntimeObserverProcessOfferDescriptors|TestJournalReadOnlyEndpoint|TestJournalServerExecObservedRemoteCLI|TestJournalServerActualRemoteCLI|TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution|TestRuntimeBootstrapPublication|TestRuntimeBootstrapPublication(Preflight|Boundaries|Concurrent|Changed|CustodyLoss|ActualCLI|ProcessCrash))$' \
+   -test.count=1 -test.v -test.timeout=2m > "$remote_evidence/native.log" 2>&1
+-for remote_test in TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput TestRuntimeStartupServerRejectsInvalidConfiguration TestRuntimeStartupServerShutdownClosesIdleListener TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption TestRuntimeStartupCoordinatorCloseReleasesObserverCustody TestRuntimeJournalObservationCancellationWithBusyEndpoint TestRuntimeJournalObservationConcurrentClose TestRuntimeJournalObservationPreservesRevocationError TestRuntimeJournalObservation TestRuntimeJournalObservationRejectsWrongTarget TestRuntimeJournalObservationPersistenceOutage TestRuntimeJournalObservationRejectsExpiredCheck TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches TestRuntimeStartupGrantActivationFailsClosedDuringPersistence TestRuntimeStartupGrantActivationConcurrent TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend TestRuntimeObserverCustody TestRuntimeObserverProcessOfferDescriptors TestJournalReadOnlyEndpoint TestJournalServerExecObservedRemoteCLI TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
++for remote_test in TestRuntimeStartupOrchestrationStopsListenerAndRoutes TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange TestRuntimeStartupOrchestrationShutdownDuringPersistence TestRuntimeStartupServerCancellationClosesIdleListener TestRuntimeStartupServerShutdownBeforeServeIsTerminal TestRuntimeStartupServerOwnsPostReplyLifetime TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput TestRuntimeStartupServerRejectsInvalidConfiguration TestRuntimeStartupServerShutdownClosesIdleListener TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption TestRuntimeStartupCoordinatorCloseReleasesObserverCustody TestRuntimeJournalObservationCancellationWithBusyEndpoint TestRuntimeJournalObservationConcurrentClose TestRuntimeJournalObservationPreservesRevocationError TestRuntimeJournalObservation TestRuntimeJournalObservationRejectsWrongTarget TestRuntimeJournalObservationPersistenceOutage TestRuntimeJournalObservationRejectsExpiredCheck TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches TestRuntimeStartupGrantActivationFailsClosedDuringPersistence TestRuntimeStartupGrantActivationConcurrent TestRuntimeStartupGrantActivationCloseRevokesBeforeBlockedAppend TestRuntimeObserverCustody TestRuntimeObserverProcessOfferDescriptors TestJournalReadOnlyEndpoint TestJournalServerExecObservedRemoteCLI TestJournalServerActualRemoteCLI TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution TestRuntimeBootstrapPublication TestRuntimeBootstrapPublicationPreflight TestRuntimeBootstrapPublicationBoundaries TestRuntimeBootstrapPublicationConcurrent TestRuntimeBootstrapPublicationChanged TestRuntimeBootstrapPublicationCustodyLoss TestRuntimeBootstrapPublicationActualCLI TestRuntimeBootstrapPublicationProcessCrash; do
+   rg -q "^--- PASS: $remote_test " "$remote_evidence/native.log" || exit 1
+ done
+ for remote_case in permit deny observer-lost-before-permit observer-lost-after-permit observer-stopped-before-permit observer-stopped-after-permit; do
+diff --git a/internal/nodeagent/runtime_caller_linux_test.go b/internal/nodeagent/runtime_caller_linux_test.go
+index 1724067..89a7941 100644
+--- a/internal/nodeagent/runtime_caller_linux_test.go
++++ b/internal/nodeagent/runtime_caller_linux_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"context"
+ 	"encoding/base64"
+ 	"errors"
++	"github.com/vivym/vela/internal/runtimechannel"
+ 	"io"
+ 	"net"
+ 	"os"
+@@ -351,7 +352,25 @@ func TestRuntimeCallerProcessHelper(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 	var response [4]byte
+-	_, _ = io.ReadFull(connection, response[:])
++	repeatStartup := false
++	if mode == "hold-after-disconnect" {
++		packet := make([]byte, runtimeCallerMaximum+256)
++		count, err := connection.Read(packet)
++		repeatStartup = err == nil && bytes.Equal(packet[:count], append(append([]byte(runtimechannel.ResponseProtocol), challenge...), []byte("next")...))
++	} else {
++		_, _ = io.ReadFull(connection, response[:])
++	}
++	if repeatStartup {
++		// Reauthenticate the same original process for startup transport tests
++		// after the reservation fixture has consumed its first challenge.
++		if count, err := connection.Read(challenge); err == nil && count == len(challenge) {
++			packet = append(challenge, runtimeCallerPayload(t, "test-startup-request")...)
++			if _, _, err := connection.WriteMsgUnix(packet, nil, nil); err != nil {
++				t.Fatal(err)
++			}
++			_, _ = io.ReadFull(connection, response[:])
++		}
++	}
+ 	if mode == "hold-after-disconnect" {
+ 		time.Sleep(30 * time.Second)
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_coordinator_linux.go b/internal/nodeagent/runtime_startup_coordinator_linux.go
+index 7af1023..183bde5 100644
+--- a/internal/nodeagent/runtime_startup_coordinator_linux.go
++++ b/internal/nodeagent/runtime_startup_coordinator_linux.go
+@@ -25,6 +25,12 @@ type RuntimeStartupCoordinator struct {
+ 	interval, timeout time.Duration
+ 	mu                sync.Mutex
+ 	handled           bool
++	closed            bool
++	lifetime          context.Context
++	cancel            context.CancelFunc
++	active            chan struct{}
++	closeDone         chan struct{}
++	closeErr          error
+ 	observation       *RuntimeJournalObservation
+ }
+ 
+@@ -35,7 +41,8 @@ func NewRuntimeStartupCoordinator(ledger *RuntimeStartupLedger, plan *RuntimeLau
+ 	if err := expected.Validate(); err != nil {
+ 		return nil, err
+ 	}
+-	return &RuntimeStartupCoordinator{ledger: ledger, plan: plan, expected: expected, grant: grant, custody: custody, interval: interval, timeout: timeout}, nil
++	lifetime, cancel := context.WithCancel(context.Background())
++	return &RuntimeStartupCoordinator{lifetime: lifetime, cancel: cancel, ledger: ledger, plan: plan, expected: expected, grant: grant, custody: custody, interval: interval, timeout: timeout}, nil
+ }
+ 
+ // HandleBackendStartup validates the exact request sent by ModelRuntime. It
+@@ -46,12 +53,19 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
+ 	if coordinator == nil {
+ 		return nil, ErrRuntimeObserverCustody
+ 	}
++	if err := contextError(ctx); err != nil {
++		return nil, err
++	}
+ 	coordinator.mu.Lock()
+-	defer coordinator.mu.Unlock()
+-	if coordinator.handled {
++	if coordinator.handled || coordinator.closed {
++		coordinator.mu.Unlock()
+ 		return coordinator.decision(request, false)
+ 	}
+ 	coordinator.handled = true
++	coordinator.active = make(chan struct{})
++	coordinator.mu.Unlock()
++	defer close(coordinator.active)
++
+ 	wire, err := modelruntime.EncodeBackendStartupRequest(request)
+ 	if err != nil {
+ 		return coordinator.decision(request, false)
+@@ -60,12 +74,23 @@ func (coordinator *RuntimeStartupCoordinator) HandleBackendStartup(ctx context.C
+ 	if err != nil || !bytes.Equal(wire, expected) {
+ 		return coordinator.decision(request, false)
+ 	}
+-	observation, _, err := coordinator.ledger.ActivateObservedJournalWriteGrant(ctx, coordinator.plan, coordinator.grant, coordinator.custody, coordinator.interval, coordinator.timeout)
+-	if err != nil {
+-		return coordinator.decision(request, false)
+-	}
++	// The exchange can cancel activation, but a successful exchange must not
++	// become the running backend's lifetime. Close owns that lifetime instead.
++	activation, cancel := coordinator.lifetime, coordinator.cancel
++	stopExchange := context.AfterFunc(ctx, cancel)
++	observation, _, err := coordinator.ledger.ActivateObservedJournalWriteGrant(activation, coordinator.plan, coordinator.grant, coordinator.custody, coordinator.interval, coordinator.timeout)
++	detached := stopExchange()
++	coordinator.mu.Lock()
+ 	coordinator.observation = observation
+-	return coordinator.decision(request, true)
++	permit := err == nil && detached && ctx.Err() == nil && !coordinator.closed && activation.Err() == nil
++	coordinator.mu.Unlock()
++	if !permit {
++		cancel()
++		if observation != nil {
++			_ = observation.Close()
++		}
++	}
++	return coordinator.decision(request, permit)
+ }
+ 
+ func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.BackendStartupRequest, permit bool) ([]byte, error) {
+@@ -76,14 +101,42 @@ func (coordinator *RuntimeStartupCoordinator) decision(request modelruntime.Back
+ 	return json.Marshal(modelruntime.BackendStartupDecision{SchemaVersion: 1, RequestDigest: sha256.Sum256(wire), Permit: permit})
+ }
+ 
++// stop fences the lifetime before joining activation or journal I/O. Cleanup
++// happens once in the background so callers with a deadline can bound the join.
++func (coordinator *RuntimeStartupCoordinator) stop() <-chan struct{} {
++	coordinator.mu.Lock()
++	defer coordinator.mu.Unlock()
++	if coordinator.closeDone != nil {
++		return coordinator.closeDone
++	}
++	coordinator.closed = true
++	coordinator.closeDone = make(chan struct{})
++	coordinator.cancel()
++	// Revoke uses independent process handles and never takes the ledger lock.
++	revokeErr := coordinator.custody.Revoke()
++	active := coordinator.active
++	go func() {
++		if active != nil {
++			<-active
++		}
++		var err error
++		if coordinator.observation != nil {
++			err = coordinator.observation.Close()
++		}
++		// Also close an unactivated endpoint owned by this attempt.
++		if coordinator.grant != nil {
++			err = errors.Join(err, coordinator.grant.endpoint.Close())
++		}
++		coordinator.closeErr = errors.Join(revokeErr, err, coordinator.custody.Close())
++		close(coordinator.closeDone)
++	}()
++	return coordinator.closeDone
++}
++
+ func (coordinator *RuntimeStartupCoordinator) Close() error {
+ 	if coordinator == nil {
+ 		return nil
+ 	}
+-	coordinator.mu.Lock()
+-	defer coordinator.mu.Unlock()
+-	if coordinator.observation != nil {
+-		return errors.Join(coordinator.observation.Close(), coordinator.custody.Close())
+-	}
+-	return coordinator.custody.Close()
++	<-coordinator.stop()
++	return coordinator.closeErr
+ }
+diff --git a/internal/nodeagent/runtime_startup_coordinator_linux_test.go b/internal/nodeagent/runtime_startup_coordinator_linux_test.go
+index 343ee05..d77d45a 100644
+--- a/internal/nodeagent/runtime_startup_coordinator_linux_test.go
++++ b/internal/nodeagent/runtime_startup_coordinator_linux_test.go
+@@ -95,3 +95,34 @@ func TestRuntimeStartupCoordinatorCloseReleasesObserverCustody(t *testing.T) {
+ 		t.Fatal("coordinator close leaked observer custody handles")
+ 	}
+ }
++
++func TestRuntimeStartupCoordinatorOutlivesSuccessfulExchange(t *testing.T) {
++	f, custody := observedActivationFixture(t)
++	expected := f.ledger.starts[f.identity.JournalID].Request
++	coordinator, err := NewRuntimeStartupCoordinator(f.ledger, f.plan, expected, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = coordinator.Close() }()
++	exchange, cancel := context.WithCancel(t.Context())
++	wire, err := coordinator.HandleBackendStartup(exchange, expected)
++	cancel() // The transport always cancels its per-exchange context on return.
++	var decision modelruntime.BackendStartupDecision
++	if err != nil || json.Unmarshal(wire, &decision) != nil || !decision.Permit {
++		t.Fatalf("activation: %s %v", wire, err)
++	}
++	// Observe several monitor cycles after the exchange context has ended.
++	select {
++	case <-coordinator.observation.Done():
++		t.Fatalf("exchange completion revoked live backend: %v", coordinator.observation.Err())
++	case <-time.After(200 * time.Millisecond):
++	}
++	f.write(t, true)
++	if err := coordinator.Close(); err != nil {
++		t.Fatal(err)
++	}
++	f.write(t, false)
++	if wire := mustCoordinatorWire(t, coordinator, expected); json.Unmarshal(wire, &decision) != nil || decision.Permit {
++		t.Fatal("closed coordinator permitted startup")
++	}
++}
+diff --git a/internal/nodeagent/runtime_startup_orchestration_linux.go b/internal/nodeagent/runtime_startup_orchestration_linux.go
+index 30af213..b5d6161 100644
+--- a/internal/nodeagent/runtime_startup_orchestration_linux.go
++++ b/internal/nodeagent/runtime_startup_orchestration_linux.go
+@@ -2,9 +2,7 @@ package nodeagent
+ 
+ import (
+ 	"context"
+-	"errors"
+ 	"net"
+-	"sync"
+ 	"time"
+ 
+ 	"github.com/vivym/vela/internal/modelruntime"
+@@ -16,8 +14,6 @@ import (
+ type RuntimeStartupOrchestration struct {
+ 	coordinator *RuntimeStartupCoordinator
+ 	server      *RuntimeStartupServer
+-	mu          sync.Mutex
+-	closed      bool
+ }
+ 
+ type RuntimeStartupOrchestrationConfig struct {
+@@ -51,39 +47,30 @@ func (orchestration *RuntimeStartupOrchestration) Serve(ctx context.Context, lis
+ 	if orchestration == nil {
+ 		return ErrRuntimeCallerIdentity
+ 	}
+-	orchestration.mu.Lock()
+-	if orchestration.closed {
+-		orchestration.mu.Unlock()
+-		return net.ErrClosed
+-	}
+-	orchestration.mu.Unlock()
+ 	return orchestration.server.Serve(ctx, listener)
+ }
+ func (orchestration *RuntimeStartupOrchestration) Shutdown(ctx context.Context) error {
+ 	if orchestration == nil || ctx == nil {
+ 		return ErrRuntimeCallerIdentity
+ 	}
+-	orchestration.mu.Lock()
+-	if orchestration.closed {
+-		orchestration.mu.Unlock()
+-		return nil
+-	}
+-	orchestration.mu.Unlock()
++	// Stop admission and revoke before waiting for either handlers or storage.
++	done := orchestration.coordinator.stop()
+ 	if err := orchestration.server.Shutdown(ctx); err != nil {
+ 		return err
+ 	}
+-	return orchestration.Close()
++	select {
++	case <-done:
++		return orchestration.coordinator.closeErr
++	case <-ctx.Done():
++		return context.Cause(ctx)
++	}
+ }
++
++// Close joins all owned work. Use Shutdown to bound the wait for outstanding
++// I/O; a timeout leaves the attempt revoked and cleanup continues in background.
+ func (orchestration *RuntimeStartupOrchestration) Close() error {
+ 	if orchestration == nil {
+ 		return nil
+ 	}
+-	orchestration.mu.Lock()
+-	if orchestration.closed {
+-		orchestration.mu.Unlock()
+-		return nil
+-	}
+-	orchestration.closed = true
+-	orchestration.mu.Unlock()
+-	return errors.Join(orchestration.coordinator.Close())
++	return orchestration.Shutdown(context.Background())
+ }
+diff --git a/internal/nodeagent/runtime_startup_orchestration_linux_test.go b/internal/nodeagent/runtime_startup_orchestration_linux_test.go
+index a9e5a2e..24f9bdb 100644
+--- a/internal/nodeagent/runtime_startup_orchestration_linux_test.go
++++ b/internal/nodeagent/runtime_startup_orchestration_linux_test.go
+@@ -1,6 +1,13 @@
+ package nodeagent
+ 
+ import (
++	"context"
++	"encoding/json"
++	"errors"
++	"github.com/vivym/vela/internal/modelruntime"
++	"net"
++	"path/filepath"
++	"sync"
+ 	"testing"
+ 	"time"
+ )
+@@ -16,3 +23,140 @@ func TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput(t *testing.T) {
+ 		}
+ 	}
+ }
++
++func TestRuntimeStartupOrchestrationShutdownDuringPersistence(t *testing.T) {
++	f, custody := observedActivationFixture(t)
++	expected := f.ledger.starts[f.identity.JournalID].Request
++	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
++		Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
++		Credentials:      []RuntimeCallerCredentials{{UID: 10001, GID: 10001}},
++		ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = orchestration.Close() }()
++	entered, release := make(chan struct{}), make(chan struct{})
++	var once sync.Once
++	unblock := func() { once.Do(func() { close(release) }) }
++	defer unblock()
++	f.ledger.boundary = func(phase string) error {
++		if phase == "before-append" {
++			close(entered)
++			<-release
++		}
++		return nil
++	}
++	result := make(chan []byte, 1)
++	go func() {
++		wire, _ := orchestration.coordinator.HandleBackendStartup(t.Context(), expected)
++		result <- wire
++	}()
++	select {
++	case <-entered:
++	case <-time.After(5 * time.Second):
++		t.Fatal("activation did not enter persistence")
++	}
++	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
++	defer cancel()
++	shutdown := make(chan error, 1)
++	go func() { shutdown <- orchestration.Shutdown(ctx) }()
++	select {
++	case err := <-shutdown:
++		if !errors.Is(err, context.DeadlineExceeded) {
++			t.Fatalf("outstanding persistence incorrectly joined: %v", err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("shutdown deadline blocked behind persistence")
++	}
++	awaitObservedExit(t, custody)
++	f.write(t, false)
++	unblock()
++	select {
++	case wire := <-result:
++		var decision modelruntime.BackendStartupDecision
++		if json.Unmarshal(wire, &decision) != nil || decision.Permit {
++			t.Fatalf("closed attempt permitted: %s", wire)
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatal("activation did not join")
++	}
++	if err := orchestration.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestRuntimeStartupOrchestrationStopsListenerAndRoutes(t *testing.T) {
++	for _, scenario := range []string{"close", "cancel"} {
++		t.Run(scenario, func(t *testing.T) {
++			f, custody := observedActivationFixture(t)
++			expected := f.ledger.starts[f.identity.JournalID].Request
++			orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
++				Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
++				Credentials:      []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
++				ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = orchestration.Close() }()
++			listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "startup.sock"), Net: "unixpacket"})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = listener.Close() }()
++			ctx, cancel := context.WithCancel(t.Context())
++			defer cancel()
++			served := make(chan error, 1)
++			go func() { served <- orchestration.Serve(ctx, listener) }()
++			deadline := time.Now().Add(time.Second)
++			for {
++				orchestration.server.mu.Lock()
++				started := orchestration.server.done != nil
++				orchestration.server.mu.Unlock()
++				if started {
++					break
++				}
++				if time.Now().After(deadline) {
++					t.Fatal("Serve did not start")
++				}
++				time.Sleep(time.Millisecond)
++			}
++			wire, err := orchestration.coordinator.HandleBackendStartup(t.Context(), expected)
++			var decision modelruntime.BackendStartupDecision
++			if err != nil || json.Unmarshal(wire, &decision) != nil || !decision.Permit {
++				t.Fatalf("activate: %s %v", wire, err)
++			}
++			f.write(t, true)
++			if scenario == "cancel" {
++				cancel()
++			} else if err := orchestration.Close(); err != nil {
++				t.Fatal(err)
++			}
++			select {
++			case err := <-served:
++				if err == nil {
++					t.Fatal("closed listener returned no error")
++				}
++			case <-time.After(time.Second):
++				t.Fatal("shutdown left listener accepting")
++			}
++			f.write(t, false)
++			// Concurrent joins all observe completed cleanup, not merely a flag.
++			joined := make(chan error, 4)
++			for range 4 {
++				go func() { joined <- orchestration.Close() }()
++			}
++			for range 4 {
++				if err := <-joined; err != nil {
++					t.Fatal(err)
++				}
++			}
++			custody.mu.Lock()
++			defer custody.mu.Unlock()
++			if custody.connection != nil || custody.observer != nil || custody.target != nil {
++				t.Fatal("join returned before custody release")
++			}
++		})
++	}
++}
+diff --git a/internal/nodeagent/runtime_startup_server_linux.go b/internal/nodeagent/runtime_startup_server_linux.go
+index 1e414fe..73ca9ba 100644
+--- a/internal/nodeagent/runtime_startup_server_linux.go
++++ b/internal/nodeagent/runtime_startup_server_linux.go
+@@ -79,6 +79,7 @@ func (server *RuntimeStartupServer) HandleConnection(ctx context.Context, connec
+ 	}
+ 	if err := caller.Reply(exchange, wire); err != nil {
+ 		server.failed.Add(1)
++		server.coordinator.stop()
+ 		return err
+ 	}
+ 	server.replied.Add(1)
+@@ -100,9 +101,14 @@ func (server *RuntimeStartupServer) Serve(ctx context.Context, listener *net.Uni
+ 	server.listener = listener
+ 	server.done = make(chan struct{})
+ 	server.mu.Unlock()
++	stopListener := context.AfterFunc(ctx, func() { _ = listener.Close() })
++	defer stopListener()
+ 	var wg sync.WaitGroup
+ 	defer func() {
+ 		cancel()
++		if server.coordinator != nil {
++			server.coordinator.stop()
++		}
+ 		_ = listener.Close()
+ 		wg.Wait()
+ 		server.mu.Lock()
+@@ -131,15 +137,7 @@ func (server *RuntimeStartupServer) Shutdown(ctx context.Context) error {
+ 	if server == nil || ctx == nil {
+ 		return ErrRuntimeCallerIdentity
+ 	}
+-	server.mu.Lock()
+-	if server.cancel != nil {
+-		server.cancel()
+-	}
+-	if server.listener != nil {
+-		_ = server.listener.Close()
+-	}
+-	done := server.done
+-	server.mu.Unlock()
++	done := server.stop()
+ 	if done == nil {
+ 		return nil
+ 	}
+@@ -150,6 +148,25 @@ func (server *RuntimeStartupServer) Shutdown(ctx context.Context) error {
+ 		return context.Cause(ctx)
+ 	}
+ }
++
++// stop is terminal even before Serve has started. It closes admission and
++// cancels active exchanges without waiting for handlers to return.
++func (server *RuntimeStartupServer) stop() <-chan struct{} {
++	server.mu.Lock()
++	defer server.mu.Unlock()
++	server.stopped = true
++	if server.cancel != nil {
++		server.cancel()
++	}
++	if server.listener != nil {
++		_ = server.listener.Close()
++	}
++	if server.coordinator != nil {
++		server.coordinator.stop()
++	}
++	return server.done
++}
++
+ func (server *RuntimeStartupServer) Stats() (accepted, authenticated, replied, failed uint64) {
+ 	return server.accepted.Load(), server.authenticated.Load(), server.replied.Load(), server.failed.Load()
+ }
+diff --git a/internal/nodeagent/runtime_startup_server_linux_test.go b/internal/nodeagent/runtime_startup_server_linux_test.go
+index de7d008..385fe34 100644
+--- a/internal/nodeagent/runtime_startup_server_linux_test.go
++++ b/internal/nodeagent/runtime_startup_server_linux_test.go
+@@ -2,6 +2,7 @@ package nodeagent
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"net"
+ 	"path/filepath"
+ 	"testing"
+@@ -50,3 +51,106 @@ func TestRuntimeStartupServerShutdownClosesIdleListener(t *testing.T) {
+ 		t.Fatal("Serve returned nil after listener shutdown")
+ 	}
+ }
++
++func TestRuntimeStartupServerCancellationClosesIdleListener(t *testing.T) {
++	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "startup.sock"), Net: "unixpacket"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = listener.Close() }()
++	server := &RuntimeStartupServer{}
++	ctx, cancel := context.WithCancel(t.Context())
++	defer cancel()
++	serveDone := make(chan error, 1)
++	go func() { serveDone <- server.Serve(ctx, listener) }()
++	cancel()
++	select {
++	case err := <-serveDone:
++		if !errors.Is(err, context.Canceled) {
++			t.Fatalf("lost cancellation: %v", err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("canceled Serve remained in AcceptUnix")
++	}
++}
++
++func TestRuntimeStartupServerShutdownBeforeServeIsTerminal(t *testing.T) {
++	server := &RuntimeStartupServer{}
++	if err := server.Shutdown(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "startup.sock"), Net: "unixpacket"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() { _ = listener.Close() }()
++	// A deadline makes this regression terminate even if stopped is forgotten.
++	if err := listener.SetDeadline(time.Now().Add(time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	if err := server.Serve(t.Context(), listener); !errors.Is(err, net.ErrClosed) {
++		t.Fatalf("Serve after Shutdown: %v", err)
++	}
++}
++
++// Exercise the real transport with the same original process reserved in the
++// ledger. Direct coordinator tests cannot detect per-exchange lifetime leaks.
++func TestRuntimeStartupServerOwnsPostReplyLifetime(t *testing.T) {
++	for _, scenario := range []string{"delivered", "connection-lost"} {
++		t.Run(scenario, func(t *testing.T) {
++			var custody *RuntimeObserverCustody
++			original, config := newRemoteReservationFixture(t, false, &custody)
++			f := startupActivationFromReservation(t, config)
++			orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
++				Ledger: f.ledger, Plan: f.plan, ExpectedRequest: original.request, Grant: f.grant, Observer: custody,
++				Credentials:      []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
++				ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer func() { _ = orchestration.Close() }()
++			if scenario == "connection-lost" {
++				f.ledger.boundary = func(phase string) error {
++					if phase == "after-sync" {
++						return original.connection.Close()
++					}
++					return nil
++				}
++			}
++			if err := original.caller.Reply(t.Context(), []byte("next")); err != nil {
++				t.Fatal(err)
++			}
++			err = orchestration.server.HandleConnection(t.Context(), original.connection)
++			if scenario == "connection-lost" {
++				if err == nil {
++					t.Fatal("lost reply reported success")
++				}
++				select {
++				case <-custody.revokedSignal:
++				case <-time.After(time.Second):
++					t.Fatal("lost reply left observer active")
++				}
++				f.write(t, false)
++			} else {
++				if err != nil {
++					t.Fatal(err)
++				}
++				observation := orchestration.coordinator.observation
++				if observation == nil {
++					t.Fatal("transport replied without observation")
++				}
++				select {
++				case <-observation.Done():
++					t.Fatalf("successful transport canceled backend: %v", observation.Err())
++				case <-time.After(200 * time.Millisecond):
++				}
++				f.write(t, true)
++			}
++			if err := orchestration.Close(); err != nil {
++				t.Fatal(err)
++			}
++			f.write(t, false)
++		})
++	}
++}
