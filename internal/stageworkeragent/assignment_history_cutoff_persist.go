@@ -42,7 +42,18 @@ func validateAssignmentHistoryCutoffs(state assignmentAdmissionState) error {
 	baseMatched := state.HistoryBase == 0
 	for index := range state.HistoryCutoffs {
 		cutoff := state.HistoryCutoffs[index]
-		if err := cutoff.ValidateSuccessor(previous); err != nil {
+		if index == 0 && state.HistoryCheckpoint != nil {
+			checkpoint := state.HistoryCheckpoint
+			if err := cutoff.Validate(); err != nil {
+				return err
+			}
+			checkpointDigest, err := checkpoint.Digest()
+			if err != nil || cutoff.FromSequence != checkpoint.ThroughSequence+1 || cutoff.PreviousCutoffDigest != checkpointDigest ||
+				cutoff.ScopeDigest != checkpoint.ScopeDigest || cutoff.WorkerInstanceID != checkpoint.WorkerInstanceID ||
+				cutoff.WorkerInstanceEpoch != checkpoint.WorkerInstanceEpoch || cutoff.WorkerMemberID != checkpoint.WorkerMemberID {
+				return errors.New("assignment history cutoff does not extend checkpoint")
+			}
+		} else if err := cutoff.ValidateSuccessor(previous); err != nil {
 			return err
 		}
 		baseMatched = baseMatched || cutoff.ThroughSequence == state.HistoryBase
