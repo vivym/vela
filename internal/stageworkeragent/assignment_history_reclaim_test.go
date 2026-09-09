@@ -46,9 +46,22 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.RecordAssignmentHistoryCutoff(t.Context(), cutoff); err != nil {
 		t.Fatal(err)
 	}
-	if err := gate.ReclaimAssignmentHistory(t.Context(), cutoff); err != nil {
+	failed := true
+	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
+		if failed {
+			failed = false
+			return os.ErrInvalid
+		}
+		return sync()
+	})
+	if err := gate.ReclaimAssignmentHistory(t.Context(), cutoff); err == nil {
+		t.Fatal("reclamation unexpectedly succeeded across directory sync failure")
+	}
+	restore()
+	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
+	gate = f.open(t)
 	snapshot, err := gate.Snapshot(t.Context())
 	if err != nil {
 		t.Fatal(err)
