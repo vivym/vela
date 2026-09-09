@@ -535,3 +535,6 @@ renewal/replay、session capacity 和 observation lifecycle。该分片补充了
 
 资源与分配一致性分片
 `go test -tags=integration ./internal/integration -run '^TestWorkerRegistry|^TestStageAssignment|^TestStageArtifact|^TestArtifact'` 已通过，耗时约 89 秒；覆盖 Worker registry authority/replay、Stage assignment connector/replay、artifact lifecycle 及不可变内容边界。该分片仍属于领域证据，不替代全量 integration。
+
+业务一致性分片
+`go test -tags=integration ./internal/integration -run '^TestAdmission|^TestWebhook|^TestOutbox|^TestInbox'` 已通过，耗时约 101 秒；覆盖 Admission 无副作用拒绝与幂等、Webhook 重放/权限、Outbox 提交后重投、Inbox exactly-once/版本边界。
