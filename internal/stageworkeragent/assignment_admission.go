@@ -645,7 +645,15 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 	if err := gate.validateRetirements(state); err != nil {
 		return err
 	}
-	return validateAssignmentHistoryCutoffs(state)
+	if err := validateAssignmentHistoryCutoffs(state); err != nil {
+		return err
+	}
+	for _, cutoff := range state.HistoryCutoffs {
+		if err := validateAssignmentHistoryCutoffIdentity(state, gate.scopeDigest, cutoff); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func admissionEntries(state assignmentAdmissionState) []assignmentAdmissionEntry {

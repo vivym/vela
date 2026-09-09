@@ -54,6 +54,11 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.ReclaimAssignmentHistory(t.Context(), tampered); err == nil {
 		t.Fatal("reclamation accepted a cutoff different from the persisted proof")
 	}
+	tamperedIdentity := cutoff
+	tamperedIdentity.WorkerMemberID = uuid.New()
+	if err := gate.ReclaimAssignmentHistory(t.Context(), tamperedIdentity); err == nil {
+		t.Fatal("reclamation accepted a cutoff from another journal identity")
+	}
 	failed := true
 	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
 		if failed {

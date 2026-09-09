@@ -56,6 +56,9 @@ func validateAssignmentHistoryCutoffs(state assignmentAdmissionState) error {
 
 func validateAssignmentHistoryCutoffsForAppend(gate *FileAssignmentAdmission, cutoff AssignmentHistoryCutoff) error {
 	state := gate.state
+	if err := validateAssignmentHistoryCutoffIdentity(state, gate.scopeDigest, cutoff); err != nil {
+		return err
+	}
 	if err := validateAssignmentHistoryCutoffs(state); err != nil {
 		return err
 	}
@@ -108,6 +111,9 @@ func (gate *FileAssignmentAdmission) ReclaimAssignmentHistory(ctx context.Contex
 		return err
 	}
 	if err := cutoff.Validate(); err != nil {
+		return err
+	}
+	if err := validateAssignmentHistoryCutoffIdentity(gate.state, gate.scopeDigest, cutoff); err != nil {
 		return err
 	}
 	if len(gate.state.HistoryCutoffs) == 0 || gate.state.HistoryBase+1 != cutoff.FromSequence {
@@ -187,6 +193,13 @@ func validateAssignmentHistoryReclaimRange(gate *FileAssignmentAdmission, cutoff
 		if !seen[sequence] {
 			return errors.New("assignment history reclamation range is incomplete")
 		}
+	}
+	return nil
+}
+
+func validateAssignmentHistoryCutoffIdentity(state assignmentAdmissionState, scope [32]byte, cutoff AssignmentHistoryCutoff) error {
+	if cutoff.ScopeDigest != scope || cutoff.WorkerInstanceID != state.WorkerInstanceID || cutoff.WorkerInstanceEpoch != state.WorkerInstanceEpoch || cutoff.WorkerMemberID != state.WorkerMemberID {
+		return errors.New("assignment history cutoff identity does not match journal")
 	}
 	return nil
 }
