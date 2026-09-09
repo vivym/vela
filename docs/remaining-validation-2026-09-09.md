@@ -154,6 +154,11 @@ grant issuer 或 observer custody。因而不能直接把新 startup server 塞�
 和 shutdown 所有权，再把 listener 设为唯一路径。当前 library/server 测试证据不提升
 生产装配等级。
 
+新增 `RuntimeStartupOrchestration` composition root，强制显式传入 ledger、plan、
+expected request、grant、observer custody、caller credentials 和有界超时，并统一
+Serve/Shutdown/Close。缺少任一 authority-bearing input 都拒绝；它不创建 socket 或
+推导授权。下一步仍需从真实 Node/CRI/Fleet 生命周期生成这些对象并接入命令入口。
+
 ## 依赖顺序与通过标准
 
 执行连续性的 [旧 mem 句柄候选实验](runtime-execution-continuity-evidence-2026-09-09.md)

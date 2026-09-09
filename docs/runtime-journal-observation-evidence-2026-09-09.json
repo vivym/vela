@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "baseline_commit": "275be0a3c3efe39d32d790c0495ccd9de7c11594",
-  "source_sha256": "b2a3762eadb3c3e3b6a7e6e62da7ad6439e97ba95ab7c97f4e2fcc49f71ba0a7",
-  "source_file_count": 1064,
+  "source_sha256": "c918c910d46be1cb33a5967667d8fb143a3fac3de7ae15a1280f7a73e96c30a0",
+  "source_file_count": 1066,
   "source_digest_method": "SHA256(sorted tracked/untracked Go SQL proto C shell + go.mod go.sum: path NUL file SHA256 newline)",
-  "native_source_patch_sha256": "33332cb07cc9566b9140c49f2a60f5d77710ae5cd259d484bbf40aeb8f8327dc",
-  "image_id": "sha256:f689664b00786d4c234359d0cf46b93666ab0e1ea2210df7de1b28c646c712f1",
+  "native_source_patch_sha256": "304a30eed9ec901ee1e3c9fc7b4727fa3fdfd2aa0fc1cd56ccd7ddde70b66ff7",
+  "image_id": "sha256:be0bc44735a99c1665f312427de58f686902838a00c7904788f33e521e1325a4",
   "binary_sha256": {
     "runtime-command.test": "aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854",
-    "nodeagent.test": "c0ec36f4ad3debb69451925acbb3238cef95fc8aba6fb21080f439cbcb12d60b",
+    "nodeagent.test": "3de6f550dbbe77f5da13c2ebd18144ded0b05401c7f50321fd981fa26966ab3a",
     "exec-observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
-    "vela-model-runtime": "e08fa4d8c4438616fb148c19ccd3bd02fb062d68736723cc9d188bee74bea651",
+    "vela-model-runtime": "0b36e6ca079da64c33ff2310216747d4b2ca9da55be1a1373f5745a0f5d7311d",
     "exec-probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2"
   },
   "platform": "linux/arm64",
@@ -177,7 +177,8 @@
     "shell_syntax": "passed",
     "diff_check": "passed",
     "coordinator_native": "2 top-level tests passed: exact permit and mismatch deny/no-consumption",
-    "startup_server_native": "invalid configuration rejection passed; actual runner exit 0"
+    "startup_server_native": "invalid configuration rejection passed; actual runner exit 0",
+    "orchestration_composition_root": "missing authority input rejection passed; runner exit 0"
   },
   "review": {
     "standards": "three concurrency/error findings fixed; follow-up review clear",

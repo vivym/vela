@@ -132,3 +132,16 @@ plan/Fleet reservation、grant issuer 或 observer custody 来源。直接在该
 默认授权会扩大权限并破坏证据边界，因此真实 socket 路径、权限发布和这些生命周期
 来源仍需先作为明确的 Node startup orchestration 配置接入，再做 PostgreSQL/TLS
 同次回归。
+
+
+## Explicit startup orchestration composition root
+
+新增 `RuntimeStartupOrchestration` 作为 Node-owned composition root。构造必须同时提供
+ledger、verified plan、exact expected request、operation-bound grant、observer custody、
+非 root caller credentials 和 bounded observer/exchange timeouts；没有默认值，也不从
+history/receipt 重建。`Serve` 只接收 trusted assembly 已创建的 Unix listener，
+`Shutdown`/`Close` 统一收敛 server、coordinator 和 observation 生命周期。
+
+新增 native 配置缺失拒绝测试，并在最终 runner 中编译验证。它仍是 library composition
+boundary；现有 `cmd/vela-node-agent` 尚未提供这些 Runtime startup 对象的真实来源，
+所以本轮没有把它伪装成 production command integration。

@@ -142,5 +142,10 @@ reservation、grant issuer 或 observer custody 生命周期，因此不能隐�
 再把 `RuntimeStartupServer.Serve` 作为唯一 startup socket 路径；不能从现有 Worker
 Agent 配置推导启动许可。
 
+`RuntimeStartupOrchestration` 现在作为显式 composition root，要求所有 authority-bearing
+对象和 caller credentials 由 trusted Node assembly 传入，并统一 server/coordinator/
+observation 的关闭顺序。缺少输入没有 fallback。现有 `cmd/vela-node-agent` 仍缺少
+这些对象的生产来源，故下一阶段应先实现真实 Node/CRI/Fleet lifecycle，再接入唯一命令入口。
+
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。
