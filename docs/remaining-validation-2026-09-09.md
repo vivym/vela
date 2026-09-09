@@ -240,6 +240,8 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 完成第二次 checkpoint compaction，将 8 条 retained cutoff 再压缩为零。掉电级别故障、
 外部签名和长期上界仍需继续验证；本轮还直接篡改最终 checkpoint 的
 `cumulative_digest`，重开按预期拒绝，随后恢复原始文件。
+同一 campaign 还覆盖了 state 截断、空文件和 trailing bytes，均按预期拒绝；这些
+是本地损坏恢复证据，不等同于真实 power-loss durability。
 
 checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test ./...`、
 `go vet ./...`；其中 `internal/stageworkeragent` 包含完整 compaction/race campaign。

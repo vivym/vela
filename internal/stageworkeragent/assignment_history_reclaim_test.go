@@ -469,4 +469,22 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	if err := os.WriteFile(statePath, originalCheckpointState, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	for name, damaged := range map[string][]byte{
+		"truncated": originalCheckpointState[:len(originalCheckpointState)/2],
+		"empty":     nil,
+		"trailing":  append(append([]byte(nil), originalCheckpointState...), '\n'),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(statePath, damaged, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if reopened, err := stageworkeragent.NewFileAssignmentAdmission(f.config); err == nil {
+				_ = reopened.Close()
+				t.Fatal("recovery accepted damaged assignment journal")
+			}
+			if err := os.WriteFile(statePath, originalCheckpointState, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
