@@ -203,7 +203,8 @@ materialization proof 和 previous-cutoff digest 链，并以单元测试拒绝�
 `HistoryBase` 及按已持久 cutoff 删除连续前缀的实现，删除后仍保留 proof 链并允许
 从新 base 继续校验；`7733c27` 已验证删除后关闭 journal、重开并继续接纳下一条
 execution，`efd96fe` 又覆盖了 rename 后 directory sync 失败并重开恢复的边界。
-安全 reclamation 仍需补齐 digest 对账攻击和长期压力验证，
+`1e99ea5` 覆盖了调用者篡改 cutoff digest 时的拒绝路径。安全 reclamation 仍需
+补齐磁盘中 cutoff 被篡改后的 recovery 拒绝、多 cutoff 连续中断和长期压力验证，
 sustained arrivals 仍受该上限约束。
 
 [Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
