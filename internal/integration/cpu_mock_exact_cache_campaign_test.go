@@ -101,7 +101,9 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 		waitCPUExactCacheStages(t, ctx, database, sourceAttempt.String(), 4, loopErrors)
 	}
 	completeCPUExactCacheJob(t, ctx, finalizer, uuid.MustParse(source.JobID))
-	afterSource := observeCPULoad(t, database, root)
+	afterSource := waitForCPUExactCacheObservation(t, ctx, database, root, func(observation cpuLoadObservation) bool {
+		return observation.ScratchBytes == 0 && observation.RuntimeWatchdogs == 0
+	})
 	afterSource.Processes = observeCPULoadProcesses(t)
 	assertCPULoadResidentProcesses(t, before.Processes, afterSource.Processes)
 	if afterSource.ScratchBytes != 0 || afterSource.RuntimeWatchdogs != 0 {
@@ -197,7 +199,13 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 	}
 	copies := verifyCPUExactCachePublicCopies(t, ctx, database, store)
 	runtime.GC()
-	afterTarget := observeCPULoad(t, database, root)
+	afterTarget := waitForCPUExactCacheObservation(t, ctx, database, root, func(observation cpuLoadObservation) bool {
+		return observation.Completed == 2 && observation.ScratchBytes == 0 &&
+			observation.RuntimeWatchdogs == 0 && observation.ActiveAllocations == 0 &&
+			observation.ActiveLeases == 0 && observation.ReservedStorage == 0 &&
+			observation.Running == 0 && observation.Queued == 0 &&
+			observation.PoolCounters == 0 && observation.ReservedCredit == 0
+	})
 	afterTarget.Processes = observeCPULoadProcesses(t)
 	assertCPULoadResidentProcesses(t, before.Processes, afterTarget.Processes)
 	if afterTarget.Completed != 2 || afterTarget.Charges != 2 || afterTarget.ScratchBytes != 0 || afterTarget.RuntimeWatchdogs != 0 ||
@@ -252,6 +260,33 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 		t.Fatal(err)
 	}
 	t.Logf("CPU_MOCK_EXACT_CACHE_RECEIPT %s", encoded)
+}
+
+func waitForCPUExactCacheObservation(
+	t *testing.T,
+	ctx context.Context,
+	database testDatabase,
+	root string,
+	ready func(cpuLoadObservation) bool,
+) cpuLoadObservation {
+	t.Helper()
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		observation := observeCPULoad(t, database, root)
+		if ready(observation) {
+			return observation
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("waiting for CPU exact-cache resources to drain: %v; last=%+v", ctx.Err(), observation)
+		case <-deadline.C:
+			t.Fatalf("CPU exact-cache resources did not drain within 30s: %+v", observation)
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitCPUProductionReady(t *testing.T, ctx context.Context, workers []*cpuLoadWorker) {
