@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,4 +156,60 @@ func persistedScope(scope []byte) [sha256.Size]byte {
 	var result [sha256.Size]byte
 	copy(result[:], scope)
 	return result
+}
+
+func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
+	f := newAdmissionFixture(t)
+	gate := f.open(t)
+	statePath := filepath.Join(f.config.Directory, admissionTestState)
+	document, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted struct {
+		Scope []byte `json:"scope"`
+	}
+	if err := json.Unmarshal(document, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	var previous [sha256.Size]byte
+	for sequence := int64(1); sequence <= 40; sequence++ {
+		assignment := f.assignment
+		acquireID := f.acquireID
+		if sequence > 1 {
+			assignment = f.next(t, sequence)
+			acquireID = uuid.New()
+		}
+		handle := beginAdmission(t, gate, assignment, acquireID)
+		completeAdmissionInputs(t, handle)
+		if err := gate.CloseExecution(t.Context(), assignment.Authority); err != nil {
+			t.Fatal(err)
+		}
+		cutoff := stageworkeragent.AssignmentHistoryCutoff{
+			ScopeDigest: persistedScope(persisted.Scope), WorkerInstanceID: f.config.WorkerInstanceID,
+			WorkerInstanceEpoch: f.config.WorkerInstanceEpoch, WorkerMemberID: f.config.WorkerMemberID,
+			FromSequence: sequence, ThroughSequence: sequence, PreviousCutoffDigest: previous,
+			CumulativeDigest:           sha256.Sum256([]byte(fmt.Sprintf("history-%d", sequence))),
+			TerminalProofDigest:        sha256.Sum256([]byte(fmt.Sprintf("terminal-%d", sequence))),
+			InputProofDigest:           sha256.Sum256([]byte(fmt.Sprintf("input-%d", sequence))),
+			MaterializationProofDigest: sha256.Sum256([]byte(fmt.Sprintf("materialization-%d", sequence))),
+		}
+		if err := gate.RecordAssignmentHistoryCutoff(t.Context(), cutoff); err != nil {
+			t.Fatal(err)
+		}
+		if err := gate.ReclaimAssignmentHistory(t.Context(), cutoff); err != nil {
+			t.Fatal(err)
+		}
+		previous, err = cutoff.Digest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		snapshot, err := gate.Snapshot(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.Watermark != sequence || len(snapshot.Pending) != 0 || snapshot.Latest != nil {
+			t.Fatalf("sequence %d retained unexpected history: %+v", sequence, snapshot)
+		}
+	}
 }
