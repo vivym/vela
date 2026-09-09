@@ -244,6 +244,8 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 是本地损坏恢复证据，不等同于真实 power-loss durability。
 此外，错误 `CompactedCutoffCount` 的 checkpoint 在提交前被拒绝，且 state 文件大小
 保持不变，随后合法 compaction 才继续执行。
+重复 compaction 还覆盖了旧 revision 的 successor checkpoint，确认非递增 revision
+会被拒绝且 state 不变。
 
 checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test ./...`、
 `go vet ./...`；其中 `internal/stageworkeragent` 包含完整 compaction/race campaign。

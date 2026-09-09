@@ -440,6 +440,18 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		MaterializationProofDigest: finalCutoff.MaterializationProofDigest, LastCutoffDigest: finalCutoffDigest,
 		CompactedCutoffCount: 40, Revision: 2,
 	}
+	invalidSuccessor := secondCheckpoint
+	invalidSuccessor.Revision = 1
+	if err := gate.CompactAssignmentHistory(t.Context(), invalidSuccessor); err == nil {
+		t.Fatal("accepted a non-increasing checkpoint revision")
+	}
+	unchangedSuffixState, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchangedSuffixState.Size() != compactedState.Size() {
+		t.Fatalf("rejected successor checkpoint changed journal size: before=%d after=%d", compactedState.Size(), unchangedSuffixState.Size())
+	}
 	if err := gate.CompactAssignmentHistory(t.Context(), secondCheckpoint); err != nil {
 		t.Fatal(err)
 	}
