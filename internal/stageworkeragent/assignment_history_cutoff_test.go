@@ -95,3 +95,29 @@ func TestAssignmentHistoryCheckpointCanonicalAndRejectsIncompleteProof(t *testin
 		})
 	}
 }
+
+func TestAssignmentHistoryCheckpointAnchorsRetainedCutoffs(t *testing.T) {
+	checkpoint := checkpointFixture()
+	checkpoint.ThroughSequence = 128
+	checkpoint.CompactedCutoffCount = 64
+	retained := cutoffFixture()
+	retained.ScopeDigest = checkpoint.ScopeDigest
+	retained.WorkerInstanceID = checkpoint.WorkerInstanceID
+	retained.WorkerInstanceEpoch = checkpoint.WorkerInstanceEpoch
+	retained.WorkerMemberID = checkpoint.WorkerMemberID
+	retained.FromSequence, retained.ThroughSequence = 129, 130
+	checkpointDigest, err := checkpoint.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained.PreviousCutoffDigest = checkpointDigest
+	state := assignmentAdmissionState{HistoryBase: 128, HistoryCheckpoint: &checkpoint, HistoryCutoffs: []AssignmentHistoryCutoff{retained}}
+	if err := validateAssignmentHistoryCheckpoint(state); err != nil {
+		t.Fatal(err)
+	}
+	retained.PreviousCutoffDigest[0] ^= 1
+	state.HistoryCutoffs[0] = retained
+	if err := validateAssignmentHistoryCheckpoint(state); err == nil {
+		t.Fatal("accepted a retained cutoff detached from checkpoint")
+	}
+}

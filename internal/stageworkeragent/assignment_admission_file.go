@@ -58,6 +58,7 @@ type assignmentAdmissionState struct {
 	Latest              *assignmentAdmissionEntry     `json:"latest"`
 	Pending             []assignmentAdmissionEntry    `json:"pending"`
 	Retirements         []terminalRetirementEntry     `json:"retirements,omitempty"`
+	HistoryCheckpoint   *AssignmentHistoryCheckpoint  `json:"history_checkpoint,omitempty"`
 	HistoryCutoffs      []AssignmentHistoryCutoff     `json:"history_cutoffs,omitempty"`
 }
 

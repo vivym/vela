@@ -94,5 +94,7 @@ chain 本身，而不是 goroutine 或 heap 泄漏。因此“删除逐条历史
 arrival 证明。
 
 当前已先落地 `AssignmentHistoryCheckpoint` 的 canonical JSON、identity、范围、
-proof digest、compacted-count 和 revision 校验层；它尚未接入 journal state 或
-删除事务，因此不会改变现有 recovery 语义。
+proof digest、compacted-count 和 revision 校验层，并接入 journal recovery 的
+边界校验：`HistoryBase` 与 checkpoint 必须一致，保留 cutoff 必须由 checkpoint
+digest 锚定。它尚未执行旧 proof 删除或改变现有 schema version，因此不会提前
+宣称 compaction 已完成。

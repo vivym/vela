@@ -648,6 +648,9 @@ func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionStat
 	if err := validateAssignmentHistoryCutoffs(state); err != nil {
 		return err
 	}
+	if err := validateAssignmentHistoryCheckpoint(state); err != nil {
+		return err
+	}
 	for _, cutoff := range state.HistoryCutoffs {
 		if err := validateAssignmentHistoryCutoffIdentity(state, gate.scopeDigest, cutoff); err != nil {
 			return err

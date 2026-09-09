@@ -54,6 +54,31 @@ func validateAssignmentHistoryCutoffs(state assignmentAdmissionState) error {
 	return nil
 }
 
+func validateAssignmentHistoryCheckpoint(state assignmentAdmissionState) error {
+	checkpoint := state.HistoryCheckpoint
+	if checkpoint == nil {
+		return nil
+	}
+	if err := checkpoint.Validate(); err != nil {
+		return err
+	}
+	if checkpoint.ThroughSequence > state.HistoryBase {
+		return errors.New("assignment history checkpoint exceeds history base")
+	}
+	if len(state.HistoryCutoffs) != 0 {
+		first := state.HistoryCutoffs[0]
+		if first.FromSequence != checkpoint.ThroughSequence+1 || first.PreviousCutoffDigest != checkpointDigestOrZero(*checkpoint) {
+			return errors.New("assignment history checkpoint does not anchor retained cutoff chain")
+		}
+	}
+	return nil
+}
+
+func checkpointDigestOrZero(checkpoint AssignmentHistoryCheckpoint) [32]byte {
+	digest, _ := checkpoint.Digest()
+	return digest
+}
+
 func validateAssignmentHistoryCutoffsForAppend(gate *FileAssignmentAdmission, cutoff AssignmentHistoryCutoff) error {
 	state := gate.state
 	if err := validateAssignmentHistoryCutoffIdentity(state, gate.scopeDigest, cutoff); err != nil {
