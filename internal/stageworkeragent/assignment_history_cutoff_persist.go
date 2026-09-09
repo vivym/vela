@@ -32,13 +32,24 @@ func (gate *FileAssignmentAdmission) RecordAssignmentHistoryCutoff(ctx context.C
 }
 
 func validateAssignmentHistoryCutoffs(state assignmentAdmissionState) error {
+	if len(state.HistoryCutoffs) == 0 {
+		if state.HistoryBase != 0 {
+			return errors.New("assignment history base has no persisted cutoff")
+		}
+		return nil
+	}
 	var previous *AssignmentHistoryCutoff
+	baseMatched := state.HistoryBase == 0
 	for index := range state.HistoryCutoffs {
 		cutoff := state.HistoryCutoffs[index]
 		if err := cutoff.ValidateSuccessor(previous); err != nil {
 			return err
 		}
+		baseMatched = baseMatched || cutoff.ThroughSequence == state.HistoryBase
 		previous = &cutoff
+	}
+	if previous == nil || previous.ThroughSequence < state.HistoryBase || !baseMatched {
+		return errors.New("assignment history base is not a persisted cutoff boundary")
 	}
 	return nil
 }

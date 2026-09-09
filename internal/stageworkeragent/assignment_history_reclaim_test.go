@@ -117,6 +117,24 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := json.Unmarshal(original, &decoded); err != nil {
 		t.Fatal(err)
 	}
+	decoded["history_base"] = float64(1)
+	tamperedBase, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, tamperedBase, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := stageworkeragent.NewFileAssignmentAdmission(f.config); err == nil {
+		_ = reopened.Close()
+		t.Fatal("recovery accepted a history base inconsistent with persisted cutoffs")
+	}
+	if err := os.WriteFile(statePath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(original, &decoded); err != nil {
+		t.Fatal(err)
+	}
 	cutoffs, ok := decoded["history_cutoffs"].([]any)
 	if !ok || len(cutoffs) != 2 {
 		t.Fatalf("decode persisted cutoff: %#v", decoded["history_cutoffs"])
