@@ -225,6 +225,9 @@ sustained arrivals 仍受该上限约束。
 上，且不能超过 cutoff 链的末端；新增的磁盘 base 篡改测试确认 recovery fail closed。
 `204acb3` 又要求首个 cutoff 从 execution sequence `1` 开始，拒绝跳过未证明的
 历史前缀。
+`797facb` 将每个 cutoff 的 scope、Worker instance/member 和 epoch 绑定到当前
+journal，并在追加、恢复、回收三条路径都 fail closed；跨 journal identity 的
+cutoff 不能被接受。
 
 `9045e8e` 的 16-job、两波并发 arrival campaign，以及 `13d7bbe` 的同装配 `-race`
 重跑均通过：16 个 completion、16 次 Charge、无 acquire deadlock/serialization
