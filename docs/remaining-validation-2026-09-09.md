@@ -24,6 +24,17 @@ tests，并为每个分片建立独立 PostgreSQL/Testcontainers 环境。该结
 点的 integration 契约集合可以通过并行分片运行；它仍属于单机 Docker/mock 证据，
 不替代单进程全量运行、真实多节点 Fleet/CRI、长期 soak 或 Production Gates。
 
+本轮又单独重跑了真实隔离恢复路径：
+
+```text
+go test -tags=integration ./internal/integration -run '^TestRecoverySnapshotRestoresIndependentPostgres17$' -count=1 -timeout=5m
+```
+
+结果：通过，耗时约 12.345s。该测试实际启动独立 PostgreSQL 17 容器，执行
+`pg_restore`，校验表与行指纹、catalog、RLS/tenant isolation、关闭 Admission
+及旧 operation fencing，并验证 restore receipt 不可覆盖。它仍是本地
+Testcontainers recovery 证据，不是生产灾备或对象存储恢复证明。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
