@@ -1,165 +1,44 @@
 # Vela 剩余验证与实施顺序
 
-## 2026-09-09 本轮复核
+## 验证记录校正与当前边界
 
-在当前提交点重新执行了 CPU/mock 关键 campaign：
+最近的多次绿色命令输出不能一概解释为“全部测试执行并通过”。本轮按源码、
+测试发现清单和原始输出重新核对，修正以下结论；本节优先于下方历史记录。
 
-```text
-go test -tags=integration ./internal/integration -run '^TestCPUMockExactCacheSourceTargetCampaign$|^TestCPUMockExactCacheProductionLoopCampaign$|^TestCPUMockProductionLoopClockOffsetCampaign$|^TestCPUMockDurableStreamExactCacheCampaign$' -count=1
-```
+- **CPU campaign 开关**：未设置 `VELA_RUN_CPU_MOCK_CAMPAIGN=1` 时，四条
+  exact-cache/ProductionLoop/clock-offset/durable-stream campaign 全部 SKIP。
+  早先 0.862s 的绿色命令不能证明 campaign 已执行。显式清空该变量后，本轮
+  `-v` 重现了四个 SKIP。之后显式启用开关的 race/64 Job 运行是另一组证据。
+- **分片范围**：本地 `run-integration-shards.sh` 只发现 `internal/integration`
+  这个包。505 是发现的顶层测试数量，不能直接当作 PASS 数；有环境门控的测试
+  会跳过。CI 使用另一个 `test-integration-shard.sh`，还发现其他包中的 tagged
+  tests，因此“本地 20 分片与 CI 覆盖完全相同”不成立。
+- **超时归因**：最近一次单进程全量在 15 分钟 package deadline 到期时，当前
+  `TestStageExecutionCatalogActiveGraphOptionsAreImmutable` 仅运行 0s；前一个
+  容器刚完成正常 migration/cleanup。`ContainerStart` 栈仅说明 deadline 时所在
+  位置，不能证明 Docker 长期失去响应。该运行未完成，根因仍需时间分布证据。
+- **历史回收测试**：此前命令中的 `TestAssignmentHistoryReclaimRejectsTamperedCheckpoint`
+  并不存在。实际运行的是另外两个测试；checkpoint 篡改反例在
+  `TestAssignmentHistoryReclaimBoundedArrivalCampaign` 内，不能虚构第三个测试 PASS。
+- **平台边界**：macOS `go test -race ./...` 不运行 Linux-only startup tests。
+  `make test-cross` 使用 `-exec=/usr/bin/true`，只证明交叉编译，不执行 Linux
+  测试二进制。native runner 使用 `/nodeagent.test`，不代表 Node Agent daemon 已接线。
+- **native 命令**：已有 `/tmp/vela-native-rerun-20260909` 运行实际使用 `bash
+  hack/run-remote-runtime-cli-native.sh`；随后修复 executable bit，未再次直接启动
+  该脚本。可执行位修改与 native 成功是两项不同证据。
 
-结果：通过，耗时约 0.862s。随后 `go test ./...` 与 `go vet ./...` 均通过，
-`git diff --check` 通过。该复核确认当前 CPU/mock exact-cache、ProductionAgent
-loop、clock-offset 与 durable-stream 路径没有回归；它仍不等于完整 integration
-套件、真实 Node/CRI/Fleet 装配或 Production Gate 证明。
+本轮修复本地 runner：发现失败立即终止；每个发现测试必须恰有一个顶层终态；
+PASS、SKIP、FAIL、MISSING 分开报告；成功和失败均保留私有日志与逐测试 TSV。
+本轮完整分片发现 505 项：**496 PASS、9 SKIP、0 FAIL、0 MISSING**；另外显式
+启用开关的四条 CPU campaigns 均实际 race PASS（总计 77.088s）。
+并发上限减少同时运行的 Go 分片进程数，但没有证据证明它修复 Docker 故障，
+也没有可靠 wall-clock 对比支持“更快”。实际测试结果与复现记录见
+[验证 runner 审计](validation-runner-audit-2026-09-09.md)。
 
-随后使用仓库提供的并行分片入口重新执行完整 integration 测试集合：
-
-```text
-./hack/run-integration-shards.sh 6
-```
-
-六个分片全部通过。脚本按当前测试发现结果覆盖完整的 505 个顶层 integration
-tests，并为每个分片建立独立 PostgreSQL/Testcontainers 环境。该结果证明当前提交
-点的 integration 契约集合可以通过并行分片运行；它仍属于单机 Docker/mock 证据，
-不替代单进程全量运行、真实多节点 Fleet/CRI、长期 soak 或 Production Gates。
-
-本轮又单独重跑了真实隔离恢复路径：
-
-```text
-go test -tags=integration ./internal/integration -run '^TestRecoverySnapshotRestoresIndependentPostgres17$' -count=1 -timeout=5m
-```
-
-结果：通过，耗时约 12.345s。该测试实际启动独立 PostgreSQL 17 容器，执行
-`pg_restore`，校验表与行指纹、catalog、RLS/tenant isolation、关闭 Admission
-及旧 operation fencing，并验证 restore receipt 不可覆盖。它仍是本地
-Testcontainers recovery 证据，不是生产灾备或对象存储恢复证明。
-
-随后以修复 executable bit 后的 native runner 重跑 Linux/arm64 运行时边界：
-
-```text
-VELA_REMOTE_CLI_EVIDENCE=/tmp/vela-native-rerun-20260909 ./hack/run-remote-runtime-cli-native.sh
-```
-
-结果：通过。该 runner 在隔离 Docker 容器中编译并运行 Node Agent、Runtime CLI、
-observer 和实际 process backend，覆盖 startup orchestration、server/coordinator、
-observer custody、grant activation、read-only journal、publication 与 process-crash
-场景；无 `SKIP`、无 `DATA RACE`。它证明 native 测试装配稳定，但仍不证明
-`cmd/vela-node-agent` 已完成生产 startup listener 接线。
-
-另外重跑 Node Agent 入口与底层 Node Agent 包的竞态回归：
-
-```text
-go test -race ./cmd/vela-node-agent ./internal/nodeagent -count=1 -timeout=5m
-```
-
-结果：两个包均通过，未报告 `DATA RACE`。这确认现有 gRPC、bootstrap、reporter
-和 startup library 的并发测试稳定；它不改变真实 startup authority 尚未从生产
-配置/Fleet/CRI 来源接入的结论。
-
-本轮随后执行全仓库默认测试的 race 检查：
-
-```text
-go test -race ./... -count=1 -timeout=15m
-```
-
-结果：所有有测试的 command/internal 包均通过，未报告 `DATA RACE`；无测试包按
-Go 标准显示 `[no test files]`。该结果提升了 CPU/mock 与控制面并发正确性的证据
-等级，但不包含 integration tag、真实多节点部署、GPU 或 Production Gate 放行。
-
-本轮又以 race detector 重跑两条端到端 CPU/mock campaign：
-
-```text
-VELA_RUN_CPU_MOCK_CAMPAIGN=1 go test -race -tags=integration ./internal/integration -run '^TestCPUMockExactCacheProductionLoopCampaign$' -count=1 -timeout=10m
-VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=2 VELA_CPU_MOCK_WIDTH=8 go test -race -tags=integration ./internal/integration -run '^TestCPUMockConcurrentAdmissionRuntimeCampaign$' -count=1 -timeout=10m
-```
-
-两条均通过，分别耗时约 14.673s 与 15.339s，未报告 `DATA RACE`。这再次验证
-exact-cache miss/admit/hit/reuse、ProductionAgent reattach、并发 admission、
-allocation/lease/charge 与 scratch 收敛；仍属于受界定的 CPU/mock campaign，
-不等于长期 open-loop 压力或真实多节点执行。
-
-本轮还以 `VELA_CPU_MOCK_WAVES=8`、`VELA_CPU_MOCK_WIDTH=8` 重跑 64 Job 的
-bounded long campaign：
-
-```text
-VELA_RUN_CPU_MOCK_CAMPAIGN=1 VELA_CPU_MOCK_WAVES=8 VELA_CPU_MOCK_WIDTH=8 go test -tags=integration ./internal/integration -run '^TestCPUMockConcurrentAdmissionRuntimeCampaign$' -count=1 -timeout=15m
-```
-
-结果：通过，耗时约 22.224s。该运行确认 8 波并发 arrival 下 queue、running、
-allocation、lease、credit 与 scratch 能在每波结束收敛；它仍是有界压力测试，
-不能证明长期 open-loop 资源上界或历史数据无限增长安全。
-
-本轮还重跑了 Assignment history 安全回收核心测试：
-
-```text
-go test ./internal/stageworkeragent -run '^TestAssignmentHistoryReclaimPersistsBaseAndRecovers$|^TestAssignmentHistoryReclaimBoundedArrivalCampaign$|^TestAssignmentHistoryReclaimRejectsTamperedCheckpoint$' -count=1 -timeout=5m
-```
-
-结果：通过，耗时约 2.968s。覆盖 cutoff proof chain、HistoryBase、checkpoint
-重启恢复、bounded arrival 和篡改 checkpoint 拒绝。该结果支持安全回收组件的
-有限证据，但长期 journal/history 空间上界仍需持续运行数据确认。
-
-质量收口检查也已重跑：`go test ./... -count=1 -timeout=15m` 全部通过，所有
-仓库 shell 脚本均通过 `bash -n`，`git diff --check` 通过。当前主机上的
-`golangci-lint` 未能启动，错误为其二进制由 Go 1.25 构建而目标 Go 为 1.26.7；
-这是 lint 工具链版本不匹配，没有产生源码 lint 结果，不能记录为 lint PASS 或
-源码失败。此前在匹配工具链环境中已有 `golangci-lint v2.13.1: 0 issues` 的证据。
-
-本轮按 CI 固定版本重新安装并执行 lint：
-
-```text
-GOBIN=/tmp/vela-tools go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
-/tmp/vela-tools/golangci-lint run ./...
-```
-
-工具由当前 Go 1.26.7 构建，结果为 `0 issues`。因此 lint 项现在有当前主机上
-与 CI 一致版本的直接通过证据。
-
-本轮还执行了 CI 的交叉编译与部署契约检查：
-
-```text
-make test-cross
-make validate-deployment
-```
-
-两项均通过。前者完成 `GOOS=linux GOARCH=amd64 CGO_ENABLED=0` 的全仓库测试
-装载检查，后者成功渲染 control-storage、vela-control、stage-worker、
-fleet-controller 和 observability 的 Kustomize 配置。
-
-本轮重新尝试单进程全量 integration：
-
-```text
-go test -tags=integration ./internal/integration -count=1 -timeout=15m
-```
-
-结果仍未闭合，运行 15 分钟后在
-`TestStageExecutionCatalogActiveGraphOptionsAreImmutable` 创建 PostgreSQL
-Testcontainer 时超时。超时栈停在 Docker API `ContainerStart` 的 HTTP round trip，
-没有业务 assertion failure；结束后 Docker 容器已清理。并行 6 分片仍是当前完整
-测试集合的可靠运行方式，不能把这次单进程基础设施超时记为 PASS。
-
-本轮进一步按 CI 的 20 分片策略执行：
-
-```text
-./hack/run-integration-shards.sh 20
-```
-
-20 个分片全部通过，覆盖完整的 505 个顶层 integration tests。该结果确认更细
-粒度的并行运行在当前 Docker 环境下也稳定，可作为本地/CI 的加速验证路径；它
-仍不改变单进程全量运行因 Docker API I/O 超时而未闭合的事实。
-
-为降低 Docker Desktop 本地同时启动过多 PostgreSQL 容器造成的宿主压力，
-`hack/run-integration-shards.sh` 新增 `VELA_INTEGRATION_CONCURRENCY`。默认值仍
-等于分片数，不改变 CI 行为；本轮用并发上限 4 重跑：
-
-```text
-VELA_INTEGRATION_CONCURRENCY=4 ./hack/run-integration-shards.sh 20
-```
-
-20 个分片全部通过。脚本同时增加了正整数配置校验，并在分批窗口内等待分片，
-失败分片仍会保留日志并返回非零状态。这是对本地验证基础设施的实际架构改进，
-不改变测试隔离和完整覆盖范围。
+已有默认测试、race、匹配 Go 1.26.7 的 golangci-lint v2.13.1、隔离 PostgreSQL
+restore drill、Kustomize 与交叉编译记录仍各自有效，不能合并提升为生产验收。
+Production Gates 仍为 **0/9**；真实 Node 启动装配、Worker journal 独立保管、
+同一装配下 remote-owner CPU Job 与长期资源上界仍未完成。
 
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
@@ -585,11 +464,10 @@ campaign 需显式环境变量，不能由这次无界运行推断已完成。
 生产装配拒绝问题，但尚未覆盖剩余 integration 测试，也不改变 Production Gates
 `0/9` 的状态。
 
-随后完成全部 `505` 个 integration 测试的分批复跑：批次大小为
-`80 + 80 + 80 + 80 + 80 + 105`，每批均使用独立 PostgreSQL 17 Testcontainer、
-`-count=1` 和有界 `-timeout`，全部通过。该结果证明当前提交链下的 integration
-契约集合可在本地 Docker 环境完整运行；它仍然是单机 Testcontainers 证据，不等价
-于真实多节点 Fleet/CRI、进程替换、长期 soak 或 Production Gates。
+历史记录曾以 `80 + 80 + 80 + 80 + 80 + 105` 分批运行发现的 `505` 个
+integration tests，命令均成功退出。但旧记录未逐项区分 PASS 与环境门控 SKIP，
+不能证明 505 项全部实际执行。测试使用单机 Testcontainers，不等价于真实多节点
+Fleet/CRI、进程替换、长期 soak 或 Production Gates；当前逐测试核对以文首审计为准。
 当前提交又以 `VELA_RUN_CPU_MOCK_CAMPAIGN=1` 运行
 `TestCPUMockExactCacheProductionLoopCampaign` 的 `-race` 版本。首次运行发现
 campaign 在 race 调度下对 source drain 做即时采样，可能在后台清理完成前误报

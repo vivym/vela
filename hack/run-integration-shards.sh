@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 shards="${1:-2}"
 timeout="${VELA_INTEGRATION_TIMEOUT:-20m}"
@@ -18,15 +19,21 @@ cd "$root_dir"
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/vela-integration-shards.XXXXXX")
 status=0
 cleanup() {
-  if (( status == 0 )); then
-    rm -rf "$work_dir"
-  else
-    printf 'integration shard logs preserved at %s\n' "$work_dir" >&2
-  fi
+  printf 'integration discovery, results and logs preserved at %s\n' "$work_dir" >&2
 }
 trap cleanup EXIT
 
-mapfile -t tests < <(go test -tags=integration ./internal/integration -list '^Test' | awk '/^Test[A-Za-z0-9_]+$/ { print }')
+git rev-parse HEAD > "$work_dir/source.txt"
+git status --short >> "$work_dir/source.txt"
+git diff HEAD --binary > "$work_dir/source.patch"
+# Process substitution does not propagate go test failure to mapfile. Check
+# discovery before using any partial names it may have printed.
+if ! go test -tags=integration ./internal/integration -list '^Test' > "$work_dir/discovery.log" 2>&1; then
+  echo "integration test discovery failed" >&2
+  exit 1
+fi
+awk '/^Test[A-Za-z0-9_]+$/ { print }' "$work_dir/discovery.log" > "$work_dir/discovered-tests.txt"
+mapfile -t tests < "$work_dir/discovered-tests.txt"
 if (( ${#tests[@]} == 0 )); then
   echo "no integration tests discovered" >&2
   exit 1
@@ -74,12 +81,20 @@ for ((batch = 0; batch < shards; batch += concurrency)); do
     printf 'started shard %d/%d (concurrency %d; %s)\n' "$((index + 1))" "$shards" "$concurrency" "$log"
   done
   for ((index = batch; index < batch_end; index++)); do
+    shard_status=0
     if ! wait "${pids[index]}"; then
+      shard_status=1
+    fi
+    printf 'shard %d: ' "$((index + 1))"
+    if ! awk -v result_file="$work_dir/results-$index.tsv" \
+      -f hack/summarize-integration-shard.awk "$work_dir/tests-$index" "$work_dir/shard-$index.log"; then
+      shard_status=1
+    fi
+    if (( shard_status != 0 )); then
       status=1
-      printf 'shard %d failed; output:\n' "$((index + 1))" >&2
-      cat "$work_dir/shard-$index.log" >&2
+      printf 'shard %d failed; see %s\n' "$((index + 1))" "$work_dir/shard-$index.log" >&2
     else
-      printf 'shard %d passed\n' "$((index + 1))"
+      printf 'shard %d completed (SKIP is not PASS)\n' "$((index + 1))"
     fi
   done
 done
