@@ -1,5 +1,18 @@
 # Vela 剩余验证与实施顺序
 
+## 2026-09-09 本轮复核
+
+在当前提交点重新执行了 CPU/mock 关键 campaign：
+
+```text
+go test -tags=integration ./internal/integration -run '^TestCPUMockExactCacheSourceTargetCampaign$|^TestCPUMockExactCacheProductionLoopCampaign$|^TestCPUMockProductionLoopClockOffsetCampaign$|^TestCPUMockDurableStreamExactCacheCampaign$' -count=1
+```
+
+结果：通过，耗时约 0.862s。随后 `go test ./...` 与 `go vet ./...` 均通过，
+`git diff --check` 通过。该复核确认当前 CPU/mock exact-cache、ProductionAgent
+loop、clock-offset 与 durable-stream 路径没有回归；它仍不等于完整 integration
+套件、真实 Node/CRI/Fleet 装配或 Production Gate 证明。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
