@@ -224,6 +224,11 @@ sustained arrivals 仍受该上限约束。
 terminal drain/recovery 与未知输入保留。该轮仍未关闭多 cutoff 连续中断、删除后独立
 digest 对账、长期 history 压力、掉电 durability 或真实 Node/Fleet/CRI 装配。
 
+新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
+在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
+确认 Fleet 及其他 service role 的精确 privilege boundary 当前仍通过。该结果不替代
+真实部署的 secret、网络、TLS 或生产连接池装配验证。
+
 `0973e59` 将 `HistoryBase` 和 cutoff 数量加入 `PrepareAssignmentJournal` 的只读
 状态，恢复审计可以直接确认已回收前缀，而不必读取私有 JSON 文件；该状态仍只报告
 经过校验的本地 journal，不代表生产启动授权或远程 owner 已成立。
