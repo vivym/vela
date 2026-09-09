@@ -132,5 +132,9 @@ operation-bound grant 与 observer custody。它只在观察、持久消费和 j
 该类型尚未替代实际 CLI harness 的 fixture listener，生产 Node startup socket 的
 认证 listener、coordinator 和 Permit 回包还需合并为唯一装配。
 
+`RuntimeStartupServer` 现提供 startup socket 的认证/有界 I/O 适配层，并只把
+canonical request 交给上述 coordinator；它不拥有 socket 路径、权限发布或批准策略。
+生产 Node 入口仍需把该 listener 与真实 publication/CRI/Fleet 装配合并为唯一路径。
+
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。

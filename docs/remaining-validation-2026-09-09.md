@@ -141,6 +141,12 @@ CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八�
 不会消费 grant，handler 也不能重试。它目前是 Node-side adapter，实际 `serve-remote`
 runner 仍使用 fixture listener，尚未成为生产 startup socket 的唯一装配路径。
 
+新增 `RuntimeStartupServer` listener 适配器，负责 Unix peer credential、challenge、
+request size/deadline 和 bounded shutdown，再将 canonical request 交给
+`RuntimeStartupCoordinator`。它不创建或修改 socket 路径，避免把文件权限管理误当
+作授权。原生 runner 已覆盖其无效配置拒绝与 coordinator/observer 组合；生产 Node
+入口还需将真实 listener 创建、权限发布和该 server 设为唯一装配。
+
 ## 依赖顺序与通过标准
 
 执行连续性的 [旧 mem 句柄候选实验](runtime-execution-continuity-evidence-2026-09-09.md)

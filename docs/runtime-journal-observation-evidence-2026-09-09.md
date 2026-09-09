@@ -116,3 +116,16 @@ runner 仍由测试 harness 直接提供 listener/fixture decision；本适配�
 生产 socket listener 的唯一装配路径，也没有引入通用 `Authorize() == nil`。下一步
 是把真实 Node startup listener 的认证、request handler、coordinator 和 Permit
 回包接成同一生命周期，再做 PostgreSQL/TLS 与 CLI/CRI 同次验证。
+
+## Startup socket listener 接入
+
+新增 `RuntimeStartupServer`，复用 Node 的 Unix peer credential 与 RuntimeCaller
+challenge，限制 request payload 大小和 exchange deadline，再把 canonical request
+交给 `RuntimeStartupCoordinator`。它不创建、chmod、unlink socket，也不解析请求
+来推导允许 UID；这些仍由 trusted Node assembly 提供。`Serve` 负责 bounded accept
+和 shutdown，`HandleConnection` 可被受保护的现有 listener 直接调用。
+
+Linux runner 已重新编译并通过 `TestRuntimeStartupServerRejectsInvalidConfiguration`
+以及协调器/observer/CLI 组合测试；固定 lint 为 `0 issues`。当前仍没有把所有生产
+Node 启动代码强制改为该 server，真实 socket 路径、权限发布和 listener 创建仍需
+由上层 Node 入口合并后再做 PostgreSQL/TLS 同次回归。

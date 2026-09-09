@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
   "baseline_commit": "275be0a3c3efe39d32d790c0495ccd9de7c11594",
-  "source_sha256": "36a00cdf9a84630fc63efacc18300caf6d3a74ab0cfc1169caf39042f46de7e8",
-  "source_file_count": 1062,
+  "source_sha256": "b2a3762eadb3c3e3b6a7e6e62da7ad6439e97ba95ab7c97f4e2fcc49f71ba0a7",
+  "source_file_count": 1064,
   "source_digest_method": "SHA256(sorted tracked/untracked Go SQL proto C shell + go.mod go.sum: path NUL file SHA256 newline)",
-  "native_source_patch_sha256": "4131e9ec3c78b65dcd026a3f3cf6682ed66e3daec59b8cdcf6a228e167dc849c",
-  "image_id": "sha256:ec3862d79b421af0a892ac488196d0b1bf306ef791774ee255ada247713e948b",
+  "native_source_patch_sha256": "33332cb07cc9566b9140c49f2a60f5d77710ae5cd259d484bbf40aeb8f8327dc",
+  "image_id": "sha256:f689664b00786d4c234359d0cf46b93666ab0e1ea2210df7de1b28c646c712f1",
   "binary_sha256": {
     "runtime-command.test": "aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854",
-    "nodeagent.test": "1a73f7d2925a8894ca4e7fc64e0d3da9aaca9792a1286df30f1dac9e990efed7",
+    "nodeagent.test": "c0ec36f4ad3debb69451925acbb3238cef95fc8aba6fb21080f439cbcb12d60b",
     "exec-observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
-    "vela-model-runtime": "42caedb9dd072379c3810e3b2d78e10155c24b3066c5a41886dc065dee5692d5",
+    "vela-model-runtime": "e08fa4d8c4438616fb148c19ccd3bd02fb062d68736723cc9d188bee74bea651",
     "exec-probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2"
   },
   "platform": "linux/arm64",
@@ -176,7 +176,8 @@
     "linux_arm64_lint": "golangci-lint v2.13.1; 0 issues",
     "shell_syntax": "passed",
     "diff_check": "passed",
-    "coordinator_native": "2 top-level tests passed: exact permit and mismatch deny/no-consumption"
+    "coordinator_native": "2 top-level tests passed: exact permit and mismatch deny/no-consumption",
+    "startup_server_native": "invalid configuration rejection passed; actual runner exit 0"
   },
   "review": {
     "standards": "three concurrency/error findings fixed; follow-up review clear",
