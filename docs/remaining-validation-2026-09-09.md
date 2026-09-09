@@ -224,7 +224,8 @@ TransferTicket、materialization 和终态清理上通过；source/target 阶段
 generation 丢弃旧 consumer 错误、重建 durable `StreamAgent` 并复用 journal，在新
 control session 上 replay request identity 后收敛，scratch、journal 和 allocation
 均清零。该证据仍属于 CPU/mock + loopback control，不等同于真实 Node/Fleet 网络
-替换，但 ProductionAgent 的装配级 reattach 已有直接证据。
+替换，但 ProductionAgent 的装配级 reattach 已有直接证据，详见
+[ProductionAgent reattach evidence](production-reattach-evidence-2026-09-09.md)。
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
