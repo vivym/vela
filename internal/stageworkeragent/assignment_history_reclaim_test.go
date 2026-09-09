@@ -46,6 +46,11 @@ func TestAssignmentHistoryReclaimPersistsBaseAndRecovers(t *testing.T) {
 	if err := gate.RecordAssignmentHistoryCutoff(t.Context(), cutoff); err != nil {
 		t.Fatal(err)
 	}
+	tampered := cutoff
+	tampered.CumulativeDigest = sha256.Sum256([]byte("tampered"))
+	if err := gate.ReclaimAssignmentHistory(t.Context(), tampered); err == nil {
+		t.Fatal("reclamation accepted a cutoff different from the persisted proof")
+	}
 	failed := true
 	restore := stageworkeragent.SetAssignmentAdmissionSyncHookForTest(gate, func(sync func() error) error {
 		if failed {
