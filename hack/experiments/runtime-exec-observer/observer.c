@@ -2,17 +2,21 @@
 #define _GNU_SOURCE
 #include <elf.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
 #include <linux/audit.h>
 #include <linux/ptrace.h>
 #include <sched.h>
 #include <signal.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -34,6 +38,10 @@ struct task { pid_t pid; int skipped_errno; };
 static struct task tasks[128];
 static pid_t original;
 static int initial_exec;
+static int custody_fd = -1;
+static int notifications[2] = {-1, -1};
+static const char custody_protocol[] = "vela-exec-custody-v1";
+enum { custody_size = sizeof(custody_protocol) + 32 };
 
 static unsigned credential(const char *text) {
     char *end;
@@ -48,6 +56,76 @@ static void fail(const char *message) {
     // EXITKILL is the kernel backstop. Explicitly signal known tasks too.
     for (size_t i = 0; i < 128; i++) if (tasks[i].pid) kill(tasks[i].pid, SIGKILL);
     exit(2);
+}
+
+static void notify_child(int number) {
+    (void)number;
+    int saved = errno;
+    char value = 1;
+    // A full pipe already wakes poll. No heap/stdio operations in the handler.
+    (void)write(notifications[1], &value, 1);
+    errno = saved;
+}
+
+static void start_notifications(void) {
+    if (pipe2(notifications, O_CLOEXEC | O_NONBLOCK)) fail("notification pipe");
+    struct sigaction action = {.sa_handler = notify_child};
+    if (sigemptyset(&action.sa_mask) || sigaction(SIGCHLD, &action, NULL)) fail("SIGCHLD notification");
+}
+
+static int valid_control(const char *packet, ssize_t size, char operation) {
+    return size == custody_size && !memcmp(packet, custody_protocol, sizeof(custody_protocol) - 1) &&
+           packet[sizeof(custody_protocol) - 1] == operation;
+}
+
+static void send_control(char *packet, char operation) {
+    packet[sizeof(custody_protocol) - 1] = operation;
+    if (send(custody_fd, packet, custody_size, MSG_NOSIGNAL) != custody_size) fail("send custody control");
+}
+
+static void offer_custody(void) {
+    struct timeval timeout = {.tv_sec = 5};
+    int kind;
+    socklen_t length = sizeof(kind);
+    if (getsockopt(custody_fd, SOL_SOCKET, SO_TYPE, &kind, &length) || kind != SOCK_SEQPACKET ||
+        setsockopt(custody_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) ||
+        setsockopt(custody_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout))) fail("custody socket");
+    char packet[custody_size];
+    ssize_t count = recv(custody_fd, packet, sizeof(packet), MSG_TRUNC);
+    if (!valid_control(packet, count, 'C')) fail("custody challenge");
+    int target = (int)syscall(SYS_pidfd_open, original, 0);
+    if (target < 0) fail("open original target pidfd");
+    union { struct cmsghdr alignment; char bytes[CMSG_SPACE(sizeof(int))]; } ancillary = {0};
+    struct iovec vector = {.iov_base = packet, .iov_len = sizeof(packet)};
+    struct msghdr message = {.msg_iov = &vector, .msg_iovlen = 1, .msg_control = ancillary.bytes, .msg_controllen = sizeof(ancillary.bytes)};
+    struct cmsghdr *header = CMSG_FIRSTHDR(&message);
+    header->cmsg_level = SOL_SOCKET;
+    header->cmsg_type = SCM_RIGHTS;
+    header->cmsg_len = CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(header), &target, sizeof(target));
+    packet[sizeof(custody_protocol) - 1] = 'O';
+    if (sendmsg(custody_fd, &message, MSG_NOSIGNAL) != (ssize_t)sizeof(packet)) fail("offer original pidfd");
+    if (close(target)) fail("close offered descriptor copy");
+    char acknowledgement[custody_size];
+    count = recv(custody_fd, acknowledgement, sizeof(acknowledgement), MSG_TRUNC);
+    if (!valid_control(acknowledgement, count, 'A') ||
+        memcmp(acknowledgement + sizeof(custody_protocol), packet + sizeof(custody_protocol), 32)) fail("custody acknowledgement");
+    send_control(packet, 'R');
+}
+
+static void service_control(void) {
+    char packet[custody_size];
+    ssize_t count = recv(custody_fd, packet, sizeof(packet), MSG_DONTWAIT | MSG_TRUNC);
+    if (count < 0 && (errno == EAGAIN || errno == EINTR)) return;
+    if (!valid_control(packet, count, 'P')) fail("custody channel lost or malformed");
+    send_control(packet, 'L');
+}
+
+static void wait_activity(void) {
+    struct pollfd watched[] = {{.fd = custody_fd, .events = POLLIN}, {.fd = notifications[0], .events = POLLIN}};
+    if (poll(watched, 2, -1) < 0 && errno != EINTR) fail("wait custody/trace activity");
+    char data[256];
+    while (read(notifications[0], data, sizeof(data)) > 0) {}
 }
 
 static struct task *lookup(pid_t pid) {
@@ -146,8 +224,13 @@ static void syscall_stop(struct task *task) {
 int main(int argc, char **argv) {
     if (getuid() != 0) return 2;
     int offset = 1;
-    if (argc > 1 && strcmp(argv[1], "--new-pid") == 0) {
-        if (unshare(CLONE_NEWPID)) fail("create target PID namespace");
+    while (offset < argc) {
+        if (strcmp(argv[offset], "--new-pid") == 0) {
+            if (unshare(CLONE_NEWPID)) fail("create target PID namespace");
+        } else if (strcmp(argv[offset], "--custody-fd3") == 0) {
+            custody_fd = 3;
+            if (fcntl(custody_fd, F_SETFD, FD_CLOEXEC)) fail("protect custody descriptor");
+        } else break;
         offset++;
     }
     if (argc < offset + 3) return 2;
@@ -157,6 +240,9 @@ int main(int argc, char **argv) {
     original = fork();
     if (original < 0) fail("fork target");
     if (original == 0) {
+        // No target code may inherit the Node/creator control endpoint, even
+        // before the first executable. The ptrace parent alone owns it.
+        if (custody_fd >= 0 && close(custody_fd)) _exit(2);
         if (ptrace(PTRACE_TRACEME, 0, NULL, NULL)) fail("PTRACE_TRACEME");
         raise(SIGSTOP);
         if (setgroups(0, NULL) || setgid(gid) || setuid(uid)) fail("drop credentials");
@@ -174,9 +260,18 @@ int main(int argc, char **argv) {
 #endif
     if (ptrace(PTRACE_SETOPTIONS, original, NULL, options)) fail("set trace options");
     fprintf(stderr, "ROOT %ld\n", (long)original);
+    if (custody_fd >= 0) {
+        start_notifications();
+        offer_custody();
+    }
     if (ptrace(PTRACE_SYSCALL, original, NULL, NULL)) fail("start target");
     for (;;) {
-        pid_t pid = waitpid(-1, &status, __WALL);
+        if (custody_fd >= 0) service_control();
+        pid_t pid = waitpid(-1, &status, __WALL | (custody_fd >= 0 ? WNOHANG : 0));
+        if (pid == 0) {
+            wait_activity();
+            continue;
+        }
         if (pid < 0 && errno == EINTR) continue;
         if (pid < 0) fail("wait traced tasks");
         struct task *task = lookup(pid);

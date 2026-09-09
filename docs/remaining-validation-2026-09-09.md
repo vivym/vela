@@ -148,6 +148,12 @@ CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八�
 生产 Node 与 containerd 的可信创建交付、observer 挂起处理、同次真实 Fleet、
 once-only grant 和写路由授权，不能将原型直接升级为生产入口。
 
+新增 [observer 原始句柄交付与挂起保护](runtime-observer-custody-evidence-2026-09-09.md)：
+Node 私有 socketpair 接收单一 `SCM_RIGHTS` target pidfd，在确认前保持目标
+ptrace stop；`Start` 单次释放，`Check` challenge/response，SIGSTOP、通道丢失、
+队列取消和撤销均有实际测试。实际 CLI runner 新增 6 个 custody 场景和 7 个
+descriptor 场景，生产创建关系、持久恢复和 once-only grant 仍未闭合。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |

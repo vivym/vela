@@ -28,7 +28,7 @@ func TestJournalServerExecObservedRemoteCLI(t *testing.T) {
 			t.Skip("requires native exec observer and actual CLI sandbox")
 		}
 	}
-	for _, scenario := range []string{"permit", "deny", "observer-lost-before-permit", "observer-lost-after-permit"} {
+	for _, scenario := range []string{"permit", "deny", "observer-lost-before-permit", "observer-lost-after-permit", "observer-stopped-before-permit", "observer-stopped-after-permit"} {
 		t.Run(scenario, func(t *testing.T) { verifyExecObservedRemoteCLI(t, scenario) })
 	}
 }
@@ -71,13 +71,20 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 	credentials := RuntimeCallerCredentials{UID: 10001, GID: 10001}
 	worker := journalEndpointStartCredentials(t, journalListener, filepath.Join(filepath.Dir(config.Directory), "state"), credentials)
 	bootstrapPath := filepath.Join(config.Directory, runtimeBootstrapFilename)
-	command := exec.CommandContext(t.Context(), "/exec-observer", "--new-pid", "10001", "10001", "/vela-model-runtime", "serve-remote", "--bootstrap-file", bootstrapPath)
+	nodeControl, creatorControl := runtimeObserverSocketpair(t)
+	command := exec.CommandContext(t.Context(), "/exec-observer", "--new-pid", "--custody-fd3", "10001", "10001", "/vela-model-runtime", "serve-remote", "--bootstrap-file", bootstrapPath)
+	command.ExtraFiles = []*os.File{creatorControl}
+	observerFD := -1
+	command.SysProcAttr = &syscall.SysProcAttr{PidFD: &observerFD}
 	command.Env = []string{"HOME=/", "PATH=" + runtimeRemoteCLIPath}
 	var output bytes.Buffer
 	command.Stdout, command.Stderr = &output, &output
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
+	_ = creatorControl.Close()
+	originalObserver := os.NewFile(uintptr(observerFD), "original-created-observer")
+	defer func() { _ = originalObserver.Close() }()
 	finished := make(chan struct{})
 	var waitErr error
 	go func() { waitErr = command.Wait(); close(finished) }()
@@ -88,6 +95,14 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 			t.Logf("exec observer output: %s", output.String())
 		}
 	})
+	custody, err := ReceiveRuntimeObserverCustody(t.Context(), nodeControl, originalObserver)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = custody.Close() }()
+	if err := custody.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	first := journalEndpointAccept(t, journalListener)
 	defer func() { _ = first.Close() }()
 	firstCaller, err := ReceiveRuntimeCallerWithRequestLimit(t.Context(), first, credentials, modelruntime.MaximumJournalCommandBytes)
@@ -98,6 +113,9 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 	// Also clean up the negative-control image where observer death deliberately
 	// does not terminate its target. This runs after the assertions, before Close.
 	defer func() { _ = unix.PidfdSendSignal(int(firstCaller.pidfd.Fd()), syscall.SIGKILL, nil, 0) }()
+	if err := custody.MatchCaller(t.Context(), firstCaller); err != nil {
+		t.Fatalf("journal caller is not the offered original process: %v", err)
+	}
 	observed, err := firstCaller.Inspect(t.Context())
 	if err != nil || observed.NamespacePID != 1 || observed.NamespaceDepth < 2 || observed.HostPID == int32(command.Process.Pid) {
 		t.Fatalf("actual CLI must be the original non-root namespace init: %+v %v", observed, err)
@@ -139,6 +157,9 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 		t.Fatal(err)
 	}
 	defer func() { _ = caller.Close() }()
+	if err := custody.MatchCaller(t.Context(), caller); err != nil {
+		t.Fatalf("startup caller is not the offered original process: %v", err)
+	}
 	request, err := modelruntime.ParseBackendStartupRequest(caller.Payload())
 	if err != nil || request.SchemaVersion != 2 || request.BootstrapDigest != publication.Record().BootstrapDigest || request.BootstrapPath != bootstrapPath {
 		t.Fatalf("traced CLI changed bootstrap consumption: %+v %v", request, err)
@@ -167,8 +188,21 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	if scenario == "observer-lost-before-permit" {
-		if err := command.Process.Kill(); err != nil {
+	stopAndCheck := func() {
+		t.Helper()
+		if err := unix.PidfdSendSignal(int(originalObserver.Fd()), unix.SIGSTOP, nil, 0); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		if err := custody.Check(ctx); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("stopped observer falsely answered fresh challenge: %v", err)
+		}
+	}
+	if scenario == "observer-lost-before-permit" || scenario == "observer-stopped-before-permit" {
+		if scenario == "observer-stopped-before-permit" {
+			stopAndCheck()
+		} else if err := command.Process.Kill(); err != nil {
 			t.Fatal(err)
 		}
 		awaitOwnerExit()
@@ -180,7 +214,7 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 			t.Fatal(err)
 		}
 	}
-	if scenario == "permit" || scenario == "observer-lost-after-permit" {
+	if scenario == "permit" || scenario == "observer-lost-after-permit" || scenario == "observer-stopped-after-permit" {
 		deadline := time.Now().Add(10 * time.Second)
 		for {
 			data, _ := os.ReadFile(events)
@@ -203,6 +237,8 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 			if err := unix.PidfdSendSignal(int(caller.pidfd.Fd()), syscall.SIGTERM, nil, 0); err != nil {
 				t.Fatal(err)
 			}
+		} else if scenario == "observer-stopped-after-permit" {
+			stopAndCheck()
 		} else if err := command.Process.Kill(); err != nil {
 			t.Fatal(err)
 		}
@@ -226,7 +262,7 @@ func verifyExecObservedRemoteCLI(t *testing.T, scenario string) {
 		if readErr != nil || string(data) != "initialize\nshutdown\n" {
 			t.Fatalf("observed actual backend lifecycle: %q %v", data, readErr)
 		}
-	case "observer-lost-after-permit":
+	case "observer-lost-after-permit", "observer-stopped-after-permit":
 		if readErr != nil || string(data) != "initialize\n" {
 			t.Fatalf("crash must not fabricate graceful shutdown: %q %v", data, readErr)
 		}

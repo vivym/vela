@@ -29,12 +29,18 @@ var ErrIdentity = errors.New("runtime channel kernel identity or frame is untrus
 // message pidfd escapes; rejected SCM_RIGHTS and duplicate pidfds are closed.
 // PID zero is legitimate when the sender is outside the receiver's namespace.
 func ParseAncillary(data []byte) (unix.Ucred, int, error) {
+	credential, pidfd, _, err := parseAncillary(data, 0)
+	return credential, pidfd, err
+}
+
+func parseAncillary(data []byte, expectedRights int) (unix.Ucred, int, []int, error) {
 	messages, err := unix.ParseSocketControlMessage(data)
 	if err != nil {
-		return unix.Ucred{}, -1, err
+		return unix.Ucred{}, -1, nil, err
 	}
 	var credential unix.Ucred
-	var descriptors []int
+	var descriptors, rights []int
+	rightsMessages := 0
 	credentialCount, pidfdCount, pidfd := 0, 0, -1
 	for _, message := range messages {
 		switch {
@@ -52,32 +58,56 @@ func ParseAncillary(data []byte) (unix.Ucred, int, error) {
 		case message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_RIGHTS:
 			values, parseErr := unix.ParseUnixRights(&message)
 			descriptors = append(descriptors, values...)
-			err = errors.Join(err, parseErr, ErrIdentity)
+			rights = append(rights, values...)
+			rightsMessages++
+			err = errors.Join(err, parseErr)
 		default:
 			err = errors.Join(err, ErrIdentity)
 		}
 	}
-	if credentialCount != 1 || pidfdCount != 1 || credential.Pid < 0 || pidfd < 0 {
+	if credentialCount != 1 || pidfdCount != 1 || credential.Pid < 0 || pidfd < 0 || len(rights) != expectedRights || rightsMessages != expectedRights {
 		err = errors.Join(err, ErrIdentity)
 	}
 	if err != nil {
 		for _, fd := range descriptors {
 			_ = unix.Close(fd)
 		}
-		return unix.Ucred{}, -1, err
+		return unix.Ucred{}, -1, nil, err
 	}
-	return credential, pidfd, nil
+	return credential, pidfd, rights, nil
 }
 
 // ReadPacket closes ancillary descriptors even on truncation or read failure.
 // On success the caller owns the returned message pidfd.
 func ReadPacket(connection *net.UnixConn, maximum int) ([]byte, unix.Ucred, int, error) {
+	packet, peer, pidfd, _, err := readPacket(connection, maximum, 0)
+	return packet, peer, pidfd, err
+}
+
+// ReadProcessOffer additionally receives exactly one SCM_RIGHTS pidfd. The
+// sender and offered process handles are distinct and owned by the recipient.
+// This does not authenticate their relationship or the sender's authority.
+func ReadProcessOffer(connection *net.UnixConn, maximum int) ([]byte, unix.Ucred, int, int, error) {
+	packet, peer, sender, rights, err := readPacket(connection, maximum, 1)
+	if err != nil {
+		return nil, unix.Ucred{}, -1, -1, err
+	}
+	target := rights[0]
+	if err := SameLiveProcess(target, target); err != nil {
+		_ = unix.Close(sender)
+		_ = unix.Close(target)
+		return nil, unix.Ucred{}, -1, -1, err
+	}
+	return packet, peer, sender, target, nil
+}
+
+func readPacket(connection *net.UnixConn, maximum, expectedRights int) ([]byte, unix.Ucred, int, []int, error) {
 	if connection == nil || maximum <= 0 || maximum > len(ResponseProtocol)+ChallengeSize+MaximumPayload {
-		return nil, unix.Ucred{}, -1, ErrIdentity
+		return nil, unix.Ucred{}, -1, nil, ErrIdentity
 	}
 	raw, err := connection.SyscallConn()
 	if err != nil {
-		return nil, unix.Ucred{}, -1, err
+		return nil, unix.Ucred{}, -1, nil, err
 	}
 	packet, ancillary := make([]byte, maximum), make([]byte, 1024)
 	var count, ancillaryCount, flags int
@@ -86,7 +116,7 @@ func ReadPacket(connection *net.UnixConn, maximum int) ([]byte, unix.Ucred, int,
 		count, ancillaryCount, flags, _, receiveErr = unix.Recvmsg(int(fd), packet, ancillary, unix.MSG_CMSG_CLOEXEC)
 		return !errors.Is(receiveErr, unix.EAGAIN) && !errors.Is(receiveErr, unix.EWOULDBLOCK)
 	})
-	peer, pidfd, parseErr := ParseAncillary(ancillary[:ancillaryCount])
+	peer, pidfd, rights, parseErr := parseAncillary(ancillary[:ancillaryCount], expectedRights)
 	err = errors.Join(err, receiveErr, parseErr)
 	if count <= 0 || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 {
 		err = errors.Join(err, ErrIdentity)
@@ -95,9 +125,12 @@ func ReadPacket(connection *net.UnixConn, maximum int) ([]byte, unix.Ucred, int,
 		if pidfd >= 0 {
 			_ = unix.Close(pidfd)
 		}
-		return nil, unix.Ucred{}, -1, err
+		for _, fd := range rights {
+			_ = unix.Close(fd)
+		}
+		return nil, unix.Ucred{}, -1, nil, err
 	}
-	return packet[:count], peer, pidfd, nil
+	return packet[:count], peer, pidfd, rights, nil
 }
 
 // SameLiveProcess compares retained pidfs identities, including invisible
