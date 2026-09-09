@@ -71,11 +71,8 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 	}
 	productionLoop := len(workers) > 0 && workers[0].durable != nil && workers[0].durable.production != nil
 	if productionLoop {
-		// Commit-response-loss replay is covered by the standalone production
-		// campaign. This composition isolates the exact-cache scheduling path
-		// until production session reattachment is implemented in the real entry.
 		for _, worker := range workers {
-			worker.durable.control.armed.Store(false)
+			worker.durable.control.armed.Store(true)
 		}
 	}
 	loopCtx, cancelLoops := context.WithCancel(ctx)
@@ -247,7 +244,7 @@ func runCPUExactCacheSourceTarget(t *testing.T, ctx context.Context, database te
 			"Reconciler drives ADMIT/HIT before target Acquire; cache/scheduler races and organization isolation are separate tests")
 		if productionLoop {
 			receipt["limitations"] = append(receipt["limitations"].([]string),
-				"combined ProductionAgent exact-cache composition disables the injected lost-commit response; standalone production campaign covers replay, while production session reattachment remains open")
+				"ProductionAgent control-session reattach is exercised with the CPU transport fixture; Node/Fleet network replacement remains separate")
 		}
 	}
 	encoded, err := json.Marshal(receipt)

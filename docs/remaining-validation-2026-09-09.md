@@ -220,9 +220,11 @@ non-admission。外部 Fast H3 driver 与 non-root permission 单项仍显式跳
 PostgreSQL 17、四个常驻 CPU mock Runtime、source miss/admit、target hit/reuse、
 TransferTicket、materialization 和终态清理上通过；source/target 阶段成功数按
 真实 `attempt_id` 等待，避免把 `job_id` 误当成 attempt。该组合为隔离调度路径而
-关闭注入的 committed-response loss；独立 ProductionAgent campaign 仍验证 replay。
-因此组合证据已成立，但 ProductionAgent 的真实 control-session reattach 仍未闭合，
-不能把两种故障证据合并成生产恢复证明。
+注入了 committed-response loss；ProductionAgent 通过关闭旧 stream、按 stream
+generation 丢弃旧 consumer 错误、重建 durable `StreamAgent` 并复用 journal，在新
+control session 上 replay request identity 后收敛，scratch、journal 和 allocation
+均清零。该证据仍属于 CPU/mock + loopback control，不等同于真实 Node/Fleet 网络
+替换，但 ProductionAgent 的装配级 reattach 已有直接证据。
 
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |

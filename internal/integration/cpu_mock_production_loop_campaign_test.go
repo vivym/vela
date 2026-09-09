@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -88,6 +89,19 @@ func configureCPUProductionLoop(t *testing.T, worker *cpuLoadWorker, fixture h3I
 		Now: time.Now, Wait: waitCPULoad,
 		RetryObserver: func(operation string, err error) {
 			t.Logf("%s production retry %s: %v", worker.stage.key, operation, err)
+		},
+		ReconnectStream: func(ctx context.Context) (*stageworkeragent.StreamAgent, error) {
+			if err := durable.control.Close(); err != nil {
+				return nil, err
+			}
+			durable.control.Client = durable.redial()
+			durable.config.Control = durable.control
+			stream, err := stageworkeragent.NewDurableStreamAgent(durable.config)
+			if err != nil {
+				return nil, err
+			}
+			durable.stream = stream
+			return stream, nil
 		},
 	})
 	if err != nil {

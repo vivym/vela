@@ -225,6 +225,7 @@ type ProductionConfig struct {
 	RetryObserver             RetryObserver
 	Now                       func() time.Time
 	Wait                      func(context.Context, time.Duration) error
+	ReconnectStream           func(context.Context) (*StreamAgent, error)
 }
 
 type ProductionAgent struct {
@@ -253,6 +254,7 @@ type ProductionAgent struct {
 	readinessRefreshInterval     time.Duration
 	now                          func() time.Time
 	wait                         func(context.Context, time.Duration) error
+	reconnectStream              func(context.Context) (*StreamAgent, error)
 }
 
 type DiscoveryResult struct {
@@ -360,6 +362,7 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 		readinessRefreshInterval:  min(config.CapacityTTL/2, defaultReadinessRefresh),
 		now:                       config.Now,
 		wait:                      config.Wait,
+		reconnectStream:           config.ReconnectStream,
 	}, nil
 }
 
@@ -368,19 +371,38 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 		agent.observationSequenceSource == nil || ctx == nil {
 		return errors.New("stage worker production service is not configured")
 	}
-	commandErrors := make(chan error, 1)
-	go func() {
-		commandErrors <- agent.stream.RunControlCommands(ctx)
-	}()
+	type commandError struct {
+		stream *StreamAgent
+		err    error
+	}
+	commandErrors := make(chan commandError, 2)
+	startCommandConsumer := func(stream *StreamAgent) {
+		go func() { commandErrors <- commandError{stream: stream, err: stream.RunControlCommands(ctx)} }()
+	}
+	startCommandConsumer(agent.stream)
 	backoff := agent.retryMinimum
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		select {
-		case err := <-commandErrors:
+		case result := <-commandErrors:
+			if result.stream != agent.stream {
+				continue
+			}
+			err := result.err
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				return nil
+			}
+			if agent.reconnectStream != nil {
+				if next, reconnectErr := agent.reconnectStream(ctx); reconnectErr == nil && next != nil {
+					agent.stream = next
+					agent.control = next.control
+					startCommandConsumer(next)
+					continue
+				} else if reconnectErr != nil {
+					agent.observeRetry("control-reconnect", reconnectErr)
+				}
 			}
 			return fmt.Errorf("consume Stage Worker control commands: %w", err)
 		default:
@@ -403,6 +425,15 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 		if _, err := agent.stream.resumeMaterializations(ctx, agent.prepareTerminalRecoverySession); err != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			if agent.reconnectStream != nil {
+				if next, reconnectErr := agent.reconnectStream(ctx); reconnectErr == nil && next != nil {
+					agent.stream = next
+					agent.control = next.control
+					startCommandConsumer(next)
+				} else if reconnectErr != nil {
+					agent.observeRetry("control-reconnect", reconnectErr)
+				}
 			}
 			agent.observeRetry("resume-materialization", err)
 			if err := agent.wait(ctx, backoff); err != nil {
