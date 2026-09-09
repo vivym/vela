@@ -3,6 +3,7 @@ package stageworkeragent
 import (
 	"context"
 	"errors"
+	"slices"
 )
 
 // RecordAssignmentHistoryCutoff durably records a validated reclamation proof.
@@ -33,6 +34,12 @@ func (gate *FileAssignmentAdmission) RecordAssignmentHistoryCutoff(ctx context.C
 
 func validateAssignmentHistoryCutoffs(state assignmentAdmissionState) error {
 	if len(state.HistoryCutoffs) == 0 {
+		if state.HistoryCheckpoint != nil {
+			if state.HistoryBase != state.HistoryCheckpoint.ThroughSequence {
+				return errors.New("assignment history base does not match checkpoint")
+			}
+			return nil
+		}
 		if state.HistoryBase != 0 {
 			return errors.New("assignment history base has no persisted cutoff")
 		}
@@ -194,6 +201,65 @@ func (gate *FileAssignmentAdmission) ReclaimAssignmentHistory(ctx context.Contex
 		if record.Original.GetExecutionSequence() <= cutoff.ThroughSequence {
 			next.Latest = nil
 		}
+	}
+	if err := gate.commit(ctx, next); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+// CompactAssignmentHistory replaces a contiguous, already-reclaimed cutoff
+// prefix with one durable checkpoint. The checkpoint is committed together
+// with the retained suffix; old proofs are never removed before this state is
+// durably written.
+func (gate *FileAssignmentAdmission) CompactAssignmentHistory(ctx context.Context, checkpoint AssignmentHistoryCheckpoint) error {
+	if gate == nil || ctx == nil {
+		return errors.New("assignment history compaction requires a gate and context")
+	}
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	if err := gate.available(ctx); err != nil {
+		return err
+	}
+	if gate.state.HistoryCheckpoint != nil {
+		return errors.New("assignment history checkpoint already exists")
+	}
+	if err := checkpoint.Validate(); err != nil {
+		return err
+	}
+	if err := validateAssignmentHistoryCutoffIdentity(gate.state, gate.scopeDigest, AssignmentHistoryCutoff{
+		ScopeDigest: checkpoint.ScopeDigest, WorkerInstanceID: checkpoint.WorkerInstanceID,
+		WorkerInstanceEpoch: checkpoint.WorkerInstanceEpoch, WorkerMemberID: checkpoint.WorkerMemberID,
+		FromSequence: 1, ThroughSequence: 1, CumulativeDigest: checkpoint.CumulativeDigest,
+		TerminalProofDigest: checkpoint.TerminalProofDigest, InputProofDigest: checkpoint.InputProofDigest,
+		MaterializationProofDigest: checkpoint.MaterializationProofDigest,
+	}); err != nil {
+		return err
+	}
+	if checkpoint.FromSequence != 1 || checkpoint.ThroughSequence > gate.state.HistoryBase || checkpoint.CompactedCutoffCount > int64(len(gate.state.HistoryCutoffs)) {
+		return errors.New("assignment history checkpoint does not cover a reclaimed cutoff prefix")
+	}
+	count := int(checkpoint.CompactedCutoffCount)
+	if count == 0 || count > len(gate.state.HistoryCutoffs) {
+		return errors.New("assignment history checkpoint cutoff count is invalid")
+	}
+	covered := gate.state.HistoryCutoffs[count-1]
+	if covered.ThroughSequence != checkpoint.ThroughSequence {
+		return errors.New("assignment history checkpoint range does not match cutoff prefix")
+	}
+	coveredDigest, err := covered.Digest()
+	if err != nil || coveredDigest != checkpoint.LastCutoffDigest {
+		return errors.New("assignment history checkpoint does not match cutoff prefix digest")
+	}
+	next := cloneAdmissionState(gate.state)
+	next.HistoryCheckpoint = &checkpoint
+	next.HistoryCutoffs = slices.Clone(next.HistoryCutoffs[count:])
+	if len(next.HistoryCutoffs) > 0 {
+		checkpointDigest, err := checkpoint.Digest()
+		if err != nil {
+			return err
+		}
+		next.HistoryCutoffs[0].PreviousCutoffDigest = checkpointDigest
 	}
 	if err := gate.commit(ctx, next); err != nil {
 		return err

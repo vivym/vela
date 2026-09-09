@@ -232,7 +232,9 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 已先加入 `AssignmentHistoryCheckpoint` 的 canonical/identity/range/proof 校验层，
 并接入 recovery 对 `HistoryBase` 与保留 cutoff anchor 的边界校验；相关
 `go test -race ./internal/stageworkeragent -run 'AssignmentHistory(Cutoff|Checkpoint|Reclaim)'`
-通过。旧 proof 删除事务尚未接入，因此这一步只固定并检查协议边界，不宣称压缩已经完成。
+通过。现在 bounded 40-arrival campaign 还实际执行了单 checkpoint compaction，
+并在重开后确认 `HistoryBase=40`、`HistoryCutoffs=0`、无 retained execution。
+多 checkpoint、掉电级别故障、外部签名和长期上界仍需继续验证。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，

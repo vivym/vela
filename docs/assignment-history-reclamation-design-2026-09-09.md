@@ -97,4 +97,7 @@ arrival 证明。
 proof digest、compacted-count 和 revision 校验层，并接入 journal recovery 的
 边界校验：`HistoryBase` 与 checkpoint 必须一致，保留 cutoff 必须由 checkpoint
 digest 锚定。它尚未执行旧 proof 删除或改变现有 schema version，因此不会提前
-宣称 compaction 已完成。
+宣称 compaction 已完成。当前还已实现单 checkpoint 的原子 compaction：只有在
+prefix range、cutoff count、last cutoff digest 和 reclaimed `HistoryBase` 全部匹配
+时才替换旧 cutoff 前缀；提交后恢复会验证 checkpoint-only 状态。多 checkpoint、
+掉电级别故障和外部签名仍未闭合。
