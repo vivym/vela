@@ -13,6 +13,17 @@ go test -tags=integration ./internal/integration -run '^TestCPUMockExactCacheSou
 loop、clock-offset 与 durable-stream 路径没有回归；它仍不等于完整 integration
 套件、真实 Node/CRI/Fleet 装配或 Production Gate 证明。
 
+随后使用仓库提供的并行分片入口重新执行完整 integration 测试集合：
+
+```text
+./hack/run-integration-shards.sh 6
+```
+
+六个分片全部通过。脚本按当前测试发现结果覆盖完整的 505 个顶层 integration
+tests，并为每个分片建立独立 PostgreSQL/Testcontainers 环境。该结果证明当前提交
+点的 integration 契约集合可以通过并行分片运行；它仍属于单机 Docker/mock 证据，
+不替代单进程全量运行、真实多节点 Fleet/CRI、长期 soak 或 Production Gates。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
