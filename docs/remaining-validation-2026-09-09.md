@@ -189,6 +189,11 @@ assignment，仍在 `30s` authority skew 上限内，未产生错误接受或额
 已验证达到 `MaxRecords` 后 fail closed，重启不丢 watermark/profile/closed history。
 持久 cutoff 和安全 reclamation 仍未实现，因此 sustained arrivals 仍受该上限约束。
 
+[Linux validation boundary](linux-validation-boundary-2026-09-09.md) 已确认当前
+Darwin 宿主只执行非-Linux 测试；Linux 源码可在 `linux/arm64` 容器中编译，但当前
+Docker 沙箱禁止测试 helper 的 fork/exec，故 pidfd/ptrace/namespace/Node startup
+运行语义仍缺真实 Linux runner 证据。
+
 | 顺序 | 尚需实施或验证 | 最低通过标准 |
 | --- | --- | --- |
 | 1 | 受保护的生产启动装配 | 将 Registry/Fleet 批准、原始进程身份与执行连续性、epoch、实际 CLI argv/env、挂载与 Node owner 配置接到真实入口；明确 journal enrollment 授权前只读和 grant 后角色写入；Worker/Runtime 无法直接改写 journal；缺失、替换、过期身份一律拒绝，不能靠测试注入绕过 |
