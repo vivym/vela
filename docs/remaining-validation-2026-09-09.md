@@ -139,6 +139,16 @@ Testcontainer 时超时。超时栈停在 Docker API `ContainerStart` 的 HTTP r
 没有业务 assertion failure；结束后 Docker 容器已清理。并行 6 分片仍是当前完整
 测试集合的可靠运行方式，不能把这次单进程基础设施超时记为 PASS。
 
+本轮进一步按 CI 的 20 分片策略执行：
+
+```text
+./hack/run-integration-shards.sh 20
+```
+
+20 个分片全部通过，覆盖完整的 505 个顶层 integration tests。该结果确认更细
+粒度的并行运行在当前 Docker 环境下也稳定，可作为本地/CI 的加速验证路径；它
+仍不改变单进程全量运行因 Docker API I/O 超时而未闭合的事实。
+
 更新：2026-09-09。范围：`feature/vela-mock-hardening` 的本地 CPU/mock
 正确性闭环，不包含部署、GPU 或 Production Gate 放行。
 
