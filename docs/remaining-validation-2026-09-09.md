@@ -250,6 +250,8 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 checkpoint/repeated-compaction 改动后的全库回归也已通过：`go test ./...`、
 `go vet ./...`；其中 `internal/stageworkeragent` 包含完整 compaction/race campaign。
 这只证明当前源码没有观测到回归，不替代 power-loss 或真实生产装配验证。
+随后单独执行 `go test -tags=integration ./internal/integration -run '^$'`，integration
+build-tag 编译通过，未运行测试用例。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，
