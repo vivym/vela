@@ -296,3 +296,13 @@ Launch Receipt 仍未闭环，Production Gates 保持 **0/9**。
 继续采用“明确不变量 → 最小可复现故障 → 修复 → 同源验证与留证 → 本地提交”
 的顺序。避免把局部修复标成整体验收完成，也不重新运行没有新风险依据的历史
 campaign 来替代尚缺的装配和故障路径。
+
+## 2026-09-09 验证收口记录
+
+提交 `a2ac1a7` 后，`go test ./internal/stageworkeragent -run
+'TestAssignmentHistoryCutoff|TestAssignmentHistoryReclaim' -count=1` 通过。
+随后执行 `go test -tags=integration ./...`：除 `internal/integration` 外已运行到的
+所有 command/internal 包均通过；integration 测试进程在超过五分钟无新输出后中止，
+因此不能记为全仓库 integration PASS。此前的
+`go test -tags=integration ./internal/integration -run '^$'` 编译检查仍有效；真实
+campaign 需显式环境变量，不能由这次无界运行推断已完成。
