@@ -75,3 +75,18 @@
 [validation-runner-audit-2026-09-09.json](validation-runner-audit-2026-09-09.json)。
 原始日志、逐测试 TSV 与发现列表保留于摘要中的私有 evidence directory。
 本轮不是 GPU 验证，也没有提升 Production Gates 或真实启动装配的证据等级。
+
+## CI 入口回归
+
+同一终态校验已接入 `hack/test-integration-shard.sh`，它覆盖 CI 发现的多个
+tagged 包。真实执行：
+
+```text
+bash hack/test-integration-shard.sh 0 20
+```
+
+结果通过；包级摘要为：`cmd/vela-lab-bootstrap` 1 PASS、
+`internal/fleetcontroller` 1 PASS、`internal/integration` 24 PASS/1 SKIP、
+`internal/modelruntime` 14 PASS、`internal/nodeagent` 2 PASS、
+`internal/workerbootstrap` 1 PASS，所有包 `FAIL=0 MISSING=0`。原始输出保留于
+`/tmp/vela-ci-shard0-audit.log`。该单分片不能替代 CI 的其余分片或生产环境。

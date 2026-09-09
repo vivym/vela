@@ -1,6 +1,7 @@
 #!/bin/sh
 
 set -eu
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 if [ "$#" -ne 2 ]; then
 	echo "usage: $0 SHARD_INDEX SHARD_TOTAL" >&2
@@ -64,7 +65,24 @@ awk -v shard_index="${shard_index}" -v shard_total="${shard_total}" '
 ' "${work_dir}/tests" >"${work_dir}/selected"
 
 echo "running integration shard ${shard_index}/${shard_total}"
+status=0
+package_index=0
 while IFS=' ' read -r package test_pattern; do
-	go test -tags=integration "${package}" -count=1 \
-		-run "${test_pattern}" -timeout="${INTEGRATION_TEST_TIMEOUT:-8m}"
+	log="${work_dir}/package-${package_index}.log"
+	expected="${work_dir}/package-${package_index}.expected"
+	printf '%s\n' "${test_pattern}" | awk -F'[()]' '{gsub(/\|/, "\n", $2); print $2}' >"${expected}"
+	if ! go test -tags=integration "${package}" -count=1 -v \
+		-run "${test_pattern}" -timeout="${INTEGRATION_TEST_TIMEOUT:-8m}" >"${log}" 2>&1; then
+		status=1
+	fi
+	printf '%s: ' "${package}"
+	if ! awk -v result_file="${work_dir}/package-${package_index}.results.tsv" \
+		-f "${script_dir}/summarize-integration-shard.awk" "${expected}" "${log}"; then
+		status=1
+	fi
+	if (( status != 0 )); then
+		cat "${log}" >&2
+	fi
+	package_index=$((package_index + 1))
 done <"${work_dir}/selected"
+exit "${status}"
