@@ -749,7 +749,9 @@ tls {
 		t.Fatalf("start authenticated NATS JetStream: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := container.Terminate(cleanupCtx); err != nil {
 			t.Errorf("terminate authenticated NATS JetStream: %v", err)
 		}
 	})

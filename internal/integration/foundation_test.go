@@ -780,12 +780,18 @@ func newPostgres(t *testing.T) testDatabase {
 		t.Fatalf("start PostgreSQL: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := container.Terminate(cleanupCtx); err != nil {
 			t.Errorf("terminate PostgreSQL: %v", err)
 		}
 	})
 
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	// Every integration connection must fail boundedly when a migration or
+	// fixture transaction holds a lock. Without database-side deadlines, one
+	// leaked PostgreSQL session can consume the package's entire test timeout
+	// while goose waits inside database/sql with no context-aware API.
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable&lock_timeout=30s&statement_timeout=120s")
 	if err != nil {
 		t.Fatalf("PostgreSQL connection string: %v", err)
 	}

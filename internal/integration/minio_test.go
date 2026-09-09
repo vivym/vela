@@ -51,7 +51,9 @@ func newMinIOFixture(t *testing.T, bucket string) *minIOFixture {
 		t.Fatalf("start MinIO: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if err := container.Terminate(cleanupCtx); err != nil {
 			t.Errorf("terminate MinIO: %v", err)
 		}
 	})
