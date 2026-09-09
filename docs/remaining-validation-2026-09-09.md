@@ -320,3 +320,8 @@ campaign 需显式环境变量，不能由这次无界运行推断已完成。
 `-count=1` 和有界 `-timeout`，全部通过。该结果证明当前提交链下的 integration
 契约集合可在本地 Docker 环境完整运行；它仍然是单机 Testcontainers 证据，不等价
 于真实多节点 Fleet/CRI、进程替换、长期 soak 或 Production Gates。
+当前提交又以 `VELA_RUN_CPU_MOCK_CAMPAIGN=1` 运行
+`TestCPUMockExactCacheProductionLoopCampaign` 的 `-race` 版本。首次运行发现
+campaign 在 race 调度下对 source drain 做即时采样，可能在后台清理完成前误报
+`ScratchBytes`；提交 `43bf104` 将 source/target drain 改为 30 秒有界轮询，并保留
+最终 allocation、lease、credit、watchdog 等断言。修复后 race campaign 通过。
