@@ -541,3 +541,6 @@ renewal/replay、session capacity 和 observation lifecycle。该分片补充了
 
 Finance/catalog/H3 分片
 `go test -tags=integration ./internal/integration -run '^TestFinance|^TestUsage|^TestCatalog|^TestH3|^TestRuntimeUsage'` 已通过，耗时约 109 秒；覆盖 finance reconciliation、usage cost ledger、catalog promotion production gates、H3 campaign evidence，以及 runtime usage 的无 GPU 时间边界。
+
+身份与租户隔离分片
+`go test -tags=integration ./internal/integration -run '^TestHuman|^TestOrganization|^TestServicePrincipal|^TestCredential|^TestRequestContext|^TestScope|^TestOpenAPI|^TestDatabasePools'` 已通过，耗时约 136 秒；覆盖 human/OIDC/RLS、service principal/credential revocation、request context scope revalidation、organization isolation 和 OpenAPI error contract。
