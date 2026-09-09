@@ -24,6 +24,7 @@ type RuntimeStartupServer struct {
 	mu                                       sync.Mutex
 	stopped                                  bool
 	cancel                                   context.CancelFunc
+	listener                                 *net.UnixListener
 	done                                     chan struct{}
 	accepted, authenticated, replied, failed atomic.Uint64
 }
@@ -88,6 +89,7 @@ func (server *RuntimeStartupServer) Serve(ctx context.Context, listener *net.Uni
 	if server == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
 		return ErrRuntimeCallerIdentity
 	}
+	listener.SetUnlinkOnClose(false)
 	server.mu.Lock()
 	if server.done != nil || server.stopped {
 		server.mu.Unlock()
@@ -95,9 +97,9 @@ func (server *RuntimeStartupServer) Serve(ctx context.Context, listener *net.Uni
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	server.cancel = cancel
+	server.listener = listener
 	server.done = make(chan struct{})
 	server.mu.Unlock()
-	listener.SetUnlinkOnClose(false)
 	var wg sync.WaitGroup
 	defer func() {
 		cancel()
@@ -105,6 +107,7 @@ func (server *RuntimeStartupServer) Serve(ctx context.Context, listener *net.Uni
 		wg.Wait()
 		server.mu.Lock()
 		server.stopped = true
+		server.listener = nil
 		close(server.done)
 		server.mu.Unlock()
 	}()
@@ -131,6 +134,9 @@ func (server *RuntimeStartupServer) Shutdown(ctx context.Context) error {
 	server.mu.Lock()
 	if server.cancel != nil {
 		server.cancel()
+	}
+	if server.listener != nil {
+		_ = server.listener.Close()
 	}
 	done := server.done
 	server.mu.Unlock()

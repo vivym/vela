@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "baseline_commit": "275be0a3c3efe39d32d790c0495ccd9de7c11594",
-  "source_sha256": "f7e7fbdb49dcfc727866e509dd2555dd1f7c4b59cddae41f252371a174563a27",
+  "source_sha256": "ab10651daefda8d01463f0d4ea8d43167de3f9db700b9c01866f20f6dc096831",
   "source_file_count": 1068,
   "source_digest_method": "SHA256(sorted tracked/untracked Go SQL proto C shell + go.mod go.sum: path NUL file SHA256 newline)",
-  "native_source_patch_sha256": "58a2c5c3384162d24c99a8f702cd1dff5d9f888fc398ec8b8023d6f1ecf3cab0",
-  "image_id": "sha256:67a061275617347717615fb7d50947d22ac7137f79302facd34f9d8b3113799c",
+  "native_source_patch_sha256": "0264b4edd3f7c7f4e0c21ebfbcaa678d7c0ddd982c38e48bebb2a438731e7f06",
+  "image_id": "sha256:461ddf5dd80aae2719d5bc72a17cf7505476ac8d3943ea9e5b7a15f635974116",
   "binary_sha256": {
-    "nodeagent.test": "fb46a51fb9593d9ff6e0f8368dab0911010a481be63d3ca3a5ee68b15fc61879",
+    "nodeagent.test": "ced2ed67fb5a9668ecf88e5ff4106351178f62098343340d6fa81c20fc5fda81",
     "runtime-command.test": "aa493f127ac1cdf2619e906edfdf077518312d98700fbdce0a570fc6d6cd0854",
-    "vela-model-runtime": "621ec109712fbe801acfe97032c73e7679712dfc50216cab6370873d4ffbb76e",
+    "vela-model-runtime": "689ffd0254e31975fa0e6f7deb2d84ef2e5161f4923d436c10bda26ada9da245",
     "exec-observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
     "exec-probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2"
   },
@@ -18,11 +18,11 @@
   "suites": {
     "native": {
       "exit_code": 0,
-      "top_level_pass_count": 31,
+      "top_level_pass_count": 33,
       "passes": [
         {
           "name": "TestJournalServerExecObservedRemoteCLI",
-          "elapsed_seconds": 3.19
+          "elapsed_seconds": 3.21
         },
         {
           "name": "TestJournalReadOnlyEndpoint",
@@ -30,15 +30,15 @@
         },
         {
           "name": "TestJournalServerActualRemoteCLI",
-          "elapsed_seconds": 3.37
+          "elapsed_seconds": 3.44
         },
         {
           "name": "TestJournalServerStartsRemoteRuntimeBeforeActualWorkerExecution",
-          "elapsed_seconds": 0.39
+          "elapsed_seconds": 0.43
         },
         {
           "name": "TestRuntimeBootstrapPublication",
-          "elapsed_seconds": 1.05
+          "elapsed_seconds": 1.06
         },
         {
           "name": "TestRuntimeBootstrapPublicationPreflight",
@@ -46,7 +46,7 @@
         },
         {
           "name": "TestRuntimeBootstrapPublicationBoundaries",
-          "elapsed_seconds": 0.09
+          "elapsed_seconds": 0.1
         },
         {
           "name": "TestRuntimeBootstrapPublicationConcurrent",
@@ -54,11 +54,11 @@
         },
         {
           "name": "TestRuntimeBootstrapPublicationProcessCrash",
-          "elapsed_seconds": 0.25
+          "elapsed_seconds": 0.27
         },
         {
           "name": "TestRuntimeBootstrapPublicationChanged",
-          "elapsed_seconds": 0.27
+          "elapsed_seconds": 0.3
         },
         {
           "name": "TestRuntimeBootstrapPublicationCustodyLoss",
@@ -66,39 +66,39 @@
         },
         {
           "name": "TestRuntimeBootstrapPublicationActualCLI",
-          "elapsed_seconds": 2.36
+          "elapsed_seconds": 2.33
         },
         {
           "name": "TestRuntimeJournalObservation",
-          "elapsed_seconds": 2.27
+          "elapsed_seconds": 2.43
         },
         {
           "name": "TestRuntimeJournalObservationRejectsWrongTarget",
-          "elapsed_seconds": 0.43
+          "elapsed_seconds": 0.5
         },
         {
           "name": "TestRuntimeJournalObservationPersistenceOutage",
-          "elapsed_seconds": 1.79
+          "elapsed_seconds": 1.85
         },
         {
           "name": "TestRuntimeJournalObservationRejectsExpiredCheck",
-          "elapsed_seconds": 0.26
-        },
-        {
-          "name": "TestRuntimeJournalObservationConcurrentClose",
-          "elapsed_seconds": 1.82
-        },
-        {
-          "name": "TestRuntimeJournalObservationPreservesRevocationError",
           "elapsed_seconds": 0.25
         },
         {
+          "name": "TestRuntimeJournalObservationConcurrentClose",
+          "elapsed_seconds": 2.28
+        },
+        {
+          "name": "TestRuntimeJournalObservationPreservesRevocationError",
+          "elapsed_seconds": 0.26
+        },
+        {
           "name": "TestRuntimeJournalObservationCancellationWithBusyEndpoint",
-          "elapsed_seconds": 0.23
+          "elapsed_seconds": 0.25
         },
         {
           "name": "TestRuntimeObserverCustody",
-          "elapsed_seconds": 0.48
+          "elapsed_seconds": 0.46
         },
         {
           "name": "TestRuntimeObserverProcessOfferDescriptors",
@@ -106,15 +106,15 @@
         },
         {
           "name": "TestRuntimeStartupGrantActivationOrdersDurabilityAndWrites",
-          "elapsed_seconds": 0.25
+          "elapsed_seconds": 0.26
         },
         {
           "name": "TestRuntimeStartupGrantActivationRejectsHistoryAndMismatches",
-          "elapsed_seconds": 1.85
+          "elapsed_seconds": 2.1
         },
         {
           "name": "TestRuntimeStartupGrantActivationFailsClosedDuringPersistence",
-          "elapsed_seconds": 1.95
+          "elapsed_seconds": 2.12
         },
         {
           "name": "TestRuntimeStartupGrantActivationConcurrent",
@@ -126,7 +126,7 @@
         },
         {
           "name": "TestRuntimeStartupCoordinatorPermitsOnlyAfterObservedActivation",
-          "elapsed_seconds": 0.3
+          "elapsed_seconds": 0.26
         },
         {
           "name": "TestRuntimeStartupCoordinatorDeniesMismatchWithoutConsumption",
@@ -141,13 +141,21 @@
           "elapsed_seconds": 0.0
         },
         {
+          "name": "TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs",
+          "elapsed_seconds": 0.0
+        },
+        {
           "name": "TestRuntimeStartupServerRejectsInvalidConfiguration",
+          "elapsed_seconds": 0.0
+        },
+        {
+          "name": "TestRuntimeStartupServerShutdownClosesIdleListener",
           "elapsed_seconds": 0.0
         }
       ],
       "skip_count": 0,
-      "log_path": "/tmp/vela-prepare-closure3-20260909/native.log",
-      "log_sha256": "eece9d6cc9ecc35b3d9b3c7e3fe117485041c3e31cbb3502ffd8f3668fba7179"
+      "log_path": "/tmp/vela-lifecycle-fixes3-20260909/native.log",
+      "log_sha256": "dbb5b086f94221bc145e5c206e629f9b0e8b2f4e9669043ddfbbcb23f26f3c33"
     },
     "postgres_tls": {
       "exit_code": 0,
@@ -199,7 +207,10 @@
     "coordinator_native": "2 top-level tests passed: exact permit and mismatch deny/no-consumption",
     "startup_server_native": "invalid configuration rejection passed; actual runner exit 0",
     "orchestration_composition_root": "missing authority input rejection passed; runner exit 0",
-    "native_runner": "passed; 31 top-level tests; prepare orchestration included"
+    "native_runner": "passed; 33 top-level tests; lifecycle cleanup, preflight and idle-listener shutdown included; no DATA RACE",
+    "prepare_lifecycle": "preflight before reservation; observer cleanup on all post-attempt errors; owner lookup mutex-protected",
+    "startup_server_shutdown": "idle listener shutdown regression passed; listener close wakes AcceptUnix",
+    "orchestration_close": "coordinator close also closes observer custody after observation"
   },
   "review": {
     "standards": "three concurrency/error findings fixed; follow-up review clear",

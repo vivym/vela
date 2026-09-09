@@ -476,3 +476,20 @@ listener；Production Gates 继续为 `0/9`。下一步是定义并实现真实 
 orchestration 的配置、来源及 shutdown 所有权，然后在同一次真实 PostgreSQL/TLS +
 CLI/CRI/Fleet 路径验证 reservation、grant consumption、observed activation、Permit
 和失败恢复。
+
+### 本轮生命周期审查修复
+
+复审发现并修复了三个会影响真实装配的生命周期问题：
+
+- `PrepareRemoteStartupOrchestration` 在任何 reservation 结果（包括回包不确定的错误）
+  后都清理 observer custody；credentials、exchange timeout 和 observer timeout/interval
+  先于不可重试 reservation 做 preflight，避免无效配置消耗 Fleet authority；读取 ledger
+  owner/startup 状态也在 ledger mutex 保护下完成。
+- `RuntimeStartupServer.Shutdown` 保存并关闭活动 Unix listener，能唤醒空闲的
+  `AcceptUnix`；listener 的 unlink 配置在发布给 Shutdown 前完成，避免初始化竞态。
+- `RuntimeStartupCoordinator.Close` 在 observation 关闭后继续关闭 observer custody，
+  不遗留 pidfd、target 或私有 socket。
+
+新增了消耗性输入 preflight 和空闲 listener shutdown 回归；Linux/arm64 native runner
+再次通过 31 个 top-level tests，且无 `DATA RACE`。本轮 runner 证据位于
+`/tmp/vela-lifecycle-fixes2-20260909/native.log`。

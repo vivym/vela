@@ -83,7 +83,7 @@ func (coordinator *RuntimeStartupCoordinator) Close() error {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
 	if coordinator.observation != nil {
-		return coordinator.observation.Close()
+		return errors.Join(coordinator.observation.Close(), coordinator.custody.Close())
 	}
 	return coordinator.custody.Close()
 }
