@@ -284,6 +284,7 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	}
 	var previous [sha256.Size]byte
 	var prefixCutoff stageworkeragent.AssignmentHistoryCutoff
+	var finalCutoff stageworkeragent.AssignmentHistoryCutoff
 	for sequence := int64(1); sequence <= 40; sequence++ {
 		assignment := f.assignment
 		acquireID := f.acquireID
@@ -313,6 +314,9 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 		}
 		if sequence == 32 {
 			prefixCutoff = cutoff
+		}
+		if sequence == 40 {
+			finalCutoff = cutoff
 		}
 		previous, err = cutoff.Digest()
 		if err != nil {
@@ -399,11 +403,39 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	if compactedState.Size() >= finalState.Size() {
 		t.Fatalf("checkpoint compaction did not reduce state: before=%d after=%d", finalState.Size(), compactedState.Size())
 	}
+	retainedDocument, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retainedState struct {
+		HistoryCutoffs []stageworkeragent.AssignmentHistoryCutoff `json:"history_cutoffs"`
+	}
+	if err := json.Unmarshal(retainedDocument, &retainedState); err != nil {
+		t.Fatal(err)
+	}
+	if len(retainedState.HistoryCutoffs) != 8 {
+		t.Fatalf("unexpected suffix before second compaction: %d", len(retainedState.HistoryCutoffs))
+	}
+	finalCutoffDigest, err := retainedState.HistoryCutoffs[len(retainedState.HistoryCutoffs)-1].Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondCheckpoint := stageworkeragent.AssignmentHistoryCheckpoint{
+		ScopeDigest: persistedScope(persisted.Scope), WorkerInstanceID: f.config.WorkerInstanceID,
+		WorkerInstanceEpoch: f.config.WorkerInstanceEpoch, WorkerMemberID: f.config.WorkerMemberID,
+		FromSequence: 1, ThroughSequence: 40, CumulativeDigest: finalCutoff.CumulativeDigest,
+		TerminalProofDigest: finalCutoff.TerminalProofDigest, InputProofDigest: finalCutoff.InputProofDigest,
+		MaterializationProofDigest: finalCutoff.MaterializationProofDigest, LastCutoffDigest: finalCutoffDigest,
+		CompactedCutoffCount: 40, Revision: 2,
+	}
+	if err := gate.CompactAssignmentHistory(t.Context(), secondCheckpoint); err != nil {
+		t.Fatal(err)
+	}
 	if err := gate.Close(); err != nil {
 		t.Fatal(err)
 	}
 	prepared, err := stageworkeragent.PrepareAssignmentJournal(t.Context(), f.config)
-	if err != nil || prepared.HistoryBase != 40 || prepared.HistoryCutoffs != 8 || prepared.RetainedExecutions != 0 {
+	if err != nil || prepared.HistoryBase != 40 || prepared.HistoryCutoffs != 0 || prepared.RetainedExecutions != 0 {
 		t.Fatalf("checkpoint compaction recovery mismatch: %+v %v", prepared, err)
 	}
 }

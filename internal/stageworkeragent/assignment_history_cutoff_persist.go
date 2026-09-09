@@ -221,11 +221,17 @@ func (gate *FileAssignmentAdmission) CompactAssignmentHistory(ctx context.Contex
 	if err := gate.available(ctx); err != nil {
 		return err
 	}
-	if gate.state.HistoryCheckpoint != nil {
-		return errors.New("assignment history checkpoint already exists")
-	}
 	if err := checkpoint.Validate(); err != nil {
 		return err
+	}
+	previousCheckpoint := gate.state.HistoryCheckpoint
+	if previousCheckpoint != nil {
+		if checkpoint.FromSequence != previousCheckpoint.FromSequence || checkpoint.ThroughSequence <= previousCheckpoint.ThroughSequence ||
+			checkpoint.CompactedCutoffCount <= previousCheckpoint.CompactedCutoffCount || checkpoint.Revision <= previousCheckpoint.Revision ||
+			checkpoint.ScopeDigest != previousCheckpoint.ScopeDigest || checkpoint.WorkerInstanceID != previousCheckpoint.WorkerInstanceID ||
+			checkpoint.WorkerInstanceEpoch != previousCheckpoint.WorkerInstanceEpoch || checkpoint.WorkerMemberID != previousCheckpoint.WorkerMemberID {
+			return errors.New("assignment history checkpoint is not a strict successor")
+		}
 	}
 	if err := validateAssignmentHistoryCutoffIdentity(gate.state, gate.scopeDigest, AssignmentHistoryCutoff{
 		ScopeDigest: checkpoint.ScopeDigest, WorkerInstanceID: checkpoint.WorkerInstanceID,
@@ -236,10 +242,13 @@ func (gate *FileAssignmentAdmission) CompactAssignmentHistory(ctx context.Contex
 	}); err != nil {
 		return err
 	}
-	if checkpoint.FromSequence != 1 || checkpoint.ThroughSequence > gate.state.HistoryBase || checkpoint.CompactedCutoffCount > int64(len(gate.state.HistoryCutoffs)) {
+	if checkpoint.FromSequence != 1 || checkpoint.ThroughSequence > gate.state.HistoryBase {
 		return errors.New("assignment history checkpoint does not cover a reclaimed cutoff prefix")
 	}
 	count := int(checkpoint.CompactedCutoffCount)
+	if previousCheckpoint != nil {
+		count -= int(previousCheckpoint.CompactedCutoffCount)
+	}
 	if count == 0 || count > len(gate.state.HistoryCutoffs) {
 		return errors.New("assignment history checkpoint cutoff count is invalid")
 	}

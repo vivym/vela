@@ -102,4 +102,6 @@ prefix range、cutoff count、last cutoff digest 和 reclaimed `HistoryBase` 全
 时才替换旧 cutoff 前缀；提交后恢复会验证 checkpoint-only 状态。多 checkpoint、
 目录同步失败后的两种落盘结果、checkpoint 前缀加 retained suffix 的完整 digest
 重锚定已在 bounded campaign 中验证；多 checkpoint、
-掉电级别故障和外部签名仍未闭合。
+重复 checkpoint compaction 已在同一 bounded campaign 中验证，第二个 checkpoint
+能够继续覆盖 retained suffix 并将 cutoff 数量重新压到零；掉电级别故障和外部签名
+仍未闭合。
