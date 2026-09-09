@@ -135,6 +135,12 @@ CLI 和 CLI/CRI 同次预留均改用该入口。两种原始角色可读但八�
 接线、执行连续性、once-only grant 与 grant 后的写路由转换仍需完成。已有
 可写构造器的独立授权前置条件不能靠手工选择该构造器来替代。
 
+新增 [Node startup socket 协调器](runtime-journal-observation-evidence-2026-09-09.md)
+已提供 `RuntimeStartupCoordinator`：exact canonical `BackendStartupRequest`、
+预先独立签发的 grant 和 observer activation 成功后才返回 `Permit=true`；mismatch
+不会消费 grant，handler 也不能重试。它目前是 Node-side adapter，实际 `serve-remote`
+runner 仍使用 fixture listener，尚未成为生产 startup socket 的唯一装配路径。
+
 ## 依赖顺序与通过标准
 
 执行连续性的 [旧 mem 句柄候选实验](runtime-execution-continuity-evidence-2026-09-09.md)

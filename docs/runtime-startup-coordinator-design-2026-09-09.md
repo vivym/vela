@@ -124,5 +124,13 @@ observer 的当前检查与运行期撤销接到同一对象，再统一实际 C
 这推进了前述运行期撤销组件；可信生产创建、实际 CLI/CRI/Fleet 的统一装配、
 批准策略和 Permit 仍是后续工作。早先测试结果仍是各自提交阶段的历史证据。
 
+## 后续增量：startup socket 的严格协调适配器
+
+`RuntimeStartupCoordinator` 固定同次 expected `BackendStartupRequest`、Node plan、
+operation-bound grant 与 observer custody。它只在观察、持久消费和 journal 激活成功
+后构造 digest-matched `Permit=true`；首次 mismatch/失败即拒绝并封住 handler 重试。
+该类型尚未替代实际 CLI harness 的 fixture listener，生产 Node startup socket 的
+认证 listener、coordinator 和 Permit 回包还需合并为唯一装配。
+
 进程 SIGKILL 不等于断电测试；摘要校验不构成恶意 root 攻击下的真实性证明；当前
 任何结果都不提升 Production Gates，仍为 **0/9**。

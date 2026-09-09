@@ -102,3 +102,17 @@ observer 创建与交付、Registry 批准策略、实际 CLI/CRI/Fleet 同次�
 
 原始 target 的退出证据不等同于所有生产后代停止；SIGKILL 不等同于断电恢复。
 Production Gates 保持 **0/9**。
+
+## Node startup socket 协调器增量
+
+`RuntimeStartupCoordinator` 是 Node 侧 startup socket handler 的严格适配器。它固定
+expected `BackendStartupRequest`、具体 plan、operation-bound grant 和 observer
+custody；只有 exact canonical request 通过 `ActivateObservedJournalWriteGrant`
+完成持久消费及路由激活后，才生成 request-digest 匹配的 `Permit=true`。错误或
+mismatch 返回拒绝；handler 本身 one-shot，不能通过重复请求重新获得 Permit。
+
+新增原生测试覆盖正确请求和 mismatch 不消费 grant。当前实际 `serve-remote` CLI
+runner 仍由测试 harness 直接提供 listener/fixture decision；本适配器尚未成为
+生产 socket listener 的唯一装配路径，也没有引入通用 `Authorize() == nil`。下一步
+是把真实 Node startup listener 的认证、request handler、coordinator 和 Permit
+回包接成同一生命周期，再做 PostgreSQL/TLS 与 CLI/CRI 同次验证。
