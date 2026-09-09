@@ -559,3 +559,6 @@ Stage execution 核心分片
 
 Schema/legacy/cache 分片
 `go test -tags=integration ./internal/integration -run '^TestFoundation|^TestAtomic|^TestHierarchical|^TestModelRuntime|^TestResidency|^TestLegacy|^TestStageExecutionCatalog|^TestStageCache|^TestStageTelemetry|^TestStageTerminal|^TestStageTransfer|^TestStageSuccessful|^TestStageRun|^TestStageQuorum|^TestStageAttempt'` 已通过，耗时约 189 秒；覆盖 migration round-trip/rollback refusal、legacy H3 contraction、execution catalog authority、exact cache identity/quota、telemetry privilege、terminal history、transfer clock、storage reservation 和 stage attempt authority。
+
+Miscellaneous job/worker 分片
+`go test -tags=integration ./internal/integration -run '^TestAccepted|^TestAutomatic|^TestJob|^TestInvalid|^TestRead|^TestProject|^TestPlatform|^TestServiceAuthentication|^TestLocal|^TestOneOfSeven|^TestSplit|^TestCPUMedia'` 已通过，耗时约 66 秒；覆盖 accepted request snapshot、automatic expiry、job child-row/attribution/expiry、project/admin debug dump、platform operator、local worker journal 和 CPU media stage worker。
