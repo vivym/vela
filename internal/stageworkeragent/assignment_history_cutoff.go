@@ -52,6 +52,9 @@ func (c AssignmentHistoryCutoff) ValidateSuccessor(prev *AssignmentHistoryCutoff
 		if c.PreviousCutoffDigest != ([sha256.Size]byte{}) {
 			return errors.New("first assignment history cutoff has a previous digest")
 		}
+		if c.FromSequence != 1 {
+			return errors.New("first assignment history cutoff must start at sequence one")
+		}
 		return nil
 	}
 	if err := prev.Validate(); err != nil {

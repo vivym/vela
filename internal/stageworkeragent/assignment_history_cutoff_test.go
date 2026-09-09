@@ -48,3 +48,11 @@ func TestAssignmentHistoryCutoffRejectsGapsAndIncompleteProof(t *testing.T) {
 		t.Fatal("accepted sequence gap")
 	}
 }
+
+func TestAssignmentHistoryCutoffRejectsNonzeroInitialSequence(t *testing.T) {
+	cutoff := cutoffFixture()
+	cutoff.FromSequence, cutoff.ThroughSequence = 2, 2
+	if err := cutoff.ValidateSuccessor(nil); err == nil {
+		t.Fatal("accepted an initial cutoff that skipped sequence one")
+	}
+}
