@@ -453,3 +453,26 @@ Postgres reattachment 相关 fixture integration 做了组合 `-race` 重跑：
 通过（约 `216s`）。这加强了 Node/Fleet authority、epoch、bootstrap、reservation
 和 reattachment 状态机的并发证据；Linux native provisioning、真实 CRI/containerd
 和 source-matched runtime image 仍由显式跳过项保持未验证。
+
+### 本轮收口：Prepare composition boundary
+
+`RuntimeStartupLedger.PrepareRemoteStartupOrchestration` 已作为真实装配前的
+composition boundary 落地：它要求完整 reservation、live owner、observer custody、
+非零独立 `AuthorizationDigest`、caller credentials 和有界 timeout；随后从 ledger
+当前 owner 创建 read-only journal endpoint，签发 operation/digest-bound grant，并返回
+`RuntimeStartupOrchestration`。它不会自行发 Permit、创建 socket，或把 digest 当作
+授权器，因此仍保持独立批准和真实 Node 生命周期的证据边界。
+
+最终 Linux/arm64 native runner 已实际执行并通过 31 个 top-level tests，其中包括
+`TestPrepareRemoteStartupOrchestrationRequiresIndependentInputs`；默认 `go test ./...`、
+Linux/arm64 `go vet ./internal/nodeagent`、`golangci-lint v2.13.1`（0 issues）、shell
+syntax 和 `git diff --check` 均通过。证据摘要已刷新到
+`runtime-journal-observation-evidence-2026-09-09.json`，对应 native log 为
+`/tmp/vela-prepare-closure3-20260909/native.log`。
+
+这仍未关闭生产接入：`cmd/vela-node-agent` 尚未提供真实 ledger/verified plan/Fleet
+reservation/grant issuer/observer custody 来源，也没有把 startup socket 设为唯一生产
+listener；Production Gates 继续为 `0/9`。下一步是定义并实现真实 Node startup
+orchestration 的配置、来源及 shutdown 所有权，然后在同一次真实 PostgreSQL/TLS +
+CLI/CRI/Fleet 路径验证 reservation、grant consumption、observed activation、Permit
+和失败恢复。
