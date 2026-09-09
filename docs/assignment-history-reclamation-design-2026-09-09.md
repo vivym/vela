@@ -104,4 +104,5 @@ prefix range、cutoff count、last cutoff digest 和 reclaimed `HistoryBase` 全
 重锚定已在 bounded campaign 中验证；多 checkpoint、
 重复 checkpoint compaction 已在同一 bounded campaign 中验证，第二个 checkpoint
 能够继续覆盖 retained suffix 并将 cutoff 数量重新压到零；掉电级别故障和外部签名
-仍未闭合。
+checkpoint proof 篡改后的 recovery 拒绝也已在 bounded campaign 中验证；掉电级别
+故障和外部签名仍未闭合。

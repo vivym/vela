@@ -238,7 +238,8 @@ terminal drain/recovery、未知输入保留，以及两个连续 cutoff 的同�
 完整 checkpoint 两种结果，并验证压缩前缀后 retained suffix 的每一条
 `PreviousCutoffDigest` 都重新链接到新的 checkpoint anchor；同一 campaign 随后又
 完成第二次 checkpoint compaction，将 8 条 retained cutoff 再压缩为零。掉电级别故障、
-外部签名和长期上界仍需继续验证。
+外部签名和长期上界仍需继续验证；本轮还直接篡改最终 checkpoint 的
+`cumulative_digest`，重开按预期拒绝，随后恢复原始文件。
 
 新增 [database role boundary evidence](database-role-boundary-evidence-2026-09-09.md)：
 在完整 migration `00001` 至 `00095` 后重跑 `TestDatabasePoolsFailClosedOnRoleConfusion`，

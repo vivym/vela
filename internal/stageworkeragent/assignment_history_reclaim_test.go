@@ -438,4 +438,35 @@ func TestAssignmentHistoryReclaimBoundedArrivalCampaign(t *testing.T) {
 	if err != nil || prepared.HistoryBase != 40 || prepared.HistoryCutoffs != 0 || prepared.RetainedExecutions != 0 {
 		t.Fatalf("checkpoint compaction recovery mismatch: %+v %v", prepared, err)
 	}
+	originalCheckpointState, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tamperedCheckpointState map[string]any
+	if err := json.Unmarshal(originalCheckpointState, &tamperedCheckpointState); err != nil {
+		t.Fatal(err)
+	}
+	checkpointDocument, ok := tamperedCheckpointState["history_checkpoint"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing persisted checkpoint: %#v", tamperedCheckpointState["history_checkpoint"])
+	}
+	tamperedProof := make([]any, 32)
+	for index := range tamperedProof {
+		tamperedProof[index] = float64(index + 1)
+	}
+	checkpointDocument["cumulative_digest"] = tamperedProof
+	tamperedCheckpointWire, err := json.Marshal(tamperedCheckpointState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, tamperedCheckpointWire, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := stageworkeragent.NewFileAssignmentAdmission(f.config); err == nil {
+		_ = reopened.Close()
+		t.Fatal("recovery accepted a tampered checkpoint proof")
+	}
+	if err := os.WriteFile(statePath, originalCheckpointState, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
