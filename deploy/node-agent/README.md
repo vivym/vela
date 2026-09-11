@@ -411,6 +411,11 @@ VELA_NODE_AGENT_RUNTIME_KUBECONFIG
 VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET
 ```
 
+The Kubernetes source is parsed from the exact file named by
+`VELA_NODE_AGENT_RUNTIME_KUBECONFIG`; the loader requires a root-owned,
+non-writable regular file and never falls back to in-cluster credentials or
+the ambient `KUBECONFIG` environment.
+
 Startup assembly reads the launch and bundle manifests, verifies the signed
 Registry binding and its bundle digest, checks the bound Node identity and
 member epochs, and requires the launch manifest to match the verified plan. It
