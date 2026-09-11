@@ -9,6 +9,9 @@ import (
 
 func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 	var authority RuntimeStartupAuthority
+	if _, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{}); err == nil {
+		t.Fatal("constructor accepted incomplete authority source")
+	}
 	if _, _, err := authority.Prepare(t.Context(), nil); err == nil {
 		t.Fatal("incomplete authority source accepted")
 	}

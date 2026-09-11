@@ -32,8 +32,52 @@ type RuntimeStartupAuthority struct {
 	ExchangeTimeout   time.Duration
 }
 
+type RuntimeStartupAuthorityConfig struct {
+	Ledger            *RuntimeStartupLedger
+	Plan              *RuntimeLaunchPlan
+	Pods              RuntimeLaunchPodReader
+	Observer          *RuntimeContainerObserver
+	Custody           *RuntimeObserverCustody
+	Journal           *modelruntime.ExecutionJournalOwner
+	WorkerOwner       *RuntimeNamespaceOwner
+	Registry          RuntimeStartupRegistry
+	AuthorizationHash [sha256.Size]byte
+	Credentials       []RuntimeCallerCredentials
+	ObserverInterval  time.Duration
+	ObserverTimeout   time.Duration
+	ExchangeTimeout   time.Duration
+}
+
+// NewRuntimeStartupAuthority constructs a complete static authority. It does
+// not contact Fleet, inspect Kubernetes/CRI, create listeners or grant
+// startup. Those actions remain owned by Prepare and the caller lifecycle.
+func NewRuntimeStartupAuthority(config RuntimeStartupAuthorityConfig) (RuntimeStartupAuthority, error) {
+	authority := RuntimeStartupAuthority{
+		Ledger: config.Ledger, Plan: config.Plan, Pods: config.Pods, Observer: config.Observer,
+		Custody: config.Custody, Journal: config.Journal, WorkerOwner: config.WorkerOwner,
+		Registry: config.Registry, AuthorizationHash: config.AuthorizationHash,
+		Credentials:      append([]RuntimeCallerCredentials(nil), config.Credentials...),
+		ObserverInterval: config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
+		ExchangeTimeout: config.ExchangeTimeout,
+	}
+	if err := authority.validateSources(); err != nil {
+		return RuntimeStartupAuthority{}, err
+	}
+	return authority, nil
+}
+
 func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
-	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || caller == nil || authority.AuthorizationHash == ([sha256.Size]byte{}) {
+	if err := authority.validateSources(); err != nil {
+		return err
+	}
+	if caller == nil {
+		return ErrRuntimeStartupAuthority
+	}
+	return nil
+}
+
+func (authority RuntimeStartupAuthority) validateSources() error {
+	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationHash == ([sha256.Size]byte{}) {
 		return ErrRuntimeStartupAuthority
 	}
 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
