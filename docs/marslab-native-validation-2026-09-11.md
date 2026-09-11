@@ -40,3 +40,5 @@ Production Gates 仍为 `0/9`，没有 Launch Receipt。本次兼容路径允许
 兼容源码重新构建后的 v2 runner 统计为 `42 PASS / 2 FAIL / 0 SKIP`；两个失败用例随后在同一镜像中单独重跑均通过：`TestJournalServerExecObservedRemoteCLI`（6 个场景）和 `TestRuntimeJournalObservationConcurrentClose`。这表明剩余问题是时序/资源波动，不能把 v2 首次整套结果直接当作零失败闭环；应继续做稳定性复跑并保留原始日志。
 
 修复退出态 `Pid: -1` 后，v5 镜像的 native 选择集实际为 `44 PASS / 0 FAIL / 0 SKIP`。runner 末尾的 `rg` 汇总命令在该主机未安装 `rg`，因此脚本返回 `127`；原始 `native.log` 本身已完整结束为 `PASS`，不能把脚本返回码误记为测试失败。
+
+随后将 runner 结果检查改为 `grep`，v6 在同一目标主机重新构建并执行完整选择集，脚本输出 `Actual remote Runtime CLI checks passed`，证据目录为 `/home/marslab/vela-evidence/remote-cli-compat-20260911-v6`。该结果覆盖 44 个顶层 PASS，0 FAIL，0 SKIP，并通过脚本内的场景清单检查。
