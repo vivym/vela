@@ -58,7 +58,7 @@ docker run --rm --network none --cap-add SYS_ADMIN --cap-add SYS_PTRACE \
   --security-opt seccomp=unconfined --cpus 4 --memory 4g --pids-limit 256 \
   "$owner_image" /nodeagent.test -test.run '^(TestRuntimeStartupGrant.*|TestRuntimeStartupReservation.*|TestRuntimeStartupLedger(BeforeActualFactory|RetainsExactOwnerExit|RestartDoesNotReconstructOwner|ReservesExitCapacity|RejectsUnboundRequests|UncertainAppendRemainsConsumed|RejectsMissingAndChangedState)|TestJournalEndpoint|TestJournalReadOnly.*|TestJournalWriteGrant.*|TestJournalServer(|LiveSupervisorRecoversAfterOverload|TimeoutAndJoin|ListenerFailure|Configuration|CancellationSurvivesUnresponsiveNode|StartsRemoteRuntimeBeforeActualWorkerExecution|WorkerBarrierRecoversAfterOverload)|TestRuntimeChannel(RoundTrip|LargeRequestBounds|RejectsUntrustedExchange|ReplyRejectsLostLifetime)|TestRuntimeCallerRejectsInvalidMessages)$' \
   -test.count=1 -test.v -test.timeout=3m > "$owner_evidence/node-startup.log" 2>&1
-if rg -q -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
+if grep -Eq -- '--- SKIP:' "$owner_evidence/modelruntime.log" "$owner_evidence/node-startup.log"; then
   echo 'Selected native checks unexpectedly skipped; inspect evidence' >&2
   exit 1
 fi
