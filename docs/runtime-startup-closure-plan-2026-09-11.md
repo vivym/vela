@@ -12,6 +12,7 @@
 | protected listener | `listenRuntimeStartupSocket` | root-owned、`0600`、canonical path、identity-aware cleanup |
 | caller pre-auth | `receiveRuntimeStartupCaller` | 使用 verified plan UID/GID；同一个 caller/pidfd 可传给 reservation 与 `ServeCaller` |
 | startup evidence | `RuntimeStartupAuthorizationPolicy` | evidence 绑定 operation/request digest，UTC，最长 5 分钟；裸 `AuthorizationHash` fail-closed |
+| startup ledger | `VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY` + `OpenRuntimeStartupLedger` | 独立目录、Node-owned lock、逆序关闭；不再与 execution journal state 混用 |
 | shutdown owner | `runtimeStartupLifecycle` | orchestration 先 revoke/stop，再释放 listener、registry、observer、journal |
 | pidfs 兼容 | `RuntimeCaller`/observer 使用 pidfd API | 目标 Ubuntu 24.04 / kernel 6.8 已验证；不要求升级目标系统 |
 
@@ -19,7 +20,7 @@
 
 1. **Node process launcher contract**：定义并实现 Node 自己创建 Runtime 与 Worker 的 launcher。它必须返回原始 Runtime/Worker pidfd、observer socketpair 两端及关闭责任；不能从 PID、receipt 或历史 reservation 重建。
 2. **Worker owner/custody assembly**：用 launcher 返回的 Worker pidfd 调用 `RetainNamespaceOwner`，用 Node 创建的 observer socketpair 和原始 observer pidfd 调用 `ReceiveRuntimeObserverCustody`，并在失败路径 revoke/close。
-3. **Runtime startup ledger source**：为命令配置增加独立 ledger directory，调用 `OpenRuntimeStartupLedger(..., initialize=true)`；execution journal state directory 不能被默认当作 ledger directory。
+3. **Runtime startup ledger source**：已完成。命令现在要求独立 `VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY`，调用 `OpenRuntimeStartupLedger(..., initialize=true)`；execution journal state directory 不再被默认当作 ledger directory。
 4. **Concrete policy adapter**：把实际策略输入（当前 plan、Node identity、runtime incarnation、Fleet reservation record 和有效 launch/continuity evidence）实现为 `RuntimeStartupAuthorizationPolicy`。测试 fixture 不能接入生产入口。
 5. **Composition root**：`runRuntimeStartupGate` 按顺序加载 ledger、plan、journal、Kubernetes、CRI、Fleet、listener，启动 launcher，预认证 caller，组装 authority，调用 `Prepare`，再调用 `ServeCaller`。
 6. **Signal lifecycle**：将 `SIGTERM/SIGINT/context cancellation` 接到同一个 lifecycle；超时必须保持 revoked/fail-closed，并等待后台 cleanup，不得直接关闭 pidfd 让 coordinator 失去观察。
