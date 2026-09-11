@@ -470,6 +470,10 @@ func loadConfig() (config, error) {
 	if err != nil || agentID == uuid.Nil {
 		return config{}, errors.New("VELA_NODE_AGENT_ID must be a UUID")
 	}
+	runtimeStartupEnabled, err := parseBoolEnv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED")
+	if err != nil {
+		return config{}, err
+	}
 	configuration := config{
 		address:           envOrDefault("VELA_NODE_AGENT_ADDRESS", defaultAddress),
 		nodeIdentity:      os.Getenv("VELA_NODE_AGENT_NODE_IDENTITY"),
@@ -506,7 +510,7 @@ func loadConfig() (config, error) {
 		workerInstanceBackoffMax:     defaultWorkerInstanceBackoffMax,
 		workerInstanceEvidenceTTL:    defaultWorkerInstanceEvidenceTTL,
 		fleetDialTimeout:             defaultFleetDialTimeout,
-		runtimeStartupEnabled:        os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED") == "1",
+		runtimeStartupEnabled:        runtimeStartupEnabled,
 		runtimeLaunchManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE"),
 		runtimeBundleManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE"),
 		runtimeBindingFile:           os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_FILE"),
@@ -664,6 +668,18 @@ func loadConfig() (config, error) {
 		}
 	}
 	return configuration, nil
+}
+
+func parseBoolEnv(name string) (bool, error) {
+	value := os.Getenv(name)
+	switch value {
+	case "", "0":
+		return false, nil
+	case "1":
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s must be 0 or 1", name)
+	}
 }
 
 func positiveInt64Env(name string) (int64, error) {

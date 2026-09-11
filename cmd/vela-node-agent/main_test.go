@@ -69,6 +69,14 @@ func TestLoadConfigRuntimeStartupRequiresEveryAuthoritySource(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRuntimeStartupFlagIsStrict(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	t.Setenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED", "true")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "must be 0 or 1") {
+		t.Fatalf("invalid runtime startup flag error = %v", err)
+	}
+}
+
 func TestLoadRuntimeStartupPlanRejectsDisabledOrUncleanSources(t *testing.T) {
 	setValidNodeAgentEnv(t)
 	configuration, err := loadConfig()
