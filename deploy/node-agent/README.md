@@ -427,6 +427,12 @@ replacement inode, or permission other than `0600` is rejected. The runtime
 server receives this listener from Node and never creates or unlinks a socket
 path itself.
 
+Node assembly now owns the partial resource lifetime in this order: verified
+launch plan, authenticated Kubernetes client and Pod reader, CRI observer,
+separate Fleet startup registry, then the protected listener. Failure closes
+already-created resources in reverse order. Journal owner, observer custody and
+Worker owner are still required before constructing the final startup authority.
+
 Startup assembly reads the launch and bundle manifests, verifies the signed
 Registry binding and its bundle digest, checks the bound Node identity and
 member epochs, and requires the launch manifest to match the verified plan. It
