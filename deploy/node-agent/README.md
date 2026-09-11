@@ -416,6 +416,11 @@ The Kubernetes source is parsed from the exact file named by
 non-writable regular file and never falls back to in-cluster credentials or
 the ambient `KUBECONFIG` environment.
 
+Runtime startup uses a separately scoped Fleet connection and checks that the
+certificate URI matches the configured Node Agent identity. The existing
+WorkerInstance evidence connection is not used as a startup reservation
+authority; the separate connection is closed if later assembly fails.
+
 Startup assembly reads the launch and bundle manifests, verifies the signed
 Registry binding and its bundle digest, checks the bound Node identity and
 member epochs, and requires the launch manifest to match the verified plan. It
