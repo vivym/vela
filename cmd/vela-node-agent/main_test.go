@@ -115,6 +115,21 @@ func TestLoadRuntimeKubernetesCoreRequiresExplicitSecureConfig(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeStartupRegistryRequiresEnabledContext(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	if registry, closeFn, err := loadRuntimeStartupRegistry(context.Background(), configuration); err == nil || registry != nil || closeFn != nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("disabled registry result registry=%v closePresent=%t error=%v", registry, closeFn != nil, err)
+	}
+	configuration.runtimeStartupEnabled = true
+	if registry, closeFn, err := loadRuntimeStartupRegistry(nil, configuration); err == nil || registry != nil || closeFn != nil || !strings.Contains(err.Error(), "context") {
+		t.Fatalf("nil context registry result registry=%v closePresent=%t error=%v", registry, closeFn != nil, err)
+	}
+}
+
 func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "capabilities.json")

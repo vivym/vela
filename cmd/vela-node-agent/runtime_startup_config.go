@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
 
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
@@ -104,4 +106,44 @@ func loadRuntimeKubernetesCore(path string) (coreclient.CoreV1Interface, error) 
 		return nil, fmt.Errorf("create runtime Kubernetes client: %w", err)
 	}
 	return core, nil
+}
+
+// loadRuntimeStartupRegistry creates a separately scoped Fleet bootstrap
+// client. The WorkerInstance evidence client is intentionally not reused as a
+// startup reservation authority. The returned close function owns the new
+// connection and must be called on every subsequent assembly failure.
+func loadRuntimeStartupRegistry(ctx context.Context, configuration config) (*fleettransport.BootstrapClient, func() error, error) {
+	if !configuration.runtimeStartupEnabled {
+		return nil, nil, errors.New("runtime startup is disabled")
+	}
+	if ctx == nil {
+		return nil, nil, errors.New("runtime startup registry context is required")
+	}
+	credentials, identity, err := fleettransport.NewWorkerBootstrapTLSCredentials(
+		configuration.fleetClientCertificate,
+		configuration.fleetClientPrivateKey,
+		configuration.fleetCA,
+		configuration.fleetServerName,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("configure runtime startup Fleet credentials: %w", err)
+	}
+	expectedIdentity := nodeagent.NodeAgentSPIFFEIdentity(nodeagent.NodeAgentIdentity{
+		NodeIdentity: configuration.nodeIdentity,
+		AgentID:      configuration.agentID,
+		AgentEpoch:   configuration.agentEpoch,
+	})
+	if identity != expectedIdentity {
+		return nil, nil, errors.New("runtime startup Fleet certificate identity does not match Node identity")
+	}
+	client, err := fleettransport.DialClient(ctx, configuration.fleetAddress, credentials)
+	if err != nil {
+		return nil, nil, fmt.Errorf("connect runtime startup Fleet registry: %w", err)
+	}
+	registry, err := client.WorkerBootstrap(identity)
+	if err != nil {
+		_ = client.Close()
+		return nil, nil, fmt.Errorf("scope runtime startup Fleet registry: %w", err)
+	}
+	return registry, client.Close, nil
 }
