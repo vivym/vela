@@ -29,6 +29,7 @@ type runtimeStartupSocket struct {
 type runtimeStartupResources struct {
 	plan          *nodeagent.RuntimeLaunchPlan
 	validator     *stageauthority.Validator
+	ledger        *nodeagent.RuntimeStartupLedger
 	journal       *modelruntime.ExecutionJournalOwner
 	pods          *nodeagent.KubernetesRuntimeLaunchPodReader
 	observer      *nodeagent.RuntimeContainerObserver
@@ -91,35 +92,45 @@ func loadRuntimeStartupResources(ctx context.Context, configuration config) (*ru
 	if err != nil {
 		return nil, err
 	}
+	ledger, err := nodeagent.OpenRuntimeStartupLedger(ctx, configuration.runtimeStartupLedgerDir, configuration.nodeIdentity, true)
+	if err != nil {
+		_ = journal.Close()
+		return nil, fmt.Errorf("open runtime startup ledger: %w", err)
+	}
 	core, err := loadRuntimeKubernetesCore(configuration.runtimeKubeconfig)
 	if err != nil {
+		_ = ledger.Close()
 		_ = journal.Close()
 		return nil, fmt.Errorf("load runtime Kubernetes API: %w", err)
 	}
 	pods, err := nodeagent.NewKubernetesRuntimeLaunchPodReader(core)
 	if err != nil {
+		_ = ledger.Close()
 		_ = journal.Close()
 		return nil, fmt.Errorf("configure runtime Pod reader: %w", err)
 	}
 	observer, err := loadRuntimeContainerObserver(ctx, configuration)
 	if err != nil {
+		_ = ledger.Close()
 		_ = journal.Close()
 		return nil, err
 	}
 	registry, registryClose, err := loadRuntimeStartupRegistry(ctx, configuration)
 	if err != nil {
+		_ = ledger.Close()
 		_ = journal.Close()
 		_ = observer.Close()
 		return nil, err
 	}
 	socket, err := listenRuntimeStartupSocket(configuration)
 	if err != nil {
+		_ = ledger.Close()
 		_ = journal.Close()
 		_ = registryClose()
 		_ = observer.Close()
 		return nil, err
 	}
-	return &runtimeStartupResources{plan: plan, validator: validator, journal: journal, pods: pods, observer: observer, registry: registry, registryClose: registryClose, socket: socket}, nil
+	return &runtimeStartupResources{plan: plan, validator: validator, ledger: ledger, journal: journal, pods: pods, observer: observer, registry: registry, registryClose: registryClose, socket: socket}, nil
 }
 
 func (resources *runtimeStartupResources) Close() error {
@@ -138,6 +149,9 @@ func (resources *runtimeStartupResources) Close() error {
 	}
 	if resources.journal != nil {
 		closeErr = errors.Join(closeErr, resources.journal.Close())
+	}
+	if resources.ledger != nil {
+		closeErr = errors.Join(closeErr, resources.ledger.Close())
 	}
 	return closeErr
 }

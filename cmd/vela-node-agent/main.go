@@ -98,6 +98,7 @@ type config struct {
 	runtimeBindingVerifierFile   string
 	runtimeStageVerifierFile     string
 	runtimeJournalStateDir       string
+	runtimeStartupLedgerDir      string
 	runtimeCRISocket             string
 	runtimeKubeconfig            string
 	runtimeStartupSocket         string
@@ -514,6 +515,7 @@ func loadConfig() (config, error) {
 		runtimeBindingVerifierFile:   os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE"),
 		runtimeStageVerifierFile:     os.Getenv("VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE"),
 		runtimeJournalStateDir:       os.Getenv("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"),
+		runtimeStartupLedgerDir:      os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY"),
 		runtimeCRISocket:             os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
 		runtimeKubeconfig:            os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
 		runtimeStartupSocket:         os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
@@ -645,15 +647,16 @@ func loadConfig() (config, error) {
 	}
 	if configuration.runtimeStartupEnabled {
 		for name, value := range map[string]string{
-			"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE":    configuration.runtimeLaunchManifestFile,
-			"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE":    configuration.runtimeBundleManifestFile,
-			"VELA_NODE_AGENT_RUNTIME_BINDING_FILE":            configuration.runtimeBindingFile,
-			"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE":   configuration.runtimeBindingVerifierFile,
-			"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE":     configuration.runtimeStageVerifierFile,
-			"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY": configuration.runtimeJournalStateDir,
-			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":              configuration.runtimeCRISocket,
-			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":              configuration.runtimeKubeconfig,
-			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":          configuration.runtimeStartupSocket,
+			"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE":     configuration.runtimeLaunchManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE":     configuration.runtimeBundleManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_FILE":             configuration.runtimeBindingFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE":    configuration.runtimeBindingVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE":      configuration.runtimeStageVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY":  configuration.runtimeJournalStateDir,
+			"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": configuration.runtimeStartupLedgerDir,
+			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":               configuration.runtimeCRISocket,
+			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":               configuration.runtimeKubeconfig,
+			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":           configuration.runtimeStartupSocket,
 		} {
 			if value == "" {
 				return config{}, fmt.Errorf("%s is required when runtime startup is enabled", name)
