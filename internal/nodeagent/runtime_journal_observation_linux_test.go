@@ -265,46 +265,48 @@ func TestRuntimeJournalObservationRejectsExpiredCheck(t *testing.T) {
 }
 
 func TestRuntimeJournalObservationConcurrentClose(t *testing.T) {
-	for range 8 {
-		f, custody := observedActivationFixture(t)
-		start := make(chan struct{})
-		closed := make(chan error, 1)
-		activated := make(chan *RuntimeJournalObservation, 1)
-		go func() { <-start; closed <- f.endpoint.Close() }()
-		go func() {
-			<-start
-			observation, _, _ := f.ledger.ActivateObservedJournalWriteGrant(t.Context(), f.plan, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
-			activated <- observation
-		}()
-		close(start)
-		select {
-		case err := <-closed:
-			if err != nil {
-				t.Fatal(err)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("endpoint Close deadlocked")
-		}
-		select {
-		case observation := <-activated:
-			if observation == nil {
-				observation = f.endpoint.observation.Load()
-			}
-			if observation != nil {
-				select {
-				case <-observation.Done():
-				case <-time.After(5 * time.Second):
-					t.Fatal("Close missed concurrent attachment")
-				}
-				if err := observation.Close(); err != nil {
+	for iteration := range 8 {
+		t.Run(strconv.Itoa(iteration), func(t *testing.T) {
+			f, custody := observedActivationFixture(t)
+			start := make(chan struct{})
+			closed := make(chan error, 1)
+			activated := make(chan *RuntimeJournalObservation, 1)
+			go func() { <-start; closed <- f.endpoint.Close() }()
+			go func() {
+				<-start
+				observation, _, _ := f.ledger.ActivateObservedJournalWriteGrant(t.Context(), f.plan, f.grant, custody, 50*time.Millisecond, 500*time.Millisecond)
+				activated <- observation
+			}()
+			close(start)
+			select {
+			case err := <-closed:
+				if err != nil {
 					t.Fatal(err)
 				}
-				awaitObservedExit(t, custody)
+			case <-time.After(5 * time.Second):
+				t.Fatal("endpoint Close deadlocked")
 			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("concurrent activation deadlocked")
-		}
-		f.write(t, false)
+			select {
+			case observation := <-activated:
+				if observation == nil {
+					observation = f.endpoint.observation.Load()
+				}
+				if observation != nil {
+					select {
+					case <-observation.Done():
+					case <-time.After(5 * time.Second):
+						t.Fatal("Close missed concurrent attachment")
+					}
+					if err := observation.Close(); err != nil {
+						t.Fatal(err)
+					}
+					awaitObservedExit(t, custody)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("concurrent activation deadlocked")
+			}
+			f.write(t, false)
+		})
 	}
 }
 
