@@ -170,6 +170,9 @@ func SameLiveProcess(original, message int) error {
 			}
 			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid}
 		}
+		if err := ValidatePIDFD(fd); err != nil {
+			return err
+		}
 		if err := PollLivePIDFD(fd); err != nil {
 			return err
 		}
@@ -185,6 +188,33 @@ func SameLiveProcess(original, message int) error {
 	}
 	if !identities[0].pidfs && (identities[0].pid != identities[1].pid || identities[0].nspid != identities[1].nspid) {
 		return ErrIdentity
+	}
+	return nil
+}
+
+// ValidatePIDFD verifies that fd is a kernel pidfd with a stable identity and
+// close-on-exec set. It deliberately does not poll for liveness, so callers
+// that need to observe an exit can validate the retained handle first and poll
+// it separately.
+func ValidatePIDFD(fd int) error {
+	if fd < 0 {
+		return ErrIdentity
+	}
+	var filesystem unix.Statfs_t
+	if err := unix.Fstatfs(fd, &filesystem); err != nil {
+		return errors.Join(ErrIdentity, err)
+	}
+	if filesystem.Type == unix.PID_FS_MAGIC {
+		var stat unix.Stat_t
+		if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
+			return errors.Join(ErrIdentity, err)
+		}
+	} else if _, err := readAnonymousPIDFDIdentity(fd); err != nil {
+		return fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
+	}
+	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+	if err != nil || flags&unix.FD_CLOEXEC == 0 {
+		return errors.Join(ErrIdentity, err)
 	}
 	return nil
 }

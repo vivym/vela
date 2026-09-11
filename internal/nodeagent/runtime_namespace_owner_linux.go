@@ -117,7 +117,7 @@ func (owner *RuntimeNamespaceOwner) checkLocked() error {
 		return ErrRuntimeNamespaceOwnerLost
 	}
 	fd := int(owner.pidfd.Fd())
-	if err := runtimechannel.SameLiveProcess(fd, fd); err != nil {
+	if err := runtimechannel.ValidatePIDFD(fd); err != nil {
 		return errors.Join(ErrRuntimeNamespaceOwnerLost, err)
 	}
 	if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil || flags&unix.FD_CLOEXEC == 0 {
