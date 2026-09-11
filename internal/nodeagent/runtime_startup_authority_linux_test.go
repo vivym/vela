@@ -85,4 +85,8 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
 	if err := authority.validateSources(); err != nil {
 		t.Fatalf("credentials matching verified launch plan rejected: %v", err)
 	}
+	authority.AuthorizationHash = sha256.Sum256([]byte("legacy digest"))
+	if err := authority.validateSources(); err == nil {
+		t.Fatal("legacy authorization hash bypassed policy requirement")
+	}
 }

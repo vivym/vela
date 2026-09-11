@@ -52,10 +52,13 @@ type RuntimeStartupAuthority struct {
 	WorkerOwner         *RuntimeNamespaceOwner
 	Registry            RuntimeStartupRegistry
 	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
-	Credentials         []RuntimeCallerCredentials
-	ObserverInterval    time.Duration
-	ObserverTimeout     time.Duration
-	ExchangeTimeout     time.Duration
+	// AuthorizationHash is retained for source compatibility only. It is
+	// rejected by validation and cannot authorize a startup by itself.
+	AuthorizationHash [sha256.Size]byte
+	Credentials       []RuntimeCallerCredentials
+	ObserverInterval  time.Duration
+	ObserverTimeout   time.Duration
+	ExchangeTimeout   time.Duration
 }
 
 type RuntimeStartupAuthorityConfig struct {
@@ -68,10 +71,12 @@ type RuntimeStartupAuthorityConfig struct {
 	WorkerOwner         *RuntimeNamespaceOwner
 	Registry            RuntimeStartupRegistry
 	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
-	Credentials         []RuntimeCallerCredentials
-	ObserverInterval    time.Duration
-	ObserverTimeout     time.Duration
-	ExchangeTimeout     time.Duration
+	// AuthorizationHash is deprecated; use AuthorizationPolicy.
+	AuthorizationHash [sha256.Size]byte
+	Credentials       []RuntimeCallerCredentials
+	ObserverInterval  time.Duration
+	ObserverTimeout   time.Duration
+	ExchangeTimeout   time.Duration
 }
 
 // NewRuntimeStartupAuthority constructs a complete static authority. It does
@@ -82,8 +87,9 @@ func NewRuntimeStartupAuthority(config RuntimeStartupAuthorityConfig) (RuntimeSt
 		Ledger: config.Ledger, Plan: config.Plan, Pods: config.Pods, Observer: config.Observer,
 		Custody: config.Custody, Journal: config.Journal, WorkerOwner: config.WorkerOwner,
 		Registry: config.Registry, AuthorizationPolicy: config.AuthorizationPolicy,
-		Credentials:      append([]RuntimeCallerCredentials(nil), config.Credentials...),
-		ObserverInterval: config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
+		AuthorizationHash: config.AuthorizationHash,
+		Credentials:       append([]RuntimeCallerCredentials(nil), config.Credentials...),
+		ObserverInterval:  config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
 		ExchangeTimeout: config.ExchangeTimeout,
 	}
 	if err := authority.validateSources(); err != nil {
@@ -103,7 +109,7 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 }
 
 func (authority RuntimeStartupAuthority) validateSources() error {
-	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil {
+	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil || authority.AuthorizationHash != ([sha256.Size]byte{}) {
 		return ErrRuntimeStartupAuthority
 	}
 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
