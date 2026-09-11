@@ -43,8 +43,7 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 	// They must match the identities authenticated into the verified Pod plan;
 	// accepting a different UID/GID would let Node assembly authorize a caller
 	// that the signed launch topology did not create.
-	if authority.Plan.uid == 0 || authority.Plan.gid == 0 || len(authority.Credentials) != 1 ||
-		authority.Credentials[0].UID != authority.Plan.uid || authority.Credentials[0].GID != authority.Plan.gid {
+	if !authority.credentialsMatchPlan() {
 		return ErrRuntimeStartupAuthority
 	}
 	for i, credential := range authority.Credentials {
@@ -53,6 +52,12 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 		}
 	}
 	return nil
+}
+
+func (authority RuntimeStartupAuthority) credentialsMatchPlan() bool {
+	return authority.Plan != nil && authority.Plan.uid != 0 && authority.Plan.gid != 0 &&
+		len(authority.Credentials) == 1 && authority.Credentials[0].UID == authority.Plan.uid &&
+		authority.Credentials[0].GID == authority.Plan.gid
 }
 
 // Prepare authenticates the request already held by caller through the exact

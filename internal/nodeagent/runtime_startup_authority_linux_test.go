@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"testing"
 	"time"
 )
@@ -34,7 +33,11 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
 		AuthorizationHash: sha256.Sum256([]byte("independent policy evidence")),
 	}
-	if !errors.Is(authority.validate(&RuntimeCaller{}), ErrRuntimeStartupAuthority) {
+	if authority.credentialsMatchPlan() {
 		t.Fatal("credentials unrelated to verified launch plan accepted")
+	}
+	authority.Credentials = []RuntimeCallerCredentials{{UID: authority.Plan.uid, GID: authority.Plan.gid}}
+	if !authority.credentialsMatchPlan() {
+		t.Fatal("credentials matching verified launch plan rejected")
 	}
 }
