@@ -32,6 +32,15 @@ type runtimeStartupResources struct {
 	socket        *runtimeStartupSocket
 }
 
+func runRuntimeStartupGate(configuration config) error {
+	resources, err := loadRuntimeStartupResources(context.Background(), configuration)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resources.Close() }()
+	return errors.New("runtime startup authority composition is not wired")
+}
+
 func loadRuntimeStartupResources(ctx context.Context, configuration config) (*runtimeStartupResources, error) {
 	if !configuration.runtimeStartupEnabled {
 		return nil, errors.New("runtime startup is disabled")

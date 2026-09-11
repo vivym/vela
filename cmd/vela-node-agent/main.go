@@ -187,10 +187,7 @@ func run() error {
 		return errors.New("vela-node-agent must run as root for certified remediation and device attestation")
 	}
 	if configuration.runtimeStartupEnabled {
-		if _, err := loadRuntimeStartupPlan(configuration); err != nil {
-			return err
-		}
-		return errors.New("runtime startup authority composition is not wired")
+		return runRuntimeStartupGate(configuration)
 	}
 	localIdentity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: configuration.nodeIdentity,

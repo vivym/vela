@@ -102,6 +102,18 @@ func TestLoadRuntimeStartupPlanRejectsDisabledOrUncleanSources(t *testing.T) {
 	}
 }
 
+func TestRuntimeStartupGateNeverFallsThroughToLegacyAgent(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	configuration.runtimeStartupEnabled = true
+	if err := runRuntimeStartupGate(configuration); err == nil {
+		t.Fatal("runtime startup gate unexpectedly fell through")
+	}
+}
+
 func TestLoadRuntimeKubernetesCoreRequiresExplicitSecureConfig(t *testing.T) {
 	if core, err := loadRuntimeKubernetesCore(""); err == nil || core != nil || !strings.Contains(err.Error(), "absolute and clean") {
 		t.Fatalf("empty Kubernetes config result core=%v error=%v", core, err)
