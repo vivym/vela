@@ -10,8 +10,10 @@ import (
 	"syscall"
 
 	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/stageauthority"
 )
 
 type runtimeStartupSocket struct {
@@ -25,6 +27,8 @@ type runtimeStartupSocket struct {
 // until journal ownership, observer custody and worker ownership are present.
 type runtimeStartupResources struct {
 	plan          *nodeagent.RuntimeLaunchPlan
+	validator     *stageauthority.Validator
+	journal       *modelruntime.ExecutionJournalOwner
 	pods          *nodeagent.KubernetesRuntimeLaunchPodReader
 	observer      *nodeagent.RuntimeContainerObserver
 	registry      *fleettransport.BootstrapClient
@@ -52,16 +56,27 @@ func loadRuntimeStartupResources(ctx context.Context, configuration config) (*ru
 	if err != nil {
 		return nil, err
 	}
+	validator, err := loadRuntimeStageAuthorityValidator(configuration.runtimeStageVerifierFile)
+	if err != nil {
+		return nil, err
+	}
+	journal, err := loadRuntimeJournalOwner(configuration, plan, validator)
+	if err != nil {
+		return nil, err
+	}
 	core, err := loadRuntimeKubernetesCore(configuration.runtimeKubeconfig)
 	if err != nil {
+		_ = journal.Close()
 		return nil, fmt.Errorf("load runtime Kubernetes API: %w", err)
 	}
 	pods, err := nodeagent.NewKubernetesRuntimeLaunchPodReader(core)
 	if err != nil {
+		_ = journal.Close()
 		return nil, fmt.Errorf("configure runtime Pod reader: %w", err)
 	}
 	observer, err := loadRuntimeContainerObserver(ctx, configuration)
 	if err != nil {
+		_ = journal.Close()
 		return nil, err
 	}
 	registry, registryClose, err := loadRuntimeStartupRegistry(ctx, configuration)
@@ -71,11 +86,12 @@ func loadRuntimeStartupResources(ctx context.Context, configuration config) (*ru
 	}
 	socket, err := listenRuntimeStartupSocket(configuration)
 	if err != nil {
+		_ = journal.Close()
 		_ = registryClose()
 		_ = observer.Close()
 		return nil, err
 	}
-	return &runtimeStartupResources{plan: plan, pods: pods, observer: observer, registry: registry, registryClose: registryClose, socket: socket}, nil
+	return &runtimeStartupResources{plan: plan, validator: validator, journal: journal, pods: pods, observer: observer, registry: registry, registryClose: registryClose, socket: socket}, nil
 }
 
 func (resources *runtimeStartupResources) Close() error {
@@ -91,6 +107,9 @@ func (resources *runtimeStartupResources) Close() error {
 	}
 	if resources.observer != nil {
 		closeErr = errors.Join(closeErr, resources.observer.Close())
+	}
+	if resources.journal != nil {
+		closeErr = errors.Join(closeErr, resources.journal.Close())
 	}
 	return closeErr
 }

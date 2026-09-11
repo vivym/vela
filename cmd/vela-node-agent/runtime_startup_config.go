@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleettransport"
@@ -61,16 +62,6 @@ func loadRuntimeStartupPlan(configuration config) (*nodeagent.RuntimeLaunchPlan,
 	if err != nil {
 		return nil, fmt.Errorf("load runtime binding: %w", err)
 	}
-	// Parse the StageAuthority keyring now so an enabled process cannot start
-	// with a malformed or empty authority source that would fail later.
-	stageKeys, err := stageauthority.ReadVerifierKeyringFile(configuration.runtimeStageVerifierFile)
-	if err != nil {
-		return nil, fmt.Errorf("load runtime StageAuthority verifier: %w", err)
-	}
-	defer stageauthority.ClearKeyring(stageKeys)
-	if _, err := stageauthority.NewVerifier(stageKeys, nil); err != nil {
-		return nil, fmt.Errorf("configure runtime StageAuthority verifier: %w", err)
-	}
 	plan, err := nodeagent.VerifyRuntimeLaunchPlan(configuration.nodeIdentity, bindingVerifier, binding, bundleManifest)
 	if err != nil {
 		return nil, fmt.Errorf("verify runtime launch plan: %w", err)
@@ -79,6 +70,42 @@ func loadRuntimeStartupPlan(configuration config) (*nodeagent.RuntimeLaunchPlan,
 		return nil, fmt.Errorf("runtime launch manifest does not match verified plan: %w", err)
 	}
 	return plan, nil
+}
+
+func loadRuntimeStageAuthorityValidator(path string) (*stageauthority.Validator, error) {
+	keys, err := stageauthority.ReadVerifierKeyringFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("load runtime StageAuthority verifier: %w", err)
+	}
+	defer stageauthority.ClearKeyring(keys)
+	validator, err := stageauthority.NewVerifier(keys, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("configure runtime StageAuthority verifier: %w", err)
+	}
+	return validator, nil
+}
+
+func loadRuntimeJournalOwner(configuration config, plan *nodeagent.RuntimeLaunchPlan, validator *stageauthority.Validator) (*modelruntime.ExecutionJournalOwner, error) {
+	if plan == nil || validator == nil || configuration.runtimeJournalStateDir == "" {
+		return nil, errors.New("runtime journal owner sources are incomplete")
+	}
+	manifest, err := plan.LaunchManifest()
+	if err != nil {
+		return nil, fmt.Errorf("read verified runtime launch manifest: %w", err)
+	}
+	routes, err := manifest.RuntimeBindings()
+	if err != nil {
+		return nil, fmt.Errorf("derive runtime journal routes: %w", err)
+	}
+	owner, err := modelruntime.OpenExecutionJournalOwner(modelruntime.ExecutionJournalOwnerConfig{
+		Manifest: manifest, Validator: validator,
+		State:  modelruntime.ExecutionFloorStateConfig{Directory: configuration.runtimeJournalStateDir},
+		Routes: routes, MaxClockSkew: 30 * time.Second, Now: time.Now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open runtime execution journal owner: %w", err)
+	}
+	return owner, nil
 }
 
 // loadRuntimeKubernetesCore parses an explicitly provisioned kubeconfig after

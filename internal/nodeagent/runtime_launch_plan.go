@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"math"
 
@@ -107,6 +108,22 @@ func (plan *RuntimeLaunchPlan) ExpectedPod() *corev1.Pod {
 		return nil
 	}
 	return plan.pod.DeepCopy()
+}
+
+// LaunchManifest returns the validated immutable manifest captured by the
+// signed plan. Callers receive a value copy and cannot mutate plan state.
+func (plan *RuntimeLaunchPlan) LaunchManifest() (modelruntime.LaunchManifest, error) {
+	if plan == nil || plan.binding == nil || len(plan.manifest) == 0 {
+		return modelruntime.LaunchManifest{}, ErrRuntimeLaunchPlan
+	}
+	var manifest modelruntime.LaunchManifest
+	if err := json.Unmarshal(plan.manifest, &manifest); err != nil {
+		return modelruntime.LaunchManifest{}, ErrRuntimeLaunchPlan
+	}
+	if _, err := modelruntime.EncodeLaunchManifest(manifest); err != nil {
+		return modelruntime.LaunchManifest{}, errors.Join(ErrRuntimeLaunchPlan, err)
+	}
+	return manifest, nil
 }
 
 func runtimeLaunchCredentials(pod corev1.Pod) (uint32, uint32, error) {

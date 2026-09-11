@@ -27,6 +27,14 @@ func TestRuntimeLaunchPlanAuthenticatesCompleteConfiguration(t *testing.T) {
 	if err != nil || plan.MatchManifest(fixture.launch) != nil || !proto.Equal(plan.RegistryBinding(), fixture.binding) {
 		t.Fatalf("authenticate canonical member plan: %v", err)
 	}
+	manifest, err := plan.LaunchManifest()
+	if err != nil || plan.MatchManifest(manifest) != nil {
+		t.Fatalf("recover verified launch manifest: %v", err)
+	}
+	manifest.Runtimes[0].Command[0] = "/mutated-copy"
+	if plan.MatchManifest(manifest) == nil {
+		t.Fatal("launch manifest accessor aliases retained plan")
+	}
 	for _, scenario := range []string{"command", "environment", "image", "scratch", "timeout", "runtime-epoch", "profile", "device-epoch", "member-epoch"} {
 		t.Run(scenario, func(t *testing.T) {
 			other := runtimeLaunchFixture(t)
