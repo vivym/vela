@@ -6,8 +6,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
 )
+
+type startupAuthorizationPolicyFixture struct{}
+
+func (startupAuthorizationPolicyFixture) IssueRuntimeStartupAuthorization(_ context.Context, record RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
+	return RuntimeStartupAuthorizationEvidence{
+		OperationID: record.OperationID, RequestDigest: record.RequestDigest,
+		EvidenceDigest: sha256.Sum256([]byte("fixture policy evidence")),
+		IssuedAt:       time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+	}, nil
+}
+
+var _ RuntimeStartupAuthorizationPolicy = startupAuthorizationPolicyFixture{}
+
+func TestRuntimeStartupAuthorizationEvidenceIsOperationBound(t *testing.T) {
+	record := RuntimeStartupReservationRecord{OperationID: uuid.New(), RequestDigest: sha256.Sum256([]byte("request"))}
+	evidence, err := (startupAuthorizationPolicyFixture{}).IssueRuntimeStartupAuthorization(t.Context(), record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRuntimeStartupAuthorizationEvidence(evidence, record, time.Now().UTC()); err != nil {
+		t.Fatalf("valid evidence rejected: %v", err)
+	}
+	evidence.OperationID = uuid.New()
+	if err := validateRuntimeStartupAuthorizationEvidence(evidence, record, time.Now().UTC()); err == nil {
+		t.Fatal("evidence for another operation accepted")
+	}
+	evidence.OperationID = record.OperationID
+	evidence.ExpiresAt = time.Now().UTC().Add(6 * time.Minute)
+	if err := validateRuntimeStartupAuthorizationEvidence(evidence, record, time.Now().UTC()); err == nil {
+		t.Fatal("authorization evidence outside bounded lifetime accepted")
+	}
+}
 
 func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 	var authority RuntimeStartupAuthority
@@ -20,7 +53,7 @@ func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 	complete := RuntimeStartupAuthority{
 		Credentials:      []RuntimeCallerCredentials{{UID: 10001, GID: 10001}},
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
-		AuthorizationHash: sha256.Sum256([]byte("independent policy evidence")),
+		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
 	}
 	if _, _, err := complete.Prepare(context.Background(), &RuntimeCaller{}); err == nil {
 		t.Fatal("authority with missing sources accepted")
@@ -43,7 +76,7 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
 		Registry:         &startupReservationRegistryFixture{},
 		Credentials:      []RuntimeCallerCredentials{{UID: 10002, GID: 10002}},
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
-		AuthorizationHash: sha256.Sum256([]byte("independent policy evidence")),
+		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
 	}
 	if err := authority.validateSources(); err == nil {
 		t.Fatal("credentials unrelated to verified launch plan accepted")

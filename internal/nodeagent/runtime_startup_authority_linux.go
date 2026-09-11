@@ -7,45 +7,71 @@ import (
 	"slices"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
 )
 
 var ErrRuntimeStartupAuthority = errors.New("runtime startup authority source is incomplete or untrusted")
+
+// RuntimeStartupAuthorizationEvidence is issued by an independent startup
+// policy after Fleet reservation. The digest is usable only with the exact
+// operation and request it names, and only during its bounded validity window.
+type RuntimeStartupAuthorizationEvidence struct {
+	OperationID    uuid.UUID
+	RequestDigest  [sha256.Size]byte
+	EvidenceDigest [sha256.Size]byte
+	IssuedAt       time.Time
+	ExpiresAt      time.Time
+}
+
+// RuntimeStartupAuthorizationPolicy is the production policy/evidence seam.
+// Implementations must evaluate the reserved operation and return structured,
+// operation-bound evidence; a caller cannot supply an arbitrary digest.
+type RuntimeStartupAuthorizationPolicy interface {
+	IssueRuntimeStartupAuthorization(context.Context, RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error)
+}
+
+func validateRuntimeStartupAuthorizationEvidence(evidence RuntimeStartupAuthorizationEvidence, record RuntimeStartupReservationRecord, now time.Time) error {
+	if evidence.OperationID == uuid.Nil || evidence.OperationID != record.OperationID || evidence.RequestDigest != record.RequestDigest || evidence.EvidenceDigest == ([sha256.Size]byte{}) || evidence.IssuedAt.IsZero() || evidence.ExpiresAt.IsZero() || evidence.IssuedAt.Location() != time.UTC || evidence.ExpiresAt.Location() != time.UTC || !evidence.ExpiresAt.After(now) || evidence.ExpiresAt.Sub(now) > 5*time.Minute || evidence.IssuedAt.After(now.Add(time.Second)) {
+		return ErrRuntimeStartupAuthority
+	}
+	return nil
+}
 
 // RuntimeStartupAuthority is the Node-owned composition seam for one startup
 // authority. Every field is an independently established source; this type has
 // no defaults, history fallback or mock Permit path. A value is single-use in
 // practice because Prepare consumes the ledger's reservation opportunity.
 type RuntimeStartupAuthority struct {
-	Ledger            *RuntimeStartupLedger
-	Plan              *RuntimeLaunchPlan
-	Pods              RuntimeLaunchPodReader
-	Observer          *RuntimeContainerObserver
-	Custody           *RuntimeObserverCustody
-	Journal           *modelruntime.ExecutionJournalOwner
-	WorkerOwner       *RuntimeNamespaceOwner
-	Registry          RuntimeStartupRegistry
-	AuthorizationHash [sha256.Size]byte
-	Credentials       []RuntimeCallerCredentials
-	ObserverInterval  time.Duration
-	ObserverTimeout   time.Duration
-	ExchangeTimeout   time.Duration
+	Ledger              *RuntimeStartupLedger
+	Plan                *RuntimeLaunchPlan
+	Pods                RuntimeLaunchPodReader
+	Observer            *RuntimeContainerObserver
+	Custody             *RuntimeObserverCustody
+	Journal             *modelruntime.ExecutionJournalOwner
+	WorkerOwner         *RuntimeNamespaceOwner
+	Registry            RuntimeStartupRegistry
+	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
+	Credentials         []RuntimeCallerCredentials
+	ObserverInterval    time.Duration
+	ObserverTimeout     time.Duration
+	ExchangeTimeout     time.Duration
 }
 
 type RuntimeStartupAuthorityConfig struct {
-	Ledger            *RuntimeStartupLedger
-	Plan              *RuntimeLaunchPlan
-	Pods              RuntimeLaunchPodReader
-	Observer          *RuntimeContainerObserver
-	Custody           *RuntimeObserverCustody
-	Journal           *modelruntime.ExecutionJournalOwner
-	WorkerOwner       *RuntimeNamespaceOwner
-	Registry          RuntimeStartupRegistry
-	AuthorizationHash [sha256.Size]byte
-	Credentials       []RuntimeCallerCredentials
-	ObserverInterval  time.Duration
-	ObserverTimeout   time.Duration
-	ExchangeTimeout   time.Duration
+	Ledger              *RuntimeStartupLedger
+	Plan                *RuntimeLaunchPlan
+	Pods                RuntimeLaunchPodReader
+	Observer            *RuntimeContainerObserver
+	Custody             *RuntimeObserverCustody
+	Journal             *modelruntime.ExecutionJournalOwner
+	WorkerOwner         *RuntimeNamespaceOwner
+	Registry            RuntimeStartupRegistry
+	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
+	Credentials         []RuntimeCallerCredentials
+	ObserverInterval    time.Duration
+	ObserverTimeout     time.Duration
+	ExchangeTimeout     time.Duration
 }
 
 // NewRuntimeStartupAuthority constructs a complete static authority. It does
@@ -55,7 +81,7 @@ func NewRuntimeStartupAuthority(config RuntimeStartupAuthorityConfig) (RuntimeSt
 	authority := RuntimeStartupAuthority{
 		Ledger: config.Ledger, Plan: config.Plan, Pods: config.Pods, Observer: config.Observer,
 		Custody: config.Custody, Journal: config.Journal, WorkerOwner: config.WorkerOwner,
-		Registry: config.Registry, AuthorizationHash: config.AuthorizationHash,
+		Registry: config.Registry, AuthorizationPolicy: config.AuthorizationPolicy,
 		Credentials:      append([]RuntimeCallerCredentials(nil), config.Credentials...),
 		ObserverInterval: config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
 		ExchangeTimeout: config.ExchangeTimeout,
@@ -77,7 +103,7 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 }
 
 func (authority RuntimeStartupAuthority) validateSources() error {
-	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationHash == ([sha256.Size]byte{}) {
+	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil {
 		return ErrRuntimeStartupAuthority
 	}
 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
@@ -121,7 +147,7 @@ func (authority RuntimeStartupAuthority) Prepare(ctx context.Context, caller *Ru
 			Caller: caller, Journal: authority.Journal, Registry: authority.Registry,
 		},
 		WorkerOwner: authority.WorkerOwner, Observer: authority.Custody,
-		AuthorizationDigest: authority.AuthorizationHash, Credentials: authority.Credentials,
+		AuthorizationPolicy: authority.AuthorizationPolicy, Credentials: authority.Credentials,
 		ObserverInterval: authority.ObserverInterval, ObserverTimeout: authority.ObserverTimeout,
 		ExchangeTimeout: authority.ExchangeTimeout,
 	})

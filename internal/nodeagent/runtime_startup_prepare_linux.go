@@ -11,15 +11,17 @@ import (
 )
 
 // RemoteStartupOrchestrationConfig supplies the non-reconstructible Node
-// objects for one startup. AuthorizationDigest identifies an independently
-// checked policy result; this method only requires it to be non-zero and never
-// treats the digest as proof. WorkerOwner must be the independently held owner
-// of the paired Worker journal.
+// objects for one startup. AuthorizationPolicy is the preferred production
+// source: it issues operation-bound evidence after reservation. The digest
+// field remains for lower-level compatibility fixtures and is never treated as
+// proof. WorkerOwner must be the independently held owner of the paired Worker
+// journal.
 type RemoteStartupOrchestrationConfig struct {
 	Reservation         RuntimeStartupReservationConfig
 	WorkerOwner         *RuntimeNamespaceOwner
 	Observer            *RuntimeObserverCustody
 	AuthorizationDigest [sha256.Size]byte
+	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
 	Credentials         []RuntimeCallerCredentials
 	ObserverInterval    time.Duration
 	ObserverTimeout     time.Duration
@@ -27,7 +29,10 @@ type RemoteStartupOrchestrationConfig struct {
 }
 
 func validateRemoteStartupOrchestrationConfig(config RemoteStartupOrchestrationConfig) error {
-	if config.Reservation.Plan == nil || config.Reservation.Journal == nil || config.Reservation.Caller == nil || config.Reservation.Observer == nil || config.Reservation.Registry == nil || config.WorkerOwner == nil || config.Observer == nil || config.AuthorizationDigest == ([sha256.Size]byte{}) {
+	if config.Reservation.Plan == nil || config.Reservation.Journal == nil || config.Reservation.Caller == nil || config.Reservation.Observer == nil || config.Reservation.Registry == nil || config.WorkerOwner == nil || config.Observer == nil || (config.AuthorizationDigest == ([sha256.Size]byte{}) && config.AuthorizationPolicy == nil) {
+		return ErrRuntimeStartupLedger
+	}
+	if config.AuthorizationPolicy != nil && config.AuthorizationDigest != ([sha256.Size]byte{}) {
 		return ErrRuntimeStartupLedger
 	}
 	if len(config.Credentials) == 0 || config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout || config.ObserverInterval <= 0 || config.ObserverInterval > time.Second || config.ObserverTimeout <= 0 || config.ObserverTimeout > 5*time.Second {
@@ -67,6 +72,17 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
 	if err != nil {
 		return nil, RuntimeStartupReservationRecord{}, err
 	}
+	authorizationDigest := config.AuthorizationDigest
+	if config.AuthorizationPolicy != nil {
+		evidence, issueErr := config.AuthorizationPolicy.IssueRuntimeStartupAuthorization(ctx, record)
+		if issueErr != nil {
+			return nil, record, errors.Join(ErrRuntimeStartupLedger, issueErr)
+		}
+		if err := validateRuntimeStartupAuthorizationEvidence(evidence, record, time.Now().UTC()); err != nil {
+			return nil, record, err
+		}
+		authorizationDigest = evidence.EvidenceDigest
+	}
 	ledger.mu.Lock()
 	runtimeOwner := ledger.owners[record.JournalID]
 	startup, ok := ledger.starts[record.JournalID]
@@ -78,7 +94,7 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
 	if err != nil {
 		return nil, record, err
 	}
-	grant, err := IssueReservedJournalWriteGrant(ctx, endpoint, runtimeOwner, config.WorkerOwner, record.OperationID, config.AuthorizationDigest, time.Minute)
+	grant, err := IssueReservedJournalWriteGrant(ctx, endpoint, runtimeOwner, config.WorkerOwner, record.OperationID, authorizationDigest, time.Minute)
 	if err != nil {
 		return nil, record, err
 	}

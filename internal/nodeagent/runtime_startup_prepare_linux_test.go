@@ -32,6 +32,9 @@ func TestPrepareRemoteStartupOrchestrationPreflightsConsumptiveInputs(t *testing
 		"zero-exchange-timeout":  func(c *RemoteStartupOrchestrationConfig) { c.ExchangeTimeout = 0 },
 		"long-observer-interval": func(c *RemoteStartupOrchestrationConfig) { c.ObserverInterval = 2 * time.Second },
 		"duplicate-credentials":  func(c *RemoteStartupOrchestrationConfig) { c.Credentials = append(c.Credentials, c.Credentials[0]) },
+		"ambiguous-authorization-sources": func(c *RemoteStartupOrchestrationConfig) {
+			c.AuthorizationPolicy = startupAuthorizationPolicyFixture{}
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			config := base
