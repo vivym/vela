@@ -51,6 +51,15 @@ func TestReceiveRuntimeStartupCallerRequiresTrustedAssembly(t *testing.T) {
 	}
 }
 
+func TestRuntimeStartupLifecycleRejectsNilContext(t *testing.T) {
+	if err := (&runtimeStartupLifecycle{}).Shutdown(nil); !errors.Is(err, nodeagent.ErrRuntimeCallerIdentity) {
+		t.Fatalf("nil lifecycle context error = %v", err)
+	}
+	if err := (*runtimeStartupLifecycle)(nil).Shutdown(context.Background()); err != nil {
+		t.Fatalf("nil lifecycle shutdown error = %v", err)
+	}
+}
+
 func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 	setValidNodeAgentEnv(t)
 	configuration, err := loadConfig()

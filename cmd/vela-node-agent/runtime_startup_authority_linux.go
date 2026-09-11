@@ -37,6 +37,32 @@ type runtimeStartupResources struct {
 	socket        *runtimeStartupSocket
 }
 
+// runtimeStartupLifecycle is the command-level shutdown owner. The
+// orchestration revokes active routes and stops admission before the concrete
+// resources are released, so signal handling cannot close custody underneath a
+// live coordinator.
+type runtimeStartupLifecycle struct {
+	orchestration *nodeagent.RuntimeStartupOrchestration
+	resources     *runtimeStartupResources
+}
+
+func (lifecycle *runtimeStartupLifecycle) Shutdown(ctx context.Context) error {
+	if lifecycle == nil {
+		return nil
+	}
+	if ctx == nil {
+		return nodeagent.ErrRuntimeCallerIdentity
+	}
+	var shutdownErr error
+	if lifecycle.orchestration != nil {
+		shutdownErr = errors.Join(shutdownErr, lifecycle.orchestration.Shutdown(ctx))
+	}
+	if lifecycle.resources != nil {
+		shutdownErr = errors.Join(shutdownErr, lifecycle.resources.Close())
+	}
+	return shutdownErr
+}
+
 func runRuntimeStartupGate(configuration config) error {
 	resources, err := loadRuntimeStartupResources(context.Background(), configuration)
 	if err != nil {
