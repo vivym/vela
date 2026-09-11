@@ -239,7 +239,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 		value = strings.TrimSpace(value)
 		switch key {
 		case "Pid":
-			if _, err := strconv.ParseUint(value, 10, 32); err != nil || value == "0" {
+			if _, err := strconv.ParseUint(value, 10, 32); err != nil {
 				return anonymousPIDFDIdentity{}, errors.New("fdinfo Pid is invalid")
 			}
 			result.pid = value
@@ -249,7 +249,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 				return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is empty")
 			}
 			for _, field := range fields {
-				if _, err := strconv.ParseUint(field, 10, 32); err != nil || field == "0" {
+				if _, err := strconv.ParseUint(field, 10, 32); err != nil {
 					return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is invalid")
 				}
 			}
