@@ -3,9 +3,75 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/securefile"
 )
+
+type runtimeStartupSocket struct {
+	listener *net.UnixListener
+	path     string
+	identity os.FileInfo
+}
+
+func listenRuntimeStartupSocket(configuration config) (*runtimeStartupSocket, error) {
+	if !configuration.runtimeStartupEnabled {
+		return nil, errors.New("runtime startup is disabled")
+	}
+	path := configuration.runtimeStartupSocket
+	cleaned := filepath.Clean(path)
+	if path == "" || !filepath.IsAbs(cleaned) || cleaned != path || len(path) > 107 {
+		return nil, errors.New("runtime startup socket path is missing, non-canonical or too long")
+	}
+	_, err := securefile.ResolveTrustedDirectory(filepath.Dir(path))
+	if err != nil {
+		return nil, fmt.Errorf("validate runtime startup socket directory: %w", err)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		return nil, errors.New("runtime startup socket path already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
+	if err != nil {
+		return nil, fmt.Errorf("listen on runtime startup socket: %w", err)
+	}
+	cleanup := func() { _ = listener.Close(); _ = os.Remove(path) }
+	if err := os.Chmod(path, 0o600); err != nil {
+		cleanup()
+		return nil, fmt.Errorf("protect runtime startup socket: %w", err)
+	}
+	info, err := os.Lstat(path)
+	stat, statOK := info.Sys().(*syscall.Stat_t)
+	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 || !statOK || stat.Uid != uint32(os.Geteuid()) {
+		cleanup()
+		return nil, errors.New("runtime startup socket identity or permissions are untrusted")
+	}
+	return &runtimeStartupSocket{listener: listener, path: path, identity: info}, nil
+}
+
+func (socket *runtimeStartupSocket) Listener() *net.UnixListener {
+	if socket == nil {
+		return nil
+	}
+	return socket.listener
+}
+
+func (socket *runtimeStartupSocket) Close() error {
+	if socket == nil {
+		return nil
+	}
+	err := socket.listener.Close()
+	if current, statErr := os.Lstat(socket.path); statErr == nil && os.SameFile(socket.identity, current) {
+		err = errors.Join(err, os.Remove(socket.path))
+	}
+	return err
+}
 
 func loadRuntimeContainerObserver(ctx context.Context, configuration config) (*nodeagent.RuntimeContainerObserver, error) {
 	if !configuration.runtimeStartupEnabled {
