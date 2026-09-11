@@ -32,7 +32,7 @@ type RuntimeStartupAuthorizationPolicy interface {
 }
 
 func validateRuntimeStartupAuthorizationEvidence(evidence RuntimeStartupAuthorizationEvidence, record RuntimeStartupReservationRecord, now time.Time) error {
-	if evidence.OperationID == uuid.Nil || evidence.OperationID != record.OperationID || evidence.RequestDigest != record.RequestDigest || evidence.EvidenceDigest == ([sha256.Size]byte{}) || evidence.IssuedAt.IsZero() || evidence.ExpiresAt.IsZero() || evidence.IssuedAt.Location() != time.UTC || evidence.ExpiresAt.Location() != time.UTC || !evidence.ExpiresAt.After(now) || evidence.ExpiresAt.Sub(now) > 5*time.Minute || evidence.IssuedAt.After(now.Add(time.Second)) {
+	if evidence.OperationID == uuid.Nil || evidence.OperationID != record.OperationID || evidence.RequestDigest != record.RequestDigest || evidence.EvidenceDigest == ([sha256.Size]byte{}) || evidence.IssuedAt.IsZero() || evidence.ExpiresAt.IsZero() || evidence.IssuedAt.Location() != time.UTC || evidence.ExpiresAt.Location() != time.UTC || !evidence.ExpiresAt.After(evidence.IssuedAt) || !evidence.ExpiresAt.After(now) || evidence.ExpiresAt.Sub(now) > 5*time.Minute || evidence.IssuedAt.After(now.Add(time.Second)) {
 		return ErrRuntimeStartupAuthority
 	}
 	return nil
