@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -11,7 +12,11 @@ import (
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
+	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 )
+
+const maxRuntimeKubeconfigBytes = 1 << 20
 
 // loadRuntimeStartupPlan loads only immutable, signed startup inputs. It does
 // not reserve a remote operation, inspect a Pod, create an observer, or grant
@@ -72,4 +77,31 @@ func loadRuntimeStartupPlan(configuration config) (*nodeagent.RuntimeLaunchPlan,
 		return nil, fmt.Errorf("runtime launch manifest does not match verified plan: %w", err)
 	}
 	return plan, nil
+}
+
+// loadRuntimeKubernetesCore parses an explicitly provisioned kubeconfig after
+// validating its inode, ownership and permissions. It never falls back to
+// in-cluster credentials or the ambient KUBECONFIG environment.
+func loadRuntimeKubernetesCore(path string) (coreclient.CoreV1Interface, error) {
+	cleaned := filepath.Clean(path)
+	if path == "" || !filepath.IsAbs(cleaned) || cleaned != path {
+		return nil, errors.New("runtime Kubernetes config path is missing or not absolute and clean")
+	}
+	wire, err := securefile.Read(path, maxRuntimeKubeconfigBytes, true)
+	if err != nil {
+		return nil, fmt.Errorf("read runtime Kubernetes config: %w", err)
+	}
+	config, err := clientcmd.Load(bytes.Clone(wire))
+	if err != nil {
+		return nil, fmt.Errorf("decode runtime Kubernetes config: %w", err)
+	}
+	restConfig, err := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{}).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("configure runtime Kubernetes client: %w", err)
+	}
+	core, err := coreclient.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("create runtime Kubernetes client: %w", err)
+	}
+	return core, nil
 }

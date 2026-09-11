@@ -102,6 +102,19 @@ func TestLoadRuntimeStartupPlanRejectsDisabledOrUncleanSources(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeKubernetesCoreRequiresExplicitSecureConfig(t *testing.T) {
+	if core, err := loadRuntimeKubernetesCore(""); err == nil || core != nil || !strings.Contains(err.Error(), "absolute and clean") {
+		t.Fatalf("empty Kubernetes config result core=%v error=%v", core, err)
+	}
+	path := filepath.Join(t.TempDir(), "kubeconfig")
+	if err := os.WriteFile(path, []byte("not: a valid kubeconfig\n"), 0o600); err != nil {
+		t.Fatalf("write kubeconfig fixture: %v", err)
+	}
+	if core, err := loadRuntimeKubernetesCore(path); err == nil || core != nil {
+		t.Fatalf("malformed Kubernetes config result core=%v error=%v", core, err)
+	}
+}
+
 func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "capabilities.json")
