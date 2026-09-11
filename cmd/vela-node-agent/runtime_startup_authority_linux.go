@@ -142,8 +142,12 @@ func listenRuntimeStartupSocket(configuration config) (*runtimeStartupSocket, er
 		return nil, fmt.Errorf("protect runtime startup socket: %w", err)
 	}
 	info, err := os.Lstat(path)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("inspect runtime startup socket: %w", err)
+	}
 	stat, statOK := info.Sys().(*syscall.Stat_t)
-	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 || !statOK || stat.Uid != uint32(os.Geteuid()) {
+	if info.Mode()&os.ModeSocket == 0 || info.Mode().Perm() != 0o600 || !statOK || stat.Uid != uint32(os.Geteuid()) {
 		cleanup()
 		return nil, errors.New("runtime startup socket identity or permissions are untrusted")
 	}

@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"testing"
 	"time"
+
+	"github.com/vivym/vela/internal/modelruntime"
 )
 
 func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
@@ -31,16 +33,23 @@ func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 
 func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing.T) {
 	authority := RuntimeStartupAuthority{
+		Ledger:           &RuntimeStartupLedger{},
 		Plan:             &RuntimeLaunchPlan{uid: 10001, gid: 10002},
+		Pods:             &KubernetesRuntimeLaunchPodReader{},
+		Observer:         &RuntimeContainerObserver{},
+		Custody:          &RuntimeObserverCustody{},
+		Journal:          &modelruntime.ExecutionJournalOwner{},
+		WorkerOwner:      &RuntimeNamespaceOwner{},
+		Registry:         &startupReservationRegistryFixture{},
 		Credentials:      []RuntimeCallerCredentials{{UID: 10002, GID: 10002}},
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
 		AuthorizationHash: sha256.Sum256([]byte("independent policy evidence")),
 	}
-	if authority.credentialsMatchPlan() {
+	if err := authority.validateSources(); err == nil {
 		t.Fatal("credentials unrelated to verified launch plan accepted")
 	}
 	authority.Credentials = []RuntimeCallerCredentials{{UID: authority.Plan.uid, GID: authority.Plan.gid}}
-	if !authority.credentialsMatchPlan() {
-		t.Fatal("credentials matching verified launch plan rejected")
+	if err := authority.validateSources(); err != nil {
+		t.Fatalf("credentials matching verified launch plan rejected: %v", err)
 	}
 }
