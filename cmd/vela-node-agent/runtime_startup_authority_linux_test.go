@@ -93,7 +93,7 @@ func TestLoadRuntimeStartupResourcesStopsBeforeAnyImplicitFallback(t *testing.T)
 		t.Fatalf("disabled resources result resources=%v error=%v", resources, err)
 	}
 	configuration.runtimeStartupEnabled = true
-	if resources, err := loadRuntimeStartupResources(context.Background(), configuration); err == nil || resources != nil || !strings.Contains(err.Error(), "runtime launch manifest") {
+	if resources, err := loadRuntimeStartupResources(context.Background(), configuration); err == nil || resources != nil || !strings.Contains(err.Error(), "path is missing") {
 		t.Fatalf("incomplete resources result resources=%v error=%v", resources, err)
 	}
 	if err := (&runtimeStartupResources{}).Close(); err != nil {
