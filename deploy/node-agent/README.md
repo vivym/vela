@@ -392,3 +392,13 @@ kernel revision, and release/configuration revisions.
 The repository provides the unit template but no credentials or hardware
 capability claims. A production enablement still requires a versioned GPU
 remediation Launch Receipt for every supported GPU/topology/driver tuple.
+
+### Linux pidfd compatibility
+
+Runtime startup custody works on kernels that expose pidfds through either
+`pidfs` or the older `anon_inode:[pidfd]` interface. On older kernels the Node
+Agent validates the kernel-maintained `/proc/self/fdinfo/<fd>` `Pid`/`NSpid`
+identity, `FD_CLOEXEC`, and pidfd liveness. It never reopens a process from a
+numeric PID, and an unavailable or malformed fdinfo record fails closed. Docker
+image or compiler changes cannot add pidfd support because pidfd semantics come
+from the host kernel.
