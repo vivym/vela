@@ -36,3 +36,5 @@ terminal FAIL
 ## 当前边界
 
 Production Gates 仍为 `0/9`，没有 Launch Receipt。本次兼容路径允许 6.8 kernel 运行 pidfd custody，但仍需重跑完整 native suite 和安全审计；本次改动尚未完成 `cmd/vela-node-agent` 的真实 startup authority composition root 接线。
+
+兼容源码重新构建后的 v2 runner 统计为 `42 PASS / 2 FAIL / 0 SKIP`；两个失败用例随后在同一镜像中单独重跑均通过：`TestJournalServerExecObservedRemoteCLI`（6 个场景）和 `TestRuntimeJournalObservationConcurrentClose`。这表明剩余问题是时序/资源波动，不能把 v2 首次整套结果直接当作零失败闭环；应继续做稳定性复跑并保留原始日志。
