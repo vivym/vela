@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/modelruntime"
@@ -175,6 +176,31 @@ func (socket *runtimeStartupSocket) Close() error {
 		err = errors.Join(err, os.Remove(socket.path))
 	}
 	return err
+}
+
+// receiveRuntimeStartupCaller performs the one caller handshake before any
+// Fleet reservation. The returned RuntimeCaller retains the same connection
+// and kernel pidfd for the subsequent authority Prepare/ServeCaller steps.
+func receiveRuntimeStartupCaller(ctx context.Context, socket *runtimeStartupSocket, plan *nodeagent.RuntimeLaunchPlan) (*nodeagent.RuntimeCaller, error) {
+	if ctx == nil || socket == nil || socket.listener == nil || plan == nil {
+		return nil, nodeagent.ErrRuntimeCallerIdentity
+	}
+	credentials, err := plan.CallerCredentials()
+	if err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = socket.listener.SetDeadline(time.Now()) })
+	defer stop()
+	connection, err := socket.listener.AcceptUnix()
+	if err != nil {
+		return nil, err
+	}
+	caller, err := nodeagent.ReceiveRuntimeCaller(ctx, connection, credentials)
+	if err != nil {
+		_ = connection.Close()
+		return nil, err
+	}
+	return caller, nil
 }
 
 func loadRuntimeContainerObserver(ctx context.Context, configuration config) (*nodeagent.RuntimeContainerObserver, error) {

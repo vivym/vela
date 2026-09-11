@@ -45,6 +45,12 @@ func TestLoadRuntimeContainerObserverRequiresEnabledTrustedSocket(t *testing.T) 
 	}
 }
 
+func TestReceiveRuntimeStartupCallerRequiresTrustedAssembly(t *testing.T) {
+	if caller, err := receiveRuntimeStartupCaller(context.Background(), nil, nil); caller != nil || !errors.Is(err, nodeagent.ErrRuntimeCallerIdentity) {
+		t.Fatalf("nil startup caller assembly result caller=%v error=%v", caller, err)
+	}
+}
+
 func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 	setValidNodeAgentEnv(t)
 	configuration, err := loadConfig()

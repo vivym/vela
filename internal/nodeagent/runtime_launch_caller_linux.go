@@ -22,6 +22,15 @@ type RuntimeLaunchPodReader interface {
 	GetWorkerInstancePod(context.Context, fleetcontroller.ResourceKey) (corev1.Pod, error)
 }
 
+// CallerCredentials exposes the UID/GID authenticated by the verified Pod
+// plan. Node uses this value as the expected peer identity before reservation.
+func (plan *RuntimeLaunchPlan) CallerCredentials() (RuntimeCallerCredentials, error) {
+	if plan == nil || plan.uid == 0 || plan.gid == 0 || plan.uid == ^uint32(0) || plan.gid == ^uint32(0) {
+		return RuntimeCallerCredentials{}, ErrRuntimeLaunchPlan
+	}
+	return RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}, nil
+}
+
 // RuntimePlannedCallerObservation links a historical approved configuration to
 // API-observed Pod content and an authenticated live caller's declared manifest.
 // Schema 2 includes the current executable file observation, without approving
