@@ -81,6 +81,7 @@ func loadRuntimeStartupResources(ctx context.Context, configuration config) (*ru
 	}
 	registry, registryClose, err := loadRuntimeStartupRegistry(ctx, configuration)
 	if err != nil {
+		_ = journal.Close()
 		_ = observer.Close()
 		return nil, err
 	}
@@ -136,6 +137,7 @@ func listenRuntimeStartupSocket(configuration config) (*runtimeStartupSocket, er
 	if err != nil {
 		return nil, fmt.Errorf("listen on runtime startup socket: %w", err)
 	}
+	listener.SetUnlinkOnClose(true)
 	cleanup := func() { _ = listener.Close(); _ = os.Remove(path) }
 	if err := os.Chmod(path, 0o600); err != nil {
 		cleanup()
@@ -143,7 +145,10 @@ func listenRuntimeStartupSocket(configuration config) (*runtimeStartupSocket, er
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		cleanup()
+		// The path may have been replaced after the listener was created. Close
+		// the listener and let its unlink-on-close policy remove only the socket
+		// it owns; never unlink an unverified replacement.
+		_ = listener.Close()
 		return nil, fmt.Errorf("inspect runtime startup socket: %w", err)
 	}
 	stat, statOK := info.Sys().(*syscall.Stat_t)
