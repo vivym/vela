@@ -393,6 +393,35 @@ The repository provides the unit template but no credentials or hardware
 capability claims. A production enablement still requires a versioned GPU
 remediation Launch Receipt for every supported GPU/topology/driver tuple.
 
+### Runtime startup authority (currently gated)
+
+The daemon accepts an explicit runtime startup source set only when
+`VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED=1`. In that mode all of the following
+must be absolute, clean paths; no defaults are provided:
+
+```text
+VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE
+VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE
+VELA_NODE_AGENT_RUNTIME_BINDING_FILE
+VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE
+VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE
+VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY
+VELA_NODE_AGENT_RUNTIME_CRI_SOCKET
+VELA_NODE_AGENT_RUNTIME_KUBECONFIG
+VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET
+```
+
+Startup assembly reads the launch and bundle manifests, verifies the signed
+Registry binding and its bundle digest, checks the bound Node identity and
+member epochs, and requires the launch manifest to match the verified plan. It
+also parses the StageAuthority verifier keyring before proceeding. Missing,
+malformed, stale or mismatched sources fail closed. The current binary then
+stops with `runtime startup authority composition is not wired`; this gate is
+intentional until the Fleet reservation, Kubernetes Pod reader, CRI observer,
+protected listener, journal owner and shutdown lifecycle are assembled in the
+same composition root. Enabling this flag therefore cannot accidentally grant
+runtime startup through the legacy WorkerInstance evidence path.
+
 ### Linux pidfd compatibility
 
 Runtime startup custody works on kernels that expose pidfds through either

@@ -39,6 +39,61 @@ func TestLoadConfigRequiresCurrentAgentEpoch(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRuntimeStartupRequiresEveryAuthoritySource(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	t.Setenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED", "1")
+	cases := []string{
+		"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE",
+		"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE",
+		"VELA_NODE_AGENT_RUNTIME_BINDING_FILE",
+		"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE",
+		"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE",
+		"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY",
+		"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET",
+		"VELA_NODE_AGENT_RUNTIME_KUBECONFIG",
+		"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET",
+	}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			setValidNodeAgentEnv(t)
+			t.Setenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED", "1")
+			root := t.TempDir()
+			for _, source := range cases {
+				t.Setenv(source, filepath.Join(root, strings.ToLower(strings.TrimPrefix(source, "VELA_NODE_AGENT_"))))
+			}
+			t.Setenv(name, "")
+			if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("missing runtime source %s error=%v", name, err)
+			}
+		})
+	}
+}
+
+func TestLoadRuntimeStartupPlanRejectsDisabledOrUncleanSources(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	if _, err := loadRuntimeStartupPlan(configuration); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("disabled runtime startup result = %v", err)
+	}
+	configuration.runtimeStartupEnabled = true
+	root := t.TempDir()
+	configuration.runtimeBundleManifestFile = filepath.Join(root, "bundle.json")
+	configuration.runtimeBindingFile = filepath.Join(root, "binding.json")
+	configuration.runtimeBindingVerifierFile = filepath.Join(root, "binding-verifier.json")
+	configuration.runtimeStageVerifierFile = filepath.Join(root, "stage-verifier.json")
+	configuration.runtimeJournalStateDir = filepath.Join(root, "journal")
+	configuration.runtimeCRISocket = filepath.Join(root, "cri.sock")
+	configuration.runtimeKubeconfig = filepath.Join(root, "kubeconfig")
+	configuration.runtimeStartupSocket = filepath.Join(root, "startup.sock")
+	configuration.runtimeLaunchManifestFile = "relative/launch.json"
+	if _, err := loadRuntimeStartupPlan(configuration); err == nil || !strings.Contains(err.Error(), "runtime launch manifest") {
+		t.Fatalf("unclean runtime source result = %v", err)
+	}
+}
+
 func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "capabilities.json")

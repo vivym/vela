@@ -91,6 +91,16 @@ type config struct {
 	workerInstanceBackoffMax     time.Duration
 	workerInstanceEvidenceTTL    time.Duration
 	fleetDialTimeout             time.Duration
+	runtimeStartupEnabled        bool
+	runtimeLaunchManifestFile    string
+	runtimeBundleManifestFile    string
+	runtimeBindingFile           string
+	runtimeBindingVerifierFile   string
+	runtimeStageVerifierFile     string
+	runtimeJournalStateDir       string
+	runtimeCRISocket             string
+	runtimeKubeconfig            string
+	runtimeStartupSocket         string
 }
 
 type commandConfig struct {
@@ -175,6 +185,12 @@ func run() error {
 	}
 	if os.Geteuid() != 0 {
 		return errors.New("vela-node-agent must run as root for certified remediation and device attestation")
+	}
+	if configuration.runtimeStartupEnabled {
+		if _, err := loadRuntimeStartupPlan(configuration); err != nil {
+			return err
+		}
+		return errors.New("runtime startup authority composition is not wired")
 	}
 	localIdentity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: configuration.nodeIdentity,
@@ -490,6 +506,16 @@ func loadConfig() (config, error) {
 		workerInstanceBackoffMax:     defaultWorkerInstanceBackoffMax,
 		workerInstanceEvidenceTTL:    defaultWorkerInstanceEvidenceTTL,
 		fleetDialTimeout:             defaultFleetDialTimeout,
+		runtimeStartupEnabled:        os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED") == "1",
+		runtimeLaunchManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE"),
+		runtimeBundleManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE"),
+		runtimeBindingFile:           os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_FILE"),
+		runtimeBindingVerifierFile:   os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE"),
+		runtimeStageVerifierFile:     os.Getenv("VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE"),
+		runtimeJournalStateDir:       os.Getenv("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"),
+		runtimeCRISocket:             os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
+		runtimeKubeconfig:            os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
+		runtimeStartupSocket:         os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
 	}
 	configuration.agentEpoch, err = positiveInt64Env("VELA_NODE_AGENT_EPOCH")
 	if err != nil {
@@ -615,6 +641,27 @@ func loadConfig() (config, error) {
 			configuration.workerInstanceCallTimeout ||
 		configuration.fleetDialTimeout < time.Second || configuration.fleetDialTimeout > 2*time.Minute {
 		return config{}, errors.New("WorkerInstance outbound reporting durations are invalid")
+	}
+	if configuration.runtimeStartupEnabled {
+		for name, value := range map[string]string{
+			"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE":    configuration.runtimeLaunchManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE":    configuration.runtimeBundleManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_FILE":            configuration.runtimeBindingFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE":   configuration.runtimeBindingVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE":     configuration.runtimeStageVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY": configuration.runtimeJournalStateDir,
+			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":              configuration.runtimeCRISocket,
+			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":              configuration.runtimeKubeconfig,
+			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":          configuration.runtimeStartupSocket,
+		} {
+			if value == "" {
+				return config{}, fmt.Errorf("%s is required when runtime startup is enabled", name)
+			}
+			cleaned := filepath.Clean(value)
+			if !filepath.IsAbs(cleaned) || cleaned != value {
+				return config{}, fmt.Errorf("%s must be an absolute clean path", name)
+			}
+		}
 	}
 	return configuration, nil
 }
