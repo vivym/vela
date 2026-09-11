@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,5 +22,24 @@ func TestRuntimeStartupAuthorityInjectionRequiresEnabledModeAndPlan(t *testing.T
 	configuration.runtimeStartupEnabled = true
 	if _, err := newRuntimeStartupAuthority(configuration, nil, nodeagent.RuntimeStartupAuthorityConfig{}); !errors.Is(err, nodeagent.ErrRuntimeStartupAuthority) {
 		t.Fatalf("missing plan injection error = %v", err)
+	}
+}
+
+func TestLoadRuntimeContainerObserverRequiresEnabledTrustedSocket(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	if observer, err := loadRuntimeContainerObserver(context.Background(), configuration); err == nil || observer != nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("disabled CRI observer result observer=%v error=%v", observer, err)
+	}
+	configuration.runtimeStartupEnabled = true
+	configuration.runtimeCRISocket = filepath.Join(t.TempDir(), "containerd.sock")
+	if observer, err := loadRuntimeContainerObserver(context.Background(), configuration); err == nil || observer != nil {
+		t.Fatalf("missing CRI socket result observer=%v error=%v", observer, err)
+	}
+	if observer, err := loadRuntimeContainerObserver(nil, configuration); err == nil || observer != nil || !errors.Is(err, nodeagent.ErrRuntimeObserverCustody) {
+		t.Fatalf("nil context CRI observer result observer=%v error=%v", observer, err)
 	}
 }
