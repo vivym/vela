@@ -55,7 +55,15 @@ func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 		t.Fatalf("disabled startup socket result socket=%v error=%v", socket, err)
 	}
 	configuration.runtimeStartupEnabled = true
-	configuration.runtimeStartupSocket = filepath.Join(t.TempDir(), "startup.sock")
+	root, err := os.MkdirTemp(os.Getenv("HOME"), "vela-runtime-startup-")
+	if err != nil {
+		t.Fatalf("create trusted startup socket directory: %v", err)
+	}
+	defer os.RemoveAll(root)
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("protect startup socket directory: %v", err)
+	}
+	configuration.runtimeStartupSocket = filepath.Join(root, "startup.sock")
 	socket, err := listenRuntimeStartupSocket(configuration)
 	if err != nil {
 		t.Fatalf("listen runtime startup socket: %v", err)
