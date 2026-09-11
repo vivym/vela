@@ -5,6 +5,7 @@ package runtimechannel
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -143,8 +144,11 @@ func SameLiveProcess(original, message int) error {
 			return ErrIdentity
 		}
 		var filesystem unix.Statfs_t
-		if err := unix.Fstatfs(fd, &filesystem); err != nil || filesystem.Type != unix.PID_FS_MAGIC {
+		if err := unix.Fstatfs(fd, &filesystem); err != nil {
 			return errors.Join(ErrIdentity, err)
+		}
+		if filesystem.Type != unix.PID_FS_MAGIC {
+			return fmt.Errorf("%w: pidfd filesystem type %#x; requires pidfs (%#x)", ErrIdentity, filesystem.Type, unix.PID_FS_MAGIC)
 		}
 		if err := unix.Fstat(fd, &identity[i]); err != nil || identity[i].Ino == 0 {
 			return errors.Join(ErrIdentity, err)

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Native CPU checks for typed journal transitions and the existing Node startup exchange.
 set -euo pipefail
+umask 022
 
 owner_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 owner_evidence="${VELA_OWNER_EVIDENCE:-$(mktemp -d /tmp/vela-journal-owner.XXXXXX)}"
@@ -9,6 +10,7 @@ owner_modules="$(go env GOMODCACHE)"
 owner_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
 [[ "$owner_evidence" = /* && "$owner_cache" = /* ]] || { echo 'Evidence and cache paths must be absolute' >&2; exit 2; }
 mkdir -p "$owner_evidence/image/rootfs/run" "$owner_evidence/image/rootfs/tmp" "$owner_cache"
+chmod 755 "$owner_evidence/image/rootfs" "$owner_evidence/image/rootfs/run"
 chmod 1777 "$owner_evidence/image/rootfs/tmp"
 git -C "$owner_repo" rev-parse HEAD > "$owner_evidence/source.txt"
 git -C "$owner_repo" status --short >> "$owner_evidence/source.txt"

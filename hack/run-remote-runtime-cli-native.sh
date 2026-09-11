@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Actual non-root Runtime CLI, root journal RPC and CPU process backend.
 set -euo pipefail
+umask 022
 remote_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 remote_evidence="${VELA_REMOTE_CLI_EVIDENCE:-$(mktemp -d /tmp/vela-remote-cli.XXXXXX)}"
 remote_cache="${VELA_REMOTE_CLI_BUILD_CACHE:-$remote_evidence/go-cache}"
@@ -8,6 +9,7 @@ remote_modules="$(go env GOMODCACHE)"
 remote_builder='golang@sha256:e30143be198ab04cf7ba25fba83ab3a692ca584c994aad0bf131fa0eb32dd8c1'
 [[ "$remote_evidence" = /* && "$remote_cache" = /* ]] || exit 2
 mkdir -p "$remote_evidence/image/rootfs/run" "$remote_evidence/image/rootfs/tmp" "$remote_cache"
+chmod 755 "$remote_evidence/image/rootfs" "$remote_evidence/image/rootfs/run"
 chmod 1777 "$remote_evidence/image/rootfs/tmp"
 git -C "$remote_repo" rev-parse HEAD > "$remote_evidence/source.txt"
 git -C "$remote_repo" status --short >> "$remote_evidence/source.txt"
