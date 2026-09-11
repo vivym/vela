@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"testing"
 	"time"
 )
@@ -23,5 +24,17 @@ func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 	complete.Credentials = []RuntimeCallerCredentials{{UID: 10001, GID: 10001}, {UID: 10001, GID: 10001}}
 	if _, _, err := complete.Prepare(context.Background(), &RuntimeCaller{}); err == nil {
 		t.Fatal("authority with duplicate credentials accepted")
+	}
+}
+
+func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing.T) {
+	authority := RuntimeStartupAuthority{
+		Plan:             &RuntimeLaunchPlan{uid: 10001, gid: 10002},
+		Credentials:      []RuntimeCallerCredentials{{UID: 10002, GID: 10002}},
+		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
+		AuthorizationHash: sha256.Sum256([]byte("independent policy evidence")),
+	}
+	if !errors.Is(authority.validate(&RuntimeCaller{}), ErrRuntimeStartupAuthority) {
+		t.Fatal("credentials unrelated to verified launch plan accepted")
 	}
 }

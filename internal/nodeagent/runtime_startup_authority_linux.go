@@ -39,6 +39,14 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
 		return ErrRuntimeStartupAuthority
 	}
+	// Credentials are an identity binding, not merely a set of allowed IDs.
+	// They must match the identities authenticated into the verified Pod plan;
+	// accepting a different UID/GID would let Node assembly authorize a caller
+	// that the signed launch topology did not create.
+	if authority.Plan.uid == 0 || authority.Plan.gid == 0 || len(authority.Credentials) != 1 ||
+		authority.Credentials[0].UID != authority.Plan.uid || authority.Credentials[0].GID != authority.Plan.gid {
+		return ErrRuntimeStartupAuthority
+	}
 	for i, credential := range authority.Credentials {
 		if credential.UID == 0 || credential.GID == 0 || credential.UID == ^uint32(0) || credential.GID == ^uint32(0) || slices.Contains(authority.Credentials[:i], credential) {
 			return ErrRuntimeStartupAuthority
