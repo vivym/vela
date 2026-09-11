@@ -421,6 +421,12 @@ certificate URI matches the configured Node Agent identity. The existing
 WorkerInstance evidence connection is not used as a startup reservation
 authority; the separate connection is closed if later assembly fails.
 
+The Node process owns creation and cleanup of `VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET`.
+Its parent must already be a trusted directory; an existing path, symlink,
+replacement inode, or permission other than `0600` is rejected. The runtime
+server receives this listener from Node and never creates or unlinks a socket
+path itself.
+
 Startup assembly reads the launch and bundle manifests, verifies the signed
 Registry binding and its bundle digest, checks the bound Node identity and
 member epochs, and requires the launch manifest to match the verified plan. It
