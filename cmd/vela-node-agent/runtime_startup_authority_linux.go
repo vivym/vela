@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/securefile"
 )
@@ -17,6 +18,72 @@ type runtimeStartupSocket struct {
 	listener *net.UnixListener
 	path     string
 	identity os.FileInfo
+}
+
+// runtimeStartupResources owns the concrete resources created by Node startup
+// assembly. It intentionally stops short of constructing RuntimeStartupAuthority
+// until journal ownership, observer custody and worker ownership are present.
+type runtimeStartupResources struct {
+	plan          *nodeagent.RuntimeLaunchPlan
+	pods          *nodeagent.KubernetesRuntimeLaunchPodReader
+	observer      *nodeagent.RuntimeContainerObserver
+	registry      *fleettransport.BootstrapClient
+	registryClose func() error
+	socket        *runtimeStartupSocket
+}
+
+func loadRuntimeStartupResources(ctx context.Context, configuration config) (*runtimeStartupResources, error) {
+	if !configuration.runtimeStartupEnabled {
+		return nil, errors.New("runtime startup is disabled")
+	}
+	if ctx == nil {
+		return nil, errors.New("runtime startup resource context is required")
+	}
+	plan, err := loadRuntimeStartupPlan(configuration)
+	if err != nil {
+		return nil, err
+	}
+	core, err := loadRuntimeKubernetesCore(configuration.runtimeKubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("load runtime Kubernetes API: %w", err)
+	}
+	pods, err := nodeagent.NewKubernetesRuntimeLaunchPodReader(core)
+	if err != nil {
+		return nil, fmt.Errorf("configure runtime Pod reader: %w", err)
+	}
+	observer, err := loadRuntimeContainerObserver(ctx, configuration)
+	if err != nil {
+		return nil, err
+	}
+	registry, registryClose, err := loadRuntimeStartupRegistry(ctx, configuration)
+	if err != nil {
+		_ = observer.Close()
+		return nil, err
+	}
+	socket, err := listenRuntimeStartupSocket(configuration)
+	if err != nil {
+		_ = registryClose()
+		_ = observer.Close()
+		return nil, err
+	}
+	return &runtimeStartupResources{plan: plan, pods: pods, observer: observer, registry: registry, registryClose: registryClose, socket: socket}, nil
+}
+
+func (resources *runtimeStartupResources) Close() error {
+	if resources == nil {
+		return nil
+	}
+	var closeErr error
+	if resources.socket != nil {
+		closeErr = errors.Join(closeErr, resources.socket.Close())
+	}
+	if resources.registryClose != nil {
+		closeErr = errors.Join(closeErr, resources.registryClose())
+	}
+	if resources.observer != nil {
+		closeErr = errors.Join(closeErr, resources.observer.Close())
+	}
+	return closeErr
 }
 
 func listenRuntimeStartupSocket(configuration config) (*runtimeStartupSocket, error) {

@@ -82,3 +82,21 @@ func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 		t.Fatalf("startup socket path after close error=%v", err)
 	}
 }
+
+func TestLoadRuntimeStartupResourcesStopsBeforeAnyImplicitFallback(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	if resources, err := loadRuntimeStartupResources(context.Background(), configuration); err == nil || resources != nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("disabled resources result resources=%v error=%v", resources, err)
+	}
+	configuration.runtimeStartupEnabled = true
+	if resources, err := loadRuntimeStartupResources(context.Background(), configuration); err == nil || resources != nil || !strings.Contains(err.Error(), "runtime launch manifest") {
+		t.Fatalf("incomplete resources result resources=%v error=%v", resources, err)
+	}
+	if err := (&runtimeStartupResources{}).Close(); err != nil {
+		t.Fatalf("empty resource close: %v", err)
+	}
+}
