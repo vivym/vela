@@ -24,10 +24,12 @@ kernel connection peer must have UID/GID `0/0`.
 
 The client enables `SO_PASSCRED` and `SO_PASSPIDFD` before connect, then retains
 `SO_PEERPIDFD`. Every challenge and response must carry matching kernel
-credentials and `SCM_PIDFD`. Both pidfds must have close-on-exec set, remain live
-and name the same pidfs device/inode. Linux pidfs support is mandatory; older
-anonymous-inode pidfds fail closed. No numeric-PID or anonymous-inode fallback
-exists. This client does not read the host process through container procfs.
+credentials and `SCM_PIDFD`. Both pidfds must have close-on-exec set and remain
+live. On pidfs kernels they must name the same pidfs device/inode. Older kernels
+use the kernel-maintained anonymous pidfd `fdinfo` (`Pid` and complete `NSpid`
+chain) for the equality check; no process is reacquired from a numeric PID and a
+missing handle cannot be reconstructed. This client does not read the host
+process through container procfs.
 
 The namespace experiment explains why numeric PID comparison is insufficient:
 from Runtime PID 1, both its original root Node and a different live root

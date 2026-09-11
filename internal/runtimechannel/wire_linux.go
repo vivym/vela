@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -134,11 +137,18 @@ func readPacket(connection *net.UnixConn, maximum, expectedRights int) ([]byte, 
 	return packet[:count], peer, pidfd, rights, nil
 }
 
-// SameLiveProcess compares retained pidfs identities, including invisible
+// SameLiveProcess compares retained pidfd identities, including invisible
 // ancestor processes whose namespace-relative credentials both report PID 0.
-// Older anonymous-inode pidfds cannot establish this equality and fail closed.
+// Kernels before pidfs expose pidfds as anonymous inodes; those handles are
+// accepted only when their kernel fdinfo Pid/NSpid identity matches. No PID is
+// used to reacquire a process or to construct a handle.
 func SameLiveProcess(original, message int) error {
-	var identity [2]unix.Stat_t
+	type identity struct {
+		device, inode uint64
+		pid, nspid    string
+		pidfs         bool
+	}
+	var identities [2]identity
 	for i, fd := range []int{original, message} {
 		if fd < 0 {
 			return ErrIdentity
@@ -147,11 +157,18 @@ func SameLiveProcess(original, message int) error {
 		if err := unix.Fstatfs(fd, &filesystem); err != nil {
 			return errors.Join(ErrIdentity, err)
 		}
-		if filesystem.Type != unix.PID_FS_MAGIC {
-			return fmt.Errorf("%w: pidfd filesystem type %#x; requires pidfs (%#x)", ErrIdentity, filesystem.Type, unix.PID_FS_MAGIC)
-		}
-		if err := unix.Fstat(fd, &identity[i]); err != nil || identity[i].Ino == 0 {
-			return errors.Join(ErrIdentity, err)
+		if filesystem.Type == unix.PID_FS_MAGIC {
+			var stat unix.Stat_t
+			if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
+				return errors.Join(ErrIdentity, err)
+			}
+			identities[i] = identity{device: stat.Dev, inode: stat.Ino, pidfs: true}
+		} else {
+			legacy, err := readAnonymousPIDFDIdentity(fd)
+			if err != nil {
+				return fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
+			}
+			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid}
 		}
 		if err := PollLivePIDFD(fd); err != nil {
 			return err
@@ -160,8 +177,57 @@ func SameLiveProcess(original, message int) error {
 			return errors.Join(ErrIdentity, err)
 		}
 	}
-	if identity[0].Dev != identity[1].Dev || identity[0].Ino != identity[1].Ino {
+	if identities[0].pidfs != identities[1].pidfs {
+		return ErrIdentity
+	}
+	if identities[0].pidfs && (identities[0].device != identities[1].device || identities[0].inode != identities[1].inode) {
+		return ErrIdentity
+	}
+	if !identities[0].pidfs && (identities[0].pid != identities[1].pid || identities[0].nspid != identities[1].nspid) {
 		return ErrIdentity
 	}
 	return nil
+}
+
+type anonymousPIDFDIdentity struct{ pid, nspid string }
+
+func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+	link, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd))
+	if err != nil || link != "anon_inode:[pidfd]" {
+		return anonymousPIDFDIdentity{}, errors.New("descriptor is not an anonymous-inode pidfd")
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/self/fdinfo/%d", fd))
+	if err != nil {
+		return anonymousPIDFDIdentity{}, err
+	}
+	var result anonymousPIDFDIdentity
+	for line := range strings.SplitSeq(string(data), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		switch key {
+		case "Pid":
+			if _, err := strconv.ParseUint(value, 10, 32); err != nil || value == "0" {
+				return anonymousPIDFDIdentity{}, errors.New("fdinfo Pid is invalid")
+			}
+			result.pid = value
+		case "NSpid":
+			fields := strings.Fields(value)
+			if len(fields) == 0 {
+				return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is empty")
+			}
+			for _, field := range fields {
+				if _, err := strconv.ParseUint(field, 10, 32); err != nil || field == "0" {
+					return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is invalid")
+				}
+			}
+			result.nspid = strings.Join(fields, ",")
+		}
+	}
+	if result.pid == "" || result.nspid == "" {
+		return anonymousPIDFDIdentity{}, errors.New("fdinfo lacks Pid/NSpid")
+	}
+	return result, nil
 }

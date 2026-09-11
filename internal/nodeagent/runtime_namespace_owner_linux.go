@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vivym/vela/internal/runtimechannel"
 	"golang.org/x/sys/unix"
 )
 
@@ -30,8 +31,6 @@ type RuntimeNamespaceExitObservation struct {
 type RuntimeNamespaceOwner struct {
 	mu         sync.Mutex
 	pidfd      *os.File
-	device     uint64
-	inode      uint64
 	owner      RuntimeContainerCallerObservation
 	retainedAt time.Time
 	exit       *RuntimeNamespaceExitObservation
@@ -68,11 +67,6 @@ func (observer *RuntimeContainerObserver) RetainNamespaceOwner(ctx context.Conte
 			_ = owner.Close()
 		}
 	}()
-	var identity unix.Stat_t
-	if err := unix.Fstat(fd, &identity); err != nil {
-		return nil, err
-	}
-	owner.device, owner.inode = identity.Dev, identity.Ino
 	if err := errors.Join(owner.checkLocked(), checkRuntimePIDFD(fd, current.HostPID), context.Cause(ctx)); err != nil {
 		return nil, err
 	}
@@ -123,10 +117,7 @@ func (owner *RuntimeNamespaceOwner) checkLocked() error {
 		return ErrRuntimeNamespaceOwnerLost
 	}
 	fd := int(owner.pidfd.Fd())
-	var filesystem unix.Statfs_t
-	var identity unix.Stat_t
-	if err := errors.Join(unix.Fstatfs(fd, &filesystem), unix.Fstat(fd, &identity)); err != nil ||
-		filesystem.Type != unix.PID_FS_MAGIC || identity.Ino == 0 || identity.Dev != owner.device || identity.Ino != owner.inode {
+	if err := runtimechannel.SameLiveProcess(fd, fd); err != nil {
 		return errors.Join(ErrRuntimeNamespaceOwnerLost, err)
 	}
 	if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil || flags&unix.FD_CLOEXEC == 0 {
