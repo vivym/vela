@@ -406,9 +406,11 @@ VELA_NODE_AGENT_RUNTIME_BINDING_FILE
 VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE
 VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE
 VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY
+VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY
 VELA_NODE_AGENT_RUNTIME_CRI_SOCKET
 VELA_NODE_AGENT_RUNTIME_KUBECONFIG
 VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET
+VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH
 ```
 
 The Kubernetes source is parsed from the exact file named by
@@ -422,10 +424,12 @@ WorkerInstance evidence connection is not used as a startup reservation
 authority; the separate connection is closed if later assembly fails.
 
 The Node process owns creation and cleanup of `VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET`.
-Its parent must already be a trusted directory; an existing path, symlink,
-replacement inode, or permission other than `0600` is rejected. The runtime
-server receives this listener from Node and never creates or unlinks a socket
-path itself.
+Its parent must already be a trusted directory; an existing path, symlink, or
+replacement inode is rejected. After the verified launch plan is loaded, Node
+publishes the socket as root-owned with group equal to the plan's Runtime GID
+and mode `0660`. A zero GID is only accepted by focused tests and retains
+`0600`; production startup cannot use it. The runtime server receives this
+listener from Node and never creates or unlinks a socket path itself.
 
 Node assembly now owns the partial resource lifetime in this order: verified
 launch plan, StageAuthority validator, existing ExecutionJournalOwner state,
@@ -438,12 +442,17 @@ Startup assembly reads the launch and bundle manifests, verifies the signed
 Registry binding and its bundle digest, checks the bound Node identity and
 member epochs, and requires the launch manifest to match the verified plan. It
 also parses the StageAuthority verifier keyring before proceeding. Missing,
-malformed, stale or mismatched sources fail closed. The current binary then
-stops with `runtime startup authority composition is not wired`; this gate is
-intentional until the Fleet reservation, Kubernetes Pod reader, CRI observer,
-protected listener, journal owner and shutdown lifecycle are assembled in the
-same composition root. Enabling this flag therefore cannot accidentally grant
-runtime startup through the legacy WorkerInstance evidence path.
+malformed, stale or mismatched sources fail closed. The final composition root
+starts the helper configured by `VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH`. That
+helper must create the Runtime and Worker, create the observer socketpair before
+exec, retain the original observer and Worker pidfds, return the exact CRI target,
+and provide operation-bound authorization evidence. Kubernetes and CRI readers
+are observation sources only and cannot satisfy this contract. No legacy
+WorkerInstance evidence path can grant startup permission. The Node-side adapter uses a protected
+inherited FD 3 (`AF_UNIX/SOCK_SEQPACKET`) and validates the three `SCM_RIGHTS`
+descriptors, target schema, pidfd identity/liveness, and every operation-bound
+policy response. A missing, writable, malformed, or disconnected helper fails
+closed.
 
 ### Linux pidfd compatibility
 

@@ -53,6 +53,7 @@ func TestLoadConfigRuntimeStartupRequiresEveryAuthoritySource(t *testing.T) {
 		"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET",
 		"VELA_NODE_AGENT_RUNTIME_KUBECONFIG",
 		"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET",
+		"VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {

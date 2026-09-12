@@ -1,0 +1,15 @@
+Validation-only CRI cleanup check (marslab-server, 2026-09-12)
+
+host: marslab@100.111.196.116
+kernel: 6.8.0-137-generic
+CRI: /run/k3s/containerd/containerd.sock
+launcher binary sha256: 177cf075b8d0c5fe21f59745a4f1427e7b928f7eb4ebdb4449cca796f9bbea0b
+
+reply={"version":1,"target":{"container_id":"ae67af0ef41be7670299cdf5a13665f73bb1a0a392829375085b31a26713dc7c","sandbox_id":"a546afdccec80ceed68c62ed2714011080685c125ec650a336e210452e18d9e6","pod_uid":"11111111-1111-4111-8111-111111111111","pod_namespace":"default","pod_name":"vela-validation-runtime-check","container_name":"model-runtime","container_attempt":1},"fd_count":3}
+created_container_delta=["a546afdccec80ceed68c62ed2714011080685c125ec650a336e210452e18d9e6","ae67af0ef41be7670299cdf5a13665f73bb1a0a392829375085b31a26713dc7c"]
+task_present_before=false
+launcher_exit=0
+container_still_present=false
+sandbox_task_match=false
+
+Interpretation: the helper created a real CRI sandbox and container, returned three SCM_RIGHTS descriptors, then SIGTERM caused context-aware control receive to exit cleanly; StopContainer/RemoveContainer and StopPodSandbox/RemovePodSandbox completed, and the exact container/sandbox were absent from containerd afterward.

@@ -1,0 +1,5 @@
+2ecfa254b2d5c0c0cfb06e8e8d9708ce6097b20075905038a78dfa9603f5e688  /tmp/vela-current-evidence-v2/image/rootfs/nodeagent.test
+f5a313d3b118e434f655734ff5b0fc92e11e46f437dd864accf175055d3428ad  /tmp/vela-current-evidence-v2/image/rootfs/runtime-command.test
+7914c5097e5442d62d6d49cea0d22cc0320f206fdcb2ba60728d7d11b02f9ce9  /tmp/vela-current-evidence-v2/image/rootfs/vela-model-runtime
+f1a59be11a027377ebbb2f808431f4de410d44fb71d29f5f1f9c13f20cfbd284  /tmp/vela-current-evidence-v2/image/rootfs/exec-observer
+56b23abbc311f30d0ad1eeed5f3855b3b469e67009fee825443ba013a8c3fec4  /tmp/vela-current-evidence-v2/image/rootfs/exec-probe

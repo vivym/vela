@@ -1,0 +1,104 @@
+diff --git a/internal/nodeagent/runtime_launcher_handoff_linux.go b/internal/nodeagent/runtime_launcher_handoff_linux.go
+new file mode 100644
+index 0000000..0de6749
+--- /dev/null
++++ b/internal/nodeagent/runtime_launcher_handoff_linux.go
+@@ -0,0 +1,34 @@
++package nodeagent
++
++import (
++	"context"
++	"errors"
++	"os"
++
++	"github.com/vivym/vela/internal/runtimechannel"
++)
++
++// ValidateRuntimeWorkerOwnerPIDFD checks that a launcher supplied the exact
++// live process represented by the authenticated caller. The check compares
++// kernel pidfd identity and liveness; it never opens /proc/<pid> or accepts a
++// numeric PID. The caller remains the owner of its pidfd after this check.
++func ValidateRuntimeWorkerOwnerPIDFD(ctx context.Context, caller *RuntimeCaller, workerPIDFD *os.File) error {
++	if err := contextError(ctx); err != nil {
++		return err
++	}
++	if caller == nil || workerPIDFD == nil {
++		return ErrRuntimeNamespaceOwnerLost
++	}
++	if err := runtimechannel.ValidatePIDFD(int(workerPIDFD.Fd())); err != nil {
++		return errors.Join(ErrRuntimeNamespaceOwnerLost, err)
++	}
++	if err := runtimechannel.PollLivePIDFD(int(workerPIDFD.Fd())); err != nil {
++		return errors.Join(ErrRuntimeNamespaceOwnerLost, err)
++	}
++	caller.mu.Lock()
++	defer caller.mu.Unlock()
++	if caller.pidfd == nil {
++		return ErrRuntimeNamespaceOwnerLost
++	}
++	return errors.Join(runtimechannel.SameLiveProcess(int(caller.pidfd.Fd()), int(workerPIDFD.Fd())), context.Cause(ctx))
++}
+diff --git a/internal/nodeagent/runtime_launcher_handoff_linux_test.go b/internal/nodeagent/runtime_launcher_handoff_linux_test.go
+new file mode 100644
+index 0000000..a6c1e05
+--- /dev/null
++++ b/internal/nodeagent/runtime_launcher_handoff_linux_test.go
+@@ -0,0 +1,21 @@
++package nodeagent
++
++import (
++	"context"
++	"os"
++	"testing"
++)
++
++func TestValidateRuntimeWorkerOwnerPIDFDRejectsMissingHandles(t *testing.T) {
++	if err := ValidateRuntimeWorkerOwnerPIDFD(context.Background(), nil, nil); err == nil {
++		t.Fatal("nil caller and pidfd unexpectedly accepted")
++	}
++	file, err := os.CreateTemp(t.TempDir(), "not-pidfd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer file.Close()
++	if err := ValidateRuntimeWorkerOwnerPIDFD(context.Background(), &RuntimeCaller{}, file); err == nil {
++		t.Fatal("invalid pidfd unexpectedly accepted")
++	}
++}
+diff --git a/internal/nodeagent/runtime_startup_launcher_linux.go b/internal/nodeagent/runtime_startup_launcher_linux.go
+new file mode 100644
+index 0000000..2f83942
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_launcher_linux.go
+@@ -0,0 +1,31 @@
++package nodeagent
++
++import (
++	"context"
++	"net"
++	"os"
++)
++
++// RuntimeStartupLaunch is the authority-bearing handoff returned by a
++// RuntimeStartupLauncher. All process handles must originate from the current
++// launch invocation. The Node owns the descriptors after successful assembly.
++type RuntimeStartupLaunch struct {
++	WorkerOwnerPIDFD *os.File
++	ObserverPIDFD    *os.File
++	ObserverConn     *net.UnixConn
++	Target           RuntimeContainerTarget
++	Policy           RuntimeStartupAuthorizationPolicy
++	// Close releases launcher-owned state and requests termination of any
++	// process that has not yet been transferred to Node custody. It is called
++	// exactly once on every failed assembly and after Node shutdown.
++	Close func() error
++}
++
++// RuntimeStartupLauncher creates the Runtime/Worker and observer before the
++// Node performs reservation or grants authority. Implementations must create
++// the observer socketpair before exec, retain original pidfds, and return the
++// exact CRI target for this invocation. They must never reconstruct handles
++// from numeric PIDs, historical receipts or prior reservations.
++type RuntimeStartupLauncher interface {
++	Launch(context.Context, *RuntimeLaunchPlan, string) (RuntimeStartupLaunch, error)
++}

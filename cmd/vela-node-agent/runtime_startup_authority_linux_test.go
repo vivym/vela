@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/vivym/vela/internal/nodeagent"
@@ -95,6 +96,37 @@ func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 	}
 	if _, err := os.Lstat(configuration.runtimeStartupSocket); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("startup socket path after close error=%v", err)
+	}
+}
+
+func TestListenRuntimeStartupSocketPublishesRuntimeGID(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("GID publication is a root-only production path")
+	}
+	setValidNodeAgentEnv(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load base config: %v", err)
+	}
+	configuration.runtimeStartupEnabled = true
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configuration.runtimeStartupSocket = filepath.Join(root, "startup.sock")
+	const runtimeGID = uint32(1)
+	socket, err := listenRuntimeStartupSocketWithGID(configuration, runtimeGID)
+	if err != nil {
+		t.Fatalf("publish runtime GID socket: %v", err)
+	}
+	defer socket.Close()
+	info, err := os.Stat(configuration.runtimeStartupSocket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 || stat.Gid != runtimeGID || info.Mode().Perm() != 0o660 {
+		t.Fatalf("unexpected runtime socket ownership uid=%d gid=%d mode=%o", stat.Uid, stat.Gid, info.Mode().Perm())
 	}
 }
 

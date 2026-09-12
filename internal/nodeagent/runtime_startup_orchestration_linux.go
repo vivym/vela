@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"context"
+	"errors"
 	"net"
 	"time"
 
@@ -60,6 +61,38 @@ func (orchestration *RuntimeStartupOrchestration) ServeCaller(ctx context.Contex
 		return ErrRuntimeCallerIdentity
 	}
 	return orchestration.server.HandleCaller(ctx, orchestration.caller)
+}
+
+// Wait keeps the Node-owned startup composition alive after the one-shot
+// startup reply. A successful Permit starts a monitored lifetime; returning
+// from ServeCaller must not close custody or the runtime immediately.
+func (orchestration *RuntimeStartupOrchestration) Wait(ctx context.Context) error {
+	if orchestration == nil || ctx == nil || orchestration.coordinator == nil {
+		return ErrRuntimeCallerIdentity
+	}
+	for {
+		orchestration.coordinator.mu.Lock()
+		observation := orchestration.coordinator.observation
+		handled := orchestration.coordinator.handled
+		closed := orchestration.coordinator.closed
+		orchestration.coordinator.mu.Unlock()
+		if observation != nil {
+			select {
+			case <-observation.Done():
+				return observation.Err()
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			}
+		}
+		if handled || closed {
+			return errors.Join(ErrRuntimeObserverCustody, context.Cause(ctx))
+		}
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		case <-time.After(time.Millisecond):
+		}
+	}
 }
 
 func (orchestration *RuntimeStartupOrchestration) Shutdown(ctx context.Context) error {

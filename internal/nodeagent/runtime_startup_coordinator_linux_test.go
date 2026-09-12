@@ -165,6 +165,11 @@ func TestRuntimeStartupOrchestrationUsesTheRetainedCallerOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.write(t, true)
+	waitCtx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if err := orchestration.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("successful startup lifetime ended unexpectedly: %v", err)
+	}
 	if err := orchestration.Close(); err != nil {
 		t.Fatal(err)
 	}

@@ -14,7 +14,9 @@ import (
 
 // Exchange authenticates a root Node peer at a root-owned 0660 socket whose
 // group matches this non-root Runtime. All directories must be root-owned and
-// non-writable by group/others, with no symlinks. Linux pidfs is mandatory.
+// non-writable by group/others, with no symlinks. It accepts both modern pidfs
+// pidfds and older anon_inode:[pidfd] handles when procfs fdinfo exposes the
+// kernel Pid/NSpid identity; it never falls back to reacquiring numeric PIDs.
 // The reply is authenticated data, not a startup or retirement grant.
 func Exchange(ctx context.Context, socketPath string, payload []byte) (result []byte, resultErr error) {
 	return ExchangeWithRequestLimit(ctx, socketPath, payload, MaximumPayload)

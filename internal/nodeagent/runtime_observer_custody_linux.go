@@ -49,6 +49,15 @@ type RuntimeObserverCustody struct {
 // revoke that creator. Close also requests termination; it is not a detach or
 // process-exit proof. This API does not establish production CRI/plan approval.
 func ReceiveRuntimeObserverCustody(ctx context.Context, connection *net.UnixConn, originalObserver *os.File) (*RuntimeObserverCustody, error) {
+	return ReceiveRuntimeObserverCustodyFromCreator(ctx, connection, originalObserver, nil)
+}
+
+// ReceiveRuntimeObserverCustodyFromCreator is the launcher composition-root
+// variant. The observer is a direct child of the root-owned launcher helper,
+// which is itself a direct child of Node. creatorPIDFD is the launcher's
+// original kernel handle; its identity is compared with the observer's parent
+// metadata without reopening a numeric PID.
+func ReceiveRuntimeObserverCustodyFromCreator(ctx context.Context, connection *net.UnixConn, originalObserver, creatorPIDFD *os.File) (*RuntimeObserverCustody, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
@@ -58,7 +67,7 @@ func ReceiveRuntimeObserverCustody(ctx context.Context, connection *net.UnixConn
 	if err := runtimechannel.SameLiveProcess(int(originalObserver.Fd()), int(originalObserver.Fd())); err != nil {
 		return nil, errors.Join(ErrRuntimeObserverCustody, err)
 	}
-	if err := inspectRuntimeObserverOrigin(int(originalObserver.Fd())); err != nil {
+	if err := inspectRuntimeObserverOrigin(int(originalObserver.Fd()), creatorPIDFD); err != nil {
 		return nil, err
 	}
 	fd, err := unix.FcntlInt(originalObserver.Fd(), unix.F_DUPFD_CLOEXEC, 0)
@@ -437,7 +446,7 @@ func inspectObserverChild(observer, target int, observerPID int32) error {
 	return errors.Join(checkRuntimePIDFD(observer, observerPID), checkRuntimePIDFD(target, int32(pid)))
 }
 
-func inspectRuntimeObserverOrigin(fd int) error {
+func inspectRuntimeObserverOrigin(fd int, creatorPIDFD *os.File) error {
 	info, err := readBoundedSystemText(fmt.Sprintf("/proc/self/fdinfo/%d", fd), 4096)
 	if err != nil {
 		return err
@@ -462,8 +471,30 @@ func inspectRuntimeObserverOrigin(fd int) error {
 			fields[key] = strings.Fields(value)
 		}
 	}
-	if len(fields["PPid"]) != 1 || fields["PPid"][0] != strconv.Itoa(os.Getpid()) {
+	if len(fields["PPid"]) != 1 {
 		return ErrRuntimeObserverCustody
+	}
+	if creatorPIDFD == nil {
+		if fields["PPid"][0] != strconv.Itoa(os.Getpid()) {
+			return ErrRuntimeObserverCustody
+		}
+	} else {
+		if err := runtimechannel.ValidatePIDFD(int(creatorPIDFD.Fd())); err != nil {
+			return errors.Join(ErrRuntimeObserverCustody, err)
+		}
+		creatorInfo, err := readBoundedSystemText(fmt.Sprintf("/proc/self/fdinfo/%d", creatorPIDFD.Fd()), 4096)
+		if err != nil {
+			return errors.Join(ErrRuntimeObserverCustody, err)
+		}
+		creatorPID := ""
+		for line := range strings.SplitSeq(creatorInfo, "\n") {
+			if strings.HasPrefix(line, "Pid:") {
+				creatorPID = strings.TrimSpace(strings.TrimPrefix(line, "Pid:"))
+			}
+		}
+		if creatorPID == "" || fields["PPid"][0] != creatorPID {
+			return ErrRuntimeObserverCustody
+		}
 	}
 	for _, key := range []string{"Uid", "Gid"} {
 		if len(fields[key]) != 4 {

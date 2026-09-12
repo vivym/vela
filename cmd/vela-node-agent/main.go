@@ -102,6 +102,7 @@ type config struct {
 	runtimeCRISocket             string
 	runtimeKubeconfig            string
 	runtimeStartupSocket         string
+	runtimeLauncherPath          string
 }
 
 type commandConfig struct {
@@ -519,6 +520,7 @@ func loadConfig() (config, error) {
 		runtimeCRISocket:             os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
 		runtimeKubeconfig:            os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
 		runtimeStartupSocket:         os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
+		runtimeLauncherPath:          os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH"),
 	}
 	configuration.agentEpoch, err = positiveInt64Env("VELA_NODE_AGENT_EPOCH")
 	if err != nil {
@@ -657,6 +659,7 @@ func loadConfig() (config, error) {
 			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":               configuration.runtimeCRISocket,
 			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":               configuration.runtimeKubeconfig,
 			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":           configuration.runtimeStartupSocket,
+			"VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH":            configuration.runtimeLauncherPath,
 		} {
 			if value == "" {
 				return config{}, fmt.Errorf("%s is required when runtime startup is enabled", name)

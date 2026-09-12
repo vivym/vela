@@ -1,0 +1,2 @@
+cc984f6fe3acf0e6ca890643bf1ffbad99e6963d87ae1749d762902354a96d3c  /tmp/validation-launcher-fixed-new
+cleanup_check=all exact Runtime/Worker container IDs and sandbox ID absent from CRI containerd namespace k8s.io

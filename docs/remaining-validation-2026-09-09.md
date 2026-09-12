@@ -45,6 +45,35 @@ Production Gates 仍为 **0/9**；真实 Node 启动装配、Worker journal 独�
 
 ## 当前结论
 
+### 2026-09-12 validation-only 处理决定
+
+Node adapter 的首帧现在包含 verified plan 的 `expected_pod` 和
+`expected_pod_digest`，因此验证 helper 可以按同一次 signed plan 创建 CRI workload，
+不需要猜测 Pod 名称、UID、容器 UID/GID 或镜像入口。该字段只解决输入绑定，不等同于
+真实 helper 已存在；`marslab` 仍没有可交付的 Runtime/Worker launcher，所以 Production
+Gates 继续为 `0/9`。
+
+验证阶段应实现单独的 `validation-only` helper，并使用独立状态目录和 receipt。它必须
+真实调用 CRI、返回本次创建的 target 和原始 pidfd/observer endpoint，并在退出时删除精确
+workload。正常、caller replacement、observer loss、policy loss、Node restart、helper
+timeout/crash 六类场景都要有 fail-closed 结果；validation receipt 不得提升为生产 gate。
+
+本轮已补齐 validation helper 的两个实际生命周期问题：控制通道接收改为带 context 的
+有界 `poll`，因此 helper 在 `SIGTERM`、caller 断开或超时场景不会永久阻塞；CRI 清理改用
+独立 context，并返回 `StopContainer`、`RemoveContainer` 和 sandbox 清理错误。目标机真实
+重跑结果为 `launcher_exit=0`，精确 container/sandbox 均从 containerd 消失，证据见
+`docs/evidence/runtime-startup-composition-2026-09-12/cri-cleanup.log`。这只关闭 helper
+自身的 cleanup 缺口，尚未关闭 Node/CRI/Fleet/ModelRuntime 同次装配缺口。
+
+追加校正（2026-09-12）：validation-only helper 已在目标机 k3s containerd 的正确
+`k8s.io` namespace 中运行成功。它创建了独立的 `model-runtime` 与
+`stage-worker-agent`，回传两个 target、三个 descriptor，并完成 operation-bound policy
+round-trip；退出后两个 container 和 sandbox 均已从 CRI 消失。此前固定 `/pause` 的
+Worker 命令已改为显式 `VELA_VALIDATION_WORKER_IMAGE` / `VELA_VALIDATION_WORKER_COMMAND`，
+避免把镜像入口存在性误当成 Worker 连续性。原始 receipt 见
+`docs/evidence/runtime-startup-composition-2026-09-12/validation-normal-receipt.json`。
+这仍不能证明生产 helper、observer 与 Runtime task 的连续绑定，也不能提升 Production Gates。
+
 截至本报告更新，当前分支已完成一次新的基础回归：`go test ./...`、`go vet ./...`
 和 `git diff --check` 均通过；`go test -tags=integration ./internal/integration -run '^$'`
 也通过，说明 integration build tag 下的测试代码可编译。默认回归没有启动
@@ -562,6 +591,15 @@ CPU/mock 相关分片
 也已通过，耗时约 104 秒；覆盖 durable stream campaign、exact-cache campaign、runtime
 usage 的无 GPU 时间声明，以及 Worker bootstrap mTLS/lost-response 三个场景。该结果仍是
 领域分片证据，不改变全量 integration 尚未闭合的结论。
+
+### 2026-09-12 runtime startup wiring amendment
+
+后续提交已经把上述“真实 Node startup orchestration 尚未实现”的代码缺口收口：
+`cmd/vela-node-agent` 现在拥有 startup resource composition、signal/shutdown owner、
+原始 pidfd/custody 交接和 `VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH` helper adapter；
+`PrepareRemoteStartupOrchestration` 也不再接受裸 `AuthorizationDigest`，必须由
+operation-bound policy 返回 evidence。剩余验证只针对部署 helper 和真实 Pod/CRI/Fleet/
+ModelRuntime 环境，不能用本页 2026-09-09 的 fixture receipt 替代。
 
 Stage authority 分片
 `go test -tags=integration ./internal/integration -run '^TestStageCutover|^TestStageWorkerControl|^TestStageCapacity'`

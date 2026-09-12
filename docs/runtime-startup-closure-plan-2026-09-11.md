@@ -9,32 +9,51 @@
 | signed launch source | `loadRuntimeStartupPlan`、`VerifyRuntimeLaunchPlan` | 验证 signed binding、bundle、Pod 计划和 caller UID/GID；不代表当前进程已启动 |
 | journal owner | `loadRuntimeJournalOwner` | 只打开 Node 持有的 execution journal；不创建 Runtime/Worker 进程 |
 | Kubernetes/CRI/Fleet source | `loadRuntimeKubernetesCore`、`loadRuntimeContainerObserver`、独立 startup Fleet client | 显式凭据、inode/权限和 SPIFFE 校验；不复用 WorkerInstance evidence client |
-| protected listener | `listenRuntimeStartupSocket` | root-owned、`0600`、canonical path、identity-aware cleanup |
+| protected listener | `listenRuntimeStartupSocketWithGID` | root-owned、verified Runtime GID、production `0660`、canonical path、identity-aware cleanup |
 | caller pre-auth | `receiveRuntimeStartupCaller` | 使用 verified plan UID/GID；同一个 caller/pidfd 可传给 reservation 与 `ServeCaller` |
 | startup evidence | `RuntimeStartupAuthorizationPolicy` | evidence 绑定 operation/request digest，UTC，最长 5 分钟；裸 `AuthorizationHash` fail-closed |
 | startup ledger | `VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY` + `OpenRuntimeStartupLedger` | 独立目录、Node-owned lock、逆序关闭；不再与 execution journal state 混用 |
 | shutdown owner | `runtimeStartupLifecycle` | orchestration 先 revoke/stop，再释放 listener、registry、observer、journal |
 | pidfs 兼容 | `RuntimeCaller`/observer 使用 pidfd API | 目标 Ubuntu 24.04 / kernel 6.8 已验证；不要求升级目标系统 |
 
-## 仍缺的代码（按依赖顺序）
+## 现在的剩余项（按依赖顺序）
 
-1. **Node process launcher contract**：定义并实现 Node 自己创建 Runtime 与 Worker 的 launcher。它必须返回原始 Runtime/Worker pidfd、observer socketpair 两端及关闭责任；不能从 PID、receipt 或历史 reservation 重建。
-2. **Worker owner/custody assembly**：用 launcher 返回的 Worker pidfd 调用 `RetainNamespaceOwner`，用 Node 创建的 observer socketpair 和原始 observer pidfd 调用 `ReceiveRuntimeObserverCustody`，并在失败路径 revoke/close。
-3. **Runtime startup ledger source**：已完成。命令现在要求独立 `VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY`，调用 `OpenRuntimeStartupLedger(..., initialize=true)`；execution journal state directory 不再被默认当作 ledger directory。
-4. **Concrete policy adapter**：把实际策略输入（当前 plan、Node identity、runtime incarnation、Fleet reservation record 和有效 launch/continuity evidence）实现为 `RuntimeStartupAuthorizationPolicy`。测试 fixture 不能接入生产入口。
-5. **Composition root**：`runRuntimeStartupGate` 按顺序加载 ledger、plan、journal、Kubernetes、CRI、Fleet、listener，启动 launcher，预认证 caller，组装 authority，调用 `Prepare`，再调用 `ServeCaller`。
-6. **Signal lifecycle**：将 `SIGTERM/SIGINT/context cancellation` 接到同一个 lifecycle；超时必须保持 revoked/fail-closed，并等待后台 cleanup，不得直接关闭 pidfd 让 coordinator 失去观察。
-7. **ModelRuntime server handoff**：确认 caller 的 request/reply 与 ModelRuntime remote-startup server 的协议、版本和 timeout 完全一致；不能把现有 `Serve(listener)` adapter 当作生产闭环。
+1. **验证 helper 的负面场景与生产 helper 实现**：Node 已提供 `RuntimeStartupLauncher` 的受保护
+   `SOCK_SEQPACKET + SCM_RIGHTS` adapter；平台仍必须部署一个 root-owned helper，按
+   `docs/runtime-startup-launcher-contract-2026-09-11.md` 创建 Runtime/Worker、按首帧携带的
+   `expected_pod` 与 `expected_pod_digest` 创建并核对本次 Pod、返回本次
+   启动的原始 pidfd、observer endpoint 和 CRI target，并在 reservation 后提供 policy evidence。
+   低层 orchestration 已移除裸 `AuthorizationDigest` 兼容入口，任何启动都必须经过该
+   operation-bound policy。
+   validation-only 的五类 helper fault 现在由
+   `hack/run-runtime-startup-validation-matrix.py` 统一驱动，并按实际 CRI namespace
+   核对精确 workload 回收；这仍不等于 Node/Fleet 生产 receipt。
+2. **真实端到端验证**：validation-only helper 已能在目标机 CRI namespace 创建独立
+   `model-runtime`/`stage-worker-agent`、回传两个 target 和三个 descriptor，并在退出时
+   清理精确 workload；仍需用 Node composition root 贯穿 Pod/CRI/Fleet/journal/ModelRuntime
+   CPU Job，覆盖 caller replacement、observer loss、回包丢失和 restart。测试 fixture 不能
+   接入生产入口。
+
+以下部分已经在本轮 composition root 中闭合：Worker owner/custody assembly、独立 startup ledger source、`Prepare`/`ServeCaller` 顺序、`SIGTERM`/`SIGINT`/context cancellation 生命周期，以及失败路径的 revoke/close。
 
 ## 验收顺序
 
 每一项完成后都要有独立 receipt：
 
 1. Linux native 单 caller：正常、同 UID 冒充、caller/pidfd 变化、observer 失联、回包丢失、ledger append 阻塞。
+   validation helper 的正常与五类故障由 matrix driver 生成；Node composition 仍需独立
+   运行同名场景并绑定真实 caller/observer。
 2. Node crash/restart：只读取历史，不重建 owner、custody、grant 或 permission。
 3. 目标主机 native race：在 `marslab` 的 source-matched checkout 运行，保留原有 dirty 文件，不覆盖部署 workload。
 4. 真实 CPU Job：同一 composition root 贯穿 Pod/CRI/Fleet/journal/ModelRuntime；完成前不得提升 Production Gates。
 
-## 当前唯一硬阻塞
+## 当前外部阻塞
 
-仓库目前没有生产 Runtime/Worker launcher，也没有配置来源能提供 Worker pidfd 与 observer custody。继续实现这两项之前，任何把 `runRuntimeStartupGate` 改成成功启动的代码都会制造伪 authority。因此当前入口必须继续返回 fail-closed 错误；这不是测试未跑完，而是所需 authority source 尚未存在。
+仓库内 composition root、Node helper adapter 和 validation-only CRI helper 已完成；部署环境还没有可交付的生产
+Runtime/Worker helper。`VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH` 指向缺失或不满足 wire
+contract 时，入口会 fail-closed。Kubernetes/CRI 观察器、历史 receipt、numeric PID 和
+WorkerInstance reporter 都不能替代该 helper。接入 helper 后还必须完成真实
+Node→CRI→observer→Fleet→journal→ModelRuntime 验证，以及生产 listener GID 发布、policy
+issuer、故障 receipt 和镜像/任务连续性检查；在这些 receipt 完整前不能提升 Production Gates。
+具体输入、句柄和生命周期要求见
+`docs/runtime-startup-launcher-contract-2026-09-11.md`。

@@ -1,0 +1,10 @@
+6e6b39ae572a53bf7764c63a58b925f4569230cc
+ M cmd/vela-node-agent/runtime_startup_authority_linux.go
+ M deploy/node-agent/README.md
+ M docs/runtime-startup-closure-plan-2026-09-11.md
+?? docs/runtime-startup-launcher-contract-2026-09-11.md
+?? docs/runtime-startup-target-host-status-2026-09-11.md
+?? hack/run-current.sh
+?? internal/nodeagent/runtime_launcher_handoff_linux.go
+?? internal/nodeagent/runtime_launcher_handoff_linux_test.go
+?? internal/nodeagent/runtime_startup_launcher_linux.go

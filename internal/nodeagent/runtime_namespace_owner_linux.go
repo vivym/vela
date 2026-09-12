@@ -3,10 +3,14 @@ package nodeagent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/runtimechannel"
 	"golang.org/x/sys/unix"
 )
@@ -72,6 +76,50 @@ func (observer *RuntimeContainerObserver) RetainNamespaceOwner(ctx context.Conte
 	}
 	success = true
 	return owner, nil
+}
+
+// RetainNamespaceOwnerFromPIDFD enrolls a distinct Worker process whose
+// original pidfd was supplied by the trusted launcher. The pidfd is never
+// reacquired from the numeric PID; procfs is opened only as a read-only view
+// for the already retained kernel handle.
+func (observer *RuntimeContainerObserver) RetainNamespaceOwnerFromPIDFD(ctx context.Context, target RuntimeContainerTarget, pidfd *os.File, credentials RuntimeCallerCredentials) (*RuntimeNamespaceOwner, error) {
+	if observer == nil || pidfd == nil || credentials.UID == 0 || credentials.GID == 0 {
+		return nil, ErrRuntimeNamespaceOwnerLost
+	}
+	if err := errors.Join(runtimechannel.ValidatePIDFD(int(pidfd.Fd())), runtimechannel.PollLivePIDFD(int(pidfd.Fd()))); err != nil {
+		return nil, errors.Join(ErrRuntimeNamespaceOwnerLost, err)
+	}
+	info, err := readBoundedSystemText(fmt.Sprintf("/proc/self/fdinfo/%d", pidfd.Fd()), 4096)
+	if err != nil {
+		return nil, errors.Join(ErrRuntimeNamespaceOwnerLost, err)
+	}
+	pid := ""
+	for line := range strings.SplitSeq(info, "\n") {
+		if strings.HasPrefix(line, "Pid:") {
+			pid = strings.TrimSpace(strings.TrimPrefix(line, "Pid:"))
+		}
+	}
+	parsed, err := strconv.ParseInt(pid, 10, 32)
+	if err != nil || parsed <= 0 {
+		return nil, ErrRuntimeNamespaceOwnerLost
+	}
+	root, err := os.OpenRoot(fmt.Sprintf("/proc/%d", parsed))
+	if err != nil {
+		return nil, errors.Join(ErrRuntimeNamespaceOwnerLost, err)
+	}
+	boot, err := readBootID("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	caller := &RuntimeCaller{pidfd: pidfd, process: root, peer: unix.Ucred{Pid: int32(parsed), Uid: credentials.UID, Gid: credentials.GID}, boot: uuid.MustParse(boot)}
+	if _, err := caller.Inspect(ctx); err != nil {
+		_ = root.Close()
+		return nil, errors.Join(ErrRuntimeNamespaceOwnerLost, err)
+	}
+	owner, err := observer.RetainNamespaceOwner(ctx, target, caller)
+	_ = root.Close()
+	return owner, err
 }
 
 // ObserveExit performs no CRI, task or numeric-PID lookup. Only readiness of the
