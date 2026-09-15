@@ -1,0 +1,58 @@
+{
+  "10.1.201.11": {
+    "at": "2026-09-15T08:32:37.580244+00:00",
+    "node": "server-22",
+    "boot_before": "c6bdd211-ce93-4e17-a08f-991d82ffe41d",
+    "cache_root": "/var/lib/vela/models",
+    "available_before_bytes": 866578857984,
+    "source_files_sha256": {
+      "src/fast_h3/__init__.py": "5e0dd683dc34bf339117566fa501e010831fa162c6a887cd473b103d2bc3ef62",
+      "src/fast_h3/vela/__init__.py": "b0a6fab875008490db9114ff1d0db090c09d7f6e0b5096eeda68e36584a2ceb9",
+      "src/fast_h3/vela/model_cache.py": "7d3aac17d9b5a517ff9cc8fd28fb227776f258b131dc503fc1ee4740195f99b5",
+      "scripts/prefetch_vela_h3_models.py": "f65ab268330cce3b1a859c56d4ceb48e5f24af6e51b967f0db11123729c563a0",
+      "model-manifest.json": "6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0"
+    },
+    "passed": true,
+    "prefetch": {
+      "model_root": "/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+      "reused": false,
+      "verified_bytes": 59510503579
+    },
+    "reuse_with_transfer_disabled": {
+      "model_root": "/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+      "reused": true,
+      "verified_bytes": 59510503579
+    },
+    "available_after_bytes": 818112184320,
+    "boot_after": "c6bdd211-ce93-4e17-a08f-991d82ffe41d",
+    "finished_at": "2026-09-15T08:48:58.692976+00:00"
+  },
+  "10.1.201.12": {
+    "at": "2026-09-15T08:32:37.601050+00:00",
+    "node": "server-23",
+    "boot_before": "a24cb1ce-6eee-4473-ac13-bb95beb0ff05",
+    "cache_root": "/var/lib/vela/models",
+    "available_before_bytes": 866875256832,
+    "source_files_sha256": {
+      "src/fast_h3/__init__.py": "5e0dd683dc34bf339117566fa501e010831fa162c6a887cd473b103d2bc3ef62",
+      "src/fast_h3/vela/__init__.py": "b0a6fab875008490db9114ff1d0db090c09d7f6e0b5096eeda68e36584a2ceb9",
+      "src/fast_h3/vela/model_cache.py": "7d3aac17d9b5a517ff9cc8fd28fb227776f258b131dc503fc1ee4740195f99b5",
+      "scripts/prefetch_vela_h3_models.py": "f65ab268330cce3b1a859c56d4ceb48e5f24af6e51b967f0db11123729c563a0",
+      "model-manifest.json": "6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0"
+    },
+    "passed": true,
+    "prefetch": {
+      "model_root": "/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+      "reused": false,
+      "verified_bytes": 59510503579
+    },
+    "reuse_with_transfer_disabled": {
+      "model_root": "/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+      "reused": true,
+      "verified_bytes": 59510503579
+    },
+    "available_after_bytes": 818408599552,
+    "boot_after": "a24cb1ce-6eee-4473-ac13-bb95beb0ff05",
+    "finished_at": "2026-09-15T08:49:04.188348+00:00"
+  }
+}

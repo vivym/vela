@@ -1,0 +1,7 @@
+{
+  "at": "2026-09-14T22:45:15.259682+00:00",
+  "host": "10.1.201.19",
+  "read_only": true,
+  "ssh_returncode": 255,
+  "error": "ssh: connect to host 10.1.201.19 port 22: No route to host\n"
+}

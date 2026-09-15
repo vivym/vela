@@ -1,0 +1,10 @@
+{
+  "at": "2026-09-15T08:53:08.580373+00:00",
+  "image": "10.1.201.70:5005/nvidia-dra-driver@sha256:e7f21f226f90dfc993caba2e851ce652ded6da8c18f11de4a7238f6bde1e4bc8",
+  "upstream_index": "sha256:e1f104e64383ee693e982a5e6b7cf0b750023aaa5cc9b7dcc37c8e0549232933",
+  "platform": "linux/amd64",
+  "config_digest": "sha256:a430fb79e487943e1230a0054516dfd41bc7f2f88861f004d279d6e0b7ed7f60",
+  "layers": 36,
+  "compressed_bytes": 94331890,
+  "passed": true
+}

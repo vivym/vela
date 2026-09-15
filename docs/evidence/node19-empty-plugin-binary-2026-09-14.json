@@ -1,0 +1,24 @@
+{
+  "host19": {
+    "code": 0,
+    "result": {
+      "files": [
+        {
+          "path": "/var/lib/rancher/rke2/agent/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/181/fs/usr/bin/nvidia-device-plugin",
+          "size": 0,
+          "head64_hex": "",
+          "elf_machine": null
+        }
+      ],
+      "containers": [
+        {
+          "id": "311aa47ff302b858312f5105e02675e66a3330f995a2fe35d3eb300ed4e1d122",
+          "imageRef": "sha256:fcbf0ecf3195887f4b6b497d542660d9e7b1409b502bfddc284c04e3d8155f57",
+          "state": "CONTAINER_EXITED",
+          "createdAt": "1789393391606302106"
+        }
+      ],
+      "kernel_errors": "[    2.095227] mce: [Hardware Error]: CPU 0: Machine Check: 0 Bank 27: d82000000002080b\n[    2.095927] mce: [Hardware Error]: TSC 0 MISC d01c0dff00000000 PPIN 2b5e7c62fb900ab SYND 5a000001 IPID 1002e00001e01 \n[    2.096563] mce: [Hardware Error]: PROCESSOR 2:830f10 TIME 1789390892 SOCKET 0 APIC 0 microcode 830107c\n\n[    8.049070] ccp 0000:27:00.1: SEV: failed to INIT error 0x13, rc -5\n"
+    }
+  }
+}

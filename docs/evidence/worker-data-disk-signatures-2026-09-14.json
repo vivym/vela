@@ -1,0 +1,676 @@
+{
+  "nodes": [
+    {
+      "address": "10.1.201.58",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9245024P4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9245024P4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393234353032345034503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "55efd3e8d4f46eee8939db93e0aacbbcad9dcf7b965ade402e2d5ae460605b66"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "8160d28331f788d88a286aa4f5066e546f6f8f84c094dfcb9cdbaff7de73ee38"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ9245024P4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ8294038U4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ8294038U4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a383239343033385534503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "a50904a87dd8f907fa277d869a6849fe4a9b10eb99c8cb571441cee91d3f64e2"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "eb779b2ea7a61aba2f8a16e7f88e9f0d626b9436008d89cf2689ffe6cabfa376"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ8294038U4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-120",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.59",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921302VW4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921302VW4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393231333032565734503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "ddb92090135b947d25e1019350ae1f00ced1b1ff60f85bc00aa89b8cd3c84f40"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "4f8a5acfb9c98939fafcfcbd1526cc255c273ddf655e8da719fb0f22b91b7783"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ921302VW4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9266016P4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9266016P4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393236363031365034503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "45fa140cb9703e2c6b315b74eed1d087090dd7cde5744825693292350cc763a8"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "8701225d68831689c65a744c67cb244220e6efb6a1bc1db3d361130d4d56a03c"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ9266016P4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-124",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.60",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920200F34P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920200F34P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393230323030463334503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "c760996f5bd6d5a98b0367e41f9ed950e05b7d57beb50c750ced0d7abef9b9ff"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "b8325e7d2e9ad736c81da335ca96f8efa9b0a00b4b8df41b57cf4e675fba6d4a"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ920200F34P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9202037S4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9202037S4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393230323033375334503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "dd124567e5ae54481ccf2a44dec4bad51a3bf120328380096faf6db51f347ef4"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "65b8bd07082a2d3fe1544b907d179cd455942824949c38c9071b35b3b27899b8"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ9202037S4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-121",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.62",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921302HR4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921302HR4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393231333032485234503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "3d00df219fa2a0fea64bdd43b0a338c4a00017354e0dbb18c7f043e5410d6953"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "b7ecb7472daefce4e06af78ba575530f37d8e9b5fd4b9e930712983e2e05dfc1"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ921302HR4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920200P24P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920200P24P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393230323030503234503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "bfbece33c06abbcfc88557f537d0957676b5297c3315287ab256c13cc5dfa370"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "09f9f9dc3f1d19f917b9492a3a555d8d7b43b23b47fcfb454dc71ace28a71482"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ920200P24P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-128",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.63",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ926500LR4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ926500LR4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a3932363530304c5234503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "056d1d3d7e668f69250f7fd0e8a1b6e600ff1034fa5ebb9493feebd0adca2d2b"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "aef5d811484d80bc4eb3f4a1a278bb62a4864a81fcf24bb2929ad7acad1877bc"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ926500LR4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9211013M4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ9211013M4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393231313031334d34503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "7707e98fd5442e086143aa2f10927e3bc6e26f09cb8b68aa032fd82503a17a24"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "c9770d8cf2a56b0f069f75b99bde9ec994b073aab2dfa7bafc7537f085dffd12"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ9211013M4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-126",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.64",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ1104043A4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ1104043A4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a313130343034334134503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "c49d7e513d85f492e8fbab2107325fc7a808677c8b454862adfc474174a939a0"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "95c694c2ff698e8aa8f01458336b6e6691c73329a60ffb0c93948ab806594460"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ1104043A4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ110404364P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ110404364P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a313130343034333634503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "2982d08a17e889012a99149d847f7f83c33fc030331fa446828db54b78b7aef6"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "664a994d198ad8d9e326152c54dba490afc29b94cc1bb44931be498524f39351"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ110404364P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-127",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    },
+    {
+      "address": "10.1.201.65",
+      "candidates": [
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921201ZB4P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ921201ZB4P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a3932313230315a4234503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme1n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme1n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "d1d9ec7e16e574cf4f82336bc00e7e38bb474b3b4bbe2d99f5bfb119688948df"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "6a4d968a79d0658ffe99cfbb4dd157efab3007be98c20909e5e6e8b00d245197"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ921201ZB4P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        },
+        {
+          "blkid_fields": {},
+          "blkid_rc": 2,
+          "by_id": [
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920201S94P0DGN",
+            "/dev/disk/by-id/nvme-INTEL_SSDPE2KX040T8_PHLJ920201S94P0DGN_1",
+            "/dev/disk/by-id/nvme-nvme.8086-50484c4a393230323031533934503044474e-494e54454c205353445045324b583034305438-00000001"
+          ],
+          "children": [],
+          "fstype": null,
+          "fuser_rc": 1,
+          "holders": [],
+          "kname": "nvme2n1",
+          "model": "INTEL SSDPE2KX040T8",
+          "mountpoint": null,
+          "name": "nvme2n1",
+          "open_process_ids": [],
+          "samples": [
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 0,
+              "sha256": "f5788b6a9f91d49b4574a7164307d0b1b65391dba7b3e3fb14ceb14afa242cc1"
+            },
+            {
+              "all_zero": false,
+              "bytes": 1048576,
+              "offset": 2000393515008,
+              "sha256": "043c8c098207b7542181c13d9621a0378e12d934fc83a7cb208dce9a1a2b0efe"
+            },
+            {
+              "all_zero": true,
+              "bytes": 1048576,
+              "offset": 4000785981440,
+              "sha256": "30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58"
+            }
+          ],
+          "serial": "PHLJ920201S94P0DGN",
+          "signatures": [],
+          "size": 4000787030016,
+          "type": "disk",
+          "uuid": null,
+          "wipefs_rc": 0
+        }
+      ],
+      "formatting_performed": false,
+      "hostname": "server-125",
+      "scope": "read-only signatures, identity, holders and sparse samples"
+    }
+  ]
+}

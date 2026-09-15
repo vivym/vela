@@ -1,0 +1,426 @@
+{
+  "at": "2026-09-15T08:21:14.252577+00:00",
+  "preference": "H3 prefers the 256GB GPU-node tier; 512GB nodes are fallback capacity",
+  "label": "vela.ai/memory-tier",
+  "source": "Kubernetes kubelet-reported capacity, not a new hardware DMI inventory",
+  "nodes": [
+    {
+      "node": "marslab-gpu-01",
+      "ip": "10.1.201.66",
+      "memory_capacity_gib": 503.685,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-10",
+      "ip": "10.1.201.17",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-11",
+      "ip": "10.1.201.39",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-12",
+      "ip": "10.1.201.30",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-120",
+      "ip": "10.1.201.58",
+      "memory_capacity_gib": 503.725,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-121",
+      "ip": "10.1.201.60",
+      "memory_capacity_gib": 503.727,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-124",
+      "ip": "10.1.201.59",
+      "memory_capacity_gib": 503.717,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-125",
+      "ip": "10.1.201.65",
+      "memory_capacity_gib": 503.727,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-126",
+      "ip": "10.1.201.63",
+      "memory_capacity_gib": 503.727,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-127",
+      "ip": "10.1.201.64",
+      "memory_capacity_gib": 503.72,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-128",
+      "ip": "10.1.201.62",
+      "memory_capacity_gib": 503.72,
+      "tier": "512gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-13",
+      "ip": "10.1.201.41",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-14",
+      "ip": "10.1.201.21",
+      "memory_capacity_gib": 251.683,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-15",
+      "ip": "10.1.201.46",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-16",
+      "ip": "10.1.201.29",
+      "memory_capacity_gib": 251.73,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-17",
+      "ip": "10.1.201.26",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-18",
+      "ip": "10.1.201.31",
+      "memory_capacity_gib": 251.73,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-19",
+      "ip": "10.1.201.42",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-20",
+      "ip": "10.1.201.50",
+      "memory_capacity_gib": 235.979,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-21",
+      "ip": "10.1.201.27",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-22",
+      "ip": "10.1.201.11",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-23",
+      "ip": "10.1.201.12",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-25",
+      "ip": "10.1.201.33",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-26",
+      "ip": "10.1.201.43",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-27",
+      "ip": "10.1.201.51",
+      "memory_capacity_gib": 235.979,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-28",
+      "ip": "10.1.201.22",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-29",
+      "ip": "10.1.201.24",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-30",
+      "ip": "10.1.201.32",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-31",
+      "ip": "10.1.201.13",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-33",
+      "ip": "10.1.201.23",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-34",
+      "ip": "10.1.201.15",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-35",
+      "ip": "10.1.201.45",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-37",
+      "ip": "10.1.201.38",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-38",
+      "ip": "10.1.201.18",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-39",
+      "ip": "10.1.201.16",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-40",
+      "ip": "10.1.201.35",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-41",
+      "ip": "10.1.201.14",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-42",
+      "ip": "10.1.201.20",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-43",
+      "ip": "10.1.201.25",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-44",
+      "ip": "10.1.201.40",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-45",
+      "ip": "10.1.201.34",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-46",
+      "ip": "10.1.201.36",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-47",
+      "ip": "10.1.201.28",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-48",
+      "ip": "10.1.201.48",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-49",
+      "ip": "10.1.201.55",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-50",
+      "ip": "10.1.201.52",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-51",
+      "ip": "10.1.201.49",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-52",
+      "ip": "10.1.201.47",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-53",
+      "ip": "10.1.201.54",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "server-54",
+      "ip": "10.1.201.53",
+      "memory_capacity_gib": 251.726,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    },
+    {
+      "node": "servser-24",
+      "ip": "10.1.201.37",
+      "memory_capacity_gib": 251.729,
+      "tier": "256gb",
+      "ready": true,
+      "labeled": true
+    }
+  ],
+  "passed": true,
+  "counts": {
+    "512gb": 8,
+    "256gb": 43
+  },
+  "labeled_counts": {
+    "512gb": 8,
+    "256gb": 43
+  },
+  "finished_at": "2026-09-15T08:21:27.447679+00:00"
+}

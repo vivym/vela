@@ -1,0 +1,62 @@
+{
+  "nvidia-device-plugin-daemonset-mws7b": "exec /usr/bin/nvidia-device-plugin: exec format error\n",
+  "vela-control-64b769db8c-9n4bw": "2026/09/14 09:40:13 ERROR vela-control stopped error=\"open auth database pool: failed to connect to `user=vela_auth_login database=app`:\\n\\t10.43.226.6:5432 (vela-postgres-rw.vela-system): dial error: dial tcp 10.43.226.6:5432: connect: connection refused\\n\\t10.43.226.6:5432 (vela-postgres-rw.vela-system): dial error: dial tcp 10.43.226.6:5432: connect: connection refused\"\n",
+  "vela-control-64b769db8c-t6wfd": "2026/09/14 09:40:13 ERROR vela-control stopped error=\"open auth database pool: failed to connect to `user=vela_auth_login database=app`:\\n\\t10.43.226.6:5432 (vela-postgres-rw.vela-system): dial error: dial tcp 10.43.226.6:5432: connect: connection refused\\n\\t10.43.226.6:5432 (vela-postgres-rw.vela-system): dial error: dial tcp 10.43.226.6:5432: connect: connection refused\"\n",
+  "host19": {
+    "code": 0,
+    "result": {
+      "gpu": {
+        "code": 0,
+        "output": "0, NVIDIA Graphics Device, 580.159.03\n1, NVIDIA Graphics Device, 580.159.03\n2, NVIDIA Graphics Device, 580.159.03\n3, NVIDIA Graphics Device, 580.159.03\n4, NVIDIA Graphics Device, 580.159.03\n5, NVIDIA Graphics Device, 580.159.03\n6, NVIDIA Graphics Device, 580.159.03\n7, NVIDIA Graphics Device, 580.159.03\n",
+        "error": ""
+      },
+      "toolkit": {
+        "code": 0,
+        "output": "libnvidia-container1:amd64\t1.19.1-1\nnvidia-container-toolkit\t1.19.1-1\n",
+        "error": ""
+      },
+      "pci": {
+        "code": 0,
+        "output": "01:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\n25:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\n41:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\n61:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\n81:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\na1:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\nc1:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\ne1:00.0 3D controller: NVIDIA Corporation GA100 [CMP 170HX] (rev a1)\n",
+        "error": ""
+      },
+      "services": {
+        "code": 0,
+        "output": "active\nactive\n",
+        "error": ""
+      },
+      "boot": {
+        "code": 0,
+        "output": "enabled\nenabled\n",
+        "error": ""
+      },
+      "ports": {
+        "code": 0,
+        "output": "LISTEN 0      4096   127.0.0.53%lo:53    0.0.0.0:*\nLISTEN 0      4096      127.0.0.54:53    0.0.0.0:*\nLISTEN 0      4096         0.0.0.0:22    0.0.0.0:*\nLISTEN 0      5            0.0.0.0:9835  0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:10010 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:9099  0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:10248 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:10249 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:10256 0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:6444  0.0.0.0:*\nLISTEN 0      4096       127.0.0.1:6443  0.0.0.0:*\nLISTEN 0      4096            [::]:22       [::]:*\nLISTEN 0      4096               *:10250       *:*\nLISTEN 0      4096               *:9091        *:*\nLISTEN 0      4096               *:9100        *:*\nLISTEN 0      4096           [::1]:6443     [::]:*\nLISTEN 0      4096           [::1]:6444     [::]:*\n",
+        "error": ""
+      },
+      "runtime_sections": {
+        "io.containerd.grpc.v1.cri": {},
+        "io.containerd.cri.v1.runtime": {
+          "runc": {
+            "runtime_type": "io.containerd.runc.v2",
+            "options": {
+              "SystemdCgroup": true
+            }
+          },
+          "runhcs-wcow-process": {
+            "runtime_type": "io.containerd.runhcs.v1"
+          },
+          "nvidia": {
+            "runtime_type": "io.containerd.runc.v2",
+            "options": {
+              "BinaryName": "/usr/bin/nvidia-container-runtime",
+              "SystemdCgroup": true
+            }
+          }
+        },
+        "io.containerd.cri.v1.images": {}
+      }
+    }
+  }
+}

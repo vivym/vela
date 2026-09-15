@@ -1,0 +1,47 @@
+{
+  "at": "2026-09-14T21:43:30.086190+00:00",
+  "hosts": {
+    "10.1.201.66": {
+      "at": "2026-09-14T21:43:30.683443+00:00",
+      "scope": "Only inactive Vela Go build caches; no source, evidence, models or other task files",
+      "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+      "caches": [
+        {
+          "path": "/tmp/vela-current-cache",
+          "inode": 11811601,
+          "files": 6669,
+          "allocated": 1040080896,
+          "manifest_sha256": "1b3e8d1a2f0cd2989c409547b6016b7845ab7ab85a39dd3d4bb6ac7bdf668e1f",
+          "removed": true
+        },
+        {
+          "path": "/tmp/vela-current-cache-v2",
+          "inode": 12582928,
+          "files": 6676,
+          "allocated": 1040613376,
+          "manifest_sha256": "f603404ee388cba275689d3c1d231fb9004f0ca85a0f386a4ffea4dca29e23fd",
+          "removed": true
+        },
+        {
+          "path": "/home/marslab/vela-cache",
+          "inode": 5151105,
+          "files": 6648,
+          "allocated": 1039544320,
+          "manifest_sha256": "5ab23364cf56f0b49ac7155e95ed30b8c56e218b18d9662c9e50757c5ba90799",
+          "removed": true
+        }
+      ],
+      "before": {
+        "available": 144237281280,
+        "capacity": 942396350464
+      },
+      "references": [],
+      "after": {
+        "available": 147356028928,
+        "capacity": 942396350464
+      },
+      "passed": true,
+      "finished_at": "2026-09-14T21:43:35.419995+00:00"
+    }
+  }
+}

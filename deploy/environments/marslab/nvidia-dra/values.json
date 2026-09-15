@@ -1,0 +1,50 @@
+{
+  "gpuResourcesEnabledOverride": true,
+  "resourceApiVersion": "resource.k8s.io/v1",
+  "nvidiaDriverRoot": "/",
+  "resources": {
+    "gpus": {
+      "enabled": true
+    },
+    "computeDomains": {
+      "enabled": false
+    }
+  },
+  "image": {
+    "repository": "10.1.201.70:5005/nvidia-dra-driver",
+    "tag": "v0.5.0-20260915@sha256:e7f21f226f90dfc993caba2e851ce652ded6da8c18f11de4a7238f6bde1e4bc8"
+  },
+  "imagePullSecrets": [
+    {
+      "name": "vela-dra-image-pull-v1"
+    }
+  ],
+  "kubeletPlugin": {
+    "nodeSelector": {
+      "vela.ai/dra-pilot": "h3-256gb-v1",
+      "vela.ai/memory-tier": "256gb"
+    },
+    "affinity": null,
+    "updateStrategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "maxUnavailable": 1
+      }
+    },
+    "containers": {
+      "gpus": {
+        "resources": {
+          "requests": {
+            "cpu": "100m",
+            "memory": "128Mi"
+          },
+          "limits": {
+            "cpu": "1",
+            "memory": "512Mi"
+          }
+        }
+      }
+    }
+  },
+  "logVerbosity": "2"
+}

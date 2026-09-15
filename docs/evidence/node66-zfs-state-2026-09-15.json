@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "data": {
+    "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+    "commands": {
+      "zpool": {
+        "rc": 0,
+        "stdout": "data\t2044404432896\t1799970154496\t244434278400\tONLINE\n",
+        "stderr": ""
+      },
+      "datasets": {
+        "rc": 0,
+        "stdout": "data\t1799969757184\t181083908096\t14095770624\t/data\ton\tyes\ndata/docker\t53565318656\t181083908096\t52668431360\t-\t-\t-\ndata/home-marslab\t25832295424\t181083908096\t25832295424\t/home/marslab/models\ton\tyes\ndata/models\t1706454275584\t181083908096\t1706454275584\t/srv/models\ton\tyes\n",
+        "stderr": ""
+      },
+      "props": {
+        "rc": 0,
+        "stdout": "data\tmountpoint\t/data\tdefault\ndata\tcanmount\ton\tdefault\ndata\tcompression\ton\tdefault\ndata\trecordsize\t128K\tdefault\ndata\tquota\tnone\tdefault\ndata\trefquota\tnone\tdefault\ndata\tdata:data\t-\t-\ndata/docker\tmountpoint\t-\t-\ndata/docker\tcanmount\t-\t-\ndata/docker\tcompression\ton\tdefault\ndata/docker\trecordsize\t-\t-\ndata/docker\tquota\t-\t-\ndata/docker\trefquota\t-\t-\ndata/docker\tdata:data\t-\t-\ndata/docker@migrated\tmountpoint\t-\t-\ndata/docker@migrated\tcanmount\t-\t-\ndata/docker@migrated\tcompression\t-\t-\ndata/docker@migrated\trecordsize\t-\t-\ndata/docker@migrated\tquota\t-\t-\ndata/docker@migrated\trefquota\t-\t-\ndata/docker@migrated\tdata:data\t-\t-\ndata/home-marslab\tmountpoint\t/home/marslab/models\tlocal\ndata/home-marslab\tcanmount\ton\tdefault\ndata/home-marslab\tcompression\tlz4\tlocal\ndata/home-marslab\trecordsize\t1M\tlocal\ndata/home-marslab\tquota\tnone\tdefault\ndata/home-marslab\trefquota\tnone\tdefault\ndata/home-marslab\tdata:data\t-\t-\ndata/models\tmountpoint\t/srv/models\tlocal\ndata/models\tcanmount\ton\tdefault\ndata/models\tcompression\tlz4\tlocal\ndata/models\trecordsize\t1M\tlocal\ndata/models\tquota\tnone\tdefault\ndata/models\trefquota\tnone\tdefault\ndata/models\tdata:data\t-\t-\n",
+        "stderr": ""
+      },
+      "mounts": {
+        "rc": 1,
+        "stdout": "",
+        "stderr": ""
+      },
+      "du": {
+        "rc": 0,
+        "stdout": "56838656\t/data/vela-registry\n148772352\t/data/rke2.old-20260913\n164186624\t/srv/models/MiniMax-H3-adaln-table-lightx2v-v1\n376561152\t/srv/models/MiniMax-H3-adaln-table\n620392448\t/srv/models/HardGravy2-Minimax-H3-6step-turbo-merge\n659577344\t/srv/models/MiniMax-H3-Tutu-SGLang\n664418304\t/srv/models/Tutu-MiniMax-H3-AudioVideo-20to8-NFE-LoRA\n1169797632\t/srv/models/MiniMax-H3-Tutu\n1342808064\t/srv/models/MiniMax-H3-FlashGen\n1369926656\t/srv/models/MiniMax-H3-PDD\n1383819776\t/srv/models/MiniMax-H3-Turbo\n1383827968\t/srv/models/MiniMax-H3-Turbo-SLA\n1389248512\t/srv/models/FastVideo-FastH3-4-step-Preview-v1-LoRA\n1534002176\t/srv/models/MiniMax-H3-PDD-SGLang\n2071977984\t/srv/models/MiniMax-H3-Joyfox\n2767603200\t/srv/models/MiniMax-H3-Turbo-LightX2V\n6268678656\t/data/tmp-archive-20260914\n6474291200\t/data\n22358009344\t/srv/models/FastH3-dense-datafree-int8-v5-convrot-overlay\n27047836160\t/srv/models/MiniMax-H3-encoder-int8\n167067891200\t/srv/models/deepseek-ai\n327469548032\t/srv/models/zai-org\n456634304000\t/srv/models/nv-community\n687452816896\t/srv/models/MiniMaxAI\n1704931752960\t/srv/models\n",
+        "stderr": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,328 @@
+{
+  "at": "2026-09-14T21:45:30.080305+00:00",
+  "eviction_config": {
+    "imageGCHighThresholdPercent": 85,
+    "imageGCLowThresholdPercent": 80,
+    "evictionHard": {
+      "imagefs.available": "15%",
+      "memory.available": "2Gi",
+      "nodefs.available": "10%"
+    },
+    "evictionPressureTransitionPeriod": "5m0s",
+    "evictionMinimumReclaim": {
+      "imagefs.available": "10%",
+      "nodefs.available": "10%"
+    },
+    "mergeDefaultEvictionSettings": false
+  },
+  "condition": [
+    {
+      "lastHeartbeatTime": "2026-09-14T21:40:42Z",
+      "lastTransitionTime": "2026-09-14T21:16:14Z",
+      "message": "kubelet has disk pressure",
+      "reason": "KubeletHasDiskPressure",
+      "status": "True",
+      "type": "DiskPressure"
+    }
+  ],
+  "taints": [
+    {
+      "effect": "PreferNoSchedule",
+      "key": "node-role.kubernetes.io/control-plane"
+    },
+    {
+      "effect": "NoSchedule",
+      "key": "node.kubernetes.io/disk-pressure",
+      "timeAdded": "2026-09-14T21:16:14Z"
+    }
+  ],
+  "fs": {
+    "time": "2026-09-14T21:45:27Z",
+    "availableBytes": 147350585344,
+    "capacityBytes": 942396350464,
+    "usedBytes": 755612938240,
+    "inodesFree": 54976844,
+    "inodes": 58474496,
+    "inodesUsed": 3497652
+  },
+  "pods": [
+    {
+      "ns": "apisix",
+      "name": "apisix-9c6c9c5c8-t66cm",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-9c6c9c5c8-vckh6",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-etcd-0",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-etcd-1",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-etcd-2",
+      "phase": "Pending",
+      "node": null,
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-etcd-pre-upgrade-222kx",
+      "phase": "Failed",
+      "node": "server-124",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-etcd-pre-upgrade-rnh2b",
+      "phase": "Succeeded",
+      "node": "server-126",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "apisix-observability-policy-tm558",
+      "phase": "Succeeded",
+      "node": "server-127",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "vela-gateway-tls-sync-29823700-hcdrs",
+      "phase": "Succeeded",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "apisix",
+      "name": "vela-gateway-tls-sync-29823705-g7vd6",
+      "phase": "Succeeded",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "cloud-controller-manager-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "etcd-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "kube-apiserver-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "kube-controller-manager-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "kube-proxy-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "kube-scheduler-marslab-gpu-01",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "nvidia-device-plugin-daemonset-srbnd",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "kube-system",
+      "name": "rke2-canal-5mxn4",
+      "phase": "Running",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "longhorn-system",
+      "name": "engine-image-ei-493e04e7-j72x7",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "longhorn-system",
+      "name": "instance-manager-ebe34f1d5b6efa2bca25b1d78c35a617",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "longhorn-system",
+      "name": "longhorn-csi-plugin-dgdrk",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "longhorn-system",
+      "name": "longhorn-manager-nhswl",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "monitoring",
+      "name": "alloy-hftl4",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "monitoring",
+      "name": "monitoring-prometheus-node-exporter-pvllp",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "monitoring",
+      "name": "node-local-metrics-control-storage-9rsf4",
+      "phase": "Failed",
+      "node": "marslab-gpu-01",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-0",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-1",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-2",
+      "phase": "Pending",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-3",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-4",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "object-store",
+      "name": "minio-ha-5",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "nats-0",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "nats-1",
+      "phase": "Pending",
+      "node": null,
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "nats-2",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "vela-control-6bfc884b87-554zb",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "vela-control-6bfc884b87-7bxq7",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "vela-postgres-1",
+      "phase": "Running",
+      "node": "llmpool02",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "vela-postgres-2",
+      "phase": "Running",
+      "node": "llmpool01",
+      "deleting": null
+    },
+    {
+      "ns": "vela-system",
+      "name": "vela-postgres-3",
+      "phase": "Pending",
+      "node": null,
+      "deleting": null
+    }
+  ],
+  "retained_volume": {
+    "name": "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0",
+    "state": "detaching",
+    "currentNodeID": "marslab-gpu-01"
+  }
+}

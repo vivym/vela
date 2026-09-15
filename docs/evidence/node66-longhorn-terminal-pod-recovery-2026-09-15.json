@@ -1,0 +1,22 @@
+{
+  "at": "2026-09-15T08:19:18.300693+00:00",
+  "removed_terminal_pods": [
+    {
+      "name": "engine-image-ei-493e04e7-pkppf",
+      "uid": "0fec9f3d-b21b-4bc8-845f-3d8b7a67b71f"
+    },
+    {
+      "name": "instance-manager-ebe34f1d5b6efa2bca25b1d78c35a617",
+      "uid": "d6f2a418-a562-4703-8a1c-2b8317e6e0f4"
+    },
+    {
+      "name": "longhorn-csi-plugin-5jjps",
+      "uid": "b1311c15-379f-4144-b792-7bd53c71abc2"
+    },
+    {
+      "name": "longhorn-manager-6g6q8",
+      "uid": "3fb1c119-f7a9-48fd-98fb-9f3fe00e216e"
+    }
+  ],
+  "passed": true
+}

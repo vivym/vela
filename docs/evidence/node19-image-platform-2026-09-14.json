@@ -1,0 +1,29 @@
+{
+  "host19": {
+    "code": 0,
+    "result": {
+      "machine": "x86_64",
+      "status": {
+        "id": "sha256:fcbf0ecf3195887f4b6b497d542660d9e7b1409b502bfddc284c04e3d8155f57",
+        "pinned": false,
+        "repoDigests": [
+          "10.1.201.70:5001/nvidia/k8s-device-plugin@sha256:3c54348fe5a57e5700e7d8068e7531d2ef2d5f3ccb70c8f6bac0953432527abd"
+        ],
+        "repoTags": [
+          "10.1.201.70:5001/nvidia/k8s-device-plugin:v0.17.4"
+        ],
+        "size": "246332685",
+        "username": ""
+      },
+      "platform": {
+        "os": "linux",
+        "architecture": "amd64",
+        "variant": null
+      },
+      "info_keys": [
+        "chainID",
+        "imageSpec"
+      ]
+    }
+  }
+}

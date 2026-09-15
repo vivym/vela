@@ -1,0 +1,210 @@
+{
+  "recorded_at": "2026-09-15T08:14:10.189843+00:00",
+  "test": "TestFastH3NativeGPUCanary",
+  "result": "PASS",
+  "seconds": 1189.2,
+  "source_root": "/data/vela-h3-integration-20260915/source",
+  "source_boundary": "Mutable isolated source snapshot; cache and retirement changes were made while canary ran. This is not a clean-revision Launch Receipt.",
+  "gpu_uuid": "GPU-dbcda595-49fe-3e06-7b8e-92e57181f45a",
+  "stages": {
+    "ENCODER": {
+      "seconds": 48.85,
+      "sealed": {
+        "content_type": "application/vnd.fast-h3.minimax-h3.encoder-conditioning.v1",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000004",
+          "stage_fence": 3,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000011",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000004/conditioning.bin",
+        "output_port": "conditioning",
+        "payload_sha256": "0736587edae92c07db25b845f61aba3be8fa534c35dc3e69448f6b52246fc8fb",
+        "schema_version": 1,
+        "size_bytes": 178389
+      }
+    },
+    "DIT": {
+      "seconds": 999.93,
+      "sealed": {
+        "content_type": "application/vnd.fast-h3.minimax-h3.dit-latents.v1",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000005",
+          "stage_fence": 4,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000012",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000005/latent.bin",
+        "output_port": "latent",
+        "payload_sha256": "98bdb5cb0217301fe78e5cc93e021ec09fab954cf924ca32d022809928c9d5a7",
+        "schema_version": 1,
+        "size_bytes": 14378671
+      }
+    },
+    "VAE_DECODER": {
+      "seconds": 140.41,
+      "sealed": {
+        "content_type": "video/mp4",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000006",
+          "stage_fence": 5,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000013",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000006/video.bin",
+        "output_port": "video",
+        "payload_sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a",
+        "schema_version": 1,
+        "size_bytes": 954339
+      }
+    }
+  },
+  "ffprobe": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "profile": "High",
+        "codec_type": "video",
+        "codec_tag_string": "avc1",
+        "codec_tag": "0x31637661",
+        "width": 1344,
+        "height": 768,
+        "coded_width": 1344,
+        "coded_height": 768,
+        "closed_captions": 0,
+        "film_grain": 0,
+        "has_b_frames": 2,
+        "pix_fmt": "yuv420p",
+        "level": 32,
+        "chroma_location": "left",
+        "field_order": "progressive",
+        "refs": 1,
+        "is_avc": "true",
+        "nal_length_size": "4",
+        "id": "0x1",
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "time_base": "1/12288",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 63488,
+        "duration": "5.166667",
+        "bit_rate": "1340723",
+        "bits_per_raw_sample": "8",
+        "nb_frames": "124",
+        "extradata_size": 41,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "VideoHandler",
+          "vendor_id": "[0][0][0][0]"
+        }
+      },
+      {
+        "index": 1,
+        "codec_name": "aac",
+        "codec_long_name": "AAC (Advanced Audio Coding)",
+        "profile": "LC",
+        "codec_type": "audio",
+        "codec_tag_string": "mp4a",
+        "codec_tag": "0x6134706d",
+        "sample_fmt": "fltp",
+        "sample_rate": "32000",
+        "channels": 2,
+        "channel_layout": "stereo",
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "id": "0x2",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/32000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 165600,
+        "duration": "5.175000",
+        "bit_rate": "127600",
+        "nb_frames": "163",
+        "extradata_size": 5,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "SoundHandler",
+          "vendor_id": "[0][0][0][0]"
+        }
+      }
+    ],
+    "format": {
+      "filename": "/data/vela-h3-integration-20260915/canary-04/VAE_DECODER/outputs/13000000-0000-0000-0000-000000000006/video.bin",
+      "nb_streams": 2,
+      "nb_programs": 0,
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "format_long_name": "QuickTime / MOV",
+      "start_time": "0.000000",
+      "duration": "5.175000",
+      "size": "954339",
+      "bit_rate": "1475306",
+      "probe_score": 100,
+      "tags": {
+        "major_brand": "isom",
+        "minor_version": "512",
+        "compatible_brands": "isomiso2avc1mp41",
+        "encoder": "Lavf58.29.100"
+      }
+    }
+  },
+  "boundaries": [
+    "Direct Go ModelRuntime client, not a Vela-scheduled Job",
+    "No APISIX gateway acceptance yet",
+    "GPU0 thermal slowdown observed; timings are not a performance benchmark",
+    "5-second native request produced 124 frames at 24 fps and 5.175-second container duration"
+  ]
+}

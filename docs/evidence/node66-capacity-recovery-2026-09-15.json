@@ -1,0 +1,53 @@
+{
+  "at": "2026-09-15T08:10:03.376812+00:00",
+  "before": {
+    "capacity_bytes": 942396350464,
+    "available_bytes": 190623682560,
+    "free_bytes": 230056509440,
+    "reserved_unavailable_bytes": 39432826880
+  },
+  "boot_before": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+  "paths": [
+    "/home/marslab/.cache/go-build",
+    "/home/marslab/.cache/uv",
+    "/home/marslab/.npm/_cacache",
+    "/home/marslab/.cache/vllm",
+    "/home/marslab/.cache/ms-playwright"
+  ],
+  "removed_caches": [
+    "/home/marslab/.cache/go-build",
+    "/home/marslab/.cache/uv",
+    "/home/marslab/.npm/_cacache",
+    "/home/marslab/.cache/vllm",
+    "/home/marslab/.cache/ms-playwright"
+  ],
+  "passed": true,
+  "reservation": {
+    "old_reserved_blocks": 9623059,
+    "new_reserved_blocks": 2338969,
+    "block_size": 4096,
+    "new_ratio": 0.01,
+    "rollback": [
+      "tune2fs",
+      "-r",
+      "9623059",
+      "/dev/mapper/ubuntu--vg-ubuntu--lv"
+    ]
+  },
+  "cache_expected_reclaim_bytes": 21250416640,
+  "projected_available_bytes": 241709731840,
+  "after_reservation": {
+    "capacity_bytes": 942396350464,
+    "available_bytes": 220459302912,
+    "free_bytes": 230056497152,
+    "reserved_unavailable_bytes": 9597194240
+  },
+  "after": {
+    "capacity_bytes": 942396350464,
+    "available_bytes": 241709715456,
+    "free_bytes": 251306909696,
+    "reserved_unavailable_bytes": 9597194240
+  },
+  "boot_after": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+  "finished_at": "2026-09-15T08:10:17.435556+00:00"
+}

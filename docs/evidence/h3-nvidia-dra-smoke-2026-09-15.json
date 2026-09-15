@@ -1,0 +1,142 @@
+{
+  "at": "2026-09-15T09:02:20.178183+00:00",
+  "passed": true,
+  "nodes": {
+    "server-22": {
+      "gpu_uuid": "GPU-c08137e5-6932-a25d-27d3-03506fbf924c",
+      "pci_bdf": "0000:01:00.0",
+      "device_name": "gpu-2",
+      "pod_uid": "e083c0ed-c8ac-4517-be69-636fe6fa0df9",
+      "gpu_output": "GPU-c08137e5-6932-a25d-27d3-03506fbf924c, 00000000:01:00.0, 65536 MiB",
+      "allocation": {
+        "devices": {
+          "results": [
+            {
+              "device": "gpu-2",
+              "driver": "gpu.nvidia.com",
+              "pool": "server-22",
+              "request": "gpu"
+            }
+          ]
+        },
+        "nodeSelector": {
+          "nodeSelectorTerms": [
+            {
+              "matchFields": [
+                {
+                  "key": "metadata.name",
+                  "operator": "In",
+                  "values": [
+                    "server-22"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "second_claim_remains_unallocated": true,
+      "second_pod_conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-15T09:02:24Z",
+          "message": "0/54 nodes are available: 1 cannot allocate all claims, 1 node(s) were unschedulable, 52 node(s) didn't match Pod's node affinity/selector. still not schedulable, preemption: 0/54 nodes are available: 54 Preemption is not helpful for scheduling.",
+          "observedGeneration": 1,
+          "reason": "Unschedulable",
+          "status": "False",
+          "type": "PodScheduled"
+        }
+      ]
+    },
+    "server-23": {
+      "gpu_uuid": "GPU-6e92707f-bfef-5ee5-1cb0-e18096c76411",
+      "pci_bdf": "0000:01:00.0",
+      "device_name": "gpu-2",
+      "pod_uid": "5f627b32-42c8-4ee3-8411-b85ee925ad6b",
+      "gpu_output": "GPU-6e92707f-bfef-5ee5-1cb0-e18096c76411, 00000000:01:00.0, 65536 MiB",
+      "allocation": {
+        "devices": {
+          "results": [
+            {
+              "device": "gpu-2",
+              "driver": "gpu.nvidia.com",
+              "pool": "server-23",
+              "request": "gpu"
+            }
+          ]
+        },
+        "nodeSelector": {
+          "nodeSelectorTerms": [
+            {
+              "matchFields": [
+                {
+                  "key": "metadata.name",
+                  "operator": "In",
+                  "values": [
+                    "server-23"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "second_claim_remains_unallocated": true,
+      "second_pod_conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-15T09:02:34Z",
+          "message": "0/54 nodes are available: 1 cannot allocate all claims, 1 node(s) were unschedulable, 52 node(s) didn't match Pod's node affinity/selector. still not schedulable, preemption: 0/54 nodes are available: 54 Preemption is not helpful for scheduling.",
+          "observedGeneration": 1,
+          "reason": "Unschedulable",
+          "status": "False",
+          "type": "PodScheduled"
+        }
+      ]
+    }
+  },
+  "cleanup": [
+    {
+      "kind": "pod",
+      "name": "h3-dra-smoke-1-contender",
+      "deleted": true
+    },
+    {
+      "kind": "resourceclaim",
+      "name": "h3-dra-smoke-1-contender",
+      "deleted": true
+    },
+    {
+      "kind": "pod",
+      "name": "h3-dra-smoke-1",
+      "deleted": true
+    },
+    {
+      "kind": "resourceclaim",
+      "name": "h3-dra-smoke-1",
+      "deleted": true
+    },
+    {
+      "kind": "pod",
+      "name": "h3-dra-smoke-0-contender",
+      "deleted": true
+    },
+    {
+      "kind": "resourceclaim",
+      "name": "h3-dra-smoke-0-contender",
+      "deleted": true
+    },
+    {
+      "kind": "pod",
+      "name": "h3-dra-smoke-0",
+      "deleted": true
+    },
+    {
+      "kind": "resourceclaim",
+      "name": "h3-dra-smoke-0",
+      "deleted": true
+    }
+  ],
+  "finished_at": "2026-09-15T09:02:48.400702+00:00",
+  "directory": "/opt/vela-cluster/nvidia-dra-20260915/smoke-090220Z"
+}
