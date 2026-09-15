@@ -6,9 +6,10 @@
 
 `Qwen3-Embedding-4B` 和 `Qwen3-Reranker-4B` 的 BF16 权重合计约 16.1 GB。
 将两个独立 Pod 分别申请 GPU 会消耗两张 64 GiB 卡；当前没有 GPU
-time-slicing 配置，因此采用一个 Pod、一个容器、一个 GPU，在容器内启动两个
-vLLM 进程。初始每个进程 `gpu-memory-utilization=0.36`，总预算约 72%，保留
-KV/cache、CUDA context 和碎片空间；`max_model_len=8192`，必须通过并发压测再调高。
+time-slicing 配置，因此采用一个 Pod、一个容器、一个 GPU。Embedding 使用 GPU
+vLLM；Reranker 使用同 Pod 内的 CPU Transformers adapter，避免两个 CUDA
+allocator 争用同一张卡的 KV cache。当前 embedding `gpu-memory-utilization=0.20`，
+`max_model_len=4096`，必须通过并发压测再调高。
 
 Pod 申请 8 CPU / 32 GiB，限制 16 CPU / 64 GiB，并要求
 `nvidia.com/gpu: 1`。调度选择 `vela.ai/node-role=gpu-worker`，首个已验证的
@@ -31,11 +32,11 @@ Pod 申请 8 CPU / 32 GiB，限制 16 CPU / 64 GiB，并要求
 
 ## 接口与 RAGFlow 对接
 
-`entrypoint.py` 由父进程管理 Embedding vLLM 和 Reranker adapter 两个子进程，并在 8080 提供稳定 ClusterIP
+`entrypoint.py` 由父进程管理 Embedding vLLM 和 CPU Reranker adapter 两个子进程，并在 8080 提供稳定 ClusterIP
 接口：
 
 - `/v1/embeddings` → Embedding vLLM（8000）
-- `/rerank`、`/v1/rerank`、`/v2/rerank`、`/score`、`/v1/score` → Reranker vLLM（8001）
+- `/rerank`、`/v1/rerank`、`/v2/rerank`、`/score`、`/v1/score` → CPU Reranker adapter（8001）
 - `/healthz`、`/readyz` → 两个子进程均健康后才 Ready
 
 9090 仅导出 Embedding vLLM 的 `/metrics`，复用现有 `llm-models` PodMonitor。
