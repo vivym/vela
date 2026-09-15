@@ -75,9 +75,33 @@ checkout。基础镜像从 `.66` 流式复制到 `.70`，构建在 `.70` 执行�
 符号链接的权限按 Linux 的 0777 语义规范化；文件模式、文件内容和链接目标
 仍参与源码快照校验。
 
+2026-09-15 已完成 Runtime 镜像的多阶段组装，并推送内部仓库：
+
+```text
+10.1.201.70:5005/h3-runtime:0b23cb9-slim-20260915
+sha256:503b28f654b549a95618112753bd80afb78fdd13f1d1be61c9c1888ec1e52c5b
+```
+
+后续 Runtime 发布应使用上述 digest。原镜像保留为固定版本的编译产物来源；
+GPU 节点只需拉取最终 Runtime。最终层从干净 CUDA base 开始，复制已编译的
+Python 环境、必要 CUDA/JIT 工具和完整源码，排除旧 vLLM 开发目录、pip 缓存、
+Rust、Nsight 和未使用的 CUDA 静态库。PyTorch/SGLang/SageAttention、全部 CUDA
+动态库、音视频编码和模型输出逻辑保持原样，权重仍在节点本地缓存中。
+
+| 同口径指标 | 原镜像 | 优化后 | 减少 |
+| --- | ---: | ---: | ---: |
+| OCI 压缩下载层 | 14.12 GB | 6.38 GB | 54.8% |
+| 展开层累计 | 27.35 GB | 13.89 GB | 49.2% |
+
+Docker 29 的综合展示约从 41.46 GB 降至 20.27 GB；该展示同时计算压缩数据和
+展开层，不能当作网络下载量，也不能跨共享层镜像直接相加估算宿主机占用。
+构建配方位于 fast-h3 的 `deploy/node19/Dockerfile.runtime`，配套脚本是
+`scripts/build_h3_runtime_image.py`；配方与输入镜像均绑定 SHA256。
+模型源码仍为 `0b23cb978d516d8d157a707ae02f57af11f12530`，此次只改变镜像组装。
+
 ## 完整音视频输出
 
-用户明确要求保留完整输出。未发布的时长裁剪改动已撤回，正在构建的
+用户明确要求保留完整输出。未发布的时长裁剪改动已撤回，已构建的
 `0b23cb9` Runtime 也从未包含该改动。Encoder/DiT/VAE 生成的完整视频帧和音轨
 交给媒体编码器，不按请求时长切片，也不以较短音轨或视频轨作为截断边界。
 
@@ -97,18 +121,31 @@ Vela 新增显式的 `h3-native-av-v1` OutputSpec 契约，精确检查对齐后
 本轮 Linux CPU 媒体测试验证了 124 帧全部保留、完整 5.2 秒双声道音频仍在，
 并解码核对 5 秒以后的有声尾段。它验证的是编码和输出保留，不是新的 GPU 推理。
 
+随后，优化后的 Runtime 在 `.11/server-22`（256GB）上通过了真实 GPU 三阶段
+canary，包含 Encoder、DiT、VAE 的首次预热与实际执行。最终 MP4 为 954,339 字节，
+124 帧、24fps，视频 5.166667 秒，32kHz 双声道 AAC 音轨 5.175000 秒。
+本地取回后逐文件核对了 16 个产物/证据文件的 SHA256；完整 MP4 的 SHA256 为
+`c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a`。
+GPU 验证使用 DRA 独占分配、节点本地只读权重、只读容器根目录与禁用特权提升。
+它验证了 Runtime 兼容性和完整输出，仍不属于正式 Fleet Worker 调度或 APISIX 验收。
+验证结束后 Pod/ResourceClaim/ConfigMap 均已删除，节点保持 Ready。完整阶段产物
+归档到 `.70` 的 `/opt/vela-cluster/h3-runtime-optimize-20260915/gpu-evidence.tar.gz`；
+本地 `dist/h3-runtime-slim-20260915/complete-video.mp4` 保留完整音视频，
+`complete-audio.m4a` 是直接复制全部 AAC packet 得到的独立音轨，没有重新编码或裁剪。
+本轮没有重启任何节点。
+
 ## 正式部署的剩余项
 
 `.11/.12` 尚缺正式 host startup 组件：Node Agent、pidfd broker、runtime policy
 issuer 与 runtime image maintenance。DRA 和模型缓存准备好，不等于 Worker 已可运行。
 还需将 VAE 已编码产物、CPU_MEDIA/thumbnail 的实际图契约和最终产物发布接通。
 
-完整业务部署还要通过以下四步，任一步失败都不能把 canary 当作完成：
+完整业务部署按以下清单推进，不能把 canary 当作正式服务已经完成：
 
-1. 完成固定版本 Runtime 镜像构建、镜像内导入与模型缓存挂载检查。
-2. 完成真实 release/PKI/配置引用与 ResidencyPlan，启动受 Vela 管理的 Runtime。
-3. 提交真实视频 Job，核对三阶段、产物存储、最终 MP4 和 APISIX 下载。
-4. 核对重建后的恢复、监控与告警，并记录验证覆盖范围；生产故障演练另行按
+- [x] 固定版本 Runtime 镜像构建、内部仓库发布、镜像内导入、本地权重挂载与真实 GPU 验证。
+- [ ] 完成真实 release/PKI/配置引用与 ResidencyPlan，启动受 Vela 管理的 Runtime。
+- [ ] 提交真实视频 Job，核对三阶段、产物存储、最终 MP4 和 APISIX 下载。
+- [ ] 核对重建后的恢复、监控与告警，并记录验证覆盖范围；生产故障演练另行按
    已授权范围执行，不通过业务成功请求推断所有 Production Gates 已通过。
 
 ## 证据
@@ -122,3 +159,4 @@ issuer 与 runtime image maintenance。DRA 和模型缓存准备好，不等于 
 - [DRA 两节点迁移](evidence/h3-nvidia-dra-migration-2026-09-15.json)
 - [DRA GPU 身份和独占验证](evidence/h3-nvidia-dra-smoke-2026-09-15.json)
 - [此前原生 GPU canary](evidence/h3-native-gpu-canary-2026-09-15.json)
+- [优化镜像大小、完整音视频 GPU 验证和清理回执](evidence/h3-runtime-optimization-2026-09-15.json)

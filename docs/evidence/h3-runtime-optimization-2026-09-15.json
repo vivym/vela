@@ -1,0 +1,656 @@
+{
+  "schema": "h3-runtime-image-optimization-v1",
+  "collected_at": "2026-09-15T12:33:54.767473+00:00",
+  "scope": "Runtime image assembly, internal registry publication, CPU/native media and single-GPU H3 canary; not a scheduled Vela Job, APISIX acceptance or Production Launch Receipt",
+  "packaging_commit": "0dbb06746ee761bae3c860803b645d243d781c0c",
+  "images": {
+    "at": "2026-09-15T12:12:47.584249+00:00",
+    "images": {
+      "original": {
+        "reference": "10.1.201.70:5005/h3-runtime:0b23cb9-20260915",
+        "digest": "sha256:dfeb727166a29e38a9b169e9c62c9b15abdb987095abb837e122c751b62e0686",
+        "compressed_layer_bytes": 14115693114,
+        "expanded_layer_bytes": 27348586496,
+        "docker_inspect_size": 14115740028,
+        "layer_count": 32,
+        "labels": {
+          "ai.marslab.fast_h3.build_cache_sha256": "",
+          "ai.marslab.fast_h3.cargo_registry_index": "sparse+https://rsproxy.cn/index/",
+          "ai.marslab.fast_h3.root_revision": "0b23cb978d516d8d157a707ae02f57af11f12530",
+          "ai.marslab.fast_h3.sageattention_revision": "56bacf2cc0a443182843fc61b5a76a35773602a5",
+          "ai.marslab.fast_h3.sglang_revision": "868143cc66ed32a6ff9e59f042aa3b0de14691f9",
+          "ai.marslab.fast_h3.snapshot_clean": "true",
+          "ai.marslab.fast_h3.snapshot_content_sha256": "sha256:a8f53c3a7a7d6e656897e64f49a018d7ac0c521b2b7dd579e537afed83d5bd4c",
+          "ai.marslab.fast_h3.snapshot_id": "0b23cb978d51-868143cc66ed-56bacf2cc0a4-clean",
+          "ai.marslab.fast_h3.uv_binary_sha256": ""
+        },
+        "layer_diff_ids": [
+          "sha256:073ec47a8c22dcaa4d6e5758799ccefe2f9bde943685830b1bf6fd2395f5eabc",
+          "sha256:18241330a2d180465d0b9868e4978456293d37da715de2f313ba08862da2aab1",
+          "sha256:b5c4de646bbad7dd50f917376023047d99ff9a1e806943dd86799e933b6a6294",
+          "sha256:dab2da33fe40a74d9faf939b829b701aa6cfc6b4502ff68fcf716fd2973697ac",
+          "sha256:b7ec8fd7c485bbedbe64cbc5a7a810ceabb9156e95c83ba60596ddb9b4955d48",
+          "sha256:22df1df9d58183ec065e0fa94fcd40cb766996112c4bab9cc71a31641b35e786",
+          "sha256:3c02fbcccafe1992dbe02745dc79732859f6a23ec5018ee0a25a3ca6b2bd7b74",
+          "sha256:48371d64208fb38d456b6b0ad8c40f72545e9bccacf0669bb84dbacb4f33951f",
+          "sha256:9bc297f160204a5b832f1ad00d94228b41ed65aeb7f12bab2ca35f0efdd0e05f",
+          "sha256:179f3f2ddefbe2edc2c80ae35203f5e6a49afe5a00db847f184865d40713bada",
+          "sha256:9590081f60ad2923a9f540c56cfc33f4b37ae11836a41e7641b6deff151a4496",
+          "sha256:a98dd7e25a6988b99e94a71f496601afeb8e7d5fafed4a8fe2aa52a06c915519",
+          "sha256:1fa005423c2f0e711eeaae23145e63796c1097cbd63cdae1aa9d4d9d2df449fc",
+          "sha256:4c87710e7428c14272659846b3936e6310c1bef519d387158c77cc5a774e5548",
+          "sha256:49669abd47286911f7b34ce3cd0c34969638c3b9e18cd8bacf1215a88ab20d0b",
+          "sha256:a152a19a93416412399218a715fe092807213baf5a12b61ca8b020700146d54c",
+          "sha256:10a5db1b1925a8d6e20b8101aae65b9a567e7c49e624ec19a13a355abb2dd5bb",
+          "sha256:e5871eea093f300eccb03f87bb82a6c7001f9a7a96027b691dd6d2dc8c781e44",
+          "sha256:9f7790c7470281a96840c0efc4d38b1d45c0557e917172430e0a28bb31f2b532",
+          "sha256:34ec5d382c47fb1e0d86570daafb5f71c86543f47b8613a0f008a9f386864c05",
+          "sha256:8f0a55d40e1a1aac01ac3eb11f91e5ac7b9cd4e15f73b33f105a2d9bba8419e0",
+          "sha256:15ff2a0f2270ad7d6ccfc75c6d615adf03c5a391a789002062a18df480efbde7",
+          "sha256:c4504776d56a051953eebc93d3162dd0caeb6cc35cd3182cd0792672bb03bee6",
+          "sha256:d35eea5dc7448a3d39355c2addce88283ede077d67638c1897b5fa068a9d503e",
+          "sha256:42a54788e65e18f19bca1b6a23b0bfd9572aeed5cc2a88f3a288ce4740df814f",
+          "sha256:ec9ef8b7f06128919824e97e261468850f4d01e0ede86da426deda2424988ccc",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+          "sha256:2d243290b6743ed61ac49445180c3f268025c455e038cd9b8916258bbfe11aa1",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+          "sha256:ff5adf8929693cb08a0d089ab420931f47eb046bd2b1ee8ee13269e2d5792497",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+        ]
+      },
+      "optimized": {
+        "reference": "10.1.201.70:5005/h3-runtime:0b23cb9-slim-20260915",
+        "digest": "sha256:503b28f654b549a95618112753bd80afb78fdd13f1d1be61c9c1888ec1e52c5b",
+        "compressed_layer_bytes": 6380047050,
+        "expanded_layer_bytes": 13885517824,
+        "docker_inspect_size": 6380070092,
+        "layer_count": 13,
+        "labels": {
+          "ai.marslab.fast_h3.build_image": "10.1.201.70:5005/h3-runtime@sha256:dfeb727166a29e38a9b169e9c62c9b15abdb987095abb837e122c751b62e0686",
+          "ai.marslab.fast_h3.root_revision": "0b23cb978d516d8d157a707ae02f57af11f12530",
+          "ai.marslab.fast_h3.runtime_recipe_sha256": "sha256:f2069cf70068ce012f972a0ca14f1a85b266faabd6d859c0f48ce5cd25aba04a",
+          "ai.marslab.fast_h3.sageattention_revision": "56bacf2cc0a443182843fc61b5a76a35773602a5",
+          "ai.marslab.fast_h3.sglang_revision": "868143cc66ed32a6ff9e59f042aa3b0de14691f9",
+          "ai.marslab.fast_h3.snapshot_clean": "true",
+          "ai.marslab.fast_h3.snapshot_content_sha256": "sha256:a8f53c3a7a7d6e656897e64f49a018d7ac0c521b2b7dd579e537afed83d5bd4c",
+          "ai.marslab.fast_h3.snapshot_id": "0b23cb978d51-868143cc66ed-56bacf2cc0a4-clean"
+        },
+        "layer_diff_ids": [
+          "sha256:073ec47a8c22dcaa4d6e5758799ccefe2f9bde943685830b1bf6fd2395f5eabc",
+          "sha256:18241330a2d180465d0b9868e4978456293d37da715de2f313ba08862da2aab1",
+          "sha256:b5c4de646bbad7dd50f917376023047d99ff9a1e806943dd86799e933b6a6294",
+          "sha256:dab2da33fe40a74d9faf939b829b701aa6cfc6b4502ff68fcf716fd2973697ac",
+          "sha256:b7ec8fd7c485bbedbe64cbc5a7a810ceabb9156e95c83ba60596ddb9b4955d48",
+          "sha256:09c5b82522946970d66381ab6524f84601ef8cab16a356809be1a361924cc101",
+          "sha256:9ae3957171fab6e702eb8d1765f94f3eae16d8237953cf521876dccdae7bc4e7",
+          "sha256:30adc71442a5204e6e717d762e15d74e5aa8209d49adcfc6f4c10684b09bf9ec",
+          "sha256:c688b49b3636a262693ce9a046995b909bebba4dddca42761ae8e7b181e234e8",
+          "sha256:e85465a6c2da709eeb5ed701662cc76e5ff622ffac4f1bdb9a74c81ea500dd3b",
+          "sha256:cba07bdf6b716f5e236eba557173e8ea7a8b35fd5e94a26d64f5731ad841bcea",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+          "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+        ]
+      }
+    },
+    "cpu-validation-receipt.json": {
+      "started_at": "2026-09-15T12:03:45.111246+00:00",
+      "passed": true,
+      "exit_code": 0,
+      "finished_at": "2026-09-15T12:04:51.775708+00:00"
+    },
+    "publish-receipt.json": {
+      "started_at": "2026-09-15T12:05:19.526364+00:00",
+      "passed": true,
+      "finished_at": "2026-09-15T12:06:03.791569+00:00"
+    },
+    "image-identities.json": {
+      "runtime_tag": "10.1.201.70:5005/h3-runtime:0b23cb9-slim-20260915",
+      "runtime_digest": "sha256:503b28f654b549a95618112753bd80afb78fdd13f1d1be61c9c1888ec1e52c5b",
+      "validation_tag": "10.1.201.70:5005/h3-runtime-validation:0b23cb9-slim-20260915",
+      "validation_digest": "sha256:7294a33c4aa2351a298ff7a19975d6810d04e9919096b990d11d79038ae14e2b"
+    }
+  },
+  "build_receipt": {
+    "started_at": "2026-09-15T11:28:35.409844+00:00",
+    "passed": true,
+    "tag": "10.1.201.70:5005/h3-runtime:0b23cb9-slim-20260915",
+    "build_args": {
+      "H3_BUILD_IMAGE": "10.1.201.70:5005/h3-runtime@sha256:dfeb727166a29e38a9b169e9c62c9b15abdb987095abb837e122c751b62e0686",
+      "RUNTIME_BASE_IMAGE": "10.1.201.70:5000/nvidia/cuda@sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701",
+      "H3_RUNTIME_RECIPE_SHA256": "sha256:f2069cf70068ce012f972a0ca14f1a85b266faabd6d859c0f48ce5cd25aba04a",
+      "H3_ROOT_REVISION": "0b23cb978d516d8d157a707ae02f57af11f12530",
+      "H3_SGLANG_REVISION": "868143cc66ed32a6ff9e59f042aa3b0de14691f9",
+      "H3_SAGEATTENTION_REVISION": "56bacf2cc0a443182843fc61b5a76a35773602a5",
+      "H3_SNAPSHOT_ID": "0b23cb978d51-868143cc66ed-56bacf2cc0a4-clean",
+      "H3_SNAPSHOT_CONTENT_SHA256": "sha256:a8f53c3a7a7d6e656897e64f49a018d7ac0c521b2b7dd579e537afed83d5bd4c",
+      "H3_SNAPSHOT_CLEAN": "true"
+    },
+    "command": [
+      "docker",
+      "buildx",
+      "build",
+      "--load",
+      "--platform",
+      "linux/amd64",
+      "--network",
+      "host",
+      "--progress",
+      "plain",
+      "--metadata-file",
+      "/opt/vela-cluster/h3-runtime-optimize-20260915/attempt-02/metadata.json",
+      "--iidfile",
+      "/opt/vela-cluster/h3-runtime-optimize-20260915/attempt-02/image-id.txt",
+      "-f",
+      "/tmp/h3-runtime-context-7bvaimve/deploy/node19/Dockerfile.runtime",
+      "-t",
+      "10.1.201.70:5005/h3-runtime:0b23cb9-slim-20260915",
+      "--build-arg",
+      "H3_BUILD_IMAGE=10.1.201.70:5005/h3-runtime@sha256:dfeb727166a29e38a9b169e9c62c9b15abdb987095abb837e122c751b62e0686",
+      "--build-arg",
+      "RUNTIME_BASE_IMAGE=10.1.201.70:5000/nvidia/cuda@sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701",
+      "--build-arg",
+      "H3_RUNTIME_RECIPE_SHA256=sha256:f2069cf70068ce012f972a0ca14f1a85b266faabd6d859c0f48ce5cd25aba04a",
+      "--build-arg",
+      "H3_ROOT_REVISION=0b23cb978d516d8d157a707ae02f57af11f12530",
+      "--build-arg",
+      "H3_SGLANG_REVISION=868143cc66ed32a6ff9e59f042aa3b0de14691f9",
+      "--build-arg",
+      "H3_SAGEATTENTION_REVISION=56bacf2cc0a443182843fc61b5a76a35773602a5",
+      "--build-arg",
+      "H3_SNAPSHOT_ID=0b23cb978d51-868143cc66ed-56bacf2cc0a4-clean",
+      "--build-arg",
+      "H3_SNAPSHOT_CONTENT_SHA256=sha256:a8f53c3a7a7d6e656897e64f49a018d7ac0c521b2b7dd579e537afed83d5bd4c",
+      "--build-arg",
+      "H3_SNAPSHOT_CLEAN=true",
+      "/tmp/h3-runtime-context-7bvaimve"
+    ],
+    "finished_at": "2026-09-15T12:03:26.998509+00:00"
+  },
+  "recipe": {
+    "files": {
+      "deploy/node19/Dockerfile.runtime": "70ee04d129132f1a576278948e3a78ae0c85288e94336cc41a2c946d77b478ac",
+      "scripts/prepare_h3_runtime_payload.py": "e39974d8480017695b4d96200ba02a882d3de8b523599fec40643e1378ca3ddd"
+    },
+    "recipe_sha256": "sha256:f2069cf70068ce012f972a0ca14f1a85b266faabd6d859c0f48ce5cd25aba04a"
+  },
+  "cpu_native_tests": {
+    "count": 8,
+    "passed": true,
+    "receipt": {
+      "started_at": "2026-09-15T12:03:45.111246+00:00",
+      "passed": true,
+      "exit_code": 0,
+      "finished_at": "2026-09-15T12:04:51.775708+00:00"
+    },
+    "video_frames": 124,
+    "audio_seconds": 5.2,
+    "audible_tail_after_requested_five_seconds": true
+  },
+  "gpu": {
+    "created": {
+      "at": "2026-09-15T12:06:30.735365+00:00",
+      "pod": "h3-runtime-slim-check-20260915",
+      "namespace": "vela-nvidia-dra",
+      "node": "server-22",
+      "gpu_uuid": "GPU-c08137e5-6932-a25d-27d3-03506fbf924c",
+      "pci_bdf": "0000:01:00.0",
+      "runtime_digest": "sha256:503b28f654b549a95618112753bd80afb78fdd13f1d1be61c9c1888ec1e52c5b",
+      "validation_digest": "sha256:7294a33c4aa2351a298ff7a19975d6810d04e9919096b990d11d79038ae14e2b"
+    },
+    "receipt": {
+      "started_at": "2026-09-15T12:08:41.111400+00:00",
+      "passed": true,
+      "gpu": [
+        "GPU-c08137e5-6932-a25d-27d3-03506fbf924c",
+        "00000000:01:00.0",
+        "0"
+      ],
+      "native_media_tests": true,
+      "output": "/validation/canary/VAE_DECODER/outputs/13000000-0000-0000-0000-000000000006/video.bin",
+      "video_frames": 124,
+      "video_duration": "5.166667",
+      "audio_duration": "5.175000",
+      "finished_at": "2026-09-15T12:25:46.201489+00:00"
+    },
+    "runtime_check": {
+      "schema": "h3-runtime-image-check-v1",
+      "passed": true,
+      "nvcc_sm80_compile_and_link": true,
+      "gpu_tested": true,
+      "versions": {
+        "torch": "2.13.0",
+        "sglang": "0.0.0",
+        "triton": "3.7.1",
+        "tilelang": "0.1.12",
+        "sageattention-sm80": "2.2.0+sm80.1"
+      },
+      "assembly": {
+        "schema": "h3-runtime-assembly-v1",
+        "build_image": "10.1.201.70:5005/h3-runtime@sha256:dfeb727166a29e38a9b169e9c62c9b15abdb987095abb837e122c751b62e0686",
+        "recipe_sha256": "sha256:f2069cf70068ce012f972a0ca14f1a85b266faabd6d859c0f48ce5cd25aba04a",
+        "snapshot_id": "0b23cb978d51-868143cc66ed-56bacf2cc0a4-clean",
+        "snapshot_content_sha256": "sha256:a8f53c3a7a7d6e656897e64f49a018d7ac0c521b2b7dd579e537afed83d5bd4c",
+        "cuda_removed_paths": [
+          "bin/compute-sanitizer",
+          "bin/cuda-gdb",
+          "bin/cuda-gdb-python3.12-tui",
+          "bin/cuda-gdbserver",
+          "bin/ncu",
+          "compute-sanitizer",
+          "doc",
+          "extras",
+          "targets/x86_64-linux/lib/libcublasLt_static.a",
+          "targets/x86_64-linux/lib/libcublas_static.a",
+          "targets/x86_64-linux/lib/libcufft_static.a",
+          "targets/x86_64-linux/lib/libcufftw_static.a",
+          "targets/x86_64-linux/lib/libcufile_rdma_static.a",
+          "targets/x86_64-linux/lib/libcufile_static.a",
+          "targets/x86_64-linux/lib/libcufilt.a",
+          "targets/x86_64-linux/lib/libcupti_static.a",
+          "targets/x86_64-linux/lib/libcurand_static.a",
+          "targets/x86_64-linux/lib/libcusolver_lapack_static.a",
+          "targets/x86_64-linux/lib/libcusolver_metis_static.a",
+          "targets/x86_64-linux/lib/libcusolver_static.a",
+          "targets/x86_64-linux/lib/libcusparse_static.a",
+          "targets/x86_64-linux/lib/libmetis_static.a",
+          "targets/x86_64-linux/lib/libnppc_static.a",
+          "targets/x86_64-linux/lib/libnppial_static.a",
+          "targets/x86_64-linux/lib/libnppicc_static.a",
+          "targets/x86_64-linux/lib/libnppidei_static.a",
+          "targets/x86_64-linux/lib/libnppif_static.a",
+          "targets/x86_64-linux/lib/libnppig_static.a",
+          "targets/x86_64-linux/lib/libnppim_static.a",
+          "targets/x86_64-linux/lib/libnppist_static.a",
+          "targets/x86_64-linux/lib/libnppisu_static.a",
+          "targets/x86_64-linux/lib/libnppitc_static.a",
+          "targets/x86_64-linux/lib/libnpps_static.a",
+          "targets/x86_64-linux/lib/libnvfatbin_static.a",
+          "targets/x86_64-linux/lib/libnvjpeg_static.a",
+          "targets/x86_64-linux/lib/libnvperf_host_static.a",
+          "targets/x86_64-linux/lib/libnvrtc-builtins_static.a",
+          "targets/x86_64-linux/lib/libnvrtc-builtins_static.alt.a",
+          "targets/x86_64-linux/lib/libnvrtc_static.a",
+          "targets/x86_64-linux/lib/libnvrtc_static.alt.a",
+          "targets/x86_64-linux/lib/stubs/libnvidia-ml.a",
+          "targets/x86_64-linux/lib/stubs/libnvidia-sandboxutils_loader.a"
+        ],
+        "preserved_jit_archives": [
+          "libcudadevrt.a",
+          "libcudart_static.a",
+          "libculibos.a",
+          "libnvJitLink_static.a",
+          "libnvptxcompiler_static.a"
+        ],
+        "model_weights_included": false
+      },
+      "gpu": {
+        "name": "NVIDIA Graphics Device",
+        "capability": [
+          8,
+          0
+        ],
+        "matmul_and_convolution": true
+      }
+    },
+    "native_media_tests_passed": 8,
+    "canary_binary_sha256": "04575bff4769d254dff53108c8b2f1deb4aeab319b88ae4a441c1bbfb4ecfd01",
+    "stages": {
+      "ENCODER": {
+        "content_type": "application/vnd.fast-h3.minimax-h3.encoder-conditioning.v1",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000004",
+          "stage_fence": 3,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000011",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000004/conditioning.bin",
+        "output_port": "conditioning",
+        "payload_sha256": "0736587edae92c07db25b845f61aba3be8fa534c35dc3e69448f6b52246fc8fb",
+        "schema_version": 1,
+        "size_bytes": 178389
+      },
+      "DIT": {
+        "content_type": "application/vnd.fast-h3.minimax-h3.dit-latents.v1",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000005",
+          "stage_fence": 4,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000012",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000005/latent.bin",
+        "output_port": "latent",
+        "payload_sha256": "98bdb5cb0217301fe78e5cc93e021ec09fab954cf924ca32d022809928c9d5a7",
+        "schema_version": 1,
+        "size_bytes": 14378671
+      },
+      "VAE_DECODER": {
+        "content_type": "video/mp4",
+        "lineage": {
+          "attempt_fence": 2,
+          "attempt_id": "13000000-0000-0000-0000-000000000002",
+          "stage_attempt_id": "13000000-0000-0000-0000-000000000006",
+          "stage_fence": 5,
+          "stage_lease_id": "13000000-0000-0000-0000-000000000013",
+          "stage_profile_revision_id": "63000000-0000-0000-0000-000000000001",
+          "stage_run_id": "13000000-0000-0000-0000-000000000003"
+        },
+        "local_locator": "13000000-0000-0000-0000-000000000006/video.bin",
+        "output_port": "video",
+        "payload_sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a",
+        "schema_version": 1,
+        "size_bytes": 954339
+      }
+    },
+    "ffprobe": {
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "h264",
+          "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+          "profile": "High",
+          "codec_type": "video",
+          "codec_tag_string": "avc1",
+          "codec_tag": "0x31637661",
+          "width": 1344,
+          "height": 768,
+          "coded_width": 1344,
+          "coded_height": 768,
+          "closed_captions": 0,
+          "film_grain": 0,
+          "has_b_frames": 2,
+          "pix_fmt": "yuv420p",
+          "level": 32,
+          "chroma_location": "left",
+          "field_order": "progressive",
+          "refs": 1,
+          "is_avc": "true",
+          "nal_length_size": "4",
+          "id": "0x1",
+          "r_frame_rate": "24/1",
+          "avg_frame_rate": "24/1",
+          "time_base": "1/12288",
+          "start_pts": 0,
+          "start_time": "0.000000",
+          "duration_ts": 63488,
+          "duration": "5.166667",
+          "bit_rate": "1340723",
+          "bits_per_raw_sample": "8",
+          "nb_frames": "124",
+          "extradata_size": 41,
+          "disposition": {
+            "default": 1,
+            "dub": 0,
+            "original": 0,
+            "comment": 0,
+            "lyrics": 0,
+            "karaoke": 0,
+            "forced": 0,
+            "hearing_impaired": 0,
+            "visual_impaired": 0,
+            "clean_effects": 0,
+            "attached_pic": 0,
+            "timed_thumbnails": 0,
+            "non_diegetic": 0,
+            "captions": 0,
+            "descriptions": 0,
+            "metadata": 0,
+            "dependent": 0,
+            "still_image": 0
+          },
+          "tags": {
+            "language": "und",
+            "handler_name": "VideoHandler",
+            "vendor_id": "[0][0][0][0]"
+          }
+        },
+        {
+          "index": 1,
+          "codec_name": "aac",
+          "codec_long_name": "AAC (Advanced Audio Coding)",
+          "profile": "LC",
+          "codec_type": "audio",
+          "codec_tag_string": "mp4a",
+          "codec_tag": "0x6134706d",
+          "sample_fmt": "fltp",
+          "sample_rate": "32000",
+          "channels": 2,
+          "channel_layout": "stereo",
+          "bits_per_sample": 0,
+          "initial_padding": 0,
+          "id": "0x2",
+          "r_frame_rate": "0/0",
+          "avg_frame_rate": "0/0",
+          "time_base": "1/32000",
+          "start_pts": 0,
+          "start_time": "0.000000",
+          "duration_ts": 165600,
+          "duration": "5.175000",
+          "bit_rate": "127600",
+          "nb_frames": "163",
+          "extradata_size": 5,
+          "disposition": {
+            "default": 1,
+            "dub": 0,
+            "original": 0,
+            "comment": 0,
+            "lyrics": 0,
+            "karaoke": 0,
+            "forced": 0,
+            "hearing_impaired": 0,
+            "visual_impaired": 0,
+            "clean_effects": 0,
+            "attached_pic": 0,
+            "timed_thumbnails": 0,
+            "non_diegetic": 0,
+            "captions": 0,
+            "descriptions": 0,
+            "metadata": 0,
+            "dependent": 0,
+            "still_image": 0
+          },
+          "tags": {
+            "language": "und",
+            "handler_name": "SoundHandler",
+            "vendor_id": "[0][0][0][0]"
+          }
+        }
+      ],
+      "format": {
+        "filename": "/validation/canary/VAE_DECODER/outputs/13000000-0000-0000-0000-000000000006/video.bin",
+        "nb_streams": 2,
+        "nb_programs": 0,
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "format_long_name": "QuickTime / MOV",
+        "start_time": "0.000000",
+        "duration": "5.175000",
+        "size": "954339",
+        "bit_rate": "1475306",
+        "probe_score": 100,
+        "tags": {
+          "major_brand": "isom",
+          "minor_version": "512",
+          "compatible_brands": "isomiso2avc1mp41",
+          "encoder": "Lavf58.29.100"
+        }
+      }
+    },
+    "files": {
+      "schema": "h3-runtime-gpu-evidence-files-v1",
+      "at": "2026-09-15T12:26:09.457612+00:00",
+      "root": "/var/lib/vela/validation/h3-runtime-slim-check-20260915",
+      "files": [
+        {
+          "path": "canary/DIT/driver.log",
+          "bytes": 16433,
+          "sha256": "380a44eb6ffb0f9ed2e4f20903a3b44f0e537c2fdefc89d54b688facf7419c4d"
+        },
+        {
+          "path": "canary/DIT/outputs/13000000-0000-0000-0000-000000000005/latent.bin",
+          "bytes": 14378671,
+          "sha256": "98bdb5cb0217301fe78e5cc93e021ec09fab954cf924ca32d022809928c9d5a7"
+        },
+        {
+          "path": "canary/DIT/sealed.json",
+          "bytes": 615,
+          "sha256": "e49efd784fbd287b8206ff9f925187205c26bb753e5aed2202e878ee459e6099"
+        },
+        {
+          "path": "canary/DIT/warmup.json",
+          "bytes": 683,
+          "sha256": "bba6d15f1325e96b5dc2577edea6ffd462cf79a1dc0a2c95c4291e60b65ef9ba"
+        },
+        {
+          "path": "canary/ENCODER/driver.log",
+          "bytes": 12079,
+          "sha256": "ed6a532a5e7523fab39710f4c3bce92ab057d75e45e1fed3ea496e0982d9b9b5"
+        },
+        {
+          "path": "canary/ENCODER/outputs/13000000-0000-0000-0000-000000000004/conditioning.bin",
+          "bytes": 178389,
+          "sha256": "0736587edae92c07db25b845f61aba3be8fa534c35dc3e69448f6b52246fc8fb"
+        },
+        {
+          "path": "canary/ENCODER/sealed.json",
+          "bytes": 634,
+          "sha256": "cc2866945c88307bc14c009c351a83df26a30f7c614962349d9aa77031d95718"
+        },
+        {
+          "path": "canary/ENCODER/warmup.json",
+          "bytes": 492,
+          "sha256": "24ab9ad1e8852d57b6770c900c7929c28922a37084214b23604cc1463a0d1a50"
+        },
+        {
+          "path": "canary/VAE_DECODER/driver.log",
+          "bytes": 12320,
+          "sha256": "b28553bc5d473e11fd046802803c223c962d3f119b3f6ac045dbddefa14c0d17"
+        },
+        {
+          "path": "canary/VAE_DECODER/outputs/13000000-0000-0000-0000-000000000006/video.bin",
+          "bytes": 954339,
+          "sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a"
+        },
+        {
+          "path": "canary/VAE_DECODER/sealed.json",
+          "bytes": 571,
+          "sha256": "fbd5a4c3fe0ac83e069ef04e7a47ce651b941ac874e9cdaf9a70193808ab949f"
+        },
+        {
+          "path": "canary/VAE_DECODER/warmup.json",
+          "bytes": 683,
+          "sha256": "fb83936e5a8432752337e890f0fe1ac9971d57d32b496a46b9aa4e50b44d9a83"
+        },
+        {
+          "path": "canary.log",
+          "bytes": 844,
+          "sha256": "11c688ca15d2de2604df65146ca87840e2185d19a653c20403293d8a3436e0d7"
+        },
+        {
+          "path": "ffprobe.json",
+          "bytes": 3429,
+          "sha256": "2f0a8bac9ec7995d7ee4627ec89502edfcc07d6f04c211c93f34d504bf9b69b2"
+        },
+        {
+          "path": "receipt.json",
+          "bytes": 439,
+          "sha256": "8914fd0696992fc041b59b1d3f7c7b6bf396d00502264d9f931933f477937bef"
+        },
+        {
+          "path": "runtime-check.json",
+          "bytes": 3167,
+          "sha256": "fb6d7702680ebdb3a7d513c23fd91ac6b57df15cc227b3fdf7a9a683767457ac"
+        }
+      ],
+      "boot_id": "c6bdd211-ce93-4e17-a08f-991d82ffe41d",
+      "pod_cgroup_memory": []
+    },
+    "cleanup": {
+      "at": "2026-09-15T12:32:51.024320+00:00",
+      "passed": true,
+      "pod_uid": "43527b0b-b249-421b-9736-a49b489f8962",
+      "pod_phase": "Succeeded",
+      "container_exit_code": 0,
+      "image_id": "10.1.201.70:5005/h3-runtime-validation@sha256:7294a33c4aa2351a298ff7a19975d6810d04e9919096b990d11d79038ae14e2b",
+      "claim_allocation_at_completion": null,
+      "claim_status_at_completion": {},
+      "deleted": [
+        "pod/h3-runtime-slim-check-20260915",
+        "resourceclaim/h3-runtime-slim-check-20260915",
+        "configmap/h3-runtime-slim-check-20260915"
+      ],
+      "remaining": {
+        "pod": [],
+        "resourceclaim": [],
+        "configmap": []
+      },
+      "node_conditions": [
+        {
+          "lastHeartbeatTime": "2026-09-13T16:48:49Z",
+          "lastTransitionTime": "2026-09-13T16:48:49Z",
+          "message": "Flannel is running on this node",
+          "reason": "FlannelIsUp",
+          "status": "False",
+          "type": "NetworkUnavailable"
+        },
+        {
+          "lastHeartbeatTime": "2026-09-15T12:29:19Z",
+          "lastTransitionTime": "2026-09-13T17:43:52Z",
+          "message": "kubelet has sufficient memory available",
+          "reason": "KubeletHasSufficientMemory",
+          "status": "False",
+          "type": "MemoryPressure"
+        },
+        {
+          "lastHeartbeatTime": "2026-09-15T12:29:19Z",
+          "lastTransitionTime": "2026-09-13T17:43:52Z",
+          "message": "kubelet has no disk pressure",
+          "reason": "KubeletHasNoDiskPressure",
+          "status": "False",
+          "type": "DiskPressure"
+        },
+        {
+          "lastHeartbeatTime": "2026-09-15T12:29:19Z",
+          "lastTransitionTime": "2026-09-13T17:43:52Z",
+          "message": "kubelet has sufficient PID available",
+          "reason": "KubeletHasSufficientPID",
+          "status": "False",
+          "type": "PIDPressure"
+        },
+        {
+          "lastHeartbeatTime": "2026-09-15T12:29:19Z",
+          "lastTransitionTime": "2026-09-13T17:43:52Z",
+          "message": "kubelet is posting ready status",
+          "reason": "KubeletReady",
+          "status": "True",
+          "type": "Ready"
+        }
+      ]
+    }
+  },
+  "artifacts": {
+    "management_directory": "/opt/vela-cluster/h3-runtime-optimize-20260915",
+    "management_gpu_archive": "/opt/vela-cluster/h3-runtime-optimize-20260915/gpu-evidence.tar.gz",
+    "management_archive_verification": {
+      "at": "2026-09-15T12:32:09.098646+00:00",
+      "archive_sha256": "819ce2956eefde4d13989161bebdb2f770b2490110981490d8c5acbe290adbc9",
+      "archive_bytes": 14212757,
+      "verified_file_count": 16,
+      "video_sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a",
+      "video_bytes": 954339,
+      "passed": true,
+      "verified_on": "local artifact retrieval and management node archive checksum"
+    },
+    "local_directory": "/Users/viv/projs/vela/dist/h3-runtime-slim-20260915",
+    "local_video": "complete-video.mp4",
+    "local_audio": "complete-audio.m4a",
+    "audio_extraction": "All original AAC packets copied without re-encoding or duration clipping",
+    "gpu_archive_sha256": "819ce2956eefde4d13989161bebdb2f770b2490110981490d8c5acbe290adbc9",
+    "build_archive_sha256": "6516257a13d9cbe5b2a0fb43830cfbd042f9a1ceb6e61279a53f984b6042bad2"
+  }
+}
