@@ -219,6 +219,20 @@ func launchProductionWorkload(ctx context.Context, startupSocket string, pod *co
 	if err != nil {
 		return nil, err
 	}
+	// Reject unsupported main-container fields and resource requests before CRI,
+	// image pulls, secret materialization, or init execution. In particular, a
+	// Fleet DRA Pod cannot be implemented by this direct CRI launcher.
+	if len(pod.Spec.ResourceClaims) != 0 {
+		return nil, errors.New("signed Pod resource claims are unsupported by direct CRI launch")
+	}
+	for _, container := range []*corev1.Container{runtimeContainer, workerContainer} {
+		if err := validateProductionContainer(container); err != nil {
+			return nil, fmt.Errorf("validate signed container %s before launch: %w", container.Name, err)
+		}
+		if _, err := productionResources(container.Resources); err != nil {
+			return nil, fmt.Errorf("validate signed container %s resources before launch: %w", container.Name, err)
+		}
+	}
 	uid, gid, err := productionCredentials(*pod, *runtimeContainer, *workerContainer)
 	if err != nil {
 		return nil, err
