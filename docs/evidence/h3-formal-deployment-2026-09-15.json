@@ -1,0 +1,2006 @@
+{
+  "schema_version": 1,
+  "at": "2026-09-15T13:19:35.770482+00:00",
+  "formal_deployment_complete": false,
+  "formal_job_acceptance_passed": false,
+  "reports": {
+    "context/build-inputs.json": {
+      "schema_version": 1,
+      "revision": "6619846ed295ff8d0d8e880d10e9775445bee962",
+      "source_archive_sha256": "55322d0a1856d86ae5f26954aefb9613056b07fa07bd5534282eeefcd9f253ca",
+      "files": {
+        "bin/vela-artifact-validator": {
+          "sha256": "f9006b47cd2e5a06f40ffdf3f856f04fd6301e6b7c8f81b6e9fe91cd2364c724",
+          "bytes": 11800702
+        },
+        "bin/vela-control": {
+          "sha256": "d7b6e484b7c1d519645d17b9493240952036186bf1254dfc90e9b78e8b0322cc",
+          "bytes": 63082622
+        },
+        "bin/vela-fleet-controller": {
+          "sha256": "1f294413e1574aaa99ec9dd586e20f0dfe5b92857341ae3972a1b80bcd161684",
+          "bytes": 26157182
+        },
+        "bin/vela-model-runtime": {
+          "sha256": "2a62f91e1968b2c7f2d97c00147c3c981b7faa855c146c92755291dd47855ef7",
+          "bytes": 15974526
+        },
+        "bin/vela-stage-worker-agent": {
+          "sha256": "ed2a8d4828274da0b97f134162b596d23b480369f16300edef42fb1d7fcbccdd",
+          "bytes": 23421054
+        },
+        "h3-commands/h3-dit": {
+          "sha256": "9aceebeed49f825a16163f846ca212d50f351e009f4632c503dfc64666776bb5",
+          "bytes": 1601662
+        },
+        "h3-commands/h3-encoder": {
+          "sha256": "45c02b1e973959997a75c785feb5735c1e169ccff902f90e5604882bd7f4d53a",
+          "bytes": 1601662
+        },
+        "h3-commands/h3-vae-decoder": {
+          "sha256": "392a2d91def3c81f042a19c3d034b94ce309952240085f204b9776c6dc76e2a1",
+          "bytes": 1601662
+        }
+      }
+    },
+    "images.json": {
+      "started_at": "2026-09-15T12:55:28.315180+00:00",
+      "images": {
+        "vela-control": {
+          "tag": "10.1.201.70:5005/vela-control:6619846-h3-composition-20260915",
+          "id": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+          "bytes": 68933663,
+          "digests": [
+            "10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea"
+          ],
+          "recipe_sha256": "4396018b8e211b4853869b17955d149e825f905c95b4fbdbe1d7a99e8a01b25e"
+        },
+        "vela-fleet-controller": {
+          "tag": "10.1.201.70:5005/vela-fleet-controller:6619846-h3-composition-20260915",
+          "id": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+          "bytes": 18819449,
+          "digests": [
+            "10.1.201.70:5005/vela-fleet-controller@sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e"
+          ],
+          "recipe_sha256": "9a0197a3c0bfab3263bc9392171f11089e31ab445373600d432d50aa5e518d49"
+        },
+        "vela-stage-worker-agent": {
+          "tag": "10.1.201.70:5005/vela-stage-worker-agent:6619846-h3-composition-20260915",
+          "id": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+          "bytes": 8149731,
+          "digests": [
+            "10.1.201.70:5005/vela-stage-worker-agent@sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60"
+          ],
+          "recipe_sha256": "3df3b2f022f69da810fa131d113ea3c2839ca05087985fff39fef74b81d20baa"
+        },
+        "vela-h3-stage-runtime": {
+          "tag": "10.1.201.70:5005/vela-h3-stage-runtime:6619846-h3-composition-20260915",
+          "id": "sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8",
+          "bytes": 6388365502,
+          "digests": [
+            "10.1.201.70:5005/vela-h3-stage-runtime@sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8"
+          ],
+          "recipe_sha256": "59c7e3394ca2296fde9d71175649d70ca571d1aaa54bacfbbef489e1e266b8c2"
+        }
+      },
+      "complete": true,
+      "finished_at": "2026-09-15T12:55:45.306373+00:00"
+    },
+    "image-validation.json": {
+      "at": "2026-09-15T13:01:54.470724+00:00",
+      "checks": [
+        {
+          "image": "vela-control",
+          "file": "/usr/local/bin/vela-control",
+          "passed": true
+        },
+        {
+          "image": "vela-control",
+          "file": "/usr/local/bin/vela-artifact-validator",
+          "passed": true
+        },
+        {
+          "image": "vela-fleet-controller",
+          "file": "/usr/local/bin/vela-fleet-controller",
+          "passed": true
+        },
+        {
+          "image": "vela-stage-worker-agent",
+          "file": "/usr/local/bin/vela-stage-worker-agent",
+          "passed": true
+        },
+        {
+          "image": "vela-h3-stage-runtime",
+          "file": "/usr/local/bin/vela-model-runtime",
+          "passed": true
+        },
+        {
+          "image": "vela-h3-stage-runtime",
+          "file": "/opt/vela/bin/h3-encoder",
+          "passed": true
+        },
+        {
+          "image": "vela-h3-stage-runtime",
+          "file": "/opt/vela/bin/h3-dit",
+          "passed": true
+        },
+        {
+          "image": "vela-h3-stage-runtime",
+          "file": "/opt/vela/bin/h3-vae-decoder",
+          "passed": true
+        },
+        {
+          "check": "model-runtime CLI help",
+          "passed": true
+        },
+        {
+          "check": "h3-encoder strict argv",
+          "passed": true
+        },
+        {
+          "check": "h3-dit strict argv",
+          "passed": true
+        },
+        {
+          "check": "h3-vae-decoder strict argv",
+          "passed": true
+        },
+        {
+          "check": "H3 Python modules import",
+          "passed": true,
+          "torch": "2.13.0+cu130"
+        }
+      ],
+      "passed": true
+    },
+    "schema99.json": {
+      "started_at": "2026-09-15T13:00:25.745732+00:00",
+      "applied": true,
+      "primary": "vela-postgres-1",
+      "migrations": {
+        "00097_job_origin_trace.sql": "385db14f7ba2c2c118af9629540aef01b7a8ad6c618906cead07c311724c0311",
+        "00098_stage_assignment_origin_trace.sql": "565c77a79cac12158f767ba4f5a3f08ccf7ee3202001bdf27c04392e25623c74",
+        "00099_h3_native_media_contract.sql": "e52f5d2f8cfab43c5d0b058afab1278cfb84f9e9883e33d1fbb97d32e74a2738"
+      },
+      "rehearsal": "BEGIN\nSET\nALTER TABLE\nCREATE FUNCTION\nREVOKE\nCREATE TRIGGER\nALTER FUNCTION\nREVOKE\nCREATE FUNCTION\nALTER FUNCTION\nREVOKE\nGRANT\nALTER TABLE\nROLLBACK\n",
+      "backup": {
+        "path": "/opt/vela-cluster/h3-formal-20260915/app-before-schema99.dump",
+        "bytes": 3098630,
+        "sha256": "cc8158c2b2d136807004beaa3504c4227467183336a9478dc8ac0cdee9369f87"
+      },
+      "goose_stdout": "PASS schema 96 -> 99 via Goose\n",
+      "goose_stderr": "2026/09/15 13:00:55 OK   00097_job_origin_trace.sql (13.47ms)\n2026/09/15 13:00:55 OK   00098_stage_assignment_origin_trace.sql (7.17ms)\n2026/09/15 13:00:56 OK   00099_h3_native_media_contract.sql (11.02ms)\n2026/09/15 13:00:56 goose: successfully migrated database to version: 99\n",
+      "goose_exit": 0,
+      "postcheck": "99\n0\nmedia_contract\norigin_trace_parent\n",
+      "finished_at": "2026-09-15T13:00:56.583222+00:00"
+    },
+    "control-rollout.json": {
+      "started_at": "2026-09-15T13:02:48.129186+00:00",
+      "passed": true,
+      "deployments": {
+        "vela-control": {
+          "image": "10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+          "ready": 2,
+          "updated": 2,
+          "generation": 19
+        },
+        "vela-fleet-controller": {
+          "image": "10.1.201.70:5005/vela-fleet-controller@sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+          "ready": 2,
+          "updated": 2,
+          "generation": 3
+        }
+      },
+      "rolled_back": false,
+      "finished_at": "2026-09-15T13:03:53.921733+00:00"
+    },
+    "postflight-details.json": {
+      "at": "2026-09-15T13:08:24.730722+00:00",
+      "nodes": [
+        {
+          "name": "llmpool01",
+          "ips": [
+            "10.1.201.70"
+          ],
+          "gpus": null,
+          "dra": {}
+        },
+        {
+          "name": "llmpool02",
+          "ips": [
+            "10.1.201.71"
+          ],
+          "gpus": null,
+          "dra": {}
+        },
+        {
+          "name": "marslab-gpu-01",
+          "ips": [
+            "10.1.201.66"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-10",
+          "ips": [
+            "10.1.201.17"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-11",
+          "ips": [
+            "10.1.201.39"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-12",
+          "ips": [
+            "10.1.201.30"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-120",
+          "ips": [
+            "10.1.201.58"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-121",
+          "ips": [
+            "10.1.201.60"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-124",
+          "ips": [
+            "10.1.201.59"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-125",
+          "ips": [
+            "10.1.201.65"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-126",
+          "ips": [
+            "10.1.201.63"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-127",
+          "ips": [
+            "10.1.201.64"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-128",
+          "ips": [
+            "10.1.201.62"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-13",
+          "ips": [
+            "10.1.201.41"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-14",
+          "ips": [
+            "10.1.201.21"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-15",
+          "ips": [
+            "10.1.201.46"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-16",
+          "ips": [
+            "10.1.201.29"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-17",
+          "ips": [
+            "10.1.201.26"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-18",
+          "ips": [
+            "10.1.201.31"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-19",
+          "ips": [
+            "10.1.201.42"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-20",
+          "ips": [
+            "10.1.201.50"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-21",
+          "ips": [
+            "10.1.201.27"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-22",
+          "ips": [
+            "10.1.201.11"
+          ],
+          "gpus": "0",
+          "dra": {
+            "vela.ai/dra-pilot": "h3-256gb-v1"
+          }
+        },
+        {
+          "name": "server-23",
+          "ips": [
+            "10.1.201.12"
+          ],
+          "gpus": "0",
+          "dra": {
+            "vela.ai/dra-pilot": "h3-256gb-v1"
+          }
+        },
+        {
+          "name": "server-25",
+          "ips": [
+            "10.1.201.33"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-26",
+          "ips": [
+            "10.1.201.43"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-27",
+          "ips": [
+            "10.1.201.51"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-28",
+          "ips": [
+            "10.1.201.22"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-29",
+          "ips": [
+            "10.1.201.24"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-30",
+          "ips": [
+            "10.1.201.32"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-31",
+          "ips": [
+            "10.1.201.13"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-33",
+          "ips": [
+            "10.1.201.23"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-34",
+          "ips": [
+            "10.1.201.15"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-35",
+          "ips": [
+            "10.1.201.45"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-36",
+          "ips": [
+            "10.1.201.19"
+          ],
+          "gpus": "0",
+          "dra": {}
+        },
+        {
+          "name": "server-37",
+          "ips": [
+            "10.1.201.38"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-38",
+          "ips": [
+            "10.1.201.18"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-39",
+          "ips": [
+            "10.1.201.16"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-40",
+          "ips": [
+            "10.1.201.35"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-41",
+          "ips": [
+            "10.1.201.14"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-42",
+          "ips": [
+            "10.1.201.20"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-43",
+          "ips": [
+            "10.1.201.25"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-44",
+          "ips": [
+            "10.1.201.40"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-45",
+          "ips": [
+            "10.1.201.34"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-46",
+          "ips": [
+            "10.1.201.36"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-47",
+          "ips": [
+            "10.1.201.28"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-48",
+          "ips": [
+            "10.1.201.48"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-49",
+          "ips": [
+            "10.1.201.55"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-50",
+          "ips": [
+            "10.1.201.52"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-51",
+          "ips": [
+            "10.1.201.49"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-52",
+          "ips": [
+            "10.1.201.47"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-53",
+          "ips": [
+            "10.1.201.54"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "server-54",
+          "ips": [
+            "10.1.201.53"
+          ],
+          "gpus": "8",
+          "dra": {}
+        },
+        {
+          "name": "servser-24",
+          "ips": [
+            "10.1.201.37"
+          ],
+          "gpus": "8",
+          "dra": {}
+        }
+      ],
+      "resourceclaims": [],
+      "dra_slices": [
+        {
+          "name": "00000-gpu.nvidia.com-server-22-bv8db",
+          "node": "server-22",
+          "driver": "gpu.nvidia.com",
+          "devices": 8
+        },
+        {
+          "name": "00000-gpu.nvidia.com-server-23-mc7rb",
+          "node": "server-23",
+          "driver": "gpu.nvidia.com",
+          "devices": 8
+        }
+      ],
+      "api": {
+        "10.1.201.70": {
+          "status": 401,
+          "content_type": "application/json",
+          "bytes": 72
+        },
+        "10.1.201.71": {
+          "status": 401,
+          "content_type": "application/json",
+          "bytes": 72
+        }
+      },
+      "database": "jobs|0\nworker_instances|0\nmodel_residencies|0\nresidency_plan_revisions|0\nprofile_certifications|0\nproduction_gate_receipts|0\n",
+      "replications": {
+        "vela-fleet-controller-replicas.json": {
+          "at": "2026-09-15T13:06:51.112191+00:00",
+          "source": "10.1.201.70",
+          "repository": "vela-fleet-controller",
+          "root_digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+          "targets": [
+            {
+              "host": "10.1.201.71",
+              "manifests": [
+                {
+                  "digest": "sha256:2ca07a4b1d0771a3e6953883d7038492936900ba01438054d1422c8d75ea813f",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 864,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:84cd6752bc226112e949cfa71d8b1fceeef5983ac76d2c6f0e61d4afe34d76be",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 855,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:c19547dfd2c859d0368ad171d0719726a8d7eac5cd0a68eec7c1a63b677ee91b",
+                  "size": 2168,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+                  "size": 124284,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+                  "size": 9345642,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:56f95725d035590fcafa9c22afa3ab0a107ef5bdfe498cb20c4d62b68a547762",
+                  "size": 9345636,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:d255ed8a0b13cc22f0a38ad8dd2881bd358280fc3fbddb96bc8607134de6826f",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:5714688a1b2850fa4a952f76275c55a8049af1a669640092bb83ce33cba8fdf2",
+                  "size": 1234,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            },
+            {
+              "host": "10.1.201.66",
+              "manifests": [
+                {
+                  "digest": "sha256:2ca07a4b1d0771a3e6953883d7038492936900ba01438054d1422c8d75ea813f",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 864,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:84cd6752bc226112e949cfa71d8b1fceeef5983ac76d2c6f0e61d4afe34d76be",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 855,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:c19547dfd2c859d0368ad171d0719726a8d7eac5cd0a68eec7c1a63b677ee91b",
+                  "size": 2168,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+                  "size": 124284,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+                  "size": 9345642,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:56f95725d035590fcafa9c22afa3ab0a107ef5bdfe498cb20c4d62b68a547762",
+                  "size": 9345636,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:d255ed8a0b13cc22f0a38ad8dd2881bd358280fc3fbddb96bc8607134de6826f",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:5714688a1b2850fa4a952f76275c55a8049af1a669640092bb83ce33cba8fdf2",
+                  "size": 1234,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICATION_PASS"
+        },
+        "vela-control-replicas.json": {
+          "at": "2026-09-15T13:06:44.827549+00:00",
+          "source": "10.1.201.70",
+          "repository": "vela-control",
+          "root_digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+          "targets": [
+            {
+              "host": "10.1.201.71",
+              "manifests": [
+                {
+                  "digest": "sha256:dc0740712b841e42c2c99338504e4aa245e383c9296dac02e02d47740b48b0b9",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 1635,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e68d1967d2472ef43eba560b4979236f7bb422f48714afac2a661f0702884539",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 856,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:7d0073ddc332be515065d31c060582b6a588d30de5940cb58315e2e93b561e96",
+                  "size": 3708,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+                  "size": 124284,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+                  "size": 19118756,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+                  "size": 4573237,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+                  "size": 1278515,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+                  "size": 19624998,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+                  "size": 19634253,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+                  "size": 4573421,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:911ba7eb5f2912278edce4ff83843a4f1f8c0ce1c247ff2cfc1d7cb9113d6593",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:30c6645129273b3d1fc9f8e520a29030f2d52c7db2ee302f17a9c48125c75af4",
+                  "size": 1206,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            },
+            {
+              "host": "10.1.201.66",
+              "manifests": [
+                {
+                  "digest": "sha256:dc0740712b841e42c2c99338504e4aa245e383c9296dac02e02d47740b48b0b9",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 1635,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e68d1967d2472ef43eba560b4979236f7bb422f48714afac2a661f0702884539",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 856,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:7d0073ddc332be515065d31c060582b6a588d30de5940cb58315e2e93b561e96",
+                  "size": 3708,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+                  "size": 124284,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+                  "size": 19118756,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+                  "size": 4573237,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+                  "size": 1278515,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+                  "size": 19624998,
+                  "uploaded": false,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+                  "size": 19634253,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+                  "size": 4573421,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:911ba7eb5f2912278edce4ff83843a4f1f8c0ce1c247ff2cfc1d7cb9113d6593",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:30c6645129273b3d1fc9f8e520a29030f2d52c7db2ee302f17a9c48125c75af4",
+                  "size": 1206,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICATION_PASS"
+        },
+        "vela-stage-worker-agent-replicas.json": {
+          "at": "2026-09-15T13:06:55.085694+00:00",
+          "source": "10.1.201.70",
+          "repository": "vela-stage-worker-agent",
+          "root_digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+          "targets": [
+            {
+              "host": "10.1.201.71",
+              "manifests": [
+                {
+                  "digest": "sha256:75f6f37d0bc50be63ba4158ebb84e1040ea808e676c8c9e31c32174de2a9783f",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 672,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:25a063dea901d4f5b36fbe7d4d12429c41ab65eb6e33f45c765b49e132600773",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 855,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:d9c4436247c7dd153cdd7e725917412708c864bf1c7803ab1b8348eef6dcdb14",
+                  "size": 1449,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:3644297fa124d30084556fccfbb17aef66ecb833a08957d6a9456a45d6f44716",
+                  "size": 124284,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:2f88b3f45ec03068f51a67481f0fef86b17497cfd918fa185c98821d0d113283",
+                  "size": 8022471,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:3273fe0fac76f120f42a726147ba89e0841daf0f89886cfc520d100299b85475",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:4ddf38c9eaa434e0dd7272866557fe351625f25c276e809abc513b8dc2351490",
+                  "size": 1229,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            },
+            {
+              "host": "10.1.201.66",
+              "manifests": [
+                {
+                  "digest": "sha256:75f6f37d0bc50be63ba4158ebb84e1040ea808e676c8c9e31c32174de2a9783f",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 672,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:25a063dea901d4f5b36fbe7d4d12429c41ab65eb6e33f45c765b49e132600773",
+                  "media_type": "application/vnd.oci.image.manifest.v1+json",
+                  "size": 566,
+                  "verified": true
+                },
+                {
+                  "digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+                  "media_type": "application/vnd.oci.image.index.v1+json",
+                  "size": 855,
+                  "verified": true
+                }
+              ],
+              "blobs": [
+                {
+                  "digest": "sha256:d9c4436247c7dd153cdd7e725917412708c864bf1c7803ab1b8348eef6dcdb14",
+                  "size": 1449,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:3644297fa124d30084556fccfbb17aef66ecb833a08957d6a9456a45d6f44716",
+                  "size": 124284,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:2f88b3f45ec03068f51a67481f0fef86b17497cfd918fa185c98821d0d113283",
+                  "size": 8022471,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:3273fe0fac76f120f42a726147ba89e0841daf0f89886cfc520d100299b85475",
+                  "size": 167,
+                  "uploaded": true,
+                  "sha256_verified": true
+                },
+                {
+                  "digest": "sha256:4ddf38c9eaa434e0dd7272866557fe351625f25c276e809abc513b8dc2351490",
+                  "size": 1229,
+                  "uploaded": true,
+                  "sha256_verified": true
+                }
+              ],
+              "result": "EXACT_IMAGE_REPLICA_PASS"
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICATION_PASS"
+        }
+      },
+      "replicate_log_tail": "{\"target\": \"10.1.201.71\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 10, \"verified_bytes\": 68932545}\n{\"target\": \"10.1.201.66\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 10, \"verified_bytes\": 68932545}\n{\"target\": \"10.1.201.71\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 6, \"verified_bytes\": 18819131}\n{\"target\": \"10.1.201.66\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 6, \"verified_bytes\": 18819131}\n{\"target\": \"10.1.201.71\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 5, \"verified_bytes\": 8149600}\n{\"target\": \"10.1.201.66\", \"result\": \"EXACT_IMAGE_REPLICA_PASS\", \"manifests\": 3, \"blobs\": 5, \"verified_bytes\": 8149600}\n"
+    },
+    "vela-h3-stage-runtime-attempt02-replicas.json": {
+      "at": "2026-09-15T13:15:07.984716+00:00",
+      "source": "10.1.201.70",
+      "repository": "vela-h3-stage-runtime",
+      "root_digest": "sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8",
+      "socket_timeout_seconds": 300.0,
+      "targets": [
+        {
+          "host": "10.1.201.71",
+          "manifests": [
+            {
+              "digest": "sha256:99f28f012ac27b1e4ed2ed0e7cbc489748655a84de88cffd5155b65c137a6a53",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 3159,
+              "verified": true
+            },
+            {
+              "digest": "sha256:25f3b7c842e692dffca991509d8743a71e157fbbf69f3632c6dea8d6be80c3ff",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 856,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:02211f686bfefbb613df18b6ddc0ad3a2db1dab69e269cd44a817d57401edf4a",
+              "size": 22017,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4b3ffd8ccb5201a0fc03585952effb4ed2d1ea5e704d2e7330212fb8b16c86a3",
+              "size": 29723147,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:c567a87f21d2f8e46feb4f6c427eb5559d45a1a222f73d601352403d13af1ada",
+              "size": 4547272,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b3b5bd928240da4156c41fcfb400c1f4f8674acd2faee0413ab5a032dfb5f76",
+              "size": 105166716,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:70f87b6ed43e1cbbe67ce74c7877fb771bf352b25d602a82ee4f840f2e265155",
+              "size": 182,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:526d5438c009ab7178af1646fed10ff6f47a73f5a1ae7b9f49e63e4ade7e3ae6",
+              "size": 6886,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b9df01baa2f27569f6e0ec11de61253c3b7daacb495fa94f19e3e98814474d2",
+              "size": 290409262,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:ea397f7415a7092c45a8227e2d9d9d9a32de68a9c3802a1926877b9376885afe",
+              "size": 1533127314,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:68540161c74ec1dc33c80e8a9ab547591ec2e0b92ee87760b9853c8484564aed",
+              "size": 4325283978,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:52f0642429a5dfb5d0d5583546cfb154bf2313d9f689c679788d14c53a51e845",
+              "size": 91766544,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b0da492a27ab3f00481b3f7820cf7781c6b5191a9aca3a5b5a0c081f4ddb9d1",
+              "size": 857,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:30734d94209725376a6ddc3e6844b9aa005cffdb460d463058d117a97cfcf225",
+              "size": 14828,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+              "size": 32,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:560e62966b3d8638d2d91055dcc80f23425074591da4020bf35e8670c9b9ff92",
+              "size": 6100957,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:85b2c4c3436aa171ec2d0745f5d129beb51057b403b40925feb111a809cc2b75",
+              "size": 2191463,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0e032be74c6894e668fb6ba472b206773aabcf811a1b493c4176463a1934cc20",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:d4f965154757792969a83858222577fdeed9a6b56feae5af3a77fcf99cf3f393",
+              "size": 1223,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        },
+        {
+          "host": "10.1.201.66",
+          "manifests": [
+            {
+              "digest": "sha256:99f28f012ac27b1e4ed2ed0e7cbc489748655a84de88cffd5155b65c137a6a53",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 3159,
+              "verified": true
+            },
+            {
+              "digest": "sha256:25f3b7c842e692dffca991509d8743a71e157fbbf69f3632c6dea8d6be80c3ff",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 856,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:02211f686bfefbb613df18b6ddc0ad3a2db1dab69e269cd44a817d57401edf4a",
+              "size": 22017,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4b3ffd8ccb5201a0fc03585952effb4ed2d1ea5e704d2e7330212fb8b16c86a3",
+              "size": 29723147,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:c567a87f21d2f8e46feb4f6c427eb5559d45a1a222f73d601352403d13af1ada",
+              "size": 4547272,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b3b5bd928240da4156c41fcfb400c1f4f8674acd2faee0413ab5a032dfb5f76",
+              "size": 105166716,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:70f87b6ed43e1cbbe67ce74c7877fb771bf352b25d602a82ee4f840f2e265155",
+              "size": 182,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:526d5438c009ab7178af1646fed10ff6f47a73f5a1ae7b9f49e63e4ade7e3ae6",
+              "size": 6886,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b9df01baa2f27569f6e0ec11de61253c3b7daacb495fa94f19e3e98814474d2",
+              "size": 290409262,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:ea397f7415a7092c45a8227e2d9d9d9a32de68a9c3802a1926877b9376885afe",
+              "size": 1533127314,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:68540161c74ec1dc33c80e8a9ab547591ec2e0b92ee87760b9853c8484564aed",
+              "size": 4325283978,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:52f0642429a5dfb5d0d5583546cfb154bf2313d9f689c679788d14c53a51e845",
+              "size": 91766544,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b0da492a27ab3f00481b3f7820cf7781c6b5191a9aca3a5b5a0c081f4ddb9d1",
+              "size": 857,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:30734d94209725376a6ddc3e6844b9aa005cffdb460d463058d117a97cfcf225",
+              "size": 14828,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+              "size": 32,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:560e62966b3d8638d2d91055dcc80f23425074591da4020bf35e8670c9b9ff92",
+              "size": 6100957,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:85b2c4c3436aa171ec2d0745f5d129beb51057b403b40925feb111a809cc2b75",
+              "size": 2191463,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0e032be74c6894e668fb6ba472b206773aabcf811a1b493c4176463a1934cc20",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:d4f965154757792969a83858222577fdeed9a6b56feae5af3a77fcf99cf3f393",
+              "size": 1223,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICATION_PASS"
+    },
+    "vela-fleet-controller-replicas.json": {
+      "at": "2026-09-15T13:06:51.112191+00:00",
+      "source": "10.1.201.70",
+      "repository": "vela-fleet-controller",
+      "root_digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+      "targets": [
+        {
+          "host": "10.1.201.71",
+          "manifests": [
+            {
+              "digest": "sha256:2ca07a4b1d0771a3e6953883d7038492936900ba01438054d1422c8d75ea813f",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 864,
+              "verified": true
+            },
+            {
+              "digest": "sha256:84cd6752bc226112e949cfa71d8b1fceeef5983ac76d2c6f0e61d4afe34d76be",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 855,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:c19547dfd2c859d0368ad171d0719726a8d7eac5cd0a68eec7c1a63b677ee91b",
+              "size": 2168,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+              "size": 124284,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+              "size": 9345642,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:56f95725d035590fcafa9c22afa3ab0a107ef5bdfe498cb20c4d62b68a547762",
+              "size": 9345636,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:d255ed8a0b13cc22f0a38ad8dd2881bd358280fc3fbddb96bc8607134de6826f",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:5714688a1b2850fa4a952f76275c55a8049af1a669640092bb83ce33cba8fdf2",
+              "size": 1234,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        },
+        {
+          "host": "10.1.201.66",
+          "manifests": [
+            {
+              "digest": "sha256:2ca07a4b1d0771a3e6953883d7038492936900ba01438054d1422c8d75ea813f",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 864,
+              "verified": true
+            },
+            {
+              "digest": "sha256:84cd6752bc226112e949cfa71d8b1fceeef5983ac76d2c6f0e61d4afe34d76be",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 855,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:c19547dfd2c859d0368ad171d0719726a8d7eac5cd0a68eec7c1a63b677ee91b",
+              "size": 2168,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+              "size": 124284,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+              "size": 9345642,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:56f95725d035590fcafa9c22afa3ab0a107ef5bdfe498cb20c4d62b68a547762",
+              "size": 9345636,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:d255ed8a0b13cc22f0a38ad8dd2881bd358280fc3fbddb96bc8607134de6826f",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:5714688a1b2850fa4a952f76275c55a8049af1a669640092bb83ce33cba8fdf2",
+              "size": 1234,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICATION_PASS"
+    },
+    "vela-control-replicas.json": {
+      "at": "2026-09-15T13:06:44.827549+00:00",
+      "source": "10.1.201.70",
+      "repository": "vela-control",
+      "root_digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+      "targets": [
+        {
+          "host": "10.1.201.71",
+          "manifests": [
+            {
+              "digest": "sha256:dc0740712b841e42c2c99338504e4aa245e383c9296dac02e02d47740b48b0b9",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 1635,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e68d1967d2472ef43eba560b4979236f7bb422f48714afac2a661f0702884539",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 856,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:7d0073ddc332be515065d31c060582b6a588d30de5940cb58315e2e93b561e96",
+              "size": 3708,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+              "size": 124284,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+              "size": 19118756,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+              "size": 4573237,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+              "size": 1278515,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+              "size": 19624998,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+              "size": 19634253,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+              "size": 4573421,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:911ba7eb5f2912278edce4ff83843a4f1f8c0ce1c247ff2cfc1d7cb9113d6593",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:30c6645129273b3d1fc9f8e520a29030f2d52c7db2ee302f17a9c48125c75af4",
+              "size": 1206,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        },
+        {
+          "host": "10.1.201.66",
+          "manifests": [
+            {
+              "digest": "sha256:dc0740712b841e42c2c99338504e4aa245e383c9296dac02e02d47740b48b0b9",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 1635,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e68d1967d2472ef43eba560b4979236f7bb422f48714afac2a661f0702884539",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 856,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:7d0073ddc332be515065d31c060582b6a588d30de5940cb58315e2e93b561e96",
+              "size": 3708,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+              "size": 124284,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+              "size": 19118756,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+              "size": 4573237,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+              "size": 1278515,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+              "size": 19624998,
+              "uploaded": false,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+              "size": 19634253,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+              "size": 4573421,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:911ba7eb5f2912278edce4ff83843a4f1f8c0ce1c247ff2cfc1d7cb9113d6593",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:30c6645129273b3d1fc9f8e520a29030f2d52c7db2ee302f17a9c48125c75af4",
+              "size": 1206,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICATION_PASS"
+    },
+    "vela-h3-stage-runtime-replicas.json": {
+      "at": "2026-09-15T13:06:58.365792+00:00",
+      "source": "10.1.201.70",
+      "repository": "vela-h3-stage-runtime",
+      "root_digest": "sha256:c6c5d23e695a5a76017c583facdbbf9036a871d7fc558b14b4f38f27612207c8",
+      "targets": [
+        {
+          "host": "10.1.201.71",
+          "manifests": [],
+          "blobs": [
+            {
+              "digest": "sha256:02211f686bfefbb613df18b6ddc0ad3a2db1dab69e269cd44a817d57401edf4a",
+              "size": 22017,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4b3ffd8ccb5201a0fc03585952effb4ed2d1ea5e704d2e7330212fb8b16c86a3",
+              "size": 29723147,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:c567a87f21d2f8e46feb4f6c427eb5559d45a1a222f73d601352403d13af1ada",
+              "size": 4547272,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b3b5bd928240da4156c41fcfb400c1f4f8674acd2faee0413ab5a032dfb5f76",
+              "size": 105166716,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:70f87b6ed43e1cbbe67ce74c7877fb771bf352b25d602a82ee4f840f2e265155",
+              "size": 182,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:526d5438c009ab7178af1646fed10ff6f47a73f5a1ae7b9f49e63e4ade7e3ae6",
+              "size": 6886,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:0b9df01baa2f27569f6e0ec11de61253c3b7daacb495fa94f19e3e98814474d2",
+              "size": 290409262,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:ea397f7415a7092c45a8227e2d9d9d9a32de68a9c3802a1926877b9376885afe",
+              "size": 1533127314,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ]
+        }
+      ]
+    },
+    "vela-stage-worker-agent-replicas.json": {
+      "at": "2026-09-15T13:06:55.085694+00:00",
+      "source": "10.1.201.70",
+      "repository": "vela-stage-worker-agent",
+      "root_digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+      "targets": [
+        {
+          "host": "10.1.201.71",
+          "manifests": [
+            {
+              "digest": "sha256:75f6f37d0bc50be63ba4158ebb84e1040ea808e676c8c9e31c32174de2a9783f",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 672,
+              "verified": true
+            },
+            {
+              "digest": "sha256:25a063dea901d4f5b36fbe7d4d12429c41ab65eb6e33f45c765b49e132600773",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 855,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:d9c4436247c7dd153cdd7e725917412708c864bf1c7803ab1b8348eef6dcdb14",
+              "size": 1449,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:3644297fa124d30084556fccfbb17aef66ecb833a08957d6a9456a45d6f44716",
+              "size": 124284,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:2f88b3f45ec03068f51a67481f0fef86b17497cfd918fa185c98821d0d113283",
+              "size": 8022471,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:3273fe0fac76f120f42a726147ba89e0841daf0f89886cfc520d100299b85475",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4ddf38c9eaa434e0dd7272866557fe351625f25c276e809abc513b8dc2351490",
+              "size": 1229,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        },
+        {
+          "host": "10.1.201.66",
+          "manifests": [
+            {
+              "digest": "sha256:75f6f37d0bc50be63ba4158ebb84e1040ea808e676c8c9e31c32174de2a9783f",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 672,
+              "verified": true
+            },
+            {
+              "digest": "sha256:25a063dea901d4f5b36fbe7d4d12429c41ab65eb6e33f45c765b49e132600773",
+              "media_type": "application/vnd.oci.image.manifest.v1+json",
+              "size": 566,
+              "verified": true
+            },
+            {
+              "digest": "sha256:b9ecf13abf48df1b0aed824bf88072744e2f50bea31b0af90f23d08b2635ec60",
+              "media_type": "application/vnd.oci.image.index.v1+json",
+              "size": 855,
+              "verified": true
+            }
+          ],
+          "blobs": [
+            {
+              "digest": "sha256:d9c4436247c7dd153cdd7e725917412708c864bf1c7803ab1b8348eef6dcdb14",
+              "size": 1449,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:3644297fa124d30084556fccfbb17aef66ecb833a08957d6a9456a45d6f44716",
+              "size": 124284,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:2f88b3f45ec03068f51a67481f0fef86b17497cfd918fa185c98821d0d113283",
+              "size": 8022471,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:3273fe0fac76f120f42a726147ba89e0841daf0f89886cfc520d100299b85475",
+              "size": 167,
+              "uploaded": true,
+              "sha256_verified": true
+            },
+            {
+              "digest": "sha256:4ddf38c9eaa434e0dd7272866557fe351625f25c276e809abc513b8dc2351490",
+              "size": 1229,
+              "uploaded": true,
+              "sha256_verified": true
+            }
+          ],
+          "result": "EXACT_IMAGE_REPLICA_PASS"
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICATION_PASS"
+    }
+  },
+  "host_preflight": {
+    "10.1.201.11": {
+      "hostname": "server-22",
+      "kernel": "6.8.0-139-generic",
+      "filesystem": {
+        "rc": 0,
+        "out": "{\n   \"filesystems\": [\n      {\n         \"target\": \"/\",\n         \"source\": \"/dev/mapper/ubuntu--vg-ubuntu--lv\",\n         \"fstype\": \"ext4\",\n         \"options\": \"rw,relatime\"\n      }\n   ]\n}\n",
+        "err": ""
+      },
+      "disk": {
+        "rc": 0,
+        "out": "Filesystem                           1B-blocks         Used    Available Use% Mounted on\n/dev/mapper/ubuntu--vg-ubuntu--lv 941289119744 104632139776 797269114880  12% /\n",
+        "err": ""
+      },
+      "units": {
+        "rc": 0,
+        "out": "Id=vela-node-agent.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-pidfd-broker.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-runtime-policy-issuer.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-runtime-image-maintenance.service\nActiveState=inactive\nUnitFileState=\n",
+        "err": ""
+      },
+      "gpu": {
+        "rc": 0,
+        "out": "GPU-c08137e5-6932-a25d-27d3-03506fbf924c, 00000000:01:00.0, 65536 MiB, 0 MiB\nGPU-3302ac78-cc9a-eb4b-12d3-a6f759f0a0f6, 00000000:25:00.0, 65536 MiB, 0 MiB\nGPU-2f4bc32c-d649-9b5e-ea5c-98d25ffb2933, 00000000:41:00.0, 65536 MiB, 0 MiB\nGPU-45e7fbbe-e6c5-d874-dd35-b5af6dcbe0a2, 00000000:61:00.0, 65536 MiB, 0 MiB\nGPU-95174776-21f1-cce6-6333-e92edae8b173, 00000000:81:00.0, 65536 MiB, 0 MiB\nGPU-2b5462b1-cede-2f3c-8c94-6ce2e5f86a15, 00000000:A1:00.0, 65536 MiB, 0 MiB\nGPU-984090d3-8d01-3a2c-c65f-92d11826b38f, 00000000:C1:00.0, 65536 MiB, 0 MiB\nGPU-75d4dda6-4ded-74bc-3a8c-a37a668c2515, 00000000:E1:00.0, 65536 MiB, 0 MiB\n",
+        "err": ""
+      },
+      "containerd": {
+        "rc": 0,
+        "out": "TYPE                                      ID                       PLATFORMS      STATUS    \nio.containerd.content.v1                  content                  -              ok        \nio.containerd.image-verifier.v1           bindir                   -              ok        \nio.containerd.internal.v1                 opt                      -              ok        \nio.containerd.warning.v1                  deprecations             -              ok        \nio.containerd.mount-handler.v1            erofs                    linux/amd64    ok        \nio.containerd.snapshotter.v1              blockfile                linux/amd64    skip      \nio.containerd.snapshotter.v1              btrfs                    linux/amd64    skip      \nio.containerd.snapshotter.v1              devmapper                linux/amd64    skip      \nio.containerd.snapshotter.v1              erofs                    linux/amd64    skip      \nio.containerd.snapshotter.v1              native                   linux/amd64    ok        \nio.containerd.snapshotter.v1              overlayfs                linux/amd64    ok        \nio.containerd.snapshotter.v1              fuse-overlayfs           linux/amd64    ok        \nio.containerd.snapshotter.v1              zfs                      linux/amd64    skip      \nio.containerd.event.v1                    exchange                 -              ok        \nio.containerd.monitor.task.v1             cgroups                  linux/amd64    ok        \nio.containerd.snapshotter.v1              stargz                   linux/amd64    ok        \nio.containerd.snapshotter.v1              nix                      linux/amd64    ok        \nio.containerd.metadata.v1                 bolt                     -              ok        \nio.containerd.gc.v1                       scheduler                -              ok        \nio.containerd.nri.v1                      nri                      -              ok        \nio.containerd.differ.v1                   erofs                    -              skip      \nio.containerd.mount-manager.v1            bolt                     -              ok        \nio.containerd.differ.v1                   walking                  linux/amd64    ok        \nio.containerd.lease.v1                    manager                  -              ok        \nio.containerd.service.v1                  containers-service       -              ok        \nio.containerd.service.v1                  content-service          -              ok        \nio.containerd.service.v1                  diff-service             -              ok        \nio.containerd.service.v1                  images-service           -              ok        \nio.containerd.service.v1                  introspection-service    -              ok        \nio.containerd.service.v1                  namespaces-service       -              ok        \nio.containerd.service.v1                  snapshots-service        -              ok        \nio.containerd.shim.v1                     manager                  -              ok        \nio.containerd.runtime.v2                  task                     linux/amd64    ok        \nio.containerd.service.v1                  tasks-service            -              ok        \nio.containerd.grpc.v1                     containers               -              ok        \nio.containerd.grpc.v1                     content                  -              ok        \nio.containerd.grpc.v1                     diff                     -              ok        \nio.containerd.grpc.v1                     events                   -              ok        \nio.containerd.grpc.v1                     images                   -              ok        \nio.containerd.grpc.v1                     introspection            -              ok        \nio.containerd.grpc.v1                     leases                   -              ok        \nio.containerd.grpc.v1                     mounts                   -              ok        \nio.containerd.grpc.v1                     namespaces               -              ok        \nio.containerd.sandbox.store.v1            local                    -              ok        \nio.containerd.transfer.v1                 local                    -              ok        \nio.containerd.cri.v1                      images                   -              ok        \nio.containerd.cri.v1                      runtime                  linux/amd64    ok        \nio.containerd.podsandbox.controller.v1    podsandbox               -              ok        \nio.containerd.sandbox.controller.v1       shim                     -              ok        \nio.containerd.grpc.v1                     sandbox-controllers      -              ok        \nio.containerd.grpc.v1                     sandboxes                -              ok        \nio.containerd.grpc.v1                     snapshots                -              ok        \nio.containerd.streaming.v1                manager                  -              ok        \nio.containerd.grpc.v1                     streaming                -              ok        \nio.containerd.grpc.v1                     tasks                    -              ok        \nio.containerd.grpc.v1                     transfer                 -              ok        \nio.containerd.grpc.v1                     version                  -              ok        \nio.containerd.monitor.container.v1        restart                  -              ok        \nio.containerd.tracing.processor.v1        otlp                     -              skip      \nio.containerd.internal.v1                 tracing                  -              skip      \nio.containerd.ttrpc.v1                    otelttrpc                -              ok        \nio.containerd.grpc.v1                     healthcheck              -              ok        \nio.containerd.grpc.v1                     cri                      -              ok        \n",
+        "err": ""
+      },
+      "SO_PEERPIDFD": "supported",
+      "pidfd_open": true,
+      "pidfs": false
+    },
+    "10.1.201.12": {
+      "hostname": "server-23",
+      "kernel": "6.8.0-139-generic",
+      "filesystem": {
+        "rc": 0,
+        "out": "{\n   \"filesystems\": [\n      {\n         \"target\": \"/\",\n         \"source\": \"/dev/mapper/ubuntu--vg-ubuntu--lv\",\n         \"fstype\": \"ext4\",\n         \"options\": \"rw,relatime\"\n      }\n   ]\n}\n",
+        "err": ""
+      },
+      "disk": {
+        "rc": 0,
+        "out": "Filesystem                           1B-blocks        Used    Available Use% Mounted on\n/dev/mapper/ubuntu--vg-ubuntu--lv 941289119744 83919872000 817981382656  10% /\n",
+        "err": ""
+      },
+      "units": {
+        "rc": 0,
+        "out": "Id=vela-node-agent.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-pidfd-broker.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-runtime-policy-issuer.service\nActiveState=inactive\nUnitFileState=\n\nId=vela-runtime-image-maintenance.service\nActiveState=inactive\nUnitFileState=\n",
+        "err": ""
+      },
+      "gpu": {
+        "rc": 0,
+        "out": "GPU-6e92707f-bfef-5ee5-1cb0-e18096c76411, 00000000:01:00.0, 65536 MiB, 0 MiB\nGPU-9c30be22-01e2-4ed0-6657-d6357832784e, 00000000:25:00.0, 65536 MiB, 0 MiB\nGPU-b9cb225f-f97c-65a8-7829-f769332fb210, 00000000:41:00.0, 65536 MiB, 0 MiB\nGPU-a138a454-de05-8bd1-3150-1c95834bb668, 00000000:61:00.0, 65536 MiB, 0 MiB\nGPU-4d55766d-1888-0e5d-98a6-114ba646d196, 00000000:81:00.0, 65536 MiB, 0 MiB\nGPU-8ff8900d-164d-bf8f-1999-3633c904be43, 00000000:A1:00.0, 65536 MiB, 0 MiB\nGPU-38339c94-8148-6b64-d6d6-74d3f389fe53, 00000000:C1:00.0, 65536 MiB, 0 MiB\nGPU-424b55e5-1608-5117-af42-055d864bae48, 00000000:E1:00.0, 65536 MiB, 0 MiB\n",
+        "err": ""
+      },
+      "containerd": {
+        "rc": 0,
+        "out": "TYPE                                      ID                       PLATFORMS      STATUS    \nio.containerd.content.v1                  content                  -              ok        \nio.containerd.image-verifier.v1           bindir                   -              ok        \nio.containerd.internal.v1                 opt                      -              ok        \nio.containerd.warning.v1                  deprecations             -              ok        \nio.containerd.mount-handler.v1            erofs                    linux/amd64    ok        \nio.containerd.snapshotter.v1              blockfile                linux/amd64    skip      \nio.containerd.snapshotter.v1              btrfs                    linux/amd64    skip      \nio.containerd.snapshotter.v1              devmapper                linux/amd64    skip      \nio.containerd.snapshotter.v1              erofs                    linux/amd64    skip      \nio.containerd.snapshotter.v1              native                   linux/amd64    ok        \nio.containerd.snapshotter.v1              overlayfs                linux/amd64    ok        \nio.containerd.snapshotter.v1              fuse-overlayfs           linux/amd64    ok        \nio.containerd.snapshotter.v1              zfs                      linux/amd64    skip      \nio.containerd.event.v1                    exchange                 -              ok        \nio.containerd.monitor.task.v1             cgroups                  linux/amd64    ok        \nio.containerd.snapshotter.v1              stargz                   linux/amd64    ok        \nio.containerd.snapshotter.v1              nix                      linux/amd64    ok        \nio.containerd.metadata.v1                 bolt                     -              ok        \nio.containerd.gc.v1                       scheduler                -              ok        \nio.containerd.nri.v1                      nri                      -              ok        \nio.containerd.differ.v1                   erofs                    -              skip      \nio.containerd.mount-manager.v1            bolt                     -              ok        \nio.containerd.differ.v1                   walking                  linux/amd64    ok        \nio.containerd.lease.v1                    manager                  -              ok        \nio.containerd.service.v1                  containers-service       -              ok        \nio.containerd.service.v1                  content-service          -              ok        \nio.containerd.service.v1                  diff-service             -              ok        \nio.containerd.service.v1                  images-service           -              ok        \nio.containerd.service.v1                  introspection-service    -              ok        \nio.containerd.service.v1                  namespaces-service       -              ok        \nio.containerd.service.v1                  snapshots-service        -              ok        \nio.containerd.shim.v1                     manager                  -              ok        \nio.containerd.runtime.v2                  task                     linux/amd64    ok        \nio.containerd.service.v1                  tasks-service            -              ok        \nio.containerd.grpc.v1                     containers               -              ok        \nio.containerd.grpc.v1                     content                  -              ok        \nio.containerd.grpc.v1                     diff                     -              ok        \nio.containerd.grpc.v1                     events                   -              ok        \nio.containerd.grpc.v1                     images                   -              ok        \nio.containerd.grpc.v1                     introspection            -              ok        \nio.containerd.grpc.v1                     leases                   -              ok        \nio.containerd.grpc.v1                     mounts                   -              ok        \nio.containerd.grpc.v1                     namespaces               -              ok        \nio.containerd.sandbox.store.v1            local                    -              ok        \nio.containerd.transfer.v1                 local                    -              ok        \nio.containerd.cri.v1                      images                   -              ok        \nio.containerd.cri.v1                      runtime                  linux/amd64    ok        \nio.containerd.podsandbox.controller.v1    podsandbox               -              ok        \nio.containerd.sandbox.controller.v1       shim                     -              ok        \nio.containerd.grpc.v1                     sandbox-controllers      -              ok        \nio.containerd.grpc.v1                     sandboxes                -              ok        \nio.containerd.grpc.v1                     snapshots                -              ok        \nio.containerd.streaming.v1                manager                  -              ok        \nio.containerd.grpc.v1                     streaming                -              ok        \nio.containerd.grpc.v1                     tasks                    -              ok        \nio.containerd.grpc.v1                     transfer                 -              ok        \nio.containerd.grpc.v1                     version                  -              ok        \nio.containerd.monitor.container.v1        restart                  -              ok        \nio.containerd.tracing.processor.v1        otlp                     -              skip      \nio.containerd.internal.v1                 tracing                  -              skip      \nio.containerd.ttrpc.v1                    otelttrpc                -              ok        \nio.containerd.grpc.v1                     healthcheck              -              ok        \nio.containerd.grpc.v1                     cri                      -              ok        \n",
+        "err": ""
+      },
+      "SO_PEERPIDFD": "supported",
+      "pidfd_open": true,
+      "pidfs": false
+    }
+  },
+  "launcher_regression": {
+    "before": {
+      "exit": 1,
+      "stdout": "=== RUN   TestProductionLauncherRejectsFleetDRABeforeCRI\n    fleet_contract_linux_test.go:30: Fleet Pod wi-069289ff5de95a87a3cc7fc660195d38-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-118629e1be375066bd4f1296b2caaa31-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-15c11f29ca3e5525a859e9823b86c7c3-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-16bf69a81e58553d97ff0bf0c7148c3b-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-34b5fa9922d25e02b1bb8d55c3210d08-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-4139b32e0e9e55cea42eec2db59977b0-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-6916335658e75d2e8e7b592ba2a3d111-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n    fleet_contract_linux_test.go:30: Fleet Pod wi-99226a371e8c57d9bf8c6a27b02fbe02-ba3790e0 must reject DRA before CRI access; got VELA_RUNTIME_LAUNCHER_CRI_SOCKET is required and canonical\n--- FAIL: TestProductionLauncherRejectsFleetDRABeforeCRI (0.00s)\nFAIL\n",
+      "stderr": ""
+    },
+    "after_stdout": "=== RUN   TestProductionLauncherRejectsFleetDRABeforeCRI\n--- PASS: TestProductionLauncherRejectsFleetDRABeforeCRI (0.00s)\n=== RUN   TestProductionStartFailureCleansCreatedContainers\n=== RUN   TestProductionStartFailureCleansCreatedContainers/stage-worker-agent\n--- PASS: TestProductionStartFailureCleansCreatedContainers (0.00s)\n    --- PASS: TestProductionStartFailureCleansCreatedContainers/stage-worker-agent (0.00s)\n=== RUN   TestProductionInitContainerSuccessAndConfig\n--- PASS: TestProductionInitContainerSuccessAndConfig (0.00s)\n=== RUN   TestProductionInitContainerFailureModes\n=== RUN   TestProductionInitContainerFailureModes/nonzero_exit\n=== RUN   TestProductionInitContainerFailureModes/start_failure\n=== RUN   TestProductionInitContainerFailureModes/status_failure\n--- PASS: TestProductionInitContainerFailureModes (0.00s)\n    --- PASS: TestProductionInitContainerFailureModes/nonzero_exit (0.00s)\n    --- PASS: TestProductionInitContainerFailureModes/start_failure (0.00s)\n    --- PASS: TestProductionInitContainerFailureModes/status_failure (0.00s)\n=== RUN   TestProductionInitContainerContextTimeout\n--- PASS: TestProductionInitContainerContextTimeout (0.02s)\n=== RUN   TestProductionInitContainerCleanupRemovesAllInitIDs\n--- PASS: TestProductionInitContainerCleanupRemovesAllInitIDs (0.00s)\n=== RUN   TestProductionPrepareImagesPinsAndVerifiesDigest\n--- PASS: TestProductionPrepareImagesPinsAndVerifiesDigest (0.00s)\n=== RUN   TestProductionContainerDispatchesOfferMode\n--- PASS: TestProductionContainerDispatchesOfferMode (0.00s)\n=== RUN   TestProductionStartupTimeoutConfiguration\n--- PASS: TestProductionStartupTimeoutConfiguration (0.00s)\n=== RUN   TestProductionCleanupSkipsReplacedOfferVolume\n--- PASS: TestProductionCleanupSkipsReplacedOfferVolume (0.00s)\n=== RUN   TestProductionCleanupReportsStopFailure\n--- PASS: TestProductionCleanupReportsStopFailure (0.00s)\n=== RUN   TestProductionCommandUsesApprovedImageEntrypoints\n--- PASS: TestProductionCommandUsesApprovedImageEntrypoints (0.00s)\n=== RUN   TestProductionCommandRejectsUnknownEntrypoint\n--- PASS: TestProductionCommandRejectsUnknownEntrypoint (0.00s)\n=== RUN   TestProductionRuntimeBootstrapPathNormalizesOCIArgv\n--- PASS: TestProductionRuntimeBootstrapPathNormalizesOCIArgv (0.00s)\n=== RUN   TestLauncherStrictJSONRejectsDuplicateAndTrailingData\n--- PASS: TestLauncherStrictJSONRejectsDuplicateAndTrailingData (0.00s)\n=== RUN   TestRequiredContainersRejectsDuplicateOrUnpinnedImages\n--- PASS: TestRequiredContainersRejectsDuplicateOrUnpinnedImages (0.00s)\n=== RUN   TestRequiredContainersRejectsAdditionalContainers\n--- PASS: TestRequiredContainersRejectsAdditionalContainers (0.00s)\n=== RUN   TestRequiredContainersAcceptsSupportedInitContainers\n--- PASS: TestRequiredContainersAcceptsSupportedInitContainers (0.00s)\n=== RUN   TestRuntimeStartupContainerSocketPreservesBasename\n--- PASS: TestRuntimeStartupContainerSocketPreservesBasename (0.00s)\n=== RUN   TestProductionObserverSocketpairIsCreatedWithCloseOnExec\n--- PASS: TestProductionObserverSocketpairIsCreatedWithCloseOnExec (0.00s)\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields/working_directory\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields/ports\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields/resource_claims\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields/lifecycle\n=== RUN   TestValidateProductionContainerRejectsUnsupportedFields/volume_subpath\n--- PASS: TestValidateProductionContainerRejectsUnsupportedFields (0.00s)\n    --- PASS: TestValidateProductionContainerRejectsUnsupportedFields/working_directory (0.00s)\n    --- PASS: TestValidateProductionContainerRejectsUnsupportedFields/ports (0.00s)\n    --- PASS: TestValidateProductionContainerRejectsUnsupportedFields/resource_claims (0.00s)\n    --- PASS: TestValidateProductionContainerRejectsUnsupportedFields/lifecycle (0.00s)\n    --- PASS: TestValidateProductionContainerRejectsUnsupportedFields/volume_subpath (0.00s)\n=== RUN   TestProductionResourcesAndSecurityContextAreMapped\n--- PASS: TestProductionResourcesAndSecurityContextAreMapped (0.00s)\n=== RUN   TestLauncherPathAndVolumeRules\n--- PASS: TestLauncherPathAndVolumeRules (0.00s)\n=== RUN   TestLauncherRequestDigestUsesJSONBytes\n--- PASS: TestLauncherRequestDigestUsesJSONBytes (0.00s)\n=== RUN   TestProductionPIDFDOfferHelper\n    pidfd_offer_linux_test.go:46: subprocess helper\n--- SKIP: TestProductionPIDFDOfferHelper (0.00s)\n=== RUN   TestProductionPIDFDOfferBindsKernelSenderToTask\n    pidfd_offer_linux_test.go:98: requires root to launch a distinct non-root process\n--- SKIP: TestProductionPIDFDOfferBindsKernelSenderToTask (0.00s)\n=== RUN   TestProductionPIDFDOfferCanceledAccept\n    pidfd_offer_linux_test.go:199: requires root-owned socket\n--- SKIP: TestProductionPIDFDOfferCanceledAccept (0.00s)\nPASS\n",
+    "scope": "Early refusal of unsupported Fleet DRA Pods; not DRA deployment or startup acceptance"
+  },
+  "verification": {
+    "make_test": "passed: Go suite and 16 Python tests",
+    "make_lint": "passed: 0 issues",
+    "linux_launcher_vet": "passed",
+    "h3_command_verifier": "passed",
+    "deployment_contracts": "passed after site image digest changes",
+    "registry_timeout": "non-finite/out-of-range CLI values rejected before network; actual H3 replication passed with 300 seconds"
+  },
+  "registry_replication_complete": true,
+  "final_health": {
+    "at": "2026-09-15T13:20:18.440609+00:00",
+    "deployment_complete": false,
+    "deployments": {
+      "vela-control": {
+        "ready": 2,
+        "updated": 2
+      },
+      "vela-fleet-controller": {
+        "ready": 2,
+        "updated": 2
+      }
+    },
+    "target_nodes": {
+      "llmpool01": {
+        "NetworkUnavailable": "False",
+        "EtcdIsVoter": "True",
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      },
+      "llmpool02": {
+        "EtcdIsVoter": "True",
+        "NetworkUnavailable": "False",
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      },
+      "marslab-gpu-01": {
+        "NetworkUnavailable": "False",
+        "EtcdIsVoter": "True",
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      },
+      "server-22": {
+        "NetworkUnavailable": "False",
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      },
+      "server-23": {
+        "NetworkUnavailable": "False",
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    }
+  }
+}

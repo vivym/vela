@@ -16,9 +16,11 @@ externally and are not rendered into this repository. See
 The Pod and ServiceAccount use
 `vela-release-pull-v1-r-7c3b2ad47663`, containing read-only credentials for the
 three release-registry endpoints. The Control image is
-`10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64`.
-It was built from the archived working-tree snapshot, including the schema-96
-Fleet permission correction; it is not a clean-HEAD all-component release.
+`10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea`.
+At 21:03 CST it was upgraded from archived revision `6619846`, together with
+Goose migrations 97–99 and Fleet. Both replicas are Ready. Full Worker startup
+and authenticated H3 Job acceptance remain incomplete; see
+`docs/h3-formal-deployment-status-2026-09-15.md`.
 At 04:27 CST, `tracing.patch.json` enabled OTLP HTTP with 10% root sampling.
 Both real Control Pods and both APISIX gateways passed 46 tracing checks through
 Collector/Tempo. These used unauthenticated read requests; model execution and

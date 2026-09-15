@@ -4,6 +4,17 @@
 生产可用；“Pod Running”“一次 smoke 成功”和“完整 Vela release 可发布”
 分别记录。当前不能宣告整体完成，也不再把已经通过的检查当成下一轮任务重跑。
 
+09-15 21:06 CST [当前现场快照](evidence/h3-formal-cluster-2026-09-15.json)：
+54/54 Ready、无压力条件，`.19` 仍 cordoned；PostgreSQL/NATS/APISIX etcd 3/3、
+MinIO 6/6，双网关 HTTPS Grafana 200。传统 GPU 标量 392，另有 `.11/.12`
+各 8 个 NVIDIA DRA 设备；不可与早期 407 标量快照直接比较。
+数据库已从 96 经 Goose 升到 99，Control/Fleet 新镜像均 2/2 Ready；Stage Worker
+和完整 H3 组合镜像已发布，但正式 Worker/Residency/Job 仍为 0。
+[R4/R6 启动链阻塞与本轮部署记录](h3-formal-deployment-status-2026-09-15.md)
+明确列出 Fleet/DRA 与 direct CRI、镜像入口身份、Host quota、媒体图与容量合同
+的剩余工作。完整业务验收未通过；下面各时间段为历史记录，不能据其磁盘压力或
+schema 96 状态重新阻塞已经完成的采用，也不能据新副本健康关闭 R3–R6。
+
 09-15 07:58 CST [现场快照](evidence/cluster-readiness-after-worker-network-2026-09-15.json)
 仍为 54 注册、53 Ready、407 GPU；`.66` DiskPressure、三个有状态服务各 2/3、
 MinIO 5/6。R4 已补齐 51 个在线 worker 到 Control 的精确网络入口：102 次

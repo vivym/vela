@@ -57,7 +57,7 @@
         "containers": [
           {
             "name": "fleet-controller",
-            "image": "10.1.201.70:5005/vela-fleet-controller@sha256:cee95fbf27503c81d420c7dff8cd46e5c754dea69627f90aa53a43d435fe96ca",
+            "image": "10.1.201.70:5005/vela-fleet-controller@sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e",
             "env": [
               {
                 "name": "VELA_TRACING_ENABLED",

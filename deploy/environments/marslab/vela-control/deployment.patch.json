@@ -23,7 +23,7 @@
   {
     "op": "replace",
     "path": "/spec/template/spec/containers/0/image",
-    "value": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+    "value": "10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea"
   },
   {
     "op": "replace",
