@@ -1,0 +1,199 @@
+{
+  "batches": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-frontend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/http"
+          },
+          "spans": [
+            {
+              "traceId": "VTlun65lRu25S4AawQyR9g==",
+              "spanId": "scCBCoV8Y0c=",
+              "parentSpanId": "3MDU9t4FR74=",
+              "flags": 769,
+              "name": "POST /probe/{case}",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1789410837679593946",
+              "endTimeUnixNano": "1789410837680490009",
+              "attributes": [
+                {
+                  "key": "http.request.method",
+                  "value": {
+                    "stringValue": "POST"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/probe/{case}"
+                  }
+                },
+                {
+                  "key": "http.response.status_code",
+                  "value": {
+                    "intValue": "503"
+                  }
+                }
+              ],
+              "status": {
+                "message": "503",
+                "code": "STATUS_CODE_ERROR"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-frontend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/grpc"
+          },
+          "spans": [
+            {
+              "traceId": "VTlun65lRu25S4AawQyR9g==",
+              "spanId": "fGr/3RTxDoI=",
+              "parentSpanId": "scCBCoV8Y0c=",
+              "flags": 257,
+              "name": "grpc.health.v1.Health/Check",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1789410837679714402",
+              "endTimeUnixNano": "1789410837680467615",
+              "attributes": [
+                {
+                  "key": "rpc.system",
+                  "value": {
+                    "stringValue": "grpc"
+                  }
+                },
+                {
+                  "key": "rpc.service",
+                  "value": {
+                    "stringValue": "grpc.health.v1.Health"
+                  }
+                },
+                {
+                  "key": "rpc.method",
+                  "value": {
+                    "stringValue": "Check"
+                  }
+                },
+                {
+                  "key": "rpc.grpc.status_code",
+                  "value": {
+                    "intValue": "14"
+                  }
+                }
+              ],
+              "status": {
+                "message": "Unavailable",
+                "code": "STATUS_CODE_ERROR"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-backend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/grpc"
+          },
+          "spans": [
+            {
+              "traceId": "VTlun65lRu25S4AawQyR9g==",
+              "spanId": "tfON05oECBw=",
+              "parentSpanId": "fGr/3RTxDoI=",
+              "flags": 769,
+              "name": "grpc.health.v1.Health/Check",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1789410837680205076",
+              "endTimeUnixNano": "1789410837680267466",
+              "attributes": [
+                {
+                  "key": "rpc.system",
+                  "value": {
+                    "stringValue": "grpc"
+                  }
+                },
+                {
+                  "key": "rpc.service",
+                  "value": {
+                    "stringValue": "grpc.health.v1.Health"
+                  }
+                },
+                {
+                  "key": "rpc.method",
+                  "value": {
+                    "stringValue": "Check"
+                  }
+                },
+                {
+                  "key": "rpc.grpc.status_code",
+                  "value": {
+                    "intValue": "14"
+                  }
+                }
+              ],
+              "status": {
+                "message": "Unavailable",
+                "code": "STATUS_CODE_ERROR"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -178,6 +178,7 @@ INSERT INTO jobs (
     execution_circuit_breaker_policy,
 	execution_circuit_fingerprint_window_seconds,
 	execution_circuit_min_distinct_healthy_workers,
+    origin_trace_parent,
     job_expires_at
 ) VALUES (
     sqlc.arg(id),
@@ -217,6 +218,7 @@ INSERT INTO jobs (
     sqlc.arg(execution_circuit_breaker_policy),
 	sqlc.arg(execution_circuit_fingerprint_window_seconds),
 	sqlc.arg(execution_circuit_min_distinct_healthy_workers),
+    sqlc.narg(origin_trace_parent),
 	transaction_timestamp() + sqlc.arg(job_lifetime_seconds)::bigint * interval '1 second'
 );
 

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -145,8 +146,9 @@ func (admission *executionAdmission) prepare(ctx context.Context, service *Servi
 		}
 		service.cancelWatchdogLocked()
 		service.active = &activeExecution{
-			verified: *verified,
-			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
+			traceParent: tracing.DurableParent(ctx),
+			verified:    *verified,
+			state:       velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
 		}
 		service.resetWatchdogLocked(*verified)
 		return false, admission.registerLocked(service, sequence), nil

@@ -1,0 +1,18 @@
+=== RUN   TestStageTraceSurvivesWorkerReopenRenewalAndStop
+--- PASS: TestStageTraceSurvivesWorkerReopenRenewalAndStop (0.15s)
+=== RUN   TestStageTraceMaterializationRecoveryUsesOriginalPendingExecution
+--- PASS: TestStageTraceMaterializationRecoveryUsesOriginalPendingExecution (0.16s)
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/valid
+    tracing_test.go:203: assignment input writer drain is unproven
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid
+    tracing_test.go:203: assignment input writer drain is unproven
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid#01
+    tracing_test.go:203: assignment input writer drain is unproven
+--- FAIL: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin (0.11s)
+    --- FAIL: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/valid (0.04s)
+    --- FAIL: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid (0.04s)
+    --- FAIL: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid#01 (0.03s)
+FAIL
+FAIL	github.com/vivym/vela/internal/stageworkeragent	1.126s
+FAIL

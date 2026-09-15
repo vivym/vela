@@ -15,6 +15,7 @@ import (
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -72,11 +73,12 @@ type AssignmentAdmissionConfig struct {
 // AssignmentAdmissionRecord keeps original lookup evidence without delivery content.
 // CLOSED forbids execution reentry; it is never a writer-drain checkpoint.
 type AssignmentAdmissionRecord struct {
-	AcquireCommandID uuid.UUID
-	Phase            AssignmentAdmissionPhase
-	Original         *velav1.StageAuthority
-	Latest           *velav1.StageAuthority
-	InputDrain       *AssignmentInputDrainCheckpoint
+	OriginTraceParent string
+	AcquireCommandID  uuid.UUID
+	Phase             AssignmentAdmissionPhase
+	Original          *velav1.StageAuthority
+	Latest            *velav1.StageAuthority
+	InputDrain        *AssignmentInputDrainCheckpoint
 }
 
 type AssignmentAdmissionSnapshot struct {
@@ -284,7 +286,11 @@ func (gate *FileAssignmentAdmission) Begin(ctx context.Context, assignment *vela
 			return nil, ErrAdmissionCapacity
 		}
 		next.Watermark = sequence
-		next.Latest = &assignmentAdmissionEntry{AcquireCommandID: acquireID, Identity: identity, Phase: AssignmentInputsPending, OriginalWire: wire, LatestWire: wire}
+		parent := tracing.CanonicalParent(assignment.GetOriginTraceParent())
+		if parent != "" {
+			next.SchemaVersion = 6
+		}
+		next.Latest = &assignmentAdmissionEntry{OriginTraceParent: parent, AcquireCommandID: acquireID, Identity: identity, Phase: AssignmentInputsPending, OriginalWire: wire, LatestWire: wire}
 	}
 	for _, pending := range next.Pending {
 		if pending.InputDrain == nil {
@@ -564,7 +570,7 @@ func (gate *FileAssignmentAdmission) record(entry assignmentAdmissionEntry) (Ass
 		copy := *entry.InputDrain
 		inputDrain = &copy
 	}
-	return AssignmentAdmissionRecord{AcquireCommandID: entry.AcquireCommandID, Phase: entry.Phase, Original: original, Latest: latest, InputDrain: inputDrain}, nil
+	return AssignmentAdmissionRecord{OriginTraceParent: tracing.CanonicalParent(entry.OriginTraceParent), AcquireCommandID: entry.AcquireCommandID, Phase: entry.Phase, Original: original, Latest: latest, InputDrain: inputDrain}, nil
 }
 
 func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.StageAuthority, error) {
@@ -587,7 +593,7 @@ func (gate *FileAssignmentAdmission) decodeAuthority(wire []byte) (*velav1.Stage
 }
 
 func (gate *FileAssignmentAdmission) validateState(state assignmentAdmissionState) error {
-	if state.SchemaVersion != 5 || !bytes.Equal(state.Scope, gate.scopeDigest[:]) || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
+	if (state.SchemaVersion != 5 && state.SchemaVersion != 6) || !bytes.Equal(state.Scope, gate.scopeDigest[:]) || state.ID == uuid.Nil || state.WorkerInstanceID == uuid.Nil || state.WorkerInstanceEpoch <= 0 || state.WorkerMemberID == uuid.Nil ||
 		state.MaxRecords < 1 || state.MaxRecords > 64 || state.HistoryBase < 0 || state.HistoryBase > state.Watermark || len(state.Pending) >= state.MaxRecords ||
 		(state.Latest == nil && (state.Watermark != state.HistoryBase || len(state.Pending) != 0)) {
 		return errors.New("assignment admission state is invalid")

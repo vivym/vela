@@ -1,0 +1,3 @@
+ok  	github.com/vivym/vela/internal/tracing	6.846s
+?   	github.com/vivym/vela/internal/outbox	[no test files]
+ok  	github.com/vivym/vela/internal/inbox	2.245s

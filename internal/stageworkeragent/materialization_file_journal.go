@@ -23,9 +23,10 @@ import (
 const maxMaterializationJournalRecordBytes = 4 << 20
 
 type FileMaterializationJournal struct {
-	mu    sync.Mutex
-	root  string
-	limit int
+	mu     sync.Mutex
+	root   string
+	limit  int
+	closed bool
 }
 
 type fileMaterializationRecordV1 struct {
@@ -88,6 +89,9 @@ func (journal *FileMaterializationJournal) EnsureCapacity(ctx context.Context) e
 	}
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
+	if journal.closed {
+		return errors.New("materialization journal is closed")
+	}
 	records, err := journal.loadLocked()
 	if err != nil {
 		return err
@@ -117,6 +121,9 @@ func (journal *FileMaterializationJournal) Put(
 	}
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
+	if journal.closed {
+		return errors.New("materialization journal is closed")
+	}
 	path := journal.recordPath(record.ID)
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		records, loadErr := journal.loadLocked()
@@ -143,6 +150,9 @@ func (journal *FileMaterializationJournal) List(
 	}
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
+	if journal.closed {
+		return nil, errors.New("materialization journal is closed")
+	}
 	return journal.loadLocked()
 }
 
@@ -155,11 +165,27 @@ func (journal *FileMaterializationJournal) Delete(ctx context.Context, id string
 	}
 	journal.mu.Lock()
 	defer journal.mu.Unlock()
+	if journal.closed {
+		return errors.New("materialization journal is closed")
+	}
 	err := os.Remove(journal.recordPath(id))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("delete materialization journal record: %w", err)
 	}
 	return syncDirectory(journal.root)
+}
+
+// Close retires this journal handle. The journal is path-backed, so there is
+// no descriptor to release; marking it closed still prevents late Worker
+// writes after the Node shutdown sequence has revoked the endpoint.
+func (journal *FileMaterializationJournal) Close() error {
+	if journal == nil {
+		return nil
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	journal.closed = true
+	return nil
 }
 
 func (journal *FileMaterializationJournal) load() ([]PendingMaterialization, error) {

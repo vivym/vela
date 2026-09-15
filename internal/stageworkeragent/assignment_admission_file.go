@@ -28,12 +28,14 @@ const (
 )
 
 type assignmentAdmissionEntry struct {
-	AcquireCommandID uuid.UUID                       `json:"acquire_command_id"`
-	Identity         [sha256.Size]byte               `json:"execution_identity"`
-	Phase            AssignmentAdmissionPhase        `json:"phase"`
-	OriginalWire     []byte                          `json:"original_authority"`
-	LatestWire       []byte                          `json:"latest_authority"`
-	InputDrain       *AssignmentInputDrainCheckpoint `json:"input_drain,omitempty"`
+	// Schema 6 adds optional diagnostics; execution identity remains signed.
+	OriginTraceParent string                          `json:"origin_trace_parent,omitempty"`
+	AcquireCommandID  uuid.UUID                       `json:"acquire_command_id"`
+	Identity          [sha256.Size]byte               `json:"execution_identity"`
+	Phase             AssignmentAdmissionPhase        `json:"phase"`
+	OriginalWire      []byte                          `json:"original_authority"`
+	LatestWire        []byte                          `json:"latest_authority"`
+	InputDrain        *AssignmentInputDrainCheckpoint `json:"input_drain,omitempty"`
 }
 
 type admissionDirectoryIdentity struct {

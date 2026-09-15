@@ -1,0 +1,164 @@
+=== RUN   TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery
+2026/09/15 06:55:03 github.com/testcontainers/testcontainers-go - Connected to docker: 
+  Server Version: 28.3.2
+  API Version: 1.51
+  Operating System: Docker Desktop
+  Total Memory: 32044 MB
+  Labels:
+    com.docker.desktop.address=unix:///Users/viv/Library/Containers/com.docker.docker/Data/docker-cli.sock
+  Testcontainers for Go Version: v0.44.0
+  Resolved Docker Host: unix:///var/run/docker.sock
+  Resolved Docker Socket Path: /var/run/docker.sock
+  Test SessionID: 781806287ad5531782ebcbb31475cc216a4a3228d79e5a5e3a619c35ab336dc5
+  Test ProcessID: 75057693-933d-44e7-8d61-91dd8a310c36
+2026/09/15 06:55:03 🐳 Creating container for image postgres:17-alpine
+2026/09/15 06:55:03 🐳 Creating container for image testcontainers/ryuk:0.14.0
+2026/09/15 06:55:03 ✅ Container created: c63d003d9456
+2026/09/15 06:55:03 🐳 Starting container: c63d003d9456
+2026/09/15 06:55:03 ✅ Container started: c63d003d9456
+2026/09/15 06:55:03 ⏳ Waiting for container id c63d003d9456 image: testcontainers/ryuk:0.14.0. Waiting for: all of: [log message "Started", port 8080/tcp to be listening]
+2026/09/15 06:55:03 Shell not found in container
+2026/09/15 06:55:03 🔔 Container is ready: c63d003d9456
+2026/09/15 06:55:03 ✅ Container created: 14e883d34aa8
+2026/09/15 06:55:03 🐳 Starting container: 14e883d34aa8
+2026/09/15 06:55:03 ✅ Container started: 14e883d34aa8
+2026/09/15 06:55:03 ⏳ Waiting for container id 14e883d34aa8 image: postgres:17-alpine. Waiting for: all of: [all of: [log message "database system is ready to accept connections" (occurrence: 2), port 5432/tcp to be mapped]]
+2026/09/15 06:55:04 🔔 Container is ready: 14e883d34aa8
+2026/09/15 06:55:04 OK   00001_foundation.sql (49.32ms)
+2026/09/15 06:55:04 OK   00002_worker_assignment.sql (11.67ms)
+2026/09/15 06:55:04 OK   00003_worker_start.sql (2.14ms)
+2026/09/15 06:55:04 OK   00004_worker_heartbeat.sql (11.88ms)
+2026/09/15 06:55:04 OK   00005_execution_failure.sql (9.4ms)
+2026/09/15 06:55:04 OK   00006_customer_cancellation.sql (15.69ms)
+2026/09/15 06:55:04 OK   00007_artifact_finalization.sql (22.78ms)
+2026/09/15 06:55:04 OK   00008_hierarchical_scheduler.sql (29.27ms)
+2026/09/15 06:55:04 OK   00009_invoice_export.sql (8.2ms)
+2026/09/15 06:55:04 OK   00010_profile_certification_circuit.sql (11.49ms)
+2026/09/15 06:55:04 OK   00011_project_webhooks.sql (17.7ms)
+2026/09/15 06:55:04 OK   00012_human_oidc_fixed_rbac.sql (16.7ms)
+2026/09/15 06:55:04 OK   00013_service_principal_administration.sql (7.92ms)
+2026/09/15 06:55:04 OK   00014_human_membership_administration.sql (12.43ms)
+2026/09/15 06:55:04 OK   00015_organization_reporting.sql (8.22ms)
+2026/09/15 06:55:04 OK   00016_project_retention_content_deletion.sql (29.8ms)
+2026/09/15 06:55:04 OK   00017_platform_operator_break_glass.sql (19.45ms)
+2026/09/15 06:55:04 OK   00018_finance_reconciliation.sql (9.76ms)
+2026/09/15 06:55:04 OK   00019_certified_remediation.sql (9.91ms)
+2026/09/15 06:55:04 OK   00020_remediation_execution_claim.sql (4.02ms)
+2026/09/15 06:55:04 OK   00021_remediation_execution_dispatch.sql (1.7ms)
+2026/09/15 06:55:04 OK   00022_remediation_execution_claim_replay.sql (1.11ms)
+2026/09/15 06:55:04 OK   00023_fleet_controller_worker_readiness.sql (32.23ms)
+2026/09/15 06:55:04 OK   00024_staging_artifact_expiry.sql (1.97ms)
+2026/09/15 06:55:04 OK   00025_scheduler_inbox_receipt.sql (1.35ms)
+2026/09/15 06:55:04 OK   00026_synchronous_quorum_guard.sql (1.36ms)
+2026/09/15 06:55:04 OK   00027_authorized_debug_dump_lifecycle.sql (28.22ms)
+2026/09/15 06:55:04 OK   00028_off_cluster_backup_retention.sql (6.98ms)
+2026/09/15 06:55:04 OK   00029_artifact_backup_replication.sql (5.68ms)
+2026/09/15 06:55:04 OK   00030_non_content_legal_hold.sql (13.02ms)
+2026/09/15 06:55:04 OK   00031_non_content_record_expiry.sql (40.82ms)
+2026/09/15 06:55:04 OK   00032_catalog_promotion_production_gates.sql (18.74ms)
+2026/09/15 06:55:04 OK   00033_statistical_slo_measurement.sql (13.98ms)
+2026/09/15 06:55:04 OK   00034_stage_execution_catalog.sql (37.61ms)
+2026/09/15 06:55:04 OK   00035_worker_instance_residency.sql (40.98ms)
+2026/09/15 06:55:04 OK   00036_stage_attempt_authority.sql (41.82ms)
+2026/09/15 06:55:04 OK   00037_stage_scheduler.sql (26.27ms)
+2026/09/15 06:55:04 OK   00038_stage_artifact.sql (27.87ms)
+2026/09/15 06:55:04 OK   00039_stage_worker_control_authority.sql (2.5ms)
+2026/09/15 06:55:04 OK   00040_stage_worker_execution.sql (10.15ms)
+2026/09/15 06:55:04 OK   00041_stage_worker_operations.sql (5.98ms)
+2026/09/15 06:55:04 OK   00042_stage_worker_assignment.sql (6.81ms)
+2026/09/15 06:55:04 OK   00043_stage_graph_finalization.sql (4.49ms)
+2026/09/15 06:55:04 OK   00044_stage_cache.sql (16.22ms)
+2026/09/15 06:55:04 OK   00045_stage_graph_finalization_outputs.sql (5.57ms)
+2026/09/15 06:55:04 OK   00046_stage_graph_visible_completion.sql (4.51ms)
+2026/09/15 06:55:04 OK   00047_usage_cost_ledger.sql (10.71ms)
+2026/09/15 06:55:04 OK   00048_stage_run_output_binding.sql (9.64ms)
+2026/09/15 06:55:04 OK   00049_stage_cutover_control.sql (23.03ms)
+2026/09/15 06:55:04 OK   00050_stage_graph_instantiation_dispatch.sql (9.07ms)
+2026/09/15 06:55:04 OK   00051_atomic_stage_graph_admission.sql (3.25ms)
+2026/09/15 06:55:04 OK   00052_stage_cutover_zero_backlog_seal.sql (10.42ms)
+2026/09/15 06:55:04 OK   00053_legacy_h3_guarded_contraction.sql (7.78ms)
+2026/09/15 06:55:04 OK   00054_stage_transfer_consume_destination.sql (2.11ms)
+2026/09/15 06:55:04 OK   00055_h3_campaign_evidence_reader.sql (2.66ms)
+2026/09/15 06:55:04 OK   00056_stage_observability_reader.sql (949.17µs)
+2026/09/15 06:55:04 OK   00057_legacy_h3_release_contraction_gate.sql (4.85ms)
+2026/09/15 06:55:05 OK   00058_legacy_h3_schema_contraction.sql (129.34ms)
+2026/09/15 06:55:05 OK   00059_model_runtime_epoch_registration.sql (9.23ms)
+2026/09/15 06:55:05 OK   00060_model_runtime_gang_barrier.sql (6.3ms)
+2026/09/15 06:55:05 OK   00061_stage_worker_gang_authority.sql (2.56ms)
+2026/09/15 06:55:05 OK   00062_stage_authority_member_identity.sql (1.17ms)
+2026/09/15 06:55:05 OK   00063_h3_execution_snapshot.sql (1.57ms)
+2026/09/15 06:55:05 OK   00064_model_runtime_capacity_routes.sql (6.4ms)
+2026/09/15 06:55:05 OK   00065_h3_exact_cache_reconciliation.sql (4.98ms)
+2026/09/15 06:55:05 OK   00066_stage_worker_control_session_capacity.sql (10.29ms)
+2026/09/15 06:55:05 OK   00067_stage_scheduler_project_capacity.sql (1.4ms)
+2026/09/15 06:55:05 OK   00068_stage_assignment_connector_states.sql (1.4ms)
+2026/09/15 06:55:05 OK   00069_stage_transfer_server_clock.sql (2.32ms)
+2026/09/15 06:55:05 OK   00070_stage_lease_expiry_recovery.sql (4.24ms)
+2026/09/15 06:55:05 OK   00071_stage_artifact_lifecycle.sql (9.63ms)
+2026/09/15 06:55:05 OK   00072_recovery_quiescence.sql (7.82ms)
+2026/09/15 06:55:05 OK   00073_stage_cache_downstream_bindings.sql (3.29ms)
+2026/09/15 06:55:05 OK   00074_job_owned_public_artifact_copies.sql (2.2ms)
+2026/09/15 06:55:05 OK   00075_stage_graph_failure_terminalization.sql (13.89ms)
+2026/09/15 06:55:05 OK   00076_allocation_usage_unit.sql (7.87ms)
+2026/09/15 06:55:05 OK   00077_runtime_usage_receipts.sql (1.58ms)
+2026/09/15 06:55:05 OK   00078_idle_stage_worker_probe.sql (2.28ms)
+2026/09/15 06:55:05 OK   00079_stage_job_expiry.sql (2.91ms)
+2026/09/15 06:55:05 OK   00080_stage_scheduler_snapshot_lock_order.sql (2.37ms)
+2026/09/15 06:55:05 OK   00081_stage_assignment_quorum.sql (953.42µs)
+2026/09/15 06:55:05 OK   00082_stage_success_storage_completion.sql (1.97ms)
+2026/09/15 06:55:05 OK   00083_capacity_observation_lifecycle.sql (2.66ms)
+2026/09/15 06:55:05 OK   00084_blocked_stage_worker_probe.sql (1.69ms)
+2026/09/15 06:55:05 OK   00085_stage_materialization_terminal_replay.sql (1.43ms)
+2026/09/15 06:55:05 OK   00086_stage_failure_terminal_replay.sql (4ms)
+2026/09/15 06:55:05 OK   00087_stage_claim_finalization_lock_order.sql (1.4ms)
+2026/09/15 06:55:05 OK   00088_stage_allocation_execution_sequence.sql (2.39ms)
+2026/09/15 06:55:05 OK   00089_stage_terminal_history.sql (1.71ms)
+2026/09/15 06:55:05 OK   00090_stage_assignment_content_lifecycle.sql (8.58ms)
+2026/09/15 06:55:05 OK   00091_worker_journal_bootstrap.sql (10.86ms)
+2026/09/15 06:55:05 OK   00092_worker_bootstrap_history.sql (1.56ms)
+2026/09/15 06:55:05 OK   00093_worker_bootstrap_nonzero_scopes.sql (866.13µs)
+2026/09/15 06:55:05 OK   00094_worker_bootstrap_abandonment.sql (6.15ms)
+2026/09/15 06:55:05 OK   00095_runtime_startup_reservation.sql (6.66ms)
+2026/09/15 06:55:05 OK   00096_runtime_startup_authorization.sql (4.09ms)
+2026/09/15 06:55:05 OK   00097_job_origin_trace.sql (1.42ms)
+2026/09/15 06:55:05 goose: successfully migrated database to version: 97
+2026/09/15 06:55:05 🐳 Creating container for image nats:2.12-alpine
+2026/09/15 06:55:05 ✅ Container created: ce08e1ac946e
+2026/09/15 06:55:05 🐳 Starting container: ce08e1ac946e
+2026/09/15 06:55:05 ✅ Container started: ce08e1ac946e
+2026/09/15 06:55:05 ⏳ Waiting for container id ce08e1ac946e image: nats:2.12-alpine. Waiting for: log message "Server is ready"
+2026/09/15 06:55:05 🔔 Container is ready: ce08e1ac946e
+2026/09/15 06:55:05 🐳 Creating container for image nats:2.12-alpine
+2026/09/15 06:55:05 ✅ Container created: 9837fc722ada
+2026/09/15 06:55:05 🐳 Starting container: 9837fc722ada
+2026/09/15 06:55:05 ✅ Container started: 9837fc722ada
+2026/09/15 06:55:05 ⏳ Waiting for container id 9837fc722ada image: nats:2.12-alpine. Waiting for: log message "Server is ready"
+2026/09/15 06:55:06 🔔 Container is ready: 9837fc722ada
+2026/09/15 06:55:06 🐳 Creating container for image nats:2.12-alpine
+2026/09/15 06:55:06 ✅ Container created: ec9d61865510
+2026/09/15 06:55:06 🐳 Starting container: ec9d61865510
+2026/09/15 06:55:06 ✅ Container started: ec9d61865510
+2026/09/15 06:55:06 ⏳ Waiting for container id ec9d61865510 image: nats:2.12-alpine. Waiting for: log message "Server is ready"
+2026/09/15 06:55:06 🔔 Container is ready: ec9d61865510
+    async_tracing_test.go:107: stream initialization attempt 1: context deadline exceeded
+    async_tracing_test.go:107: stream initialization attempt 2: context deadline exceeded
+    async_tracing_test.go:267: verified transactional trace, idempotent admission, real three-replica publish/dedup, commit-before-ack redelivery, one Inbox effect, and payload-free spans
+2026/09/15 06:55:13 🐳 Stopping container: ec9d61865510
+2026/09/15 06:55:13 ✅ Container stopped: ec9d61865510
+2026/09/15 06:55:13 🐳 Terminating container: ec9d61865510
+2026/09/15 06:55:13 🚫 Container terminated: ec9d61865510
+2026/09/15 06:55:13 🐳 Stopping container: 9837fc722ada
+2026/09/15 06:55:13 ✅ Container stopped: 9837fc722ada
+2026/09/15 06:55:13 🐳 Terminating container: 9837fc722ada
+2026/09/15 06:55:13 🚫 Container terminated: 9837fc722ada
+2026/09/15 06:55:13 🐳 Stopping container: ce08e1ac946e
+2026/09/15 06:55:13 ✅ Container stopped: ce08e1ac946e
+2026/09/15 06:55:13 🐳 Terminating container: ce08e1ac946e
+2026/09/15 06:55:13 🚫 Container terminated: ce08e1ac946e
+2026/09/15 06:55:13 🐳 Stopping container: 14e883d34aa8
+2026/09/15 06:55:13 ✅ Container stopped: 14e883d34aa8
+2026/09/15 06:55:13 🐳 Terminating container: 14e883d34aa8
+2026/09/15 06:55:14 🚫 Container terminated: 14e883d34aa8
+--- PASS: TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery (10.98s)
+PASS
+ok  	github.com/vivym/vela/internal/integration	11.952s

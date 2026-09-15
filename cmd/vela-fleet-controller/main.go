@@ -23,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/tracing"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
@@ -66,6 +67,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	stopTracing, err := tracing.Start(context.Background(), "vela-fleet-controller")
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return runWithContext(ctx, configuration)

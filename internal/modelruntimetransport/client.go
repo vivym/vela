@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -64,6 +65,7 @@ func Dial(ctx context.Context, config Config) (*Client, error) {
 	}
 	connection, err := grpc.NewClient(
 		"passthrough:///vela-model-runtime",
+		grpc.WithStatsHandler(tracing.GRPCHandler{Client: true}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(dialer),
 		grpc.WithDefaultCallOptions(

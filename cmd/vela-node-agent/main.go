@@ -25,6 +25,7 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -185,6 +186,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	stopTracing, err := tracing.Start(context.Background(), "vela-node-agent")
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 	if os.Geteuid() != 0 {
 		return errors.New("vela-node-agent must run as root for certified remediation and device attestation")
 	}
@@ -320,6 +326,7 @@ func run() error {
 	}
 	defer func() { _ = listener.Close() }()
 	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(tracing.GRPCHandler{}),
 		grpc.Creds(credentials), grpc.MaxRecvMsgSize(1<<20), grpc.MaxSendMsgSize(4<<20),
 	)
 	velav1.RegisterNodeAgentServiceServer(grpcServer, server)

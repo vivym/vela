@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -55,6 +56,7 @@ func Dial(ctx context.Context, config ClientConfig) (*Client, error) {
 		return nil, errors.New("stage worker member address must contain a host and port")
 	}
 	options := []grpc.DialOption{
+		grpc.WithStatsHandler(tracing.GRPCHandler{Client: true}),
 		grpc.WithTransportCredentials(&identityPinnedCredentials{
 			TransportCredentials: config.TransportCredentials,
 			identityDigest:       [sha256.Size]byte(config.TargetIdentityDigest),

@@ -1,0 +1,279 @@
+{
+  "at": "2026-09-14T23:33:37.127681+00:00",
+  "scope": "incremental stage tracing candidate; not a canonical release, not adopted in production",
+  "base_commit": "92199f2975b6dd0b5809313f3086d5c3ea217884",
+  "branch": "feature/vela-mock-hardening",
+  "source_state": "dirty working tree; no commit or push",
+  "database_migrations_required": [
+    97,
+    98
+  ],
+  "production_database_schema": 96,
+  "production_database_name": "app",
+  "journal_reader_schemas": [
+    5,
+    6
+  ],
+  "traced_admission_journal_schema": 6,
+  "source_files": [
+    {
+      "path": "db/migrations/00097_job_origin_trace.sql",
+      "bytes": 1405,
+      "sha256": "385db14f7ba2c2c118af9629540aef01b7a8ad6c618906cead07c311724c0311"
+    },
+    {
+      "path": "db/migrations/00098_stage_assignment_origin_trace.sql",
+      "bytes": 1841,
+      "sha256": "565c77a79cac12158f767ba4f5a3f08ccf7ee3202001bdf27c04392e25623c74"
+    },
+    {
+      "path": "proto/vela/v1/stage_worker_control.proto",
+      "bytes": 8498,
+      "sha256": "e885d6fbf6f4ac4ac95798773dd0053fe7e8ce4904207eaa4e7491cf7ff7fcff"
+    },
+    {
+      "path": "proto/gen/vela/v1/stage_worker_control.pb.go",
+      "bytes": 114899,
+      "sha256": "c4e1b94874fc70fec8f35e1e68cf7fb69089359fce57fcf4ba7bf87025cbf396"
+    },
+    {
+      "path": "internal/tracing/durable.go",
+      "bytes": 1918,
+      "sha256": "258b08fa0977a2ce494cb11137a9bdbe2c067344e7199e537faa64251b87c633"
+    },
+    {
+      "path": "internal/tracing/durable_test.go",
+      "bytes": 2475,
+      "sha256": "6245cdd3e6e898a2015e69f69126aba3ef20975b639305b7ce37c356bad712ed"
+    },
+    {
+      "path": "internal/tracing/stage.go",
+      "bytes": 1379,
+      "sha256": "91fcb4b8525693cf26a15c46ad38124c7018cc126744d4be1a8eb1b1ad9563dd"
+    },
+    {
+      "path": "internal/stageworkercontrol/postgres_assignment.go",
+      "bytes": 34507,
+      "sha256": "6e44869ca0ecea9c9828eb3a9f0c03667eb4d966ae0804e1de429afc2ed993b7"
+    },
+    {
+      "path": "internal/stageworkeragent/tracing.go",
+      "bytes": 1900,
+      "sha256": "374ddd3cc8fe0cd53f9632176de46981ca39593e15afa8eb8180b7467872dc20"
+    },
+    {
+      "path": "internal/stageworkeragent/tracing_test.go",
+      "bytes": 10802,
+      "sha256": "71fd4572d2fcec1d9eb456ed9da2e73ded599091d5d9b8de49141de1be6c9b3b"
+    },
+    {
+      "path": "internal/stageworkeragent/assignment_admission.go",
+      "bytes": 23877,
+      "sha256": "a9f40a4c984986baead626dbfd4dd0e39e2e8a9776b5da2ad1352d20073ab539"
+    },
+    {
+      "path": "internal/stageworkeragent/assignment_admission_file.go",
+      "bytes": 14172,
+      "sha256": "9984f75e77f4974d32a7685383261dda5186ce9c609b0aacf1eaf589059e4965"
+    },
+    {
+      "path": "internal/stageworkeragent/stream.go",
+      "bytes": 33028,
+      "sha256": "0d840e4f79f5c29235a145453e690916126940af4bd7669adb624f59a13b53ad"
+    },
+    {
+      "path": "internal/stageworkeragent/materialization.go",
+      "bytes": 27784,
+      "sha256": "d76c19c18e306631f8b2f80af07f3233847f3b4eefa821cae4da0976f663b519"
+    },
+    {
+      "path": "internal/stageworkeragent/agent_test.go",
+      "bytes": 23299,
+      "sha256": "2473126d00c05ba11c631fa400d15f96f9925e27baf640a642c3942c613774ec"
+    },
+    {
+      "path": "internal/modelruntime/tracing.go",
+      "bytes": 897,
+      "sha256": "95ae132c3eb42e0c02f7db2de2f65582220380cc925f8200fad653442b2e5c0a"
+    },
+    {
+      "path": "internal/modelruntime/tracing_test.go",
+      "bytes": 4264,
+      "sha256": "fa9d8f7596dae984d2cd4a9c0b454650f561343248e73d320d54936fadec0ce0"
+    },
+    {
+      "path": "internal/modelruntime/service.go",
+      "bytes": 46057,
+      "sha256": "0d01b547d1f8645f977fde76961563d5fad4797cdac0e4c4c92ff0d0b20a68c8"
+    },
+    {
+      "path": "internal/modelruntime/service_test.go",
+      "bytes": 37743,
+      "sha256": "eb5879c5033da8b38747d8af6dcd46734dd79d1939931e24b6b61f55ad6daa4b"
+    },
+    {
+      "path": "internal/modelruntime/execution_admission.go",
+      "bytes": 10855,
+      "sha256": "15b009294dfda276f2e272f66252411f38f654ad358ad0c09b4bdc54896205e1"
+    },
+    {
+      "path": "internal/integration/stage_tracing_test.go",
+      "bytes": 4501,
+      "sha256": "477ac910f440641ced1542c9297611be102109bfac68c7b07968452fe6de0af3"
+    },
+    {
+      "path": "internal/integration/stage_scheduler_test.go",
+      "bytes": 66494,
+      "sha256": "f6f744fbbf0549023ecfb2708a60649ee1f7ad6bc328df72f77c270535131a13"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "bin/vela-control",
+      "bytes": 89342255,
+      "sha256": "8d75eaef4bbf6b0ae5432da752b034ba9dcc0030124b092838041f8be2e84c6a"
+    },
+    {
+      "path": "bin/vela-model-runtime",
+      "bytes": 23099397,
+      "sha256": "8de9ce8488c34d0f61ea503b9d3acd1e4f8d38dea92ad7bd20d8d7ed31541d66"
+    },
+    {
+      "path": "bin/vela-node-agent",
+      "bytes": 67648161,
+      "sha256": "6682bc1b402bbfbc9eda565cfc21209ca5a1a6d53a2f41623c7b329022be40f3"
+    },
+    {
+      "path": "bin/vela-stage-worker-agent",
+      "bytes": 33077447,
+      "sha256": "2c334b14942d1a45830d8112ac1a587f62008099a378437c0cdc7c3d2f7a297a"
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/evidence/stage-tracing-build-2026-09-15.log",
+      "bytes": 108,
+      "sha256": "31de7ff6e05b8b3616a78d86413ae2373be4e8796445fa7cabca97aba158d3dd"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-contracts-2026-09-15.log",
+      "bytes": 287,
+      "sha256": "211698433957830fdd34b3b8a4d830cc2206aa616b8ef715a3c47242cc9f0a5a"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-database-2026-09-15.log",
+      "bytes": 9357,
+      "sha256": "91242ee591288bbe7094f5f8f7e3964244ae2bcfd163e5004a527ed067b83239"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-database-initial-2026-09-15.log",
+      "bytes": 9485,
+      "sha256": "7ecb80d4fb5bc1fd625f3d54c07820d32a860ed553988038aa775f85bd2ed30b"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-focused-2026-09-15.log",
+      "bytes": 1472,
+      "sha256": "48a0b8edd23a2189c2e357fedd91e643685aabd3b22ba0b283f2b87b680527b9"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-focused-final-2026-09-15.log",
+      "bytes": 1598,
+      "sha256": "d765a6bf3db49d5e917d14ce55a96cfdba230dd9421e711d440ad660d393b483"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-proto-2026-09-15.log",
+      "bytes": 336,
+      "sha256": "96825f6f3dd5f647208c0f96f98a997367d0a155f88bfe49e5e8f0bcd0cdcccb"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-race-2026-09-15.log",
+      "bytes": 231,
+      "sha256": "b9d9c5e06263017d80fb2ccf98488b31c2d0e0a2bf012f8db4f308f54ceb6502"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-regression-2026-09-15.log",
+      "bytes": 55726,
+      "sha256": "b84e037369d7b8268c1dd92c12ab7a52612f33e0c24d96e4661bc2262ebb2c5b"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-runtime-initial-2026-09-15.log",
+      "bytes": 209,
+      "sha256": "8b2faa6d9dc321e8e73bf6bac13a249d14e9477b46cd932a9455596e21527762"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-unit-initial-2026-09-15.log",
+      "bytes": 231,
+      "sha256": "5f5d12c8efc94078649ce28ebdd0da16ced0f79ada24aa9bded5b82e42563f76"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-vet-2026-09-15.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/stage-tracing-worker-initial-2026-09-15.log",
+      "bytes": 1307,
+      "sha256": "41e48b0698a4918c221a1f0f4511e159d474aa297369544f90bf4e35894b8751"
+    }
+  ],
+  "tests": [
+    {
+      "command": "make generate-proto",
+      "result": "PASS"
+    },
+    {
+      "command": "go test -tags=integration ./internal/integration -run ^TestStageAssignmentTraceSurvivesDatabaseReplay$ -count=1 -v",
+      "result": "PASS",
+      "log": "stage-tracing-database-2026-09-15.log"
+    },
+    {
+      "scope": "seven native database/NATS regression tests",
+      "result": "PASS",
+      "tests": [
+        "--- PASS: TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery (11.61s)",
+        "--- PASS: TestPostgresAssignmentBackendReplaysExactAssignment (2.77s)",
+        "--- PASS: TestPostgresAssignmentBackendPersistsForgedAndStaleAuthorityDecisions (2.77s)",
+        "--- PASS: TestPostgresAssignmentBackendRecoversCrashAfterSchedulerClaim (2.96s)",
+        "--- PASS: TestPostgresAssignmentBackendRecoversAfterCommittedSchedulerBeforeResult (2.81s)",
+        "--- PASS: TestStageWorkerAssignmentMigrationEmptyDownUp (1.91s)",
+        "--- PASS: TestStageWorkerAssignmentOrderIsDurableAcrossReplayAndRenewal (2.55s)"
+      ]
+    },
+    {
+      "command": "go test -race ./internal/tracing ./internal/stageworkeragent ./internal/stageworkercontrol ./internal/modelruntime -count=1",
+      "result": "PASS",
+      "log": "stage-tracing-race-2026-09-15.log",
+      "note": "Full packages passed before final attribute-name alignment and nil heartbeat-context guard; final focused race and Linux builds cover those subsequent edits."
+    },
+    {
+      "command": "go test -race ./internal/tracing ./internal/stageworkeragent ./internal/modelruntime -run '^(TestStageTrace|TestRuntimeTrace|TestDurableParent)' -count=1 -v",
+      "result": "PASS",
+      "log": "stage-tracing-focused-final-2026-09-15.log"
+    },
+    {
+      "command": "go test ./cmd/vela-control ./cmd/vela-stage-worker-agent ./cmd/vela-model-runtime ./cmd/vela-node-agent ./internal/deploymentcontract -count=1",
+      "result": "PASS",
+      "log": "stage-tracing-contracts-2026-09-15.log"
+    },
+    {
+      "command": "go vet ./internal/tracing ./internal/stageworkeragent ./internal/stageworkercontrol ./internal/modelruntime",
+      "result": "PASS"
+    },
+    {
+      "scope": "four CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath binaries",
+      "result": "PASS",
+      "log": "stage-tracing-build-2026-09-15.log"
+    }
+  ],
+  "initial_failures_retained": {
+    "stage-tracing-worker-initial-2026-09-15.log": "test fixture omitted the required input drain checkpoint before replay",
+    "stage-tracing-database-initial-2026-09-15.log": "test fixture reran login-role creation after migration Down/Up"
+  },
+  "evidence_limits": [
+    "reopened journal objects and new database pools, not OS process crashes",
+    "real gRPC with FakeRuntime, no model/GPU benchmark",
+    "no new production rollout or trace export validation",
+    "no disk reclamation or host reboot",
+    "no complete release or retention-period capacity proof"
+  ]
+}

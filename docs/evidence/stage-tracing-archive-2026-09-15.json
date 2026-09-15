@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-14T23:35:39.231448+00:00",
+  "host": "10.1.201.70",
+  "path": "/opt/vela-cluster/stage-runtime-tracing-20260915/candidate.tar.gz",
+  "bytes": 93330824,
+  "sha256": "3a6bcbdc58b3d522202d3c022ada942df0100e124d580954e2be5378b15b5e8a",
+  "members": 47,
+  "verified_manifest_members": 39,
+  "archive_mode": "0o600",
+  "directory_mode": "0o700",
+  "filesystem_available_before_bytes": 738913742848,
+  "production_mutated": false,
+  "scope": "private candidate archive only; no database migration, live service replacement or host restart",
+  "temporary_upload_removed": true
+}

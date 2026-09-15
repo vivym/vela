@@ -8,7 +8,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -44,7 +49,7 @@ func (c *JetStreamConsumer) ProcessMessage(
 	ctx context.Context,
 	message jetstream.Msg,
 	handler Handler,
-) (bool, error) {
+) (applied bool, err error) {
 	if c == nil || c.processor == nil {
 		return false, errors.New("JetStream Inbox consumer is not configured")
 	}
@@ -55,7 +60,30 @@ func (c *JetStreamConsumer) ProcessMessage(
 	if err != nil {
 		return false, err
 	}
-	applied, err := c.processor.ProcessOnce(ctx, event, handler)
+	parent := message.Headers().Get("traceparent")
+	ctx, span := otel.Tracer("vela/inbox").Start(tracing.WithDurableParent(ctx, &parent),
+		"VELA_EVENTS process", trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(
+			attribute.String("messaging.system", "nats"),
+			attribute.String("messaging.destination.name", "VELA_EVENTS"),
+			attribute.String("messaging.operation.name", "process"),
+			attribute.String("messaging.message.id", event.ID.String()),
+			attribute.String("vela.job.id", event.AggregateID.String())))
+	defer func() {
+		if value := recover(); value != nil {
+			span.SetStatus(codes.Error, "process panic")
+			span.End()
+			panic(value)
+		}
+		if err != nil {
+			span.SetStatus(codes.Error, "process or acknowledgement failed")
+		}
+		span.SetAttributes(attribute.Bool("vela.inbox.applied", applied))
+		span.End()
+	}()
+	if metadata, metadataErr := message.Metadata(); metadataErr == nil && metadata != nil {
+		span.SetAttributes(attribute.Int64("messaging.nats.message.delivery_count", int64(metadata.NumDelivered)))
+	}
+	applied, err = c.processor.ProcessOnce(ctx, event, handler)
 	if err != nil {
 		return false, err
 	}

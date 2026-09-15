@@ -241,6 +241,7 @@ INSERT INTO jobs (
     execution_circuit_breaker_policy,
 	execution_circuit_fingerprint_window_seconds,
 	execution_circuit_min_distinct_healthy_workers,
+    origin_trace_parent,
     job_expires_at
 ) VALUES (
     $1,
@@ -280,7 +281,8 @@ INSERT INTO jobs (
     $33,
 	$34,
 	$35,
-	transaction_timestamp() + $36::bigint * interval '1 second'
+    $36,
+	transaction_timestamp() + $37::bigint * interval '1 second'
 )
 `
 
@@ -320,6 +322,7 @@ type InsertJobParams struct {
 	ExecutionCircuitBreakerPolicy             []byte    `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
 	ExecutionCircuitFingerprintWindowSeconds  int32     `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
 	ExecutionCircuitMinDistinctHealthyWorkers int32     `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
+	OriginTraceParent                         *string   `db:"origin_trace_parent" json:"origin_trace_parent"`
 	JobLifetimeSeconds                        int64     `db:"job_lifetime_seconds" json:"job_lifetime_seconds"`
 }
 
@@ -360,6 +363,7 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.ExecutionCircuitBreakerPolicy,
 		arg.ExecutionCircuitFingerprintWindowSeconds,
 		arg.ExecutionCircuitMinDistinctHealthyWorkers,
+		arg.OriginTraceParent,
 		arg.JobLifetimeSeconds,
 	)
 	return err

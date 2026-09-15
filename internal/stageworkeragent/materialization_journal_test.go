@@ -147,4 +147,10 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 	if err := empty.EnsureCapacity(context.Background()); err != nil {
 		t.Fatalf("empty file journal capacity: %v", err)
 	}
+	if err := empty.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := empty.List(context.Background()); err == nil {
+		t.Fatal("closed file materialization journal accepted a late read")
+	}
 }

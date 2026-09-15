@@ -1,0 +1,198 @@
+{
+  "at": "2026-09-14T18:33:57.618444+00:00",
+  "binary_sha256": "880b22de6065ca2483ea072b6758ea53435580a16bf8b6b31b2ee76956abf87f",
+  "host": "llmpool01",
+  "scope": "two unprivileged Linux processes; HTTP -> gRPC -> Collector -> Tempo",
+  "collector": "10.43.202.59",
+  "tempo": "10.43.78.16",
+  "checks": [
+    {
+      "name": "temporary executable filesystem",
+      "passed": true
+    },
+    {
+      "name": "backend loopback listener",
+      "passed": true
+    },
+    {
+      "name": "backend unprivileged UID",
+      "passed": true
+    },
+    {
+      "name": "frontend loopback listener",
+      "passed": true
+    },
+    {
+      "name": "frontend unprivileged UID",
+      "passed": true
+    },
+    {
+      "name": "ok HTTP status",
+      "passed": true
+    },
+    {
+      "name": "fail HTTP status",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated HTTP status",
+      "passed": true
+    },
+    {
+      "name": "both processes shut down and flushed successfully",
+      "passed": true
+    },
+    {
+      "name": "ok: expected spans in Tempo",
+      "passed": true
+    },
+    {
+      "name": "ok: no synthetic private data",
+      "passed": true
+    },
+    {
+      "name": "ok: bounded resources",
+      "passed": true
+    },
+    {
+      "name": "ok: same trace ID",
+      "passed": true
+    },
+    {
+      "name": "ok: empty vendor state",
+      "passed": true
+    },
+    {
+      "name": "ok: HTTP incoming parent",
+      "passed": true
+    },
+    {
+      "name": "ok: HTTP status attribute",
+      "passed": true
+    },
+    {
+      "name": "ok: cross-process parent chain",
+      "passed": true
+    },
+    {
+      "name": "ok: bounded RPC operation",
+      "passed": true
+    },
+    {
+      "name": "ok: client gRPC status",
+      "passed": true
+    },
+    {
+      "name": "ok: server gRPC status",
+      "passed": true
+    },
+    {
+      "name": "fail: expected spans in Tempo",
+      "passed": true
+    },
+    {
+      "name": "fail: no synthetic private data",
+      "passed": true
+    },
+    {
+      "name": "fail: bounded resources",
+      "passed": true
+    },
+    {
+      "name": "fail: same trace ID",
+      "passed": true
+    },
+    {
+      "name": "fail: empty vendor state",
+      "passed": true
+    },
+    {
+      "name": "fail: HTTP incoming parent",
+      "passed": true
+    },
+    {
+      "name": "fail: HTTP status attribute",
+      "passed": true
+    },
+    {
+      "name": "fail: cross-process parent chain",
+      "passed": true
+    },
+    {
+      "name": "fail: bounded RPC operation",
+      "passed": true
+    },
+    {
+      "name": "fail: client gRPC status",
+      "passed": true
+    },
+    {
+      "name": "fail: server gRPC status",
+      "passed": true
+    },
+    {
+      "name": "fail: error statuses",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: expected spans in Tempo",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: no synthetic private data",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: bounded resources",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: same trace ID",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: empty vendor state",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: HTTP incoming parent",
+      "passed": true
+    },
+    {
+      "name": "unauthenticated: HTTP status attribute",
+      "passed": true
+    }
+  ],
+  "cases": [
+    {
+      "case": "ok",
+      "trace_id": "4b338a617c1d4235baa881373353b683",
+      "parent_span_id": "d8b7cd84e0924dd4",
+      "status": 204,
+      "expected_spans": 3,
+      "span_count": 3
+    },
+    {
+      "case": "fail",
+      "trace_id": "55396e9fae6546edb94b801ac10c91f6",
+      "parent_span_id": "dcc0d4f6de0547be",
+      "status": 503,
+      "expected_spans": 3,
+      "span_count": 3
+    },
+    {
+      "case": "unauthenticated",
+      "trace_id": "a31c036e5d3b44ee93d4d10128552159",
+      "parent_span_id": "6f14c7505b7e4b64",
+      "status": 401,
+      "expected_spans": 1,
+      "span_count": 1
+    }
+  ],
+  "passed": true,
+  "cleanup": {
+    "processes_exited": true,
+    "runtime_directory_removed": true,
+    "all_listeners_closed": true
+  }
+}

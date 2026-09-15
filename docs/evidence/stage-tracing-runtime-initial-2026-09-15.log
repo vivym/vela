@@ -1,0 +1,4 @@
+=== RUN   TestRuntimeTraceKeepsWatchdogParentAfterRequestCancellation
+--- PASS: TestRuntimeTraceKeepsWatchdogParentAfterRequestCancellation (0.02s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	1.718s

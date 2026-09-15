@@ -1,0 +1,52 @@
+{
+  "at": "2026-09-14T23:00:27.563788+00:00",
+  "read_only": true,
+  "nodes": [
+    {
+      "name": "marslab-gpu-01",
+      "ready": "True",
+      "pressures": [
+        "DiskPressure"
+      ]
+    },
+    {
+      "name": "server-36",
+      "ready": "Unknown",
+      "pressures": []
+    }
+  ],
+  "workloads": [
+    {
+      "namespace": "vela-system",
+      "name": "nats",
+      "ready": 2,
+      "desired": 3
+    },
+    {
+      "namespace": "apisix",
+      "name": "apisix-etcd",
+      "ready": 2,
+      "desired": 3
+    },
+    {
+      "namespace": "object-store",
+      "name": "minio-ha",
+      "ready": 5,
+      "desired": 6
+    }
+  ],
+  "postgresql": {
+    "ready": 2,
+    "desired": 3
+  },
+  "database_name": "app",
+  "database_schema_version": 96,
+  "control": {
+    "ready": 2,
+    "image": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+  },
+  "node66_root_fs": {
+    "capacity_bytes": 942396350464,
+    "available_bytes": 131098800128
+  }
+}

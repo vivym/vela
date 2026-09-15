@@ -8,6 +8,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/vivym/vela/internal/eventstream"
+	"github.com/vivym/vela/internal/tracing"
 )
 
 const natsMessageIDHeader = "Nats-Msg-Id"
@@ -45,6 +46,9 @@ func (b *JetStreamBroker) Publish(
 	}
 	message := nats.NewMsg(subject)
 	message.Header.Set(natsMessageIDHeader, messageID)
+	if parent := tracing.DurableParent(ctx); parent != nil {
+		message.Header.Set("traceparent", *parent)
+	}
 	message.Data = payload
 	acknowledgement, err := b.client.PublishMsg(
 		ctx,

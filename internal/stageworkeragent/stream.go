@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -50,6 +51,7 @@ type StreamAgent struct {
 	stopGeneration     uint64
 	mu                 sync.Mutex
 	active             *velav1.StageAuthority
+	assignmentTrace    *assignmentTrace
 }
 
 type pendingAssignmentInputs struct {
@@ -247,6 +249,12 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 	if agent.admission != nil && acquireID == uuid.Nil {
 		return result, errors.New("durable StageAssignment requires its original Acquire command ID")
 	}
+	var finishTrace func()
+	defer func() {
+		if finishTrace != nil {
+			finishTrace()
+		}
+	}()
 	agent.assignmentMu.Lock()
 	defer agent.assignmentMu.Unlock()
 	if agent.activeAuthority() != nil {
@@ -290,6 +298,9 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 			admission.Release()
 		}
 	}()
+	agent.rememberAssignmentTrace(assignment)
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.start", assignment.GetAuthority())
+	finishTrace = func() { tracing.EndStage(span, resultErr) }
 	if agent.materialization != nil {
 		if err := agent.materialization.journal.EnsureCapacity(ctx); err != nil {
 			return result, fmt.Errorf("reserve local materialization recovery capacity: %w", err)
@@ -410,8 +421,8 @@ func (agent *StreamAgent) executeAssignment(ctx context.Context, assignment *vel
 func (agent *StreamAgent) Heartbeat(
 	ctx context.Context,
 	sequence int64,
-) (*velav1.StageCommandResult, error) {
-	if agent == nil || sequence <= 0 {
+) (result *velav1.StageCommandResult, resultErr error) {
+	if agent == nil || ctx == nil || sequence <= 0 {
 		return nil, errors.New("invalid Stage Worker heartbeat sequence")
 	}
 	agent.runtimeMu.Lock()
@@ -420,6 +431,8 @@ func (agent *StreamAgent) Heartbeat(
 		agent.runtimeMu.Unlock()
 		return nil, errors.New("missing active StageAuthority on Stage Worker")
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.heartbeat", authority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
 		agent.runtimeMu.Unlock()
 		return nil, err
@@ -483,7 +496,7 @@ func (agent *StreamAgent) Heartbeat(
 func (agent *StreamAgent) Fail(
 	ctx context.Context,
 	status AggregateStatus,
-) (*velav1.StageCommandResult, error) {
+) (result *velav1.StageCommandResult, resultErr error) {
 	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
 		return nil, errors.New("missing configured Stage Worker failure reporter")
 	}
@@ -491,6 +504,8 @@ func (agent *StreamAgent) Fail(
 	if authority == nil {
 		return nil, errors.New("missing active StageAuthority on Stage Worker")
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.fail", authority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	failure, err := aggregateFailureEvidence(status)
 	if err != nil {
 		return nil, err
@@ -621,12 +636,13 @@ func (agent *StreamAgent) Reattach(
 	authority *velav1.StageAuthority,
 	localReceiptID string,
 	localReceiptDigest []byte,
-) (ReattachResult, error) {
-	result := ReattachResult{}
+) (result ReattachResult, resultErr error) {
 	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil || authority == nil ||
 		(len(localReceiptDigest) != 0 && len(localReceiptDigest) != 32) {
 		return result, errors.New("invalid Stage Worker reattach authority")
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.reattach", authority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	agent.assignmentMu.Lock()
 	defer agent.assignmentMu.Unlock()
 	agent.runtimeMu.Lock()
@@ -729,7 +745,7 @@ func (agent *StreamAgent) cancelPendingInputs(ctx context.Context, stop *velav1.
 func (agent *StreamAgent) handleStop(
 	ctx context.Context,
 	stop *velav1.StopStage,
-) (CancellationResult, error) {
+) (result CancellationResult, resultErr error) {
 	if stop == nil || stop.GetAuthority() == nil ||
 		stop.GetReason() == velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_UNSPECIFIED {
 		return CancellationResult{}, errors.New("invalid Stage Worker StopStage command")
@@ -745,6 +761,8 @@ func (agent *StreamAgent) handleStop(
 		// fails or its acknowledgment is lost.
 		agent.stopGeneration++
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.stop", stop.GetAuthority())
+	defer func() { tracing.EndStage(span, resultErr) }()
 	closeErr := agent.closeAdmission(context.WithoutCancel(ctx), stop.GetAuthority())
 	result, cancelErr := agent.runtime.Cancel(
 		ctx,
@@ -790,13 +808,15 @@ func (agent *StreamAgent) closeAdmission(ctx context.Context, authority *velav1.
 	return agent.admission.CloseExecution(ctx, authority)
 }
 
-func (agent *StreamAgent) inspectActiveRuntime(ctx context.Context) (*velav1.StageAuthority, AggregateStatus, error) {
+func (agent *StreamAgent) inspectActiveRuntime(ctx context.Context) (resultAuthority *velav1.StageAuthority, resultStatus AggregateStatus, resultErr error) {
 	agent.runtimeMu.Lock()
 	defer agent.runtimeMu.Unlock()
 	authority := agent.activeAuthority()
 	if authority == nil {
 		return nil, AggregateStatus{}, errors.New("stage worker has no active authority to inspect")
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.status", authority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
 		return nil, AggregateStatus{}, err
 	}

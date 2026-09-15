@@ -26,6 +26,7 @@ import (
 	"github.com/vivym/vela/internal/stageworkeragent"
 	"github.com/vivym/vela/internal/stageworkermembertransport"
 	"github.com/vivym/vela/internal/stageworkertransport"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -303,6 +304,7 @@ func newProductionRuntimeUsing(
 			return fail(fmt.Errorf("listen for Stage Worker member service: %w", err))
 		}
 		runtime.memberServer = grpc.NewServer(
+			grpc.StatsHandler(tracing.GRPCHandler{}),
 			grpc.Creds(serverCredentials),
 			grpc.MaxRecvMsgSize(4<<20),
 			grpc.MaxSendMsgSize(4<<20),

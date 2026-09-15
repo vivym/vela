@@ -1,0 +1,190 @@
+{
+  "batches": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-frontend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/http"
+          },
+          "spans": [
+            {
+              "traceId": "SzOKYXwdQjW6qIE3M1O2gw==",
+              "spanId": "adx865nm0mY=",
+              "parentSpanId": "2LfNhOCSTdQ=",
+              "flags": 769,
+              "name": "POST /probe/{case}",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1789410837674035641",
+              "endTimeUnixNano": "1789410837677438983",
+              "attributes": [
+                {
+                  "key": "http.request.method",
+                  "value": {
+                    "stringValue": "POST"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/probe/{case}"
+                  }
+                },
+                {
+                  "key": "http.response.status_code",
+                  "value": {
+                    "intValue": "204"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-frontend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/grpc"
+          },
+          "spans": [
+            {
+              "traceId": "SzOKYXwdQjW6qIE3M1O2gw==",
+              "spanId": "561+PmfDAfQ=",
+              "parentSpanId": "adx865nm0mY=",
+              "flags": 257,
+              "name": "grpc.health.v1.Health/Check",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1789410837674874461",
+              "endTimeUnixNano": "1789410837677376982",
+              "attributes": [
+                {
+                  "key": "rpc.system",
+                  "value": {
+                    "stringValue": "grpc"
+                  }
+                },
+                {
+                  "key": "rpc.service",
+                  "value": {
+                    "stringValue": "grpc.health.v1.Health"
+                  }
+                },
+                {
+                  "key": "rpc.method",
+                  "value": {
+                    "stringValue": "Check"
+                  }
+                },
+                {
+                  "key": "rpc.grpc.status_code",
+                  "value": {
+                    "intValue": "0"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-backend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/grpc"
+          },
+          "spans": [
+            {
+              "traceId": "SzOKYXwdQjW6qIE3M1O2gw==",
+              "spanId": "71v/hVOghQU=",
+              "parentSpanId": "561+PmfDAfQ=",
+              "flags": 769,
+              "name": "grpc.health.v1.Health/Check",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1789410837676640236",
+              "endTimeUnixNano": "1789410837676761042",
+              "attributes": [
+                {
+                  "key": "rpc.system",
+                  "value": {
+                    "stringValue": "grpc"
+                  }
+                },
+                {
+                  "key": "rpc.service",
+                  "value": {
+                    "stringValue": "grpc.health.v1.Health"
+                  }
+                },
+                {
+                  "key": "rpc.method",
+                  "value": {
+                    "stringValue": "Check"
+                  }
+                },
+                {
+                  "key": "rpc.grpc.status_code",
+                  "value": {
+                    "intValue": "0"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

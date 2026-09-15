@@ -54,6 +54,7 @@ import (
 	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
+	"github.com/vivym/vela/internal/tracing"
 	"github.com/vivym/vela/internal/webhook"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -349,6 +350,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	stopTracing, err := tracing.Start(context.Background(), "vela-control")
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 	bootstrapSigner, err := newWorkerBootstrapSigner(configuration)
 	if err != nil {
 		return err
@@ -940,6 +946,7 @@ func run() error {
 		return err
 	}
 	fleetGRPCServer := grpc.NewServer(
+		grpc.StatsHandler(tracing.GRPCHandler{}),
 		grpc.Creds(fleetTransportCredentials),
 		grpc.MaxRecvMsgSize(fleettransport.MaximumMessageBytes),
 		grpc.MaxSendMsgSize(1<<20),

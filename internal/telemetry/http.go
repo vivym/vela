@@ -14,6 +14,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/tracing"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const requestIDHeader = "X-Request-ID"
@@ -60,7 +62,7 @@ func NewHTTPMetrics() *HTTPMetrics {
 }
 
 func (metrics *HTTPMetrics) Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return tracing.HTTPServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.NewString()
 		w.Header().Set(requestIDHeader, requestID)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
@@ -75,7 +77,7 @@ func (metrics *HTTPMetrics) Middleware(next http.Handler) http.Handler {
 		method := controlledMethod(r.Method)
 		metrics.requests.WithLabelValues(method, route, strconv.Itoa(captured.Code)).Inc()
 		metrics.duration.WithLabelValues(method, route).Observe(time.Since(startedAt).Seconds())
-	})
+	}))
 }
 
 func (metrics *HTTPMetrics) ObserveRequestRole(
@@ -88,13 +90,20 @@ func (metrics *HTTPMetrics) ObserveRequestRole(
 		string(observation.DatabaseRole),
 	).Inc()
 	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
-	metrics.logger.InfoContext(
-		ctx,
-		"database request role verified",
+	spanContext := trace.SpanContextFromContext(ctx)
+	fields := []any{
 		"request_id", requestID,
 		"surface", observation.Surface,
 		"database_login", observation.DatabaseLogin,
 		"database_role", observation.DatabaseRole,
+	}
+	if spanContext.IsValid() {
+		fields = append(fields, "trace_id", spanContext.TraceID().String(), "span_id", spanContext.SpanID().String())
+	}
+	metrics.logger.InfoContext(
+		ctx,
+		"database request role verified",
+		fields...,
 	)
 }
 

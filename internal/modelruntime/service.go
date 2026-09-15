@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -77,6 +78,7 @@ type Service struct {
 const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
+	traceParent          *string
 	verified             stageauthority.Verified
 	backendAuthority     *stageauthority.Verified
 	state                velav1.ModelRuntimeExecutionState
@@ -240,6 +242,8 @@ func (service *Service) PrepareStage(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
+	ctx, finishTrace := startRuntimeTrace(ctx, "vela.runtime.prepare", verified)
+	defer func() { finishTrace(response.GetDecision()) }()
 	if err := stageassignment.ValidateExecutionSpec(request.GetExecutionSpec()); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.Detail = boundedDetail(err.Error())
@@ -328,6 +332,8 @@ func (service *Service) StartStage(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
+	ctx, finishTrace := startRuntimeTrace(ctx, "vela.runtime.start", verified)
+	defer func() { finishTrace(response.GetDecision()) }()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
@@ -409,6 +415,8 @@ func (service *Service) CancelStage(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
+	ctx, finishTrace := startRuntimeTrace(ctx, "vela.runtime.cancel", verified)
+	defer func() { finishTrace(response.GetDecision()) }()
 	if !validCancelReason(request.GetReason()) {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.Detail = "cancellation reason is invalid"
@@ -488,6 +496,8 @@ func (service *Service) Status(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
+	ctx, finishTrace := startRuntimeTrace(ctx, "vela.runtime.status", verified)
+	defer func() { finishTrace(response.GetDecision()) }()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
@@ -599,6 +609,8 @@ func (service *Service) SealOutput(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
+	ctx, finishTrace := startRuntimeTrace(ctx, "vela.runtime.seal", verified)
+	defer func() { finishTrace(response.GetDecision()) }()
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
 	_, release, err := service.executionAdmission().begin(ctx, service, &verified, false)
@@ -854,6 +866,7 @@ func (service *Service) expire(generation uint64) {
 		return
 	}
 	verified := service.active.verified
+	parent := service.active.traceParent
 	service.mu.Unlock()
 	// Admission serialization can wait behind another resident's journal I/O.
 	// Expiry is a pending stop, not a caller deadline: start the backend stop
@@ -866,6 +879,8 @@ func (service *Service) expire(generation uint64) {
 	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), service.cancelTimeout)
 	defer cancel()
+	ctx, span := tracing.StartStage(tracing.WithDurableParent(ctx, parent), "vela.runtime.deadline_cancel", verified.Authority)
+	defer func() { tracing.EndStage(span, err) }()
 	target, _, err := service.resolveCancellationTarget(ctx, verified, false)
 	if err == nil {
 		err = service.backend.Cancel(ctx, target, velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE)

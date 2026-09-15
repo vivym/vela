@@ -1,0 +1,24 @@
+=== RUN   TestDurableParentRoundTripAndIsolation
+--- PASS: TestDurableParentRoundTripAndIsolation (0.00s)
+PASS
+ok  	github.com/vivym/vela/internal/tracing	1.764s
+=== RUN   TestStageTraceSurvivesWorkerReopenRenewalAndStop
+--- PASS: TestStageTraceSurvivesWorkerReopenRenewalAndStop (0.15s)
+=== RUN   TestStageTraceMaterializationRecoveryUsesOriginalPendingExecution
+--- PASS: TestStageTraceMaterializationRecoveryUsesOriginalPendingExecution (0.16s)
+=== RUN   TestStageTraceControlErrorExcludesPrivateDetails
+--- PASS: TestStageTraceControlErrorExcludesPrivateDetails (0.08s)
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/valid
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid
+=== RUN   TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid#01
+--- PASS: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin (0.25s)
+    --- PASS: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/valid (0.08s)
+    --- PASS: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid (0.09s)
+    --- PASS: TestStageTraceInputIsOptionalBoundedAndDoesNotReplaceJournalOrigin/absent-or-invalid#01 (0.08s)
+PASS
+ok  	github.com/vivym/vela/internal/stageworkeragent	2.256s
+=== RUN   TestRuntimeTraceKeepsWatchdogParentAfterRequestCancellation
+--- PASS: TestRuntimeTraceKeepsWatchdogParentAfterRequestCancellation (0.02s)
+PASS
+ok  	github.com/vivym/vela/internal/modelruntime	2.168s

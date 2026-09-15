@@ -1,0 +1,222 @@
+{
+  "at": "2026-09-14T23:08:14.369940+00:00",
+  "passed": true,
+  "production_adopted": false,
+  "host": "10.1.201.70",
+  "path": "/opt/vela-cluster/async-message-tracing-20260915/candidate.tar.gz",
+  "sha256": "d481fd825ed1255736f6dcd0569b67bc183d4a1f83dcceded32228740344af23",
+  "bytes": 37617255,
+  "members": 42,
+  "manifest": {
+    "scope": "incremental working-tree source, test logs and candidate executable; not a standalone rebuildable or canonical release",
+    "base_head": "92199f2975b6dd0b5809313f3086d5c3ea217884",
+    "production_adopted": false,
+    "files": [
+      {
+        "name": "bin/vela-control",
+        "bytes": 89330919,
+        "sha256": "aa4485c2ca55f155fbd0f6eeea275812afa7ea904c0a36d9284b646e3f06afcf"
+      },
+      {
+        "name": "db/migrations/00097_job_origin_trace.sql",
+        "bytes": 1405,
+        "sha256": "385db14f7ba2c2c118af9629540aef01b7a8ad6c618906cead07c311724c0311"
+      },
+      {
+        "name": "db/queries/admission.sql",
+        "bytes": 10751,
+        "sha256": "412c22352212af16cc5ffea8a5848ee38d4fd33eca5b614d2a5c49e07684818a"
+      },
+      {
+        "name": "db/queries/outbox.sql",
+        "bytes": 1830,
+        "sha256": "3eb56e705472f4c245ca92fe7bd55965eff04e8546abdea04701e0f2c00758ab"
+      },
+      {
+        "name": "docs/application-tracing-validation-2026-09-15.md",
+        "bytes": 8226,
+        "sha256": "eb9fa7e969ef3df06ba2eaba88506956ae034d2f304d746fec1186fff1ea4783"
+      },
+      {
+        "name": "docs/async-message-tracing-validation-2026-09-15.md",
+        "bytes": 6077,
+        "sha256": "1e603599b1a964c714f8321c2eebf8867d19f8ffb61c555fec448e642eae3a0e"
+      },
+      {
+        "name": "docs/cluster-production-readiness-2026-09-14.md",
+        "bytes": 23166,
+        "sha256": "69cd37b42b712fbefdc7ba9323603b4047b48a0064abf531fd5410e170850770"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-contracts-2026-09-15.log",
+        "bytes": 114,
+        "sha256": "1878ef16e55953eeb23b451cbeed44f4a52e7cf40ab893d97268ec56b8cd388b"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-initial-2026-09-15.log",
+        "bytes": 11112,
+        "sha256": "837eb92d85c32588eee4287ffffb374f3121023a406ad78e83a6e0a31292842b"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-integration-2026-09-15.log",
+        "bytes": 11423,
+        "sha256": "b939ba3826cde4573899759722cb1b99d1fcf03b779365f193f5d698dd7a5766"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-integration-v2-2026-09-15.log",
+        "bytes": 11419,
+        "sha256": "93369692a1e065e5491891c31cfed78392cdb7f6ad70f7ff42afa54b8e33feda"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-race-2026-09-15.log",
+        "bytes": 159,
+        "sha256": "7dfa48e248d424345d2e2f031d616dfa46820d11c9ddadd9f4b01352a69b37e5"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-regression-2026-09-15.log",
+        "bytes": 45496,
+        "sha256": "0ad3f23435b678d59a3708fd4dfa962e7b1073ee94c46cd60d087bd543c9ad87"
+      },
+      {
+        "name": "docs/evidence/async-message-tracing-tests-2026-09-15.json",
+        "bytes": 5007,
+        "sha256": "6a54f6866cc297b7e01758959b8d47ae1cae6293a1198d6523b82fe0d751f6cb"
+      },
+      {
+        "name": "docs/evidence/async-tracing-preflight-initial-2026-09-15.log",
+        "bytes": 1007,
+        "sha256": "70edf87f2683d303d017b2b996a25b41d2572bd947798c520eb0648d10d81b0f"
+      },
+      {
+        "name": "docs/evidence/async-tracing-production-preflight-2026-09-15.json",
+        "bytes": 1006,
+        "sha256": "19289fda7857e45b0653c5a5ce874fc4c2dfccc5927fe2cb597bca3d7ad02a8d"
+      },
+      {
+        "name": "docs/evidence/fleet-foundation-preflight-v2-2026-09-15.json",
+        "bytes": 665,
+        "sha256": "af01d74d9164e038e35c604ee274fa86a6c3b304fe66406c267acfb62dd7aa89"
+      },
+      {
+        "name": "docs/evidence/node19-readonly-followup-2026-09-15.json",
+        "bytes": 193,
+        "sha256": "c8e26b308dc2d43bda5f4a32ead1b1408c4143d30bcba2caaf1a4b6faff0944d"
+      },
+      {
+        "name": "docs/fleet-controller-deployment-preparation-2026-09-15.md",
+        "bytes": 8498,
+        "sha256": "8acde251abe948cede3962bdc0112e4bc0f10f6d70b436cdc0c5f3a4740a7869"
+      },
+      {
+        "name": "docs/node66-temporary-artifact-reclamation-plan-2026-09-15.md",
+        "bytes": 9283,
+        "sha256": "6fba59bd043527984648e13ce86d6fce476e7e0f4bcce7b28ff4e530f2334bce"
+      },
+      {
+        "name": "docs/runbooks/observability-traces.md",
+        "bytes": 5356,
+        "sha256": "7c08492c5432efb7ac721fff7aad878148a7c6c21da2e8705cc28b961f08a7f4"
+      },
+      {
+        "name": "evidence/build-info.txt",
+        "bytes": 10102,
+        "sha256": "3e2f51fa02eac3d4f62731e1b64c905ec569d502df81c301c1514e819ec31bd2"
+      },
+      {
+        "name": "go.mod",
+        "bytes": 7353,
+        "sha256": "4dc2e9f5b83792c7d19ff311a879d53fa3d82ecf37f7fb14335206a18ea3f6db"
+      },
+      {
+        "name": "go.sum",
+        "bytes": 38258,
+        "sha256": "4ac98c2261356f0b96005c65b7e3a42cc190e4913a9e5e26d90ead26c784325d"
+      },
+      {
+        "name": "hack/deploy-fleet-foundation.py",
+        "bytes": 8210,
+        "sha256": "fe5791ecfac77be9516b1babc452a972a7065b4b756c795bf451d089aa469eba"
+      },
+      {
+        "name": "internal/admission/service.go",
+        "bytes": 26346,
+        "sha256": "71bc57531a0360697fc2a3711167080fc161417fcf294c9ff048a9f7e1f6d90f"
+      },
+      {
+        "name": "internal/inbox/jetstream.go",
+        "bytes": 7417,
+        "sha256": "75dbfba2277d52d55bbc8945a4e41763295de4b695151b0aef7441ebda6b3a80"
+      },
+      {
+        "name": "internal/integration/async_tracing_test.go",
+        "bytes": 15083,
+        "sha256": "07aad330ca749d0b4f3921a343d75fd5006d0895c40eb8984d5ae4600fbc3971"
+      },
+      {
+        "name": "internal/outbox/jetstream.go",
+        "bytes": 2786,
+        "sha256": "6594ad6abe2a30f69ad8fc7e5a9ec37ddf3c23c076539773ac8d3098608b9f80"
+      },
+      {
+        "name": "internal/outbox/publisher.go",
+        "bytes": 6358,
+        "sha256": "3c42ea82e3a49b2e029d5bd1869a67428045d0c274b9347907bdf6467859306c"
+      },
+      {
+        "name": "internal/store/sqlc/admission.sql.go",
+        "bytes": 32615,
+        "sha256": "1488f948fd891d2167b688273a516bf85ca93755d1ade3b7e20adbccbe509741"
+      },
+      {
+        "name": "internal/store/sqlc/models.go",
+        "bytes": 350626,
+        "sha256": "455fea7a45666c5b00d5c0781b274c25886ea453fd780e5cc4d638cb01b26f20"
+      },
+      {
+        "name": "internal/store/sqlc/outbox.sql.go",
+        "bytes": 5019,
+        "sha256": "a28a02d8ef0dbe60434fea696c81cc4d0f38a9a38ccd1aa78788cc526c3982e9"
+      },
+      {
+        "name": "internal/tracing/context.go",
+        "bytes": 656,
+        "sha256": "8b9a14d72dca23fac388e7f36fa875beeaea1274f63a64d5cd2dca9d66366d92"
+      },
+      {
+        "name": "internal/tracing/durable.go",
+        "bytes": 1306,
+        "sha256": "3cd5f83871a91039aa558ca1f8f2ddf58c0c24991fa6a6d4fd7bac51a17eb03f"
+      },
+      {
+        "name": "internal/tracing/durable_test.go",
+        "bytes": 2138,
+        "sha256": "ee357a3fe041c355da2727284b4e27c685a90c30a7c57cf624ed21b6c05c2fa2"
+      },
+      {
+        "name": "internal/tracing/grpc.go",
+        "bytes": 3239,
+        "sha256": "9a6ad5f626ff3976e190bc941ec464a4037fbd5cf275cf50839cb077ff9c3632"
+      },
+      {
+        "name": "internal/tracing/http.go",
+        "bytes": 1812,
+        "sha256": "4030f719d60ce8a75e856b6f8170876deb0f7b58d97a6af1315819ddb872dffa"
+      },
+      {
+        "name": "internal/tracing/provider.go",
+        "bytes": 3578,
+        "sha256": "f828608ee2b7afac469f1a091ff84f82a09147babdfa2b42f21cb26cb16d4f42"
+      },
+      {
+        "name": "internal/tracing/provider_test.go",
+        "bytes": 6377,
+        "sha256": "db07523f9128d3185a6446902c6a2935eee50ca535e925358d739e0ae5e2e832"
+      },
+      {
+        "name": "internal/tracing/transport_test.go",
+        "bytes": 9698,
+        "sha256": "7ffba4e41f2341077c738f7bf61076abe67ef482b01dfbd57197ab8638611611"
+      }
+    ]
+  }
+}

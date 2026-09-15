@@ -15,6 +15,7 @@ import (
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -299,6 +300,7 @@ func startRuntimeServer(ctx context.Context, config RuntimeServerConfig, opened 
 	remoteState = nil
 	supervisor.registryBinding, supervisor.registryVerifier = config.RegistryBinding, config.RegistryVerifier
 	grpcServer := grpc.NewServer(
+		grpc.StatsHandler(tracing.GRPCHandler{}),
 		grpc.MaxRecvMsgSize(4<<20), grpc.MaxSendMsgSize(1<<20),
 		grpc.MaxConcurrentStreams(128),
 		grpc.UnaryInterceptor(limitRuntimeRequest),

@@ -20,6 +20,7 @@ import (
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stagescheduler"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -89,7 +90,7 @@ func (backend *PostgresAssignmentBackend) AcquireStage(
 	ctx context.Context,
 	command CommandContext,
 	request *velav1.AcquireStageRequest,
-) (AcquireResult, error) {
+) (result AcquireResult, resultErr error) {
 	if backend == nil || backend.pool == nil || backend.scheduler == nil ||
 		backend.authoritySigner == nil || backend.transferTickets == nil || ctx == nil {
 		return AcquireResult{}, errors.New("PostgreSQL Stage Worker assignment backend is not configured")
@@ -182,6 +183,9 @@ func (backend *PostgresAssignmentBackend) AcquireStage(
 		}
 		return AcquireResult{}, err
 	}
+	ctx = tracing.WithDurableParent(ctx, &execution.OriginTraceParent)
+	ctx, span := tracing.StartStage(ctx, "vela.stage.assignment", &velav1.StageAuthority{JobId: execution.JobID.String(), StageRunId: execution.StageRunID.String(), StageAttemptId: execution.StageAttemptID.String(), WorkerInstanceId: execution.WorkerInstanceID.String()})
+	defer func() { tracing.EndStage(span, resultErr) }()
 	assignment, err := backend.buildAssignment(ctx, command.CommandID, identity, execution)
 	if err != nil {
 		return AcquireResult{}, err
@@ -333,6 +337,7 @@ type assignmentRootInputFetchSnapshot struct {
 }
 
 type assignmentExecutionSnapshot struct {
+	OriginTraceParent             string                             `json:"origin_trace_parent"`
 	JobID                         uuid.UUID                          `json:"job_id"`
 	AttemptID                     uuid.UUID                          `json:"attempt_id"`
 	AttemptFence                  int64                              `json:"attempt_fence"`
@@ -501,6 +506,7 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 	}
 	assignment := &velav1.StageAssignment{
 		Authority: authority, ExecutionSpec: spec,
+		OriginTraceParent:       tracing.CanonicalParent(snapshot.OriginTraceParent),
 		RequiredWorkerMemberIds: requiredMembers,
 		MemberStartTimeout:      durationpb.New(backend.memberStartTimeout),
 		InputTransferTickets:    make([]*velav1.StageInputTransferTicket, 0, len(snapshot.Inputs)),

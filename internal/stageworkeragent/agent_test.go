@@ -12,6 +12,7 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -450,7 +451,7 @@ func serveBarrierRuntime(
 ) velav1.ModelRuntimeServiceClient {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.StatsHandler(tracing.GRPCHandler{}))
 	velav1.RegisterModelRuntimeServiceServer(server, service)
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
@@ -460,6 +461,7 @@ func serveBarrierRuntime(
 			return listener.Dial()
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(tracing.GRPCHandler{Client: true}),
 	)
 	if err != nil {
 		t.Fatalf("dial ModelRuntime: %v", err)

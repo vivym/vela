@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +14,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	veladb "github.com/vivym/vela/internal/database"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestHTTPMetricsUseRoutePatternsAndNeverRawIdentifiers(t *testing.T) {
@@ -89,5 +94,46 @@ func TestDatabaseRoleObservationCarriesServerRequestIDAndBoundedLabels(t *testin
 		strings.Contains(logText, "customer-job-123") ||
 		strings.Contains(logText, "client-controlled-request-id") {
 		t.Fatalf("request-correlated database-role log is invalid:\n%s", logText)
+	}
+}
+
+func TestDatabaseRoleLogLinksToHTTPSpanWithoutAddingMetricCardinality(t *testing.T) {
+	old := otel.GetTracerProvider()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(provider)
+	defer func() { _ = provider.Shutdown(context.Background()); otel.SetTracerProvider(old) }()
+	metrics := NewHTTPMetrics()
+	var logs bytes.Buffer
+	metrics.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	router := chi.NewRouter()
+	router.Use(metrics.Middleware)
+	router.Get("/v1/jobs/{job_id}", func(w http.ResponseWriter, r *http.Request) {
+		metrics.ObserveRequestRole(r.Context(), veladb.RequestRoleObservation{
+			Surface: veladb.RequestRoleSurfaceJobRead, DatabaseLogin: "vela_request_login", DatabaseRole: veladb.RoleRequest,
+		})
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodGet, "/v1/jobs/private-customer-job?token=private-query", nil)
+	request.Header.Set("Traceparent", "00-1234567890abcdef1234567890abcdef-1234567890abcdef-01")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	spans := recorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("expected one HTTP span, got %d", len(spans))
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["trace_id"] != spans[0].SpanContext().TraceID().String() ||
+		entry["span_id"] != spans[0].SpanContext().SpanID().String() ||
+		entry["request_id"] != response.Header().Get("X-Request-ID") || strings.Contains(logs.String(), "private-") {
+		t.Fatal("database log did not link to HTTP span or leaked request data")
+	}
+	metricResponse := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(metricResponse, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if strings.Contains(metricResponse.Body.String(), "trace_id") || strings.Contains(metricResponse.Body.String(), "private-") {
+		t.Fatal("trace context or caller identifiers entered metric labels")
 	}
 }

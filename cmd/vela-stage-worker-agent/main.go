@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
@@ -116,6 +117,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	stopTracing, err := tracing.Start(context.Background(), "vela-stage-worker-agent")
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 	return runWithContext(ctx, configuration)
 }
 

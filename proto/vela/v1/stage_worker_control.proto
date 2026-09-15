@@ -213,6 +213,9 @@ message StageAssignment {
   google.protobuf.Duration member_start_timeout = 4;
   repeated StageInputTransferTicket input_transfer_tickets = 5;
   repeated StageRootInputFetch root_input_fetches = 6;
+  // Optional W3C v00 diagnostic context, outside the signed execution authority.
+  // Receivers ignore malformed values. Replay retains the original wire value.
+  string origin_trace_parent = 7;
 }
 
 message StageInputTransferTicket {

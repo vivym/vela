@@ -5335,6 +5335,7 @@ type Job struct {
 	StageCutoverRevisionID                    uuid.UUID          `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
 	ExecutionGraphRevisionID                  uuid.UUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
 	StageExecutionProfileRevisionID           uuid.UUID          `db:"stage_execution_profile_revision_id" json:"stage_execution_profile_revision_id"`
+	OriginTraceParent                         *string            `db:"origin_trace_parent" json:"origin_trace_parent"`
 }
 
 type JobCancellationDecision struct {

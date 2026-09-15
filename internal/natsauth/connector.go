@@ -293,7 +293,7 @@ func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Tim
 	if claims == nil || !contains(config.ExpectedUserPublicKeys, claims.Subject) ||
 		claims.IssuerAccount != config.ExpectedAccountPublicKey ||
 		!contains(config.ExpectedAccountSignerPublicKeys, claims.Issuer) ||
-		claims.Name != outboxWorkloadName || claims.BearerToken || claims.ProxyRequired ||
+		!acceptedOutboxWorkloadName(claims.Name) || claims.BearerToken || claims.ProxyRequired ||
 		claims.Expires == 0 || now.Unix() >= claims.Expires ||
 		claims.NotBefore > now.Unix() || claims.IssuedAt == 0 ||
 		claims.IssuedAt > now.Add(time.Minute).Unix() ||
@@ -307,6 +307,12 @@ func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Tim
 		return false
 	}
 	return true
+}
+
+// acceptedOutboxWorkloadName keeps compatibility with credentials minted by
+// the initial lab bootstrap, which used the shorter vela-outbox name.
+func acceptedOutboxWorkloadName(name string) bool {
+	return name == outboxWorkloadName || name == "vela-outbox"
 }
 
 func validExpectedAccountSigners(publicKeys []string) bool {

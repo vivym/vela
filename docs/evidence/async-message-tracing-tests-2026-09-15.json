@@ -1,0 +1,129 @@
+{
+  "at": "2026-09-14T22:59:37.431270+00:00",
+  "scope": "local Docker PostgreSQL 17 and three NATS servers; real application code, no production rollout",
+  "production_adopted": false,
+  "schema_required": 97,
+  "tests": [
+    {
+      "log": "async-message-tracing-initial-2026-09-15.log",
+      "passed": false,
+      "sha256": "837eb92d85c32588eee4287ffffb374f3121023a406ad78e83a6e0a31292842b",
+      "top_level_results": [
+        "--- FAIL: TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery (95.06s)"
+      ]
+    },
+    {
+      "log": "async-message-tracing-integration-v2-2026-09-15.log",
+      "passed": true,
+      "sha256": "93369692a1e065e5491891c31cfed78392cdb7f6ad70f7ff42afa54b8e33feda",
+      "top_level_results": [
+        "--- PASS: TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery (10.98s)",
+        "ok  \tgithub.com/vivym/vela/internal/integration\t11.952s"
+      ]
+    },
+    {
+      "log": "async-message-tracing-integration-2026-09-15.log",
+      "passed": true,
+      "sha256": "b939ba3826cde4573899759722cb1b99d1fcf03b779365f193f5d698dd7a5766",
+      "top_level_results": [
+        "--- PASS: TestAsyncTraceSurvivesOutboxRetryAndInboxRedelivery (10.83s)",
+        "ok  \tgithub.com/vivym/vela/internal/integration\t11.880s"
+      ]
+    },
+    {
+      "log": "async-message-tracing-regression-2026-09-15.log",
+      "passed": true,
+      "sha256": "0ad3f23435b678d59a3708fd4dfa962e7b1073ee94c46cd60d087bd543c9ad87",
+      "top_level_results": [
+        "--- PASS: TestDatabasePoolsFailClosedOnRoleConfusion (4.18s)",
+        "--- PASS: TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement (2.36s)",
+        "--- PASS: TestOutboxPublisherRecoversCrashAfterPubAckBeforeDatabaseMarker (2.92s)",
+        "--- PASS: TestJetStreamBrokerRejectsSingleReplicaBeforePublish (0.45s)",
+        "--- PASS: TestJetStreamBrokerRejectsPubAckFromUnexpectedStream (0.41s)",
+        "ok  \tgithub.com/vivym/vela/internal/integration\t11.092s"
+      ]
+    },
+    {
+      "log": "async-message-tracing-race-2026-09-15.log",
+      "passed": true,
+      "sha256": "7dfa48e248d424345d2e2f031d616dfa46820d11c9ddadd9f4b01352a69b37e5",
+      "top_level_results": [
+        "ok  \tgithub.com/vivym/vela/internal/tracing\t6.846s",
+        "ok  \tgithub.com/vivym/vela/internal/inbox\t2.245s"
+      ]
+    },
+    {
+      "log": "async-message-tracing-contracts-2026-09-15.log",
+      "passed": true,
+      "sha256": "1878ef16e55953eeb23b451cbeed44f4a52e7cf40ab893d97268ec56b8cd388b",
+      "top_level_results": [
+        "ok  \tgithub.com/vivym/vela/cmd/vela-control\t1.697s",
+        "ok  \tgithub.com/vivym/vela/internal/deploymentcontract\t18.848s"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "path": "db/migrations/00097_job_origin_trace.sql",
+      "sha256": "385db14f7ba2c2c118af9629540aef01b7a8ad6c618906cead07c311724c0311"
+    },
+    {
+      "path": "db/queries/admission.sql",
+      "sha256": "412c22352212af16cc5ffea8a5848ee38d4fd33eca5b614d2a5c49e07684818a"
+    },
+    {
+      "path": "db/queries/outbox.sql",
+      "sha256": "3eb56e705472f4c245ca92fe7bd55965eff04e8546abdea04701e0f2c00758ab"
+    },
+    {
+      "path": "internal/admission/service.go",
+      "sha256": "71bc57531a0360697fc2a3711167080fc161417fcf294c9ff048a9f7e1f6d90f"
+    },
+    {
+      "path": "internal/outbox/publisher.go",
+      "sha256": "3c42ea82e3a49b2e029d5bd1869a67428045d0c274b9347907bdf6467859306c"
+    },
+    {
+      "path": "internal/outbox/jetstream.go",
+      "sha256": "6594ad6abe2a30f69ad8fc7e5a9ec37ddf3c23c076539773ac8d3098608b9f80"
+    },
+    {
+      "path": "internal/inbox/jetstream.go",
+      "sha256": "75dbfba2277d52d55bbc8945a4e41763295de4b695151b0aef7441ebda6b3a80"
+    },
+    {
+      "path": "internal/tracing/durable.go",
+      "sha256": "3cd5f83871a91039aa558ca1f8f2ddf58c0c24991fa6a6d4fd7bac51a17eb03f"
+    },
+    {
+      "path": "internal/tracing/durable_test.go",
+      "sha256": "ee357a3fe041c355da2727284b4e27c685a90c30a7c57cf624ed21b6c05c2fa2"
+    },
+    {
+      "path": "internal/integration/async_tracing_test.go",
+      "sha256": "07aad330ca749d0b4f3921a343d75fd5006d0895c40eb8984d5ae4600fbc3971"
+    },
+    {
+      "path": "internal/store/sqlc/admission.sql.go",
+      "sha256": "1488f948fd891d2167b688273a516bf85ca93755d1ade3b7e20adbccbe509741"
+    },
+    {
+      "path": "internal/store/sqlc/outbox.sql.go",
+      "sha256": "a28a02d8ef0dbe60434fea696c81cc4d0f38a9a38ccd1aa78788cc526c3982e9"
+    },
+    {
+      "path": "internal/store/sqlc/models.go",
+      "sha256": "455fea7a45666c5b00d5c0781b274c25886ea453fd780e5cc4d638cb01b26f20"
+    }
+  ],
+  "binary": {
+    "path": "/tmp/vela-control-async-tracing-20260915",
+    "sha256": "aa4485c2ca55f155fbd0f6eeea275812afa7ea904c0a36d9284b646e3f06afcf",
+    "bytes": 89330919,
+    "build_command": "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/vela-control-async-tracing-20260915 ./cmd/vela-control",
+    "canonical_release": false
+  },
+  "test_container_cleanup": {
+    "remaining_container_ids": []
+  }
+}

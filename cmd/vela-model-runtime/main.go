@@ -15,6 +15,7 @@ import (
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
@@ -60,6 +61,11 @@ func run(ctx context.Context) error {
 	if err := protectRuntimeProcess(); err != nil {
 		return err
 	}
+	stopTracing, err := tracing.Start(ctx, "vela-model-runtime")
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 	return runUsing(ctx, func(
 		ctx context.Context,
 		config modelruntime.RuntimeServerConfig,

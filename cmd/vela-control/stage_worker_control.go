@@ -19,6 +19,7 @@ import (
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -90,6 +91,7 @@ func newStageWorkerControlLifecycle(
 		return nil, err
 	}
 	server := grpc.NewServer(
+		grpc.StatsHandler(tracing.GRPCHandler{}),
 		grpc.Creds(transportCredentials),
 		grpc.MaxRecvMsgSize(4<<20),
 		grpc.MaxSendMsgSize(4<<20),

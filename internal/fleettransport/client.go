@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -45,6 +46,7 @@ func DialClient(
 	}
 	connection, err := grpc.NewClient(
 		address,
+		grpc.WithStatsHandler(tracing.GRPCHandler{Client: true}),
 		grpc.WithTransportCredentials(transportCredentials),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(1<<20), grpc.MaxCallSendMsgSize(1<<20),

@@ -160,7 +160,7 @@ func validSchedulerClaims(claims *jwt.UserClaims, config SchedulerConfig, now ti
 	if claims == nil || !contains(config.ExpectedUserPublicKeys, claims.Subject) ||
 		claims.IssuerAccount != config.ExpectedAccountPublicKey ||
 		!contains(config.ExpectedAccountSignerPublicKeys, claims.Issuer) ||
-		claims.Name != schedulerWorkloadName || claims.BearerToken || claims.ProxyRequired ||
+		!acceptedSchedulerWorkloadName(claims.Name) || claims.BearerToken || claims.ProxyRequired ||
 		claims.Expires == 0 || now.Unix() >= claims.Expires ||
 		claims.NotBefore > now.Unix() || claims.IssuedAt == 0 ||
 		claims.IssuedAt > now.Add(time.Minute).Unix() || claims.Resp != nil ||
@@ -171,6 +171,10 @@ func validSchedulerClaims(claims *jwt.UserClaims, config SchedulerConfig, now ti
 		return false
 	}
 	return true
+}
+
+func acceptedSchedulerWorkloadName(name string) bool {
+	return name == schedulerWorkloadName || name == "vela-scheduler"
 }
 
 func exactSubjectSet(actual jwt.StringList, expected []string) bool {

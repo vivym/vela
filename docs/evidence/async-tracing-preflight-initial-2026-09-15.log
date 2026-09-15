@@ -1,0 +1,13 @@
+user@10.1.201.70's password: 
+Defaulted container "postgres" out of: postgres, bootstrap-controller (init), plugin-barman-cloud (init)
+psql: error: connection to server on socket "/controller/run/.s.PGSQL.5432" failed: FATAL:  database "vela" does not exist
+command terminated with exit code 2
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "remote-runner", line 10, in <module>
+  File "/usr/lib/python3.12/subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['kubectl', '-n', 'vela-system', 'exec', 'vela-postgres-1', '--', 'psql', '-XAt', '-U', 'postgres', '-d', 'vela', '-c', 'SELECT max(version_id) FROM goose_db_version WHERE is_applied']' returned non-zero exit status 2.

@@ -1,0 +1,62 @@
+{
+  "batches": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "vela-trace-canary-frontend"
+            }
+          },
+          {
+            "key": "deployment.environment",
+            "value": {
+              "stringValue": "marslab"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "vela/http"
+          },
+          "spans": [
+            {
+              "traceId": "oxwDbl07RO6T1NEBKFUhWQ==",
+              "spanId": "z5Hs6PPAAkY=",
+              "parentSpanId": "bxTHUFt+S2Q=",
+              "flags": 769,
+              "name": "POST /probe/{case}",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1789410837682042034",
+              "endTimeUnixNano": "1789410837682065802",
+              "attributes": [
+                {
+                  "key": "http.request.method",
+                  "value": {
+                    "stringValue": "POST"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/probe/{case}"
+                  }
+                },
+                {
+                  "key": "http.response.status_code",
+                  "value": {
+                    "intValue": "401"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

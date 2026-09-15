@@ -1,0 +1,4 @@
+ok  	github.com/vivym/vela/internal/tracing	6.675s
+ok  	github.com/vivym/vela/internal/stageworkeragent	57.388s
+ok  	github.com/vivym/vela/internal/stageworkercontrol	2.585s
+ok  	github.com/vivym/vela/internal/modelruntime	90.976s

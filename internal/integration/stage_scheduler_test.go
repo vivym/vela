@@ -1499,6 +1499,7 @@ func newStageSchedulerFixtureWithRequest(
 	t *testing.T,
 	suffix string,
 	requestBody []byte,
+	traceParent ...string,
 ) stageSchedulerFixture {
 	t.Helper()
 	database := newPostgres(t)
@@ -1564,7 +1565,12 @@ func newStageSchedulerFixtureWithRequest(
 			"prompt":"recover stage scheduling claim"
 		}`)
 	}
-	accepted := submitJob(t, server.URL, "stage-scheduler-"+suffix, requestBody)
+	var accepted httpResult
+	if len(traceParent) > 0 {
+		accepted = submitTracedStageJob(t, server.Config.Handler, "stage-scheduler-"+suffix, requestBody, traceParent[0])
+	} else {
+		accepted = submitJob(t, server.URL, "stage-scheduler-"+suffix, requestBody)
+	}
 	if accepted.StatusCode != 202 {
 		t.Fatalf("submit %s Job status=%d body=%s", suffix, accepted.StatusCode, accepted.Body)
 	}

@@ -15,11 +15,14 @@ SET claimed_by = sqlc.arg(claimed_by),
     claim_expires_at = clock_timestamp() + make_interval(secs => sqlc.arg(claim_seconds)::integer),
     publish_attempts = publish_attempts + 1,
     last_error = NULL
-FROM candidates
+FROM candidates, jobs AS job
 WHERE event.event_id = candidates.event_id
+  AND job.id = event.aggregate_id
+  AND job.organization_id = event.organization_id
+  AND job.project_id = event.project_id
 RETURNING event.event_id, event.aggregate_type, event.aggregate_id,
     event.aggregate_version, event.event_type, event.schema_version, event.payload,
-    event.occurred_at, event.claim_token;
+    event.occurred_at, event.claim_token, job.origin_trace_parent;
 
 -- name: MarkOutboxPublished :execrows
 UPDATE outbox_events

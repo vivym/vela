@@ -1,0 +1,8 @@
+vela-control: exit=0
+
+vela-node-agent: exit=0
+
+vela-stage-worker-agent: exit=0
+
+vela-model-runtime: exit=0
+

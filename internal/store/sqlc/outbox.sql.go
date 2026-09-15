@@ -29,11 +29,14 @@ SET claimed_by = $1,
     claim_expires_at = clock_timestamp() + make_interval(secs => $3::integer),
     publish_attempts = publish_attempts + 1,
     last_error = NULL
-FROM candidates
+FROM candidates, jobs AS job
 WHERE event.event_id = candidates.event_id
+  AND job.id = event.aggregate_id
+  AND job.organization_id = event.organization_id
+  AND job.project_id = event.project_id
 RETURNING event.event_id, event.aggregate_type, event.aggregate_id,
     event.aggregate_version, event.event_type, event.schema_version, event.payload,
-    event.occurred_at, event.claim_token
+    event.occurred_at, event.claim_token, job.origin_trace_parent
 `
 
 type ClaimOutboxEventsParams struct {
@@ -44,15 +47,16 @@ type ClaimOutboxEventsParams struct {
 }
 
 type ClaimOutboxEventsRow struct {
-	EventID          uuid.UUID          `db:"event_id" json:"event_id"`
-	AggregateType    string             `db:"aggregate_type" json:"aggregate_type"`
-	AggregateID      uuid.UUID          `db:"aggregate_id" json:"aggregate_id"`
-	AggregateVersion int64              `db:"aggregate_version" json:"aggregate_version"`
-	EventType        string             `db:"event_type" json:"event_type"`
-	SchemaVersion    int32              `db:"schema_version" json:"schema_version"`
-	Payload          []byte             `db:"payload" json:"payload"`
-	OccurredAt       pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
-	ClaimToken       uuid.NullUUID      `db:"claim_token" json:"claim_token"`
+	EventID           uuid.UUID          `db:"event_id" json:"event_id"`
+	AggregateType     string             `db:"aggregate_type" json:"aggregate_type"`
+	AggregateID       uuid.UUID          `db:"aggregate_id" json:"aggregate_id"`
+	AggregateVersion  int64              `db:"aggregate_version" json:"aggregate_version"`
+	EventType         string             `db:"event_type" json:"event_type"`
+	SchemaVersion     int32              `db:"schema_version" json:"schema_version"`
+	Payload           []byte             `db:"payload" json:"payload"`
+	OccurredAt        pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	ClaimToken        uuid.NullUUID      `db:"claim_token" json:"claim_token"`
+	OriginTraceParent *string            `db:"origin_trace_parent" json:"origin_trace_parent"`
 }
 
 func (q *Queries) ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error) {
@@ -79,6 +83,7 @@ func (q *Queries) ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsPa
 			&i.Payload,
 			&i.OccurredAt,
 			&i.ClaimToken,
+			&i.OriginTraceParent,
 		); err != nil {
 			return nil, err
 		}

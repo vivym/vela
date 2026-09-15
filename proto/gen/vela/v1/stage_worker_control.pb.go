@@ -1864,8 +1864,11 @@ type StageAssignment struct {
 	MemberStartTimeout      *durationpb.Duration        `protobuf:"bytes,4,opt,name=member_start_timeout,json=memberStartTimeout,proto3" json:"member_start_timeout,omitempty"`
 	InputTransferTickets    []*StageInputTransferTicket `protobuf:"bytes,5,rep,name=input_transfer_tickets,json=inputTransferTickets,proto3" json:"input_transfer_tickets,omitempty"`
 	RootInputFetches        []*StageRootInputFetch      `protobuf:"bytes,6,rep,name=root_input_fetches,json=rootInputFetches,proto3" json:"root_input_fetches,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Optional W3C v00 diagnostic context, outside the signed execution authority.
+	// Receivers ignore malformed values. Replay retains the original wire value.
+	OriginTraceParent string `protobuf:"bytes,7,opt,name=origin_trace_parent,json=originTraceParent,proto3" json:"origin_trace_parent,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *StageAssignment) Reset() {
@@ -1938,6 +1941,13 @@ func (x *StageAssignment) GetRootInputFetches() []*StageRootInputFetch {
 		return x.RootInputFetches
 	}
 	return nil
+}
+
+func (x *StageAssignment) GetOriginTraceParent() string {
+	if x != nil {
+		return x.OriginTraceParent
+	}
+	return ""
 }
 
 type StageInputTransferTicket struct {
@@ -2576,14 +2586,15 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	" model_runtime_barrier_generation\x18\x05 \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x125\n" +
 	"\x17leader_worker_member_id\x18\x06 \x01(\tR\x14leaderWorkerMemberId\x122\n" +
 	"\x15control_session_epoch\x18\a \x01(\x03R\x13controlSessionEpoch\x12B\n" +
-	"\x1dcapacity_observation_sequence\x18\b \x01(\x03R\x1bcapacityObservationSequence\"\xbb\x03\n" +
+	"\x1dcapacity_observation_sequence\x18\b \x01(\x03R\x1bcapacityObservationSequence\"\xeb\x03\n" +
 	"\x0fStageAssignment\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12B\n" +
 	"\x0eexecution_spec\x18\x02 \x01(\v2\x1b.vela.v1.StageExecutionSpecR\rexecutionSpec\x12;\n" +
 	"\x1arequired_worker_member_ids\x18\x03 \x03(\tR\x17requiredWorkerMemberIds\x12K\n" +
 	"\x14member_start_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x12memberStartTimeout\x12W\n" +
 	"\x16input_transfer_tickets\x18\x05 \x03(\v2!.vela.v1.StageInputTransferTicketR\x14inputTransferTickets\x12J\n" +
-	"\x12root_input_fetches\x18\x06 \x03(\v2\x1c.vela.v1.StageRootInputFetchR\x10rootInputFetches\"\x96\x01\n" +
+	"\x12root_input_fetches\x18\x06 \x03(\v2\x1c.vela.v1.StageRootInputFetchR\x10rootInputFetches\x12.\n" +
+	"\x13origin_trace_parent\x18\a \x01(\tR\x11originTraceParent\"\x96\x01\n" +
 	"\x18StageInputTransferTicket\x12*\n" +
 	"\x11stage_artifact_id\x18\x01 \x01(\tR\x0fstageArtifactId\x12%\n" +
 	"\x0eobject_version\x18\x02 \x01(\tR\robjectVersion\x12'\n" +

@@ -23,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -386,6 +387,7 @@ func (s *Service) Submit(
 		ExecutionCircuitFingerprintWindowSeconds:  sku.CircuitFingerprintWindowSeconds,
 		ExecutionCircuitMinDistinctHealthyWorkers: sku.CircuitMinDistinctHealthyWorkers,
 		JobLifetimeSeconds:                        jobLifetimeSeconds,
+		OriginTraceParent:                         tracing.DurableParent(ctx),
 	})
 	if err != nil {
 		var postgresError *pgconn.PgError

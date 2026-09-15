@@ -14,6 +14,7 @@ import (
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -211,7 +212,7 @@ func (agent *StreamAgent) SealAndMaterialize(
 	return advanced, err
 }
 
-func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterialization, MaterializationResult, error) {
+func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (resultRecord PendingMaterialization, resultMaterialization MaterializationResult, resultErr error) {
 	agent.runtimeMu.Lock()
 	defer agent.runtimeMu.Unlock()
 	result := MaterializationResult{}
@@ -219,6 +220,8 @@ func (agent *StreamAgent) sealActiveOutput(ctx context.Context) (PendingMaterial
 	if authority == nil {
 		return PendingMaterialization{}, result, errors.New("missing active StageAuthority to seal")
 	}
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.seal", authority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	if err := agent.observeRuntimeAuthority(ctx, authority); err != nil {
 		return PendingMaterialization{}, result, err
 	}
@@ -299,7 +302,9 @@ type streamMaterialization struct {
 func (agent *StreamAgent) advancePendingMaterialization(
 	ctx context.Context,
 	record PendingMaterialization,
-) (MaterializationResult, error) {
+) (resultMaterialization MaterializationResult, resultErr error) {
+	ctx, span := agent.startStageTrace(ctx, "vela.stage.materialize", record.StageAuthority)
+	defer func() { tracing.EndStage(span, resultErr) }()
 	result := MaterializationResult{PendingID: record.ID}
 	if agent.materialization.outputOwnershipContract == AttemptOwnedFilesystemScratchV1 {
 		manifest, err := stageartifact.ParseLocalOutputManifestV1(record.LocalReceipt.GetOutputManifestJson())

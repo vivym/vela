@@ -1,0 +1,5 @@
+ok  	github.com/vivym/vela/cmd/vela-control	4.484s
+ok  	github.com/vivym/vela/cmd/vela-stage-worker-agent	7.012s
+ok  	github.com/vivym/vela/cmd/vela-model-runtime	2.054s
+ok  	github.com/vivym/vela/cmd/vela-node-agent	3.126s
+ok  	github.com/vivym/vela/internal/deploymentcontract	27.084s
