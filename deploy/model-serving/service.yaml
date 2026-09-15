@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen3-model-worker
+  namespace: llm-models
+  labels:
+    app.kubernetes.io/name: qwen3-model-worker
+    app.kubernetes.io/part-of: vela
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: qwen3-model-worker}
+  ports:
+    - {name: api, port: 8080, targetPort: api, protocol: TCP}
+    - {name: embedding, port: 8000, targetPort: embedding, protocol: TCP}
+    - {name: rerank, port: 8001, targetPort: rerank, protocol: TCP}
+    - {name: metrics, port: 9090, targetPort: metrics, protocol: TCP}

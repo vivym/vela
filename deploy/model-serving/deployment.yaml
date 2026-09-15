@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen3-model-worker
+  namespace: llm-models
+  labels:
+    app.kubernetes.io/name: qwen3-model-worker
+    app.kubernetes.io/part-of: vela
+    vela.ai/metrics: enabled
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app.kubernetes.io/name: qwen3-model-worker}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qwen3-model-worker
+        app.kubernetes.io/part-of: vela
+        vela.ai/metrics: enabled
+    spec:
+      serviceAccountName: llm-models-runtime
+      automountServiceAccountToken: false
+      runtimeClassName: nvidia
+      priorityClassName: vela-application
+      preemptionPolicy: Never
+      nodeSelector:
+        vela.ai/node-role: gpu-worker
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [server-53]
+                  - key: vela.ai/model-memory
+                    operator: In
+                    values: [256GiB]
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 300
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: qwen3
+          image: 10.1.201.70:5005/ragflow-lab/qwen3-model-worker:0.1.0@sha256:REPLACE_AFTER_BUILD
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile: {type: RuntimeDefault}
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: HF_HUB_OFFLINE, value: "1"}
+            - {name: TRANSFORMERS_OFFLINE, value: "1"}
+            - {name: EMBED_MODEL, value: /models/Qwen3-Embedding-4B}
+            - {name: RERANK_MODEL, value: /models/Qwen3-Reranker-4B}
+            - {name: MAX_MODEL_LEN, value: "8192"}
+            - {name: EMBED_GPU_MEMORY_UTILIZATION, value: "0.36"}
+            - {name: RERANK_GPU_MEMORY_UTILIZATION, value: "0.36"}
+          ports:
+            - {name: api, containerPort: 8080, protocol: TCP}
+            - {name: embedding, containerPort: 8000, protocol: TCP}
+            - {name: rerank, containerPort: 8001, protocol: TCP}
+            - {name: metrics, containerPort: 9090, protocol: TCP}
+          resources:
+            requests:
+              cpu: "8"
+              memory: 32Gi
+              nvidia.com/gpu: "1"
+              ephemeral-storage: 4Gi
+            limits:
+              cpu: "16"
+              memory: 64Gi
+              nvidia.com/gpu: "1"
+              ephemeral-storage: 12Gi
+          volumeMounts:
+            - {name: model-cache, mountPath: /models, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+          readinessProbe:
+            httpGet: {path: /readyz, port: api}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: api}
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 6
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: qwen3-models
+            readOnly: true
+        - name: tmp
+          emptyDir: {sizeLimit: 12Gi}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
