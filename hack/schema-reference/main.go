@@ -34,7 +34,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var tables int
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'").Scan(&tables); err != nil {
 		return err
@@ -69,7 +69,7 @@ func run() error {
 	}
 	defer pool.Close()
 	if err := veladb.VerifyRole(ctx, pool, veladb.RoleFleet); err != nil {
-		return fmt.Errorf("Fleet boundary does not accept the reference migrations: %w", err)
+		return fmt.Errorf("fleet boundary does not accept the reference migrations: %w", err)
 	}
 	for _, probe := range []struct{ change, restore string }{
 		{"GRANT SELECT ON public.jobs TO vela_fleet", "REVOKE SELECT ON public.jobs FROM vela_fleet"},
@@ -79,7 +79,7 @@ func run() error {
 			return err
 		}
 		if err := veladb.VerifyRole(ctx, pool, veladb.RoleFleet); err == nil {
-			return fmt.Errorf("Fleet accepted a missing or expanded privilege")
+			return fmt.Errorf("fleet accepted a missing or expanded privilege")
 		}
 		if _, err := db.ExecContext(ctx, probe.restore); err != nil {
 			return err

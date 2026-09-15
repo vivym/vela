@@ -230,7 +230,7 @@ func TestHTTPFlushAndPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	line, err := bufio.NewReader(response.Body).ReadString('\n')
 	if err != nil || line != "data: ready\n" || len(recorder.Ended()) != 0 {
 		t.Fatalf("stream buffered or ended early: %q %v", line, err)

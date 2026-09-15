@@ -72,7 +72,11 @@ func TestFastH3NativeGPUCanary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer log.Close()
+			defer func() {
+				if err := log.Close(); err != nil {
+					t.Errorf("close driver log: %v", err)
+				}
+			}()
 			backend, err := NewProcessBackend(context.Background(), processBackendBinding(), ProcessBackendConfig{
 				Component: component, ModelComponentRevision: "h3-native-0de6ff6-6dbcc182-v1",
 				Command: []string{python, "-B", "-m", "fast_h3.vela.driver", "--component", component, "--runtime-factory", "fast_h3.vela.h3_runtime:create_runtime"},
@@ -100,7 +104,7 @@ func TestFastH3NativeGPUCanary(t *testing.T) {
 			if err != nil {
 				t.Fatalf("initialize real %s: %v; see %s", component, err, log.Name())
 			}
-			defer backend.Close()
+			defer func() { _ = backend.Close() }()
 			authority := processBackendAuthority(byte(index + 1))
 			authority.Authority.ExecutionSequence = 1
 			port := []string{"conditioning", "latent", "video"}[index]

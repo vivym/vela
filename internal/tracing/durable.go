@@ -45,7 +45,7 @@ func CanonicalParent(parent string) string {
 	for _, part := range []string{parent[3:35], parent[36:52]} {
 		nonzero := false
 		for _, c := range part {
-			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 				return ""
 			}
 			nonzero = nonzero || c != '0'

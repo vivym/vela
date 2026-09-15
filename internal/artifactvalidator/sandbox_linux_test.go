@@ -279,7 +279,7 @@ func TestProductionSandboxProbesPinnedVideoAndThumbnail(t *testing.T) {
 			if err != nil {
 				t.Fatalf("probe through production sandbox: %v", err)
 			}
-			facts, err := parseFFprobeOutput(output, test.kind, expectedVersion)
+			facts, err := parseFFprobeOutputForContract(output, test.kind, expectedVersion, stagefinalization.MediaContractExactVideo)
 			if err != nil {
 				t.Fatalf("parse sandboxed ffprobe output: %v; output=%s", err, output)
 			}

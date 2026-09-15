@@ -63,7 +63,11 @@ func connect(role string) (*nats.Conn, func(), error) {
 	if e != nil {
 		return nil, nil, e
 	}
-	cleanup := func() { os.RemoveAll(dir) }
+	cleanup := func() {
+		if err := os.RemoveAll(dir); err != nil {
+			fmt.Fprintf(os.Stderr, "remove NATS probe credential directory: %v\n", err)
+		}
+	}
 	path := filepath.Join(dir, "client.creds")
 	if e = os.WriteFile(path, auth.Data[role+".creds"], 0600); e != nil {
 		cleanup()

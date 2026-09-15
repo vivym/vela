@@ -52,7 +52,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	if mode == "backend" {
 		server := grpc.NewServer(grpc.StatsHandler(tracing.GRPCHandler{}))
 		healthpb.RegisterHealthServer(server, canaryHealth{})
@@ -76,7 +76,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func() { _ = connection.Close() }()
 	client := healthpb.NewHealthClient(connection)
 	router := chi.NewRouter()
 	router.Use(tracing.HTTPServer)

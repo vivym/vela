@@ -219,14 +219,6 @@ type mediaFacts struct {
 	Audio                   *stagefinalization.AudioInspection
 }
 
-func parseFFprobeOutput(
-	output []byte,
-	kind stagefinalization.ArtifactKind,
-	expectedVersion string,
-) (mediaFacts, error) {
-	return parseFFprobeOutputForContract(output, kind, expectedVersion, stagefinalization.MediaContractExactVideo)
-}
-
 func parseFFprobeOutputForContract(
 	output []byte,
 	kind stagefinalization.ArtifactKind,

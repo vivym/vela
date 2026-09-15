@@ -135,6 +135,9 @@ func material(item source, live any) (candidate, error) {
 		result.Name = snapshotName(item.Name, selectedRevision)
 		c.entry.Name = result.Name
 		c.entry.Revision, err = h3launchevidence.SecretContentRevision(result)
+		if err != nil {
+			return candidate{}, err
+		}
 		result.Annotations = map[string]string{revisionAnnotation: c.entry.Revision}
 		c.object = result
 	case corev1.ConfigMap:
@@ -145,10 +148,13 @@ func material(item source, live any) (candidate, error) {
 		result.Name = snapshotName(item.Name, originalRevision)
 		c.entry.Name = result.Name
 		c.entry.Revision, err = h3launchevidence.ConfigMapContentRevision(*result)
+		if err != nil {
+			return candidate{}, err
+		}
 		result.Annotations = map[string]string{revisionAnnotation: c.entry.Revision}
 		c.object = *result
 	}
-	return c, err
+	return c, nil
 }
 
 func snapshotName(name, revision string) string {
@@ -172,7 +178,7 @@ func validate(p plan) error {
 		}
 		seen[identity] = true
 		if (item.Kind == "Secret") != (len(item.RequiredKeys) > 0) {
-			return errors.New("Secret keys must be explicit; ConfigMaps bind whole content")
+			return errors.New("secret keys must be explicit; ConfigMaps bind whole content")
 		}
 		for i, key := range item.RequiredKeys {
 			if len(validation.IsConfigMapKey(key)) != 0 || (i > 0 && key <= item.RequiredKeys[i-1]) {
@@ -307,7 +313,7 @@ func main() {
 			err = errors.New("trailing or oversized input")
 		}
 	}
-	file.Close()
+	err = errors.Join(err, file.Close())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "invalid source plan")
 		os.Exit(1)

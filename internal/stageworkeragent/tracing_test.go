@@ -75,7 +75,7 @@ func TestStageTraceSurvivesWorkerReopenRenewalAndStop(t *testing.T) {
 	if _, err := stream.ExecuteAcquiredAssignment(ctx, fixture.assignment, journal.acquireID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stream.Heartbeat(nil, 1); err == nil {
+	if _, err := stream.Heartbeat(nil, 1); err == nil { //nolint:staticcheck // SA1012: deliberately verify that nil context is rejected before tracing.
 		t.Fatal("nil heartbeat context was accepted")
 	}
 	renewal := proto.Clone(fixture.assignment).(*velav1.StageAssignment)
