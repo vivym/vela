@@ -1,0 +1,25 @@
+{
+  "at": "2026-09-15T01:15:54.390105+00:00",
+  "result": "HOST_PACKAGE_BUILD_PASS",
+  "revision": "92199f2975b6dd0b5809313f3086d5c3ea217884",
+  "directory": "/Users/viv/projs/vela/.host-package-build-1789434923840542000",
+  "files": [
+    {
+      "path": "host-packages.json",
+      "bytes": 235,
+      "sha256": "0466969d7269efb4520a9c2ee3a2e789072bf1401b4da2a449b4243232b0e06d"
+    },
+    {
+      "path": "node-agent-contract.json",
+      "bytes": 338,
+      "sha256": "07ee17af66330013790ae1525f2a9753a6258589ce4df7093d0e4696710676da"
+    },
+    {
+      "path": "vela-node-agent",
+      "bytes": 47407230,
+      "sha256": "b125ef7b2a60572c2098d33d1ec4fb189a14548b7921b13c3f116ef1bbaa460c"
+    }
+  ],
+  "build_self_verified": true,
+  "scope": "Node Agent host package artifact; no installation or enablement"
+}

@@ -31,7 +31,7 @@ VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_
 	"$(H3_RUNTIME_BASE)" "$(H3_RUNTIME_COMMAND_CONTEXT)" \
 	"$(H3_ENCODER_SHA256)" "$(H3_DIT_SHA256)" "$(H3_VAE_DECODER_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-h3-stage-mock-runtime build-h3-disposable-member-campaign-image test-h3-disposable-member-campaign build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-h3-stage-mock-runtime build-h3-disposable-member-campaign-image test-h3-disposable-member-campaign build-host-packages build-runtime-startup-packages runtime-startup-preflight test-runtime-startup-installer test-runtime-startup-validation print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-sql
 
@@ -54,6 +54,7 @@ lint:
 
 test:
 	go test ./...
+	$(MAKE) test-runtime-startup-validation
 
 test-integration:
 	INTEGRATION_TEST_TIMEOUT="$(INTEGRATION_TEST_TIMEOUT)" \
@@ -100,6 +101,25 @@ build-host-packages:
 		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
 	go run ./cmd/vela-release-artifacts build-host-packages \
 		"$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_ARTIFACT_DIR)"
+
+build-runtime-startup-packages:
+	@test -n "$(RELEASE_REVISION)" || \
+		(echo "RELEASE_REVISION is required" >&2; exit 2)
+	@test -n "$(RELEASE_ARTIFACT_DIR)" || \
+		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
+	go run ./cmd/vela-release-artifacts build-runtime-startup-packages \
+		"$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_ARTIFACT_DIR)"
+
+runtime-startup-preflight:
+	python3 hack/runtime_startup_composition_preflight.py --json
+
+test-runtime-startup-installer:
+	python3 -m unittest hack/install_runtime_startup_packages_test.py
+
+test-runtime-startup-validation:
+	python3 -m unittest hack/runtime_startup_composition_preflight_test.py \
+		hack/runtime_startup_validation_matrix_test.py \
+		hack/install_runtime_startup_packages_test.py
 
 print-vela-image-build:
 	@go run ./cmd/vela-release-artifacts print-vela-image-build \

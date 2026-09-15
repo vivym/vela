@@ -117,6 +117,20 @@ func bundleArtifactReferences(bundle releasebundle.Bundle) []string {
 	}
 	references = append(references, bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref)
 	references = append(references, bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Artifact.Ref)
+	if startup := bundle.ConfigurationManifest.RuntimeStartup; startup != nil {
+		references = append(references,
+			startup.PIDFDBrokerUnit.Artifact.Ref,
+			startup.RuntimePolicyIssuerUnit.Artifact.Ref,
+			startup.PIDFDBrokerEnv.Artifact.Ref,
+			startup.RuntimePolicyIssuerEnv.Artifact.Ref,
+		)
+		for _, item := range startup.Packages {
+			references = append(references, item.Contract.Ref, item.Artifact.Ref)
+		}
+		if startup.Provisioning != nil {
+			references = append(references, startup.Provisioning.Artifact.Ref)
+		}
+	}
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		references = append(references, item.Contract.Ref, item.Artifact.Ref)
 	}

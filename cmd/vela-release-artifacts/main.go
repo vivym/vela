@@ -54,6 +54,24 @@ func run(arguments []string) int {
 		_, _ = fmt.Fprintln(os.Stdout, arguments[3]+"/host-packages.json")
 		return 0
 	}
+	if len(arguments) == 4 && arguments[0] == "build-runtime-startup-packages" {
+		if err := releaseartifacts.BuildRuntimeStartupPackages(
+			context.Background(), arguments[1], arguments[2], arguments[3],
+		); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "build runtime startup packages: %v\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprintln(os.Stdout, arguments[3]+"/runtime-startup-packages.json")
+		return 0
+	}
+	if len(arguments) == 3 && arguments[0] == "verify-runtime-startup-packages" {
+		if err := releaseartifacts.VerifyRuntimeStartupPackages(arguments[1], arguments[2]); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "verify runtime startup packages: %v\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprintln(os.Stdout, "PASS runtime-startup-packages")
+		return 0
+	}
 	if len(arguments) == 3 && arguments[0] == "verify-h3-backend" {
 		if err := releaseartifacts.VerifyH3Backend(arguments[1], arguments[2]); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "verify H3 backend: %v\n", err)
@@ -102,7 +120,7 @@ func run(arguments []string) int {
 		_, _ = fmt.Fprintln(os.Stdout, output)
 		return 0
 	}
-	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-h3-stage-mock-runtime|build-host-packages|verify-h3-backend|verify-h3-runtime-commands|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
+	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-h3-stage-mock-runtime|build-host-packages|build-runtime-startup-packages|verify-runtime-startup-packages|verify-h3-backend|verify-h3-runtime-commands|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
 	return 2
 }
 

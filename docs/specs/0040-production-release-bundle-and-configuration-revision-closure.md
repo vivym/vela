@@ -38,9 +38,11 @@ or change the current `0/9 PASS` result.
 
 Schema 3 adds the required `runtime_image_maintenance_unit` input and named
 artifact, using `runtime-image-maintenance-systemd-unit`. Configuration and
-bundle media types also use `v3+json`. Schema 2 inputs are rejected and must be
-rebuilt from the complete graph. This is not a change to OCI image manifests or
-the release descriptor's OCI-style `schemaVersion: 2` field.
+bundle media types also use `v3+json`. A production runtime plan may additionally
+carry the explicit `runtime_startup` graph, which binds the launcher, pidfd
+broker, policy issuer, and their two systemd units. Schema 2 inputs are rejected
+and must be rebuilt from the complete graph. This is not a change to OCI image
+manifests or the release descriptor's OCI-style `schemaVersion: 2` field.
 
 ## Exact deployment graph
 
@@ -50,6 +52,40 @@ embedded Secret objects fail closed. Workload image references, external
 resource references, revision annotations, Secret keys, and consumer identities
 must be complete exact sets. A whole-Secret selector is not accepted where the
 release contract requires named keys.
+
+### Kubernetes render contract v2 — 2026-09-15
+
+Schema 3 now accepts the explicit `render_contract: "kubernetes-v2"` selector.
+The selector is part of the configuration manifest and its derived digest;
+loading reconstructs and validates the selected inventory. Omitting it retains
+the legacy schema-3 inventory and encoding. Unknown selectors and attempts to
+relabel a legacy inventory as v2 fail closed; existing bundles are not silently
+reinterpreted.
+
+V2 changes three exact resource inventories:
+
+- `control-storage`: 11 resources. NATS consumes a required external Secret's
+  single `nats.conf` key through its read-only config directory, replacing the
+  previous `nats-config` ConfigMap. Dependency images in the Barman contract,
+  including PostgreSQL and the sidecar, join the exact OCI descriptor inventory.
+- `observability`: five application resources in `monitoring`: three hashed
+  SLO ConfigMaps, the Control PodMonitor, and the application PrometheusRule.
+  `hack/render-release-observability.py` reuses the platform source files.
+- `vela-control`: 20 resources, including `vela-control-allow-node-agent`.
+  That policy must select only Control, allow only TCP 8444, and enumerate
+  exact host source `/32` or `/128` CIDRs. Wildcards, duplicate, loopback,
+  link-local, documentation and IPv4-mapped sources fail closed. Site sources
+  must be measured at the destination after CNI/Service translation.
+
+The Fleet and Stage Worker inventories remain unchanged. Control manifests now
+name each consumed Secret environment key and file item, allowing the assembler
+to derive an exact key contract. The MarsLab Control/NATS consumers now reference
+16 immutable snapshots with canonical revision annotations; original material
+is retained. The Control image also contains the schema-96 Fleet privilege
+allowlist correction, validated against a fresh native PostgreSQL schema before
+rollout. See [material adoption](../release-material-adoption-2026-09-15.md) and
+[release input evidence](../release-input-validation-2026-09-15.md). These cover
+current Control/NATS inputs, not the complete all-component release gate.
 
 The H3 preflight and launch-evidence boundary resolves those external
 declarations against Kubernetes. It requires `immutable=true`, a live UID and

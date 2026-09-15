@@ -79,3 +79,23 @@ signatures, SBOMs, vulnerability approval, real PKI/Secrets, production RKE2/H3
 deployment, fault exercises, and nine Launch Receipts remain separate work.
 Repository tests and locally assembled artifacts do not satisfy a Production
 Gate; the current result remains `0/9 PASS`.
+
+## Runtime startup package graph
+
+The production startup helpers are built separately with:
+
+```text
+make build-runtime-startup-packages RELEASE_REVISION=<revision> RELEASE_ARTIFACT_DIR=<new-absolute-directory>
+```
+
+The command emits `runtime-startup-packages.json`, three Linux/amd64 helper
+artifacts (`vela-runtime-launcher`, `vela-pidfd-broker`, and
+`vela-runtime-policy-issuer`), their strict package contracts, and the two
+startup systemd units. It also carries the two deployment `env.example`
+files so socket paths, Runtime GID, key locations, authorization directory,
+and reply cache directory are digest-bound inputs. The generated
+`runtime-startup-provisioning.json` additionally binds the socket parent,
+bootstrap directory, required key files and Node env keys. A schema-3 release plan binds these exact
+`releasebundle.PackageInput` values through its `runtime_startup` graph;
+`releasebundle.Load` rebuilds and rechecks the graph. The runtime startup graph
+is optional for legacy bundles, but a production runtime plan must include it.

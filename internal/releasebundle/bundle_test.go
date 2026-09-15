@@ -1092,6 +1092,74 @@ func TestLoadWithinRejectsSymlinkedBundleDirectory(t *testing.T) {
 	}
 }
 
+func TestBuildBindsRuntimeStartupArtifactGraph(t *testing.T) {
+	fixture := newBundleFixture(t)
+	packages := []PackageInput{
+		{Name: "pidfd-broker", ContractRef: "pidfd-broker-contract.json", ArtifactRef: "vela-pidfd-broker"},
+		{Name: "runtime-launcher", ContractRef: "runtime-launcher-contract.json", ArtifactRef: "vela-runtime-launcher"},
+		{Name: "runtime-policy-issuer", ContractRef: "runtime-policy-issuer-contract.json", ArtifactRef: "vela-runtime-policy-issuer"},
+	}
+	entrypoints := []string{"/usr/local/bin/vela-pidfd-broker", "/usr/local/bin/vela-runtime-launcher", "/usr/local/bin/vela-runtime-policy-issuer"}
+	for index, item := range packages {
+		content := []byte("runtime startup package " + item.Name)
+		writeTestFile(t, filepath.Join(fixture.directory, item.ArtifactRef), content)
+		writeTestJSON(t, filepath.Join(fixture.directory, item.ContractRef), PackageContract{
+			SchemaVersion: 1, Name: "vela-" + item.Name, OS: "linux", Architecture: "amd64",
+			Revision: "release-r1", Entrypoint: entrypoints[index],
+			ArtifactDigest: testContentDigest(content), ArtifactSizeBytes: int64(len(content)),
+		})
+	}
+	writeTestFile(t, filepath.Join(fixture.directory, "pidfd-broker.service"), readTestFile(t, "../../deploy/node-agent/vela-pidfd-broker.service"))
+	writeTestFile(t, filepath.Join(fixture.directory, "runtime-policy-issuer.service"), readTestFile(t, "../../deploy/node-agent/vela-runtime-policy-issuer.service"))
+	writeTestFile(t, filepath.Join(fixture.directory, "pidfd-broker.env.example"), readTestFile(t, "../../deploy/node-agent/pidfd-broker.env.example"))
+	writeTestFile(t, filepath.Join(fixture.directory, "runtime-policy-issuer.env.example"), readTestFile(t, "../../deploy/node-agent/runtime-policy-issuer.env.example"))
+	writeTestJSON(t, filepath.Join(fixture.directory, "runtime-startup-provisioning.json"), RuntimeStartupProvisioningContract{SchemaVersion: 1, SocketParent: "/run/vela-node-agent", BootstrapDirectory: "/run/vela-node-agent/runtime-bootstrap", RequiredFiles: []string{"/etc/vela/runtime-policy-issuer/reply-private.key"}, RequiredEnvKeys: []string{"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"}})
+	fixture.plan.RuntimeStartup = &RuntimeStartupPlan{
+		Packages:                packages,
+		PIDFDBrokerUnit:         ArtifactInput{Name: runtimeStartupPIDFDBrokerUnitName, Ref: "pidfd-broker.service"},
+		RuntimePolicyIssuerUnit: ArtifactInput{Name: runtimeStartupPolicyIssuerUnitName, Ref: "runtime-policy-issuer.service"},
+		PIDFDBrokerEnv:          ArtifactInput{Name: runtimeStartupPIDFDBrokerEnvName, Ref: "pidfd-broker.env.example"},
+		RuntimePolicyIssuerEnv:  ArtifactInput{Name: runtimeStartupPolicyIssuerEnvName, Ref: "runtime-policy-issuer.env.example"},
+		Provisioning:            ArtifactInput{Name: "runtime-startup-provisioning", Ref: "runtime-startup-provisioning.json"},
+	}
+	fixture.writePlan(t)
+	bundle, _, err := buildTestBundle(fixture.planPath)
+	if err != nil {
+		t.Fatalf("build runtime startup graph: %v", err)
+	}
+	if bundle.ConfigurationManifest.RuntimeStartup == nil || len(bundle.ConfigurationManifest.RuntimeStartup.Packages) != 3 ||
+		bundle.ConfigurationManifest.RuntimeStartup.PIDFDBrokerEnv.Artifact.Ref != "pidfd-broker.env.example" ||
+		bundle.ConfigurationManifest.RuntimeStartup.RuntimePolicyIssuerEnv.Artifact.Ref != "runtime-policy-issuer.env.example" {
+		t.Fatalf("runtime startup graph = %#v", bundle.ConfigurationManifest.RuntimeStartup)
+	}
+	if bundle.ConfigurationManifest.RuntimeStartup.Provisioning == nil || bundle.ConfigurationManifest.RuntimeStartup.Provisioning.Artifact.Ref != "runtime-startup-provisioning.json" {
+		t.Fatalf("runtime startup provisioning missing: %#v", bundle.ConfigurationManifest.RuntimeStartup)
+	}
+	bundlePath := filepath.Join(fixture.directory, "runtime-startup-bundle.json")
+	encoded, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, bundlePath, encoded)
+	if _, err := Load(bundlePath); err != nil {
+		t.Fatalf("reload runtime startup graph: %v", err)
+	}
+	fixture.plan.RuntimeStartup.PIDFDBrokerEnv.Ref = ""
+	fixture.writePlan(t)
+	if _, _, err := buildTestBundle(fixture.planPath); err == nil || !strings.Contains(err.Error(), "runtime-startup/pidfd-broker-env") {
+		t.Fatalf("missing runtime startup env example error = %v", err)
+	}
+}
+
+func TestBuildRejectsIncompleteRuntimeStartupArtifactGraph(t *testing.T) {
+	fixture := newBundleFixture(t)
+	fixture.plan.RuntimeStartup = &RuntimeStartupPlan{}
+	fixture.writePlan(t)
+	if _, _, err := buildTestBundle(fixture.planPath); err == nil || !strings.Contains(err.Error(), "runtime-startup/pidfd-broker-unit") {
+		t.Fatalf("incomplete runtime startup graph error = %v", err)
+	}
+}
+
 type bundleFixture struct {
 	directory string
 	planPath  string

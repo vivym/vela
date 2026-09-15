@@ -16,12 +16,78 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
+var runtimeStartupBrokerSystemdV1 = map[string]map[string]string{
+	"Unit": {
+		"Description": "Vela host pidfd identity broker",
+		"Wants":       "network-online.target",
+		"After":       "network-online.target",
+		"Before":      "vela-node-agent.service",
+	},
+	"Service": {
+		"Type":                    "simple",
+		"User":                    "root",
+		"Group":                   "root",
+		"ExecStart":               "",
+		"EnvironmentFile":         "/etc/vela/pidfd-broker.env",
+		"Restart":                 "on-failure",
+		"RestartSec":              "2s",
+		"UMask":                   "0077",
+		"RuntimeDirectory":        "vela",
+		"RuntimeDirectoryMode":    "0755",
+		"ProtectHome":             "true",
+		"PrivateTmp":              "true",
+		"RestrictAddressFamilies": "AF_UNIX",
+		"LockPersonality":         "true",
+		"MemoryDenyWriteExecute":  "true",
+		"NoNewPrivileges":         "false",
+		"LimitNOFILE":             "256",
+	},
+	"Install": {"WantedBy": "multi-user.target"},
+}
+
+var runtimeStartupIssuerSystemdV1 = map[string]map[string]string{
+	"Unit": {
+		"Description": "Vela runtime startup policy issuer",
+		"Wants":       "network-online.target",
+		"After":       "network-online.target",
+		"Before":      "vela-node-agent.service",
+	},
+	"Service": {
+		"Type":                    "simple",
+		"User":                    "root",
+		"Group":                   "root",
+		"ExecStart":               "",
+		"EnvironmentFile":         "/etc/vela/runtime-policy-issuer.env",
+		"Restart":                 "on-failure",
+		"RestartSec":              "2s",
+		"UMask":                   "0077",
+		"RuntimeDirectory":        "vela-runtime-policy",
+		"RuntimeDirectoryMode":    "0755",
+		"StateDirectory":          "vela/runtime-policy-issuer",
+		"StateDirectoryMode":      "0700",
+		"ExecStartPre":            "/usr/bin/install -d -o root -g root -m 0700 /var/lib/vela/runtime-policy-issuer/authorizations /var/lib/vela/runtime-policy-issuer/replies",
+		"ProtectHome":             "true",
+		"PrivateTmp":              "true",
+		"RestrictAddressFamilies": "AF_UNIX",
+		"LockPersonality":         "true",
+		"MemoryDenyWriteExecute":  "true",
+		"NoNewPrivileges":         "false",
+		"LimitNOFILE":             "256",
+	},
+	"Install": {"WantedBy": "multi-user.target"},
+}
+
 var (
 	fixedRenderNames = []string{
 		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control",
 	}
-	fixedPackageNames  = []string{"node-agent"}
-	nodeAgentSystemdV1 = map[string]map[string]string{
+	fixedPackageNames                  = []string{"node-agent"}
+	fixedRuntimeStartupPackageNames    = []string{"pidfd-broker", "runtime-launcher", "runtime-policy-issuer"}
+	runtimeStartupPIDFDBrokerUnitName  = "pidfd-broker-systemd-unit"
+	runtimeStartupPolicyIssuerUnitName = "runtime-policy-issuer-systemd-unit"
+	runtimeStartupPIDFDBrokerEnvName   = "pidfd-broker-env-example"
+	runtimeStartupPolicyIssuerEnvName  = "runtime-policy-issuer-env-example"
+	nodeAgentSystemdV1                 = map[string]map[string]string{
 		"Unit": {
 			"Description": "Vela host remediation Node Agent",
 			"Wants":       "network-online.target",
@@ -86,6 +152,7 @@ type resourceKey struct {
 }
 
 type renderInventory struct {
+	renderContract     string
 	declared           map[resourceKey]struct{}
 	referred           map[resourceKey]struct{}
 	expectedRevision   map[resourceKey]string
@@ -116,6 +183,9 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 	if !sourceRevisionPattern.MatchString(sourceRevision) {
 		return Bundle{}, invalid("source revision must be a full Git object ID")
 	}
+	if plan.RenderContract != "" && plan.RenderContract != KubernetesRenderContractV2 {
+		return Bundle{}, invalid("unsupported render contract")
+	}
 	if plan.SchemaVersion != SchemaVersion || len(plan.FinalRenders) != len(fixedRenderNames) ||
 		len(plan.Packages) != len(fixedPackageNames) || len(plan.OCIManifests) == 0 ||
 		len(plan.OCIManifests) > maxArtifactCount {
@@ -140,6 +210,7 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 	inventory := newRenderInventory()
 	configuration := ConfigurationManifest{
 		SchemaVersion: SchemaVersion, MediaType: ConfigurationMediaType, SourceRevision: sourceRevision,
+		RenderContract:    plan.RenderContract,
 		FinalRenders:      make([]NamedArtifact, 0, len(plan.FinalRenders)),
 		Packages:          make([]Package, 0, len(plan.Packages)),
 		ExternalResources: append([]ExternalResource(nil), plan.ExternalResources...),
@@ -152,7 +223,7 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 		if err != nil {
 			return Bundle{}, invalidf("read final render %s: %v", input.Name, err)
 		}
-		if err := validateFinalRender(input.Name, content, &inventory, yamlBudget); err != nil {
+		if err := validateFinalRenderWithContract(plan.RenderContract, input.Name, content, &inventory, yamlBudget); err != nil {
 			return Bundle{}, err
 		}
 		configuration.FinalRenders = append(configuration.FinalRenders, NamedArtifact{Name: input.Name, Artifact: artifact})
@@ -204,6 +275,13 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 	}
 	if err := validateSystemdUnit(maintenanceContent, nodeAgentEntrypoint+" runtime-image-maintenance --config-file /etc/vela/runtime-image-maintenance.json", runtimeImageMaintenanceSystemdV1); err != nil {
 		return Bundle{}, invalidf("runtime image maintenance unit: %v", err)
+	}
+	if plan.RuntimeStartup != nil {
+		runtimeStartup, err := buildRuntimeStartupArtifacts(artifacts, *plan.RuntimeStartup)
+		if err != nil {
+			return Bundle{}, err
+		}
+		configuration.RuntimeStartup = runtimeStartup
 	}
 
 	if len(inventory.residencyRollouts) == 0 {
@@ -275,6 +353,115 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 	}, nil
 }
 
+func buildRuntimeStartupArtifacts(artifacts *artifactReader, plan RuntimeStartupPlan) (*RuntimeStartupManifest, error) {
+	if artifacts == nil || len(plan.Packages) != len(fixedRuntimeStartupPackageNames) {
+		return nil, invalid("runtime startup package set is incomplete")
+	}
+	packages := make([]Package, 0, len(plan.Packages))
+	entrypoints := make(map[string]string, len(plan.Packages))
+	for index, input := range plan.Packages {
+		if input.Name != fixedRuntimeStartupPackageNames[index] {
+			return nil, invalid("runtime startup package names must be the exact fixed set")
+		}
+		contractArtifact, contractContent, err := artifacts.artifactFor(input.ContractRef, "application/json", maxMetadataBytes)
+		if err != nil {
+			return nil, invalidf("read %s runtime startup package contract: %v", input.Name, err)
+		}
+		packageArtifact, err := artifacts.digestArtifact(input.ArtifactRef, "application/octet-stream", maxPackageBytes)
+		if err != nil {
+			return nil, invalidf("read %s runtime startup package artifact: %v", input.Name, err)
+		}
+		contract, err := ValidatePackageContract(input.Name, contractContent, packageArtifact)
+		if err != nil {
+			return nil, err
+		}
+		packages = append(packages, Package{Name: input.Name, Contract: contractArtifact, Artifact: packageArtifact})
+		entrypoints[input.Name] = contract.Entrypoint
+	}
+	if plan.PIDFDBrokerUnit.Name != runtimeStartupPIDFDBrokerUnitName || plan.RuntimePolicyIssuerUnit.Name != runtimeStartupPolicyIssuerUnitName ||
+		plan.PIDFDBrokerEnv.Name != runtimeStartupPIDFDBrokerEnvName || plan.RuntimePolicyIssuerEnv.Name != runtimeStartupPolicyIssuerEnvName {
+		return nil, invalid("runtime startup artifact names are invalid")
+	}
+	brokerArtifact, brokerContent, err := artifacts.artifactFor(plan.PIDFDBrokerUnit.Ref, "text/plain", maxMetadataBytes)
+	if err != nil {
+		return nil, invalidf("read pidfd broker systemd unit: %v", err)
+	}
+	issuerArtifact, issuerContent, err := artifacts.artifactFor(plan.RuntimePolicyIssuerUnit.Ref, "text/plain", maxMetadataBytes)
+	if err != nil {
+		return nil, invalidf("read runtime policy issuer systemd unit: %v", err)
+	}
+	if err := ValidateRuntimeStartupSystemdUnit("pidfd-broker", brokerContent, entrypoints["pidfd-broker"]); err != nil {
+		return nil, invalidf("pidfd broker systemd unit: %v", err)
+	}
+	if err := ValidateRuntimeStartupSystemdUnit("runtime-policy-issuer", issuerContent, entrypoints["runtime-policy-issuer"]); err != nil {
+		return nil, invalidf("runtime policy issuer systemd unit: %v", err)
+	}
+	brokerEnvArtifact, brokerEnvContent, err := artifacts.artifactFor(plan.PIDFDBrokerEnv.Ref, "text/plain", maxMetadataBytes)
+	if err != nil {
+		return nil, invalidf("read pidfd broker env example: %v", err)
+	}
+	if err := ValidateRuntimeStartupEnvExample(string(brokerEnvContent), "pidfd-broker"); err != nil {
+		return nil, err
+	}
+	issuerEnvArtifact, issuerEnvContent, err := artifacts.artifactFor(plan.RuntimePolicyIssuerEnv.Ref, "text/plain", maxMetadataBytes)
+	if err != nil {
+		return nil, invalidf("read runtime policy issuer env example: %v", err)
+	}
+	if err := ValidateRuntimeStartupEnvExample(string(issuerEnvContent), "runtime-policy-issuer"); err != nil {
+		return nil, err
+	}
+	var provisioning *NamedArtifact
+	if plan.Provisioning.Ref != "" || plan.Provisioning.Name != "" {
+		if plan.Provisioning.Name != "runtime-startup-provisioning" || plan.Provisioning.Ref == "" {
+			return nil, invalid("runtime startup provisioning artifact is invalid")
+		}
+		artifact, content, err := artifacts.artifactFor(plan.Provisioning.Ref, "application/json", maxMetadataBytes)
+		if err != nil {
+			return nil, invalidf("read runtime startup provisioning contract: %v", err)
+		}
+		var contract RuntimeStartupProvisioningContract
+		if err := decodeStrictJSON(content, &contract); err != nil {
+			return nil, invalid("runtime startup provisioning contract is invalid")
+		}
+		if err := ValidateRuntimeStartupProvisioningContract(contract); err != nil {
+			return nil, invalid("runtime startup provisioning contract is invalid")
+		}
+		provisioning = &NamedArtifact{Name: plan.Provisioning.Name, Artifact: artifact}
+	}
+	return &RuntimeStartupManifest{
+		Packages:                packages,
+		PIDFDBrokerUnit:         NamedArtifact{Name: plan.PIDFDBrokerUnit.Name, Artifact: brokerArtifact},
+		RuntimePolicyIssuerUnit: NamedArtifact{Name: plan.RuntimePolicyIssuerUnit.Name, Artifact: issuerArtifact},
+		PIDFDBrokerEnv:          NamedArtifact{Name: plan.PIDFDBrokerEnv.Name, Artifact: brokerEnvArtifact},
+		RuntimePolicyIssuerEnv:  NamedArtifact{Name: plan.RuntimePolicyIssuerEnv.Name, Artifact: issuerEnvArtifact},
+		Provisioning:            provisioning,
+	}, nil
+}
+
+func validAbsoluteContractPath(path string) bool {
+	return path != "" && filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsRune(path, '\x00')
+}
+
+// ValidateRuntimeStartupProvisioningContract validates the filesystem and
+// environment inputs required before the Node startup composition can run.
+func ValidateRuntimeStartupProvisioningContract(contract RuntimeStartupProvisioningContract) error {
+	if contract.SchemaVersion != 1 || !validAbsoluteContractPath(contract.SocketParent) ||
+		!validAbsoluteContractPath(contract.BootstrapDirectory) || len(contract.RequiredFiles) == 0 || len(contract.RequiredEnvKeys) == 0 {
+		return errors.New("runtime startup provisioning contract is invalid")
+	}
+	for index, path := range contract.RequiredFiles {
+		if !validAbsoluteContractPath(path) || slices.Contains(contract.RequiredFiles[:index], path) {
+			return errors.New("runtime startup provisioning required files are invalid")
+		}
+	}
+	for index, key := range contract.RequiredEnvKeys {
+		if !strings.HasPrefix(key, "VELA_") || strings.ContainsAny(key, "= \t\n\r") || slices.Contains(contract.RequiredEnvKeys[:index], key) {
+			return errors.New("runtime startup provisioning required env keys are invalid")
+		}
+	}
+	return nil
+}
+
 func validateImageRoleSeparation(inventory renderInventory) error {
 	runtimeDigests := make(map[string]string, len(inventory.modelRuntimeImages))
 	for image := range inventory.modelRuntimeImages {
@@ -309,6 +496,7 @@ func verify(root *rootedFS, bundle Bundle) error {
 	}
 	plan := BuildPlan{
 		SchemaVersion:     SchemaVersion,
+		RenderContract:    bundle.ConfigurationManifest.RenderContract,
 		ExternalResources: append([]ExternalResource(nil), bundle.ConfigurationManifest.ExternalResources...),
 	}
 	for _, render := range bundle.ConfigurationManifest.FinalRenders {
@@ -321,6 +509,22 @@ func verify(root *rootedFS, bundle Bundle) error {
 	plan.RuntimeImageMaintenanceUnit = ArtifactInput{
 		Name: bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Name,
 		Ref:  bundle.ConfigurationManifest.RuntimeImageMaintenanceUnit.Artifact.Ref,
+	}
+	if startup := bundle.ConfigurationManifest.RuntimeStartup; startup != nil {
+		plan.RuntimeStartup = &RuntimeStartupPlan{
+			PIDFDBrokerUnit:         ArtifactInput{Name: startup.PIDFDBrokerUnit.Name, Ref: startup.PIDFDBrokerUnit.Artifact.Ref},
+			RuntimePolicyIssuerUnit: ArtifactInput{Name: startup.RuntimePolicyIssuerUnit.Name, Ref: startup.RuntimePolicyIssuerUnit.Artifact.Ref},
+			PIDFDBrokerEnv:          ArtifactInput{Name: startup.PIDFDBrokerEnv.Name, Ref: startup.PIDFDBrokerEnv.Artifact.Ref},
+			RuntimePolicyIssuerEnv:  ArtifactInput{Name: startup.RuntimePolicyIssuerEnv.Name, Ref: startup.RuntimePolicyIssuerEnv.Artifact.Ref},
+		}
+		if startup.Provisioning != nil {
+			plan.RuntimeStartup.Provisioning = ArtifactInput{Name: startup.Provisioning.Name, Ref: startup.Provisioning.Artifact.Ref}
+		}
+		for _, item := range startup.Packages {
+			plan.RuntimeStartup.Packages = append(plan.RuntimeStartup.Packages, PackageInput{
+				Name: item.Name, ContractRef: item.Contract.Ref, ArtifactRef: item.Artifact.Ref,
+			})
+		}
 	}
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		plan.Packages = append(plan.Packages, PackageInput{
@@ -478,12 +682,66 @@ func validateSystemdUnit(encoded []byte, entrypoint string, contract map[string]
 	return nil
 }
 
+// ValidateRuntimeStartupSystemdUnit applies the canonical unit contract used
+// by both release assembly and the standalone runtime-startup package builder.
+func ValidateRuntimeStartupSystemdUnit(component string, encoded []byte, entrypoint string) error {
+	var contract map[string]map[string]string
+	switch component {
+	case "pidfd-broker":
+		contract = runtimeStartupBrokerSystemdV1
+	case "runtime-policy-issuer":
+		contract = runtimeStartupIssuerSystemdV1
+	default:
+		return invalidf("unknown runtime startup systemd component %q", component)
+	}
+	return validateSystemdUnit(encoded, entrypoint, contract)
+}
+
 func containsTemplateValue(value string) bool {
 	lower := strings.ToLower(value)
 	return strings.Contains(lower, "placeholder") || strings.Contains(lower, "replace-with") ||
 		strings.Contains(lower, "changeme") || strings.Contains(lower, "todo") ||
 		strings.Contains(lower, ".invalid") || strings.Contains(value, "sha256:"+strings.Repeat("0", 64)) ||
 		value == strings.Repeat("0", 64)
+}
+
+// ValidateRuntimeStartupEnvExample validates one canonical runtime startup
+// environment example before it is published or embedded in a release.
+func ValidateRuntimeStartupEnvExample(content, component string) error {
+	var required []string
+	switch component {
+	case "pidfd-broker":
+		required = []string{"VELA_PIDFD_BROKER_SOCKET", "VELA_PIDFD_BROKER_RUNTIME_GID"}
+	case "runtime-policy-issuer":
+		required = []string{
+			"VELA_RUNTIME_POLICY_PRIVATE_KEY_FILE", "VELA_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE",
+			"VELA_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY", "VELA_RUNTIME_POLICY_REPLY_CACHE_DIRECTORY",
+			"VELA_RUNTIME_POLICY_ISSUER_SOCKET", "VELA_RUNTIME_POLICY_RUNTIME_GID",
+		}
+	default:
+		return invalidf("unknown runtime startup env component %q", component)
+	}
+	values := make(map[string]string, len(required))
+	for lineNumber, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || !slices.Contains(required, key) || strings.TrimSpace(value) == "" {
+			return invalidf("runtime startup %s env example line %d is invalid", component, lineNumber+1)
+		}
+		if _, duplicate := values[key]; duplicate {
+			return invalidf("runtime startup %s env example repeats %s", component, key)
+		}
+		values[key] = value
+	}
+	for _, key := range required {
+		if _, present := values[key]; !present {
+			return invalidf("runtime startup %s env example is missing %s", component, key)
+		}
+	}
+	return nil
 }
 
 type yamlGraphBudget struct {

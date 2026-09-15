@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net/netip"
 	"reflect"
 	"slices"
 	"sort"
@@ -119,12 +120,54 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 	},
 }
 
-func validateFinalRender(name string, encoded []byte, inventory *renderInventory, budget *yamlGraphBudget) error {
+func renderContracts(version, name string) ([]renderedResourceContract, error) {
+	legacy, ok := finalRenderInventory[name]
+	if !ok {
+		return nil, invalid("unknown final render name")
+	}
+	switch version {
+	case "":
+		return legacy, nil
+	case KubernetesRenderContractV2:
+		if name == "control-storage" {
+			current := make([]renderedResourceContract, 0, len(legacy)-1)
+			for _, resource := range legacy {
+				if resource.Kind == "ConfigMap" && resource.Name == "nats-config" {
+					continue
+				}
+				current = append(current, resource)
+			}
+			return current, nil
+		}
+		if name == "observability" {
+			return []renderedResourceContract{
+				{APIVersion: "v1", Kind: "ConfigMap", Namespace: "monitoring", NamePrefix: "vela-slo-alert-rules-"},
+				{APIVersion: "v1", Kind: "ConfigMap", Namespace: "monitoring", NamePrefix: "vela-slo-contract-"},
+				{APIVersion: "v1", Kind: "ConfigMap", Namespace: "monitoring", NamePrefix: "vela-slo-dashboard-"},
+				{APIVersion: "monitoring.coreos.com/v1", Kind: "PodMonitor", Namespace: "monitoring", Name: "vela-control"},
+				{APIVersion: "monitoring.coreos.com/v1", Kind: "PrometheusRule", Namespace: "monitoring", Name: "vela-slo-rules"},
+			}, nil
+		}
+		if name == "vela-control" {
+			current := append([]renderedResourceContract(nil), legacy...)
+			return append(current, renderedResourceContract{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-node-agent"}), nil
+		}
+		return legacy, nil
+	default:
+		return nil, invalid("unsupported render contract")
+	}
+}
+
+func validateFinalRenderWithContract(version, name string, encoded []byte, inventory *renderInventory, budget *yamlGraphBudget) error {
+	expected, err := renderContracts(version, name)
+	if err != nil {
+		return err
+	}
+	inventory.renderContract = version
 	documents, err := decodeYAMLDocuments(encoded, budget)
 	if err != nil || len(documents) == 0 {
 		return invalidf("final render %s must contain valid Kubernetes YAML documents: %v", name, err)
 	}
-	expected := finalRenderInventory[name]
 	if len(documents) != len(expected) {
 		return invalidf("final render %s contains %d resources, want exact inventory of %d", name, len(documents), len(expected))
 	}
@@ -155,6 +198,16 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			return invalidf("final render %s contains unexpected resource %s/%s/%s/%s", name, apiVersion, kind, namespace, resourceName)
 		}
 		found[matched] = true
+		if version == KubernetesRenderContractV2 && name == "control-storage" && kind == "StatefulSet" && resourceName == "nats" {
+			if err := validateNATSSecretConfiguration(document); err != nil {
+				return err
+			}
+		}
+		if version == KubernetesRenderContractV2 && kind == "NetworkPolicy" && resourceName == "vela-control-allow-node-agent" {
+			if err := validateNodeAgentIngress(document); err != nil {
+				return err
+			}
+		}
 		if kind == "ConfigMap" {
 			key := resourceKey{Kind: kind, Namespace: namespace, Name: resourceName}
 			if _, duplicate := inventory.declared[key]; duplicate {
@@ -182,6 +235,110 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			contract := expected[index]
 			return invalidf("final render %s is missing resource %s/%s/%s/%s", name, contract.APIVersion, contract.Kind, contract.Namespace, contract.displayName())
 		}
+	}
+	return nil
+}
+
+func validateNodeAgentIngress(document map[string]any) error {
+	spec, _ := document["spec"].(map[string]any)
+	selector := map[string]any{"matchLabels": map[string]any{"app.kubernetes.io/name": "vela-control"}}
+	if !reflect.DeepEqual(spec["podSelector"], selector) || !reflect.DeepEqual(spec["policyTypes"], []any{"Ingress"}) || spec["egress"] != nil {
+		return invalid("Node Agent ingress must target only Control and not change egress")
+	}
+	ingress, _ := spec["ingress"].([]any)
+	if len(ingress) != 1 {
+		return invalid("Node Agent ingress requires one exact rule")
+	}
+	rule, _ := ingress[0].(map[string]any)
+	ports, _ := rule["ports"].([]any)
+	if len(ports) != 1 {
+		return invalid("Node Agent ingress requires TCP 8444 only")
+	}
+	port, _ := ports[0].(map[string]any)
+	if len(port) != 2 || port["protocol"] != "TCP" || port["port"] != 8444 {
+		return invalid("Node Agent ingress requires TCP 8444 only")
+	}
+	peers, _ := rule["from"].([]any)
+	if len(peers) == 0 || len(peers) > maxWorkerNodeCount {
+		return invalid("Node Agent ingress requires exact host source CIDRs")
+	}
+	seen := make(map[netip.Addr]bool)
+	for _, entry := range peers {
+		peer, _ := entry.(map[string]any)
+		block, _ := peer["ipBlock"].(map[string]any)
+		cidr, _ := block["cidr"].(string)
+		prefix, err := netip.ParsePrefix(cidr)
+		if len(peer) != 1 || len(block) != 1 || err != nil || prefix.Bits() != prefix.Addr().BitLen() || prefix.Addr().Is4In6() ||
+			!prefix.Addr().IsGlobalUnicast() || prefix.Addr().IsLoopback() || prefix.Addr().IsLinkLocalUnicast() || seen[prefix.Addr()] {
+			return invalid("Node Agent ingress contains a broad, duplicate or invalid host CIDR")
+		}
+		for _, documentationRange := range []string{"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32"} {
+			if netip.MustParsePrefix(documentationRange).Contains(prefix.Addr()) {
+				return invalid("Node Agent ingress still contains a documentation-only source")
+			}
+		}
+		seen[prefix.Addr()] = true
+	}
+	return nil
+}
+
+// Replacing the old required ConfigMap must not make NATS configuration
+// optional. Require its actual server to consume the keyed external Secret;
+// scanRenderedValue then binds that Secret to the exact key/consumer inventory.
+func validateNATSSecretConfiguration(document map[string]any) error {
+	spec, _ := document["spec"].(map[string]any)
+	template, _ := spec["template"].(map[string]any)
+	pod, _ := template["spec"].(map[string]any)
+	volumes, _ := pod["volumes"].([]any)
+	configVolumes := 0
+	for _, value := range volumes {
+		volume, _ := value.(map[string]any)
+		if volume["name"] != "config" {
+			continue
+		}
+		configVolumes++
+		secret, _ := volume["secret"].(map[string]any)
+		name, _ := secret["secretName"].(string)
+		items, _ := secret["items"].([]any)
+		if !validResourceName(name) || len(items) != 1 || volume["configMap"] != nil || secret["optional"] == true {
+			return invalid("NATS config volume must require an external Secret with exactly the nats.conf key")
+		}
+		item, _ := items[0].(map[string]any)
+		if item["key"] != "nats.conf" || item["path"] != "nats.conf" {
+			return invalid("NATS config Secret must map nats.conf to nats.conf")
+		}
+	}
+	containers, _ := pod["containers"].([]any)
+	servers := 0
+	for _, value := range containers {
+		container, _ := value.(map[string]any)
+		if container["name"] != "nats" {
+			continue
+		}
+		servers++
+		args, _ := container["args"].([]any)
+		if !reflect.DeepEqual(args, []any{"--config", "/etc/nats-config/nats.conf"}) {
+			return invalid("NATS server must load its external nats.conf")
+		}
+		mounts, _ := container["volumeMounts"].([]any)
+		configMounts := 0
+		for _, item := range mounts {
+			mount, _ := item.(map[string]any)
+			if mount["name"] != "config" {
+				continue
+			}
+			configMounts++
+			if mount["mountPath"] != "/etc/nats-config" || mount["readOnly"] != true ||
+				mount["subPath"] != nil || mount["subPathExpr"] != nil {
+				return invalid("NATS configuration mount must expose the read-only Secret directory")
+			}
+		}
+		if configMounts != 1 {
+			return invalid("NATS server requires one configuration mount")
+		}
+	}
+	if configVolumes != 1 || servers != 1 {
+		return invalid("NATS requires one configuration Secret volume and one server")
 	}
 	return nil
 }
@@ -299,7 +456,7 @@ func scanRenderedValue(
 				if containsTemplateValue(stringValue) {
 					return fmt.Errorf("field %s contains a template or invalid production value", key)
 				}
-				if role, imageField := imageRoleForField(key, parentKey); imageField {
+				if role, imageField := imageRoleForContract(inventory.renderContract, key, parentKey); imageField {
 					if !validImage(stringValue) {
 						return fmt.Errorf("field %s contains an unpinned or invalid OCI image %q", key, stringValue)
 					}
@@ -465,6 +622,17 @@ func imageRoleForField(key, parent string) (renderedImageRole, bool) {
 		return contract.ImageRole, true
 	}
 	if key == "image" && (parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers") {
+		return renderedImageRoleSupport, true
+	}
+	return renderedImageRoleNone, false
+}
+
+func imageRoleForContract(version, key, parent string) (renderedImageRole, bool) {
+	if role, ok := imageRoleForField(key, parent); ok {
+		return role, true
+	}
+	if version == KubernetesRenderContractV2 &&
+		(parent == "images" || key == "postgres_image" || key == "sidecar_image" || key == "minio_image") {
 		return renderedImageRoleSupport, true
 	}
 	return renderedImageRoleNone, false

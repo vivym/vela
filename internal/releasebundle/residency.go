@@ -47,7 +47,7 @@ func LoadResidencyPlanRollouts(
 		return Bundle{}, nil, invalid("Fleet final render bytes changed after bundle verification")
 	}
 	inventory := newRenderInventory()
-	if err := validateFinalRender("fleet-controller", encoded, &inventory, &yamlGraphBudget{}); err != nil {
+	if err := validateFinalRenderWithContract(bundle.ConfigurationManifest.RenderContract, "fleet-controller", encoded, &inventory, &yamlGraphBudget{}); err != nil {
 		return Bundle{}, nil, fmt.Errorf("%w: reload Fleet final render: %v", ErrInvalidBundle, err)
 	}
 	if len(inventory.residencyRollouts) == 0 {

@@ -168,6 +168,12 @@ func decodeStrictJSON(encoded []byte, destination any) error {
 	return nil
 }
 
+// DecodeStrictJSONForValidation exposes the canonical strict decoder to
+// release artifact publishers while keeping bundle parsing rules identical.
+func DecodeStrictJSONForValidation(encoded []byte, destination any) error {
+	return decodeStrictJSON(encoded, destination)
+}
+
 type artifactReference struct {
 	role      string
 	reference string
@@ -223,8 +229,15 @@ func preflightArtifactGraph(root *rootedFS, plan BuildPlan) (*artifactReader, er
 }
 
 func collectArtifactReferences(plan BuildPlan) []artifactReference {
+	runtimeReferences := 0
+	if plan.RuntimeStartup != nil {
+		runtimeReferences = 4 + 2*len(plan.RuntimeStartup.Packages)
+		if plan.RuntimeStartup.Provisioning.Ref != "" {
+			runtimeReferences++
+		}
+	}
 	references := make([]artifactReference, 0,
-		len(plan.FinalRenders)+2+2*len(plan.Packages)+2*len(plan.OCIManifests),
+		len(plan.FinalRenders)+2+2*len(plan.Packages)+runtimeReferences+2*len(plan.OCIManifests),
 	)
 	for _, render := range plan.FinalRenders {
 		references = append(references, artifactReference{
@@ -236,6 +249,23 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	}, artifactReference{
 		role: "runtime-image-maintenance-unit", reference: plan.RuntimeImageMaintenanceUnit.Ref, maximum: maxMetadataBytes,
 	})
+	if plan.RuntimeStartup != nil {
+		references = append(references,
+			artifactReference{role: "runtime-startup/pidfd-broker-unit", reference: plan.RuntimeStartup.PIDFDBrokerUnit.Ref, maximum: maxMetadataBytes},
+			artifactReference{role: "runtime-startup/policy-issuer-unit", reference: plan.RuntimeStartup.RuntimePolicyIssuerUnit.Ref, maximum: maxMetadataBytes},
+			artifactReference{role: "runtime-startup/pidfd-broker-env", reference: plan.RuntimeStartup.PIDFDBrokerEnv.Ref, maximum: maxMetadataBytes},
+			artifactReference{role: "runtime-startup/policy-issuer-env", reference: plan.RuntimeStartup.RuntimePolicyIssuerEnv.Ref, maximum: maxMetadataBytes},
+		)
+		for _, item := range plan.RuntimeStartup.Packages {
+			references = append(references,
+				artifactReference{role: "runtime-startup/package-contract/" + item.Name, reference: item.ContractRef, maximum: maxMetadataBytes},
+				artifactReference{role: "runtime-startup/package/" + item.Name, reference: item.ArtifactRef, maximum: maxPackageBytes},
+			)
+		}
+		if plan.RuntimeStartup.Provisioning.Ref != "" {
+			references = append(references, artifactReference{role: "runtime-startup/provisioning", reference: plan.RuntimeStartup.Provisioning.Ref, maximum: maxMetadataBytes})
+		}
+	}
 	for _, item := range plan.Packages {
 		references = append(references,
 			artifactReference{

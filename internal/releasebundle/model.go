@@ -4,6 +4,10 @@ import "errors"
 
 const (
 	SchemaVersion = 3
+	// KubernetesRenderContractV2 binds the current application resource layout:
+	// Secret-backed NATS and application observability in monitoring. An absent
+	// selector retains the original schema-3 exact inventory and its digests.
+	KubernetesRenderContractV2 = "kubernetes-v2"
 
 	ConfigurationMediaType     = "application/vnd.vela.release.configuration.v3+json"
 	ReleaseArtifactType        = "application/vnd.vela.release.bundle.v3+json"
@@ -61,13 +65,15 @@ type OCIManifestInput struct {
 }
 
 type BuildPlan struct {
-	SchemaVersion               int                `json:"schema_version"`
-	FinalRenders                []ArtifactInput    `json:"final_renders"`
-	NodeAgentUnit               ArtifactInput      `json:"node_agent_unit"`
-	RuntimeImageMaintenanceUnit ArtifactInput      `json:"runtime_image_maintenance_unit"`
-	Packages                    []PackageInput     `json:"packages"`
-	ExternalResources           []ExternalResource `json:"external_resources"`
-	OCIManifests                []OCIManifestInput `json:"oci_manifests"`
+	SchemaVersion               int                 `json:"schema_version"`
+	RenderContract              string              `json:"render_contract,omitempty"`
+	FinalRenders                []ArtifactInput     `json:"final_renders"`
+	NodeAgentUnit               ArtifactInput       `json:"node_agent_unit"`
+	RuntimeImageMaintenanceUnit ArtifactInput       `json:"runtime_image_maintenance_unit"`
+	RuntimeStartup              *RuntimeStartupPlan `json:"runtime_startup,omitempty"`
+	Packages                    []PackageInput      `json:"packages"`
+	ExternalResources           []ExternalResource  `json:"external_resources"`
+	OCIManifests                []OCIManifestInput  `json:"oci_manifests"`
 }
 
 type Artifact struct {
@@ -88,6 +94,37 @@ type Package struct {
 	Artifact Artifact `json:"artifact"`
 }
 
+// RuntimeStartupPlan is the optional release graph for the production
+// Runtime/Worker startup path. Keeping it explicit prevents a release from
+// silently depending on host binaries outside the canonical bundle.
+type RuntimeStartupPlan struct {
+	Packages                []PackageInput `json:"packages"`
+	PIDFDBrokerUnit         ArtifactInput  `json:"pidfd_broker_unit"`
+	RuntimePolicyIssuerUnit ArtifactInput  `json:"runtime_policy_issuer_unit"`
+	PIDFDBrokerEnv          ArtifactInput  `json:"pidfd_broker_env"`
+	RuntimePolicyIssuerEnv  ArtifactInput  `json:"runtime_policy_issuer_env"`
+	Provisioning            ArtifactInput  `json:"provisioning,omitempty"`
+}
+
+type RuntimeStartupManifest struct {
+	Packages                []Package      `json:"packages"`
+	PIDFDBrokerUnit         NamedArtifact  `json:"pidfd_broker_unit"`
+	RuntimePolicyIssuerUnit NamedArtifact  `json:"runtime_policy_issuer_unit"`
+	PIDFDBrokerEnv          NamedArtifact  `json:"pidfd_broker_env"`
+	RuntimePolicyIssuerEnv  NamedArtifact  `json:"runtime_policy_issuer_env"`
+	Provisioning            *NamedArtifact `json:"provisioning,omitempty"`
+}
+
+// RuntimeStartupProvisioningContract binds the filesystem and environment
+// contract required before the Node startup composition can run.
+type RuntimeStartupProvisioningContract struct {
+	SchemaVersion      int      `json:"schema_version"`
+	SocketParent       string   `json:"socket_parent"`
+	BootstrapDirectory string   `json:"bootstrap_directory"`
+	RequiredFiles      []string `json:"required_files"`
+	RequiredEnvKeys    []string `json:"required_env_keys"`
+}
+
 type OCIImage struct {
 	Image      string   `json:"image"`
 	Descriptor Artifact `json:"descriptor"`
@@ -96,14 +133,16 @@ type OCIImage struct {
 }
 
 type ConfigurationManifest struct {
-	SchemaVersion               int                `json:"schema_version"`
-	MediaType                   string             `json:"media_type"`
-	SourceRevision              string             `json:"source_revision"`
-	FinalRenders                []NamedArtifact    `json:"final_renders"`
-	NodeAgentUnit               NamedArtifact      `json:"node_agent_unit"`
-	RuntimeImageMaintenanceUnit NamedArtifact      `json:"runtime_image_maintenance_unit"`
-	Packages                    []Package          `json:"packages"`
-	ExternalResources           []ExternalResource `json:"external_resources"`
+	SchemaVersion               int                     `json:"schema_version"`
+	MediaType                   string                  `json:"media_type"`
+	SourceRevision              string                  `json:"source_revision"`
+	RenderContract              string                  `json:"render_contract,omitempty"`
+	FinalRenders                []NamedArtifact         `json:"final_renders"`
+	NodeAgentUnit               NamedArtifact           `json:"node_agent_unit"`
+	RuntimeImageMaintenanceUnit NamedArtifact           `json:"runtime_image_maintenance_unit"`
+	RuntimeStartup              *RuntimeStartupManifest `json:"runtime_startup,omitempty"`
+	Packages                    []Package               `json:"packages"`
+	ExternalResources           []ExternalResource      `json:"external_resources"`
 }
 
 type Descriptor struct {
