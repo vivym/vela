@@ -1,6 +1,6 @@
 # Qwen3 Embedding/Reranker worker 部署方案
 
-状态：**清单与镜像入口已完成，实际构建、推送和集群 rollout 待执行**。
+状态：**已完成构建、私仓推送、集群 rollout 和接口 smoke 验证**。
 
 ## 资源决策
 
