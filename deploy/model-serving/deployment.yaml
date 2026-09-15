@@ -50,7 +50,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: qwen3
-          image: 10.1.201.70:5005/ragflow-lab/qwen3-model-worker:0.1.0@sha256:REPLACE_AFTER_BUILD
+          image: 10.1.201.70:5005/llm-models/qwen3-model-worker:0.1.4@sha256:61d787ec85f10514187b5d5e0da7d84fda9065047f6d80d93b22125f2034497f
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
@@ -66,9 +66,9 @@ spec:
             - {name: TRANSFORMERS_OFFLINE, value: "1"}
             - {name: EMBED_MODEL, value: /models/Qwen3-Embedding-4B}
             - {name: RERANK_MODEL, value: /models/Qwen3-Reranker-4B}
-            - {name: MAX_MODEL_LEN, value: "8192"}
-            - {name: EMBED_GPU_MEMORY_UTILIZATION, value: "0.36"}
-            - {name: RERANK_GPU_MEMORY_UTILIZATION, value: "0.36"}
+            - {name: MAX_MODEL_LEN, value: "4096"}
+            - {name: EMBED_GPU_MEMORY_UTILIZATION, value: "0.20"}
+            - {name: RERANK_GPU_MEMORY_UTILIZATION, value: "0.20"}
           ports:
             - {name: api, containerPort: 8080, protocol: TCP}
             - {name: embedding, containerPort: 8000, protocol: TCP}
@@ -94,6 +94,11 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 30
+          startupProbe:
+            httpGet: {path: /healthz, port: api}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 180
           livenessProbe:
             httpGet: {path: /healthz, port: api}
             periodSeconds: 30

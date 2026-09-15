@@ -5,6 +5,11 @@ FROM --platform=linux/amd64 vllm/vllm-openai:v0.10.1.1
 COPY entrypoint.py /opt/vela/entrypoint.py
 COPY reranker_server.py /opt/vela/reranker_server.py
 RUN chmod 0555 /opt/vela/entrypoint.py
+# The vLLM architecture probe calls getpass.getuser() while the Pod runs as
+# UID 1000.  Keep the restricted non-root runtime and provide the corresponding
+# passwd/group records in the otherwise minimal base image.
+RUN grep -q '^vela:x:1000:' /etc/passwd || echo 'vela:x:1000:1000:Vela runtime:/tmp:/usr/sbin/nologin' >> /etc/passwd \
+    && grep -q '^vela:x:1000:' /etc/group || echo 'vela:x:1000:' >> /etc/group
 
 ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \

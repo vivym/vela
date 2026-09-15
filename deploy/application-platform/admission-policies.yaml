@@ -93,6 +93,8 @@ spec:
     - expression: >-
         !has(object.spec.volumes) || object.spec.volumes.all(v,
           has(v.emptyDir) || has(v.configMap) || has(v.secret) || has(v.downwardAPI) ||
+          (request.namespace == "llm-models" && has(v.persistentVolumeClaim) &&
+            v.persistentVolumeClaim.claimName == "qwen3-models") ||
           (has(v.projected) && v.projected.sources.all(s,
             has(s.configMap) || has(s.secret) || has(s.downwardAPI))))
       reason: Forbidden
