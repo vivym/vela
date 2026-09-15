@@ -1,0 +1,176 @@
+{
+  "at": "2026-09-14T15:48:42.294518+00:00",
+  "run": "boundary-72d7dc713f",
+  "checks": [
+    {
+      "name": "llm-api publisher creates Deployment",
+      "passed": true,
+      "status": 201
+    },
+    {
+      "name": "llm-models publisher creates Deployment",
+      "passed": true,
+      "status": 201
+    },
+    {
+      "name": "both publisher deployments become Ready",
+      "passed": true
+    },
+    {
+      "name": "llm-api scheduled role",
+      "passed": true,
+      "node": "llmpool02"
+    },
+    {
+      "name": "llm-api ephemeral restricted True",
+      "passed": true,
+      "allowed": true
+    },
+    {
+      "name": "llm-api ephemeral restricted False",
+      "passed": true,
+      "allowed": false
+    },
+    {
+      "name": "llm-api ingress rejects unrelated namespace",
+      "passed": true
+    },
+    {
+      "name": "llm-api runtime API token absent",
+      "passed": true
+    },
+    {
+      "name": "llm-api DNS permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-api approved peer API permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-api OTLP permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-api network rejects gateway-admin",
+      "passed": true
+    },
+    {
+      "name": "llm-api network rejects kube-api",
+      "passed": true
+    },
+    {
+      "name": "llm-api network rejects host-ssh",
+      "passed": true
+    },
+    {
+      "name": "llm-api ingress from apisix",
+      "passed": true,
+      "allowed": true,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api actual Prometheus scrape",
+      "passed": true,
+      "sample_count": 1,
+      "scrape_errors": []
+    },
+    {
+      "name": "llm-models scheduled role",
+      "passed": true,
+      "node": "server-22"
+    },
+    {
+      "name": "llm-models ephemeral restricted True",
+      "passed": true,
+      "allowed": true
+    },
+    {
+      "name": "llm-models ephemeral restricted False",
+      "passed": true,
+      "allowed": false
+    },
+    {
+      "name": "llm-models ingress rejects unrelated namespace",
+      "passed": true
+    },
+    {
+      "name": "llm-models runtime API token absent",
+      "passed": true
+    },
+    {
+      "name": "llm-models DNS permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-models approved peer API permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-models OTLP permitted",
+      "passed": true
+    },
+    {
+      "name": "llm-models network rejects gateway-admin",
+      "passed": true
+    },
+    {
+      "name": "llm-models network rejects kube-api",
+      "passed": true
+    },
+    {
+      "name": "llm-models network rejects host-ssh",
+      "passed": true
+    },
+    {
+      "name": "llm-models ingress from apisix",
+      "passed": true,
+      "allowed": true,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models actual Prometheus scrape",
+      "passed": true,
+      "sample_count": 1,
+      "scrape_errors": []
+    }
+  ],
+  "pods": [
+    {
+      "namespace": "llm-api",
+      "node": "llmpool02",
+      "runtime_sa": "llm-api-runtime",
+      "image": "docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce",
+      "gpu_requests": 0
+    },
+    {
+      "namespace": "llm-models",
+      "node": "server-22",
+      "runtime_sa": "llm-models-runtime",
+      "image": "docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce",
+      "gpu_requests": 0
+    }
+  ],
+  "cleanup": [
+    {
+      "namespace": "default",
+      "kind": "pod",
+      "name": "boundary-72d7dc713f",
+      "deleted": true
+    },
+    {
+      "namespace": "llm-models",
+      "kind": "deployment",
+      "name": "boundary-72d7dc713f",
+      "deleted": true
+    },
+    {
+      "namespace": "llm-api",
+      "kind": "deployment",
+      "name": "boundary-72d7dc713f",
+      "deleted": true
+    }
+  ],
+  "result": "APPLICATION_BOUNDARY_PASS"
+}
+

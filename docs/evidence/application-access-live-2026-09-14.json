@@ -1,0 +1,71 @@
+{
+  "policies": [
+    {
+      "name": "vela-application-pods",
+      "generation": 3,
+      "status": {
+        "observedGeneration": 3,
+        "typeChecking": {}
+      }
+    },
+    {
+      "name": "vela-application-secrets",
+      "generation": 2,
+      "status": {
+        "observedGeneration": 2,
+        "typeChecking": {}
+      }
+    },
+    {
+      "name": "vela-application-services",
+      "generation": 2,
+      "status": {
+        "observedGeneration": 2,
+        "typeChecking": {}
+      }
+    }
+  ],
+  "namespaces": [
+    {
+      "name": "llm-api",
+      "labels": {
+        "app.kubernetes.io/part-of": "vela",
+        "kubernetes.io/metadata.name": "llm-api",
+        "pod-security.kubernetes.io/audit": "restricted",
+        "pod-security.kubernetes.io/audit-version": "v1.35",
+        "pod-security.kubernetes.io/enforce": "restricted",
+        "pod-security.kubernetes.io/enforce-version": "v1.35",
+        "pod-security.kubernetes.io/warn": "restricted",
+        "pod-security.kubernetes.io/warn-version": "v1.35",
+        "vela.ai/tenant": "llm-api"
+      }
+    },
+    {
+      "name": "llm-models",
+      "labels": {
+        "app.kubernetes.io/part-of": "vela",
+        "kubernetes.io/metadata.name": "llm-models",
+        "pod-security.kubernetes.io/audit": "restricted",
+        "pod-security.kubernetes.io/audit-version": "v1.35",
+        "pod-security.kubernetes.io/enforce": "restricted",
+        "pod-security.kubernetes.io/enforce-version": "v1.35",
+        "pod-security.kubernetes.io/warn": "restricted",
+        "pod-security.kubernetes.io/warn-version": "v1.35",
+        "vela.ai/tenant": "llm-models"
+      }
+    },
+    {
+      "name": "vela-access",
+      "labels": {
+        "app.kubernetes.io/part-of": "vela",
+        "kubernetes.io/metadata.name": "vela-access",
+        "pod-security.kubernetes.io/enforce": "restricted",
+        "pod-security.kubernetes.io/enforce-version": "v1.35"
+      }
+    }
+  ],
+  "remaining_probe_pods": [],
+  "credential_files": [],
+  "manifest_sha256": "56ea572b3258d2d3bfcf64b028e6be6fea82cd25b405660ff9b638d6bbf24a52"
+}
+

@@ -1,0 +1,65 @@
+{
+  "at": "2026-09-14T13:38:33.718040+00:00",
+  "trust": "Cert-manager private gateway CA, not public Web PKI",
+  "expected_leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+  "tls": [
+    {
+      "host": "10.1.201.70",
+      "port": 30443,
+      "target": "nodeport",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Dec 13 13:33:34 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    },
+    {
+      "host": "10.1.201.71",
+      "port": 30443,
+      "target": "nodeport",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Dec 13 13:33:34 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    },
+    {
+      "host": "10.42.1.28",
+      "port": 9443,
+      "target": "apisix-7f9657c7d5-8fmqv",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Dec 13 13:33:34 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    },
+    {
+      "host": "10.42.0.2",
+      "port": 9443,
+      "target": "apisix-7f9657c7d5-mr4mk",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Dec 13 13:33:34 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    }
+  ],
+  "limits": [],
+  "result": "PRIVATE_GATEWAY_TLS_PASS"
+}

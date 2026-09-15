@@ -2,6 +2,10 @@
 
 ## 当前方式
 
+Argo CD 已部署，但应用 Project 禁止同步网关资源；发布者和审批人也不能读取
+APISIX Admin Secret。新发布平台的 `/argocd/*` 和独立 realm 登录路径已由平台
+写入现有网关；Keycloak Admin 路径不公开。
+
 现有 APISIX 3.18 通过 `30080/30443` 提供网关，Admin Service 为 ClusterIP。当前没有 APISIX Ingress Controller 或 `ApisixRoute` CRD，所以路由由平台管理员使用 Admin API 管理。Admin Secret 不得发给应用团队，也不得放入 Git 或 CI 日志。
 
 ## 手工路由操作
@@ -16,7 +20,7 @@ curl -fsS -H "X-API-KEY: ${APISIX_ADMIN_TOKEN}" \
 
 实际变更前先确认目标 Service 是 `ClusterIP`、endpoints Ready、端口和协议正确；完成后验证 HTTP/HTTPS、鉴权拒绝、限流、SSE、超时和 trace header。
 
-## 推荐声明式方式
+## 后续可选声明式方式
 
 安装并验证 APISIX Ingress Controller 后，应用路由可以作为 `ApisixRoute` 或 Gateway API 资源进入 Git，由 Argo CD 同步。平台必须限制：hostname 后缀、path 前缀、upstream namespace、插件白名单、请求体大小、超时、TLS Secret 和管理端点。应用团队不能创建任意 upstream、Lua 插件、NodePort 或 Admin 路由。
 

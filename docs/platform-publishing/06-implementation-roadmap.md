@@ -1,29 +1,24 @@
-# 平台实施路线图
+# 实施状态
 
-## 阶段 0：验证期（当前）
+这份表记录固定范围，避免把可选组件不断加成新的发布前置条件。
 
-由平台管理员使用 Helm 部署第一个 namespaced LLM API，手工通过 APISIX Admin API 创建测试路由。完成 SSE、鉴权、限流、观测和回滚验证。不要把 `deploy/application-platform/` 草案直接应用。
+| 范围 | 状态与边界 |
+| --- | --- |
+| 应用 namespace/RBAC/Quota/准入/网络 | 已部署；CPU 管理和 GPU 应用调度分开 |
+| Secret 权限 | 禁止发布角色读写，运行时引用必须在平台白名单 |
+| Argo CD | 已部署 v3.5.3；server/repo 双副本，controller 只写两个应用 namespace |
+| 个人身份和角色 | Keycloak PKCE/TOTP、三类团队角色与管理员隔离；人员创建工具已提供 |
+| 发布与回滚 | 临时 Git fixture 实际验证正常同步、失败升级和恢复 |
+| APISIX | 已提供 Argo/登录入口；业务路由仍由平台管理员审批维护 |
+| 监控 | 新增 Argo ServiceMonitor、Grafana 看板和健康/同步告警 |
+| 既有 GitLab 对接 | 用户暂缓；不重复安装；sourceRepos 暂时关闭 |
+| APISIX Ingress Controller | 本次不增加第二个路由写入者，沿用管理员 Admin API 模式 |
+| Rancher / 自助门户 | 可选、未安装 |
 
-## 阶段 1：Git 与 Argo CD
+使用阶段只需要按真实人员创建账号，以及在恢复 GitLab 对接时提供确切仓库和应用
+配置。这些都不能通过创建假人员或假仓库来“完成”。GitLab CI/MR 审批门禁、真实
+模型/API 的业务验收未被本次测试代替。
 
-选定 GitLab、GitHub、Gitea 或 Forgejo；建立 protected branches、PR 审批和 CI。安装 Argo CD 到独立 namespace，接入 Keycloak OIDC，配置 Argo Project 的 namespace/resource allow-list 和内部镜像。选定 Argo 为生产工作负载的唯一写入者。
-
-## 阶段 2：身份和隔离
-
-建立团队/环境 namespace，绑定 Keycloak 组，部署经过拒绝用例验证的 RBAC、Quota、LimitRange、Pod Security、NetworkPolicy 和准入策略。用普通发布者、审批人、只读用户分别验收 `auth can-i`、审计和 Grafana 数据范围。
-
-## 阶段 3：网关声明式管理
-
-先核对 APISIX Ingress Controller 版本与现有 APISIX 3.18 的兼容性，在验证 namespace 安装 CRD 和控制器。限制 hostname、path、upstream、plugin、TLS Secret 和管理端点；通过 Git PR 申请路由，Argo 同步后执行自动 smoke test。
-
-## 阶段 4：Rancher（可选）
-
-核对 Rancher 对当前 Kubernetes 版本的支持矩阵，再决定是否安装。Rancher 用于集群/项目/用户 UI 和运维查看；Argo 继续负责生产应用发布，避免两套系统同时写同一资源。
-
-## 阶段 5：自助门户（可选）
-
-当团队数量增加后，再提供基于模板的应用和路由申请门户。门户只能生成受限 Git PR，不能持有 cluster-admin 或 APISIX Admin credential。所有生产变更仍经过 CI、审批、Argo 和 Grafana 验收。
-
-## 完成定义
-
-只有在 Git 保护分支、Keycloak 群组、Argo 同步、路由字段限制、拒绝用例、SSE smoke test、告警流程和回滚证据全部通过后，才能把“普通用户可自助发布”标记为完成。
+本项归入现有 [R4 发布边界](../cluster-production-readiness-2026-09-14.md)。
+其余 R1–R6 的存储容量、离线节点、业务遥测和 canonical release 问题继续遵守
+原清单，不因本次发布平台工作自动关闭，也不增加新的强制平台组件。

@@ -1,0 +1,217 @@
+{
+  "at": "2026-09-14T13:23:07.304707+00:00",
+  "apply": {
+    "phase": "complete",
+    "started_at": "2026-09-14T13:21:20.192168+00:00",
+    "pvc_unchanged": true,
+    "result": "GATEWAY_CONFIG_APPLIED",
+    "updated_at": "2026-09-14T13:22:01.037639+00:00"
+  },
+  "endpoints": {
+    "10.1.201.70": {
+      "login_status": 200,
+      "base": [
+        "<base href=\"/grafana/\" />"
+      ],
+      "assets": [
+        {
+          "path": "/grafana/public/build/img/fav32.png",
+          "status": 200,
+          "content_type": "image/png",
+          "bytes": 1118
+        },
+        {
+          "path": "/grafana/public/build/img/apple-touch-icon.png",
+          "status": 200,
+          "content_type": "image/png",
+          "bytes": 15718
+        },
+        {
+          "path": "/grafana/public/build/grafana.app.e3d0bb45757bd985dc70.css",
+          "status": 200,
+          "content_type": "text/css; charset=utf-8",
+          "bytes": 41791
+        },
+        {
+          "path": "/grafana/public/build/grafana.dark.2ecc710216772a806751.css",
+          "status": 200,
+          "content_type": "text/css; charset=utf-8",
+          "bytes": 60330
+        },
+        {
+          "path": "/grafana/public/build/runtime.2bdf5baddecee303ef66.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 54939
+        },
+        {
+          "path": "/grafana/public/build/6029.ced17922ce65e4fd1ef9.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 408645
+        },
+        {
+          "path": "/grafana/public/build/7606.e8e4d98948a4bb1cf3bc.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 4112991
+        },
+        {
+          "path": "/grafana/public/build/6540.6529110183207d2360bc.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 5107328
+        },
+        {
+          "path": "/grafana/public/build/app.c7b66662caef4cf452fb.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 769449
+        }
+      ],
+      "authenticated": {
+        "/api/user": {
+          "status": 200,
+          "count": null,
+          "health": null
+        },
+        "/api/search?type=dash-db": {
+          "status": 200,
+          "count": 31,
+          "health": null
+        },
+        "/api/datasources/uid/vela-prometheus/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        },
+        "/api/datasources/uid/vela-loki/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        },
+        "/api/datasources/uid/vela-tempo/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        }
+      },
+      "api_unauthenticated_status": 401
+    },
+    "10.1.201.71": {
+      "login_status": 200,
+      "base": [
+        "<base href=\"/grafana/\" />"
+      ],
+      "assets": [
+        {
+          "path": "/grafana/public/build/img/fav32.png",
+          "status": 200,
+          "content_type": "image/png",
+          "bytes": 1118
+        },
+        {
+          "path": "/grafana/public/build/img/apple-touch-icon.png",
+          "status": 200,
+          "content_type": "image/png",
+          "bytes": 15718
+        },
+        {
+          "path": "/grafana/public/build/grafana.app.e3d0bb45757bd985dc70.css",
+          "status": 200,
+          "content_type": "text/css; charset=utf-8",
+          "bytes": 41791
+        },
+        {
+          "path": "/grafana/public/build/grafana.dark.2ecc710216772a806751.css",
+          "status": 200,
+          "content_type": "text/css; charset=utf-8",
+          "bytes": 60330
+        },
+        {
+          "path": "/grafana/public/build/runtime.2bdf5baddecee303ef66.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 54939
+        },
+        {
+          "path": "/grafana/public/build/6029.ced17922ce65e4fd1ef9.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 408645
+        },
+        {
+          "path": "/grafana/public/build/7606.e8e4d98948a4bb1cf3bc.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 4112991
+        },
+        {
+          "path": "/grafana/public/build/6540.6529110183207d2360bc.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 5107328
+        },
+        {
+          "path": "/grafana/public/build/app.c7b66662caef4cf452fb.js",
+          "status": 200,
+          "content_type": "text/javascript; charset=utf-8",
+          "bytes": 769449
+        }
+      ],
+      "authenticated": {
+        "/api/user": {
+          "status": 200,
+          "count": null,
+          "health": null
+        },
+        "/api/search?type=dash-db": {
+          "status": 200,
+          "count": 31,
+          "health": null
+        },
+        "/api/datasources/uid/vela-prometheus/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        },
+        "/api/datasources/uid/vela-loki/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        },
+        "/api/datasources/uid/vela-tempo/health": {
+          "status": 200,
+          "count": null,
+          "health": "OK"
+        }
+      },
+      "api_unauthenticated_status": 401
+    }
+  },
+  "api_policy": [
+    {
+      "from": [
+        {
+          "namespaceSelector": {
+            "matchLabels": {
+              "vela.ai/network-role": "api-ingress"
+            }
+          },
+          "podSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/instance": "apisix",
+              "app.kubernetes.io/name": "apisix"
+            }
+          }
+        }
+      ],
+      "ports": [
+        {
+          "port": 8080,
+          "protocol": "TCP"
+        }
+      ]
+    }
+  ]
+}

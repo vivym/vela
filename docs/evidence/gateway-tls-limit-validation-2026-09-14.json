@@ -1,0 +1,50 @@
+{
+  "at": "2026-09-14T13:26:20.660037+00:00",
+  "trust": "Current internal certificate, not public Web PKI",
+  "tls": [
+    {
+      "host": "10.1.201.70",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Oct 13 18:38:57 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    },
+    {
+      "host": "10.1.201.71",
+      "sni": "apisix-gateway",
+      "protocol": "TLSv1.3",
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "not_after": "Oct 13 18:38:57 2026 GMT",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    }
+  ],
+  "limits": [
+    {
+      "pod": "apisix-7f9657c7d5-8fmqv",
+      "requests": 125,
+      "statuses": {
+        "401": 119,
+        "429": 6
+      },
+      "seconds": 0.254
+    },
+    {
+      "pod": "apisix-7f9657c7d5-mr4mk",
+      "requests": 125,
+      "statuses": {
+        "401": 120,
+        "429": 5
+      },
+      "seconds": 0.113
+    }
+  ],
+  "limit_scope": "Per gateway Pod and source IP; not global or tenant-aware",
+  "result": "PRIVATE_GATEWAY_TLS_AND_LIMIT_PASS"
+}

@@ -1,0 +1,129 @@
+{
+  "at": "2026-09-14T14:40:47.945329+00:00",
+  "ip_tls": [
+    {
+      "host": "10.1.201.70",
+      "sni": null,
+      "hostname_verified": "10.1.201.70",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    },
+    {
+      "host": "10.1.201.71",
+      "sni": null,
+      "hostname_verified": "10.1.201.71",
+      "protocol": "TLSv1.3",
+      "leaf_sha256": "df4c12414a267ea21cabb0bc7fe891d609caab32e881b8ef5ccf7e57e2857fa1",
+      "paths": {
+        "/grafana/login": 200,
+        "/api/v1/jobs": 401
+      }
+    }
+  ],
+  "redirects": [
+    {
+      "host": "10.1.201.70",
+      "method": "GET",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.70",
+      "method": "GET",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.70",
+      "method": "HEAD",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.70",
+      "method": "HEAD",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.70",
+      "method": "POST",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.70",
+      "method": "POST",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.70:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "GET",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "GET",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "HEAD",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "HEAD",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "POST",
+      "spoofed_forwarded_proto": false,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    },
+    {
+      "host": "10.1.201.71",
+      "method": "POST",
+      "spoofed_forwarded_proto": true,
+      "status": 308,
+      "location": "https://10.1.201.71:30443/api/v1/jobs?next=a%2Fb&x=1"
+    }
+  ],
+  "result": "GATEWAY_HTTPS_POLICY_PASS",
+  "telemetry_plugins_preserved": true,
+  "redirect": {
+    "uri": "https://$host:30443$request_uri",
+    "ret_code": 308,
+    "_meta": {
+      "filter": [
+        [
+          "scheme",
+          "==",
+          "http"
+        ]
+      ]
+    }
+  },
+  "private_ca_required": true
+}

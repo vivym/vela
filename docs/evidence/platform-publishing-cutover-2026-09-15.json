@@ -1,0 +1,37 @@
+{
+  "at": "2026-09-14T17:54:55.627867+00:00",
+  "checks": [
+    {
+      "namespace": "llm-api",
+      "identity": "system:serviceaccount:llm-api:llm-api-ci",
+      "can_create_deployments": false
+    },
+    {
+      "namespace": "llm-api",
+      "identity": "system:serviceaccount:argocd:argocd-application-controller",
+      "can_create_deployments": true
+    },
+    {
+      "namespace": "llm-api",
+      "identity": "system:serviceaccount:argocd:argocd-server",
+      "can_create_deployments": false
+    },
+    {
+      "namespace": "llm-models",
+      "identity": "system:serviceaccount:llm-models:llm-models-ci",
+      "can_create_deployments": false
+    },
+    {
+      "namespace": "llm-models",
+      "identity": "system:serviceaccount:argocd:argocd-application-controller",
+      "can_create_deployments": true
+    },
+    {
+      "namespace": "llm-models",
+      "identity": "system:serviceaccount:argocd:argocd-server",
+      "can_create_deployments": false
+    }
+  ],
+  "validation_receipt": "/opt/vela-cluster/platform-publishing-20260915/verification-final-015353/receipt.json",
+  "result": "ARGO_ONLY_PUBLISHING_PASS"
+}

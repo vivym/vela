@@ -1,5 +1,9 @@
 # LLM API 发布验收清单
 
+这是具体业务应用的验收清单，不代表已部署该业务。当前发布平台的身份、同步、
+隔离和回滚见 [平台验收记录](../platform-publishing-validation-2026-09-15.md)。
+GitLab CI/MR 门禁按用户要求暂缓；恢复对接时落实相应条目。
+
 ## 应用与模型
 
 - 镜像使用 digest，chart 版本和 Git revision 可追溯。
@@ -26,5 +30,5 @@
 
 - Grafana 有请求量、错误率、延迟、token、队列、SSE 中断、GPU 利用率、Pod 重启、PVC、Longhorn、MinIO、Loki 和 Tempo 面板。
 - 已配置 PrometheusRule，并验证 firing、Grafana 可见、silence、unsilence 和自动恢复。
-- 使用一次失败升级验证 `--atomic` 或 Argo 回滚；确认数据库迁移和 PVC 数据兼容。
+- 使用一次失败升级验证 Argo 回滚；确认数据库迁移和 PVC 数据兼容。
 - 记录上线 revision、路由 revision、镜像 digest、负责人和回滚命令。

@@ -1,0 +1,158 @@
+{
+  "at": "2026-09-14T17:58:45.230312+00:00",
+  "checks": [
+    {
+      "name": "six Argo Pods Ready on CPU management",
+      "passed": true,
+      "pods": [
+        {
+          "name": "argocd-application-controller-0",
+          "node": "llmpool02"
+        },
+        {
+          "name": "argocd-redis-df5579f7b-npdww",
+          "node": "llmpool02"
+        },
+        {
+          "name": "argocd-repo-server-8449c9596f-4w7h5",
+          "node": "llmpool01"
+        },
+        {
+          "name": "argocd-repo-server-8449c9596f-6lh2g",
+          "node": "llmpool02"
+        },
+        {
+          "name": "argocd-server-79d6f8f949-7x89q",
+          "node": "llmpool01"
+        },
+        {
+          "name": "argocd-server-79d6f8f949-sqqq6",
+          "node": "llmpool02"
+        }
+      ]
+    },
+    {
+      "name": "no Argo ClusterRoleBindings",
+      "passed": true
+    },
+    {
+      "name": "repository allow-lists restored empty",
+      "passed": true
+    },
+    {
+      "name": "temporary Applications removed",
+      "passed": true
+    },
+    {
+      "name": "llm-api test workloads removed",
+      "passed": true
+    },
+    {
+      "name": "llm-api Secret allow-list restored",
+      "passed": true
+    },
+    {
+      "name": "llm-models test workloads removed",
+      "passed": true
+    },
+    {
+      "name": "llm-models Secret allow-list restored",
+      "passed": true
+    },
+    {
+      "name": "temporary Git listener closed",
+      "passed": true
+    },
+    {
+      "name": "all temporary identities removed",
+      "passed": true
+    },
+    {
+      "name": "production OIDC direct grants disabled",
+      "passed": true
+    },
+    {
+      "name": "personal identity provisioning succeeds",
+      "passed": true,
+      "diagnostic": ""
+    },
+    {
+      "name": "new account requires password change and TOTP",
+      "passed": true
+    },
+    {
+      "name": "credential file is private",
+      "passed": true
+    },
+    {
+      "name": "provisioning cannot overwrite or silently elevate existing user",
+      "passed": true
+    },
+    {
+      "name": "10.1.201.70 /argocd/",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "10.1.201.70 /argocd/api/v1/applications",
+      "passed": true,
+      "status": 401
+    },
+    {
+      "name": "10.1.201.70 /identity/admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.70 /identity/realms/master/.well-known/openid-configuration",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.70 /identity/realms/vela-platform/../../../admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.70 /identity/realms/vela-platform/%2e%2e/%2e%2e/admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.71 /argocd/",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "10.1.201.71 /argocd/api/v1/applications",
+      "passed": true,
+      "status": 401
+    },
+    {
+      "name": "10.1.201.71 /identity/admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.71 /identity/realms/master/.well-known/openid-configuration",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.71 /identity/realms/vela-platform/../../../admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "10.1.201.71 /identity/realms/vela-platform/%2e%2e/%2e%2e/admin/realms",
+      "passed": true,
+      "status": 404
+    },
+    {
+      "name": "twelve alert scenarios pass",
+      "passed": true,
+      "output": "Unit Testing:  tests.json\n  SUCCESS\n\n"
+    }
+  ],
+  "result": "PLATFORM_FINAL_POSTCHECK_PASS"
+}

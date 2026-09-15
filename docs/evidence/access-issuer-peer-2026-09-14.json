@@ -1,0 +1,16 @@
+{
+  "installed": "/usr/local/sbin/vela-issue-access",
+  "sha256": "099e952b37b449733f44128ad8375399bc881541e7ae478f0fc4bbcec5057b9e",
+  "read_checks": [
+    {
+      "endpoint": "70",
+      "node_count": 54
+    },
+    {
+      "endpoint": "71",
+      "node_count": 54
+    }
+  ],
+  "expires_at": "2026-09-14T15:46:41Z"
+}
+

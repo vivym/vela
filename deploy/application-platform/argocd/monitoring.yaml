@@ -1,0 +1,58 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-platform
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  namespaceSelector: {matchNames: [argocd]}
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [argocd-metrics, argocd-server-metrics, argocd-repo-server]
+  sampleLimit: 10000
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-platform-publishing
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  groups:
+    - name: vela.platform-publishing
+      rules:
+        - alert: VelaArgoMetricsMissing
+          expr: absent(up{namespace="argocd"}) or count(up{namespace="argocd"}) < 5 or min(up{namespace="argocd"}) == 0
+          for: 5m
+          labels: {severity: warning, service: platform-publishing}
+          annotations:
+            summary: Argo CD metrics are unavailable
+            description: Check CPU management node placement, service endpoints and monitoring NetworkPolicy.
+        - alert: VelaArgoApplicationUnhealthy
+          expr: argocd_app_info{health_status=~"Degraded|Missing|Unknown"} == 1
+          for: 10m
+          labels: {severity: warning, service: platform-publishing}
+          annotations:
+            summary: Argo application {{ $labels.name }} is unhealthy
+            description: Inspect the Argo operation and workload events; the project approver may roll back to a verified revision.
+        - alert: VelaArgoApplicationOutOfSync
+          expr: argocd_app_info{sync_status="OutOfSync"} == 1
+          for: 30m
+          labels: {severity: warning, service: platform-publishing}
+          annotations:
+            summary: Argo application {{ $labels.name }} differs from its desired revision
+            description: Review the approved change before syncing; direct workload edits may have caused drift.
+        - alert: VelaArgoSyncFailed
+          expr: increase(argocd_app_sync_total{phase=~"Failed|Error"}[10m]) > 0
+          for: 1m
+          labels: {severity: warning, service: platform-publishing}
+          annotations:
+            summary: Argo application {{ $labels.name }} sync failed
+            description: Inspect project resource restrictions, Pod admission events and repository connectivity.

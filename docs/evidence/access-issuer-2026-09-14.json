@@ -1,0 +1,86 @@
+{
+  "checks": [
+    {
+      "scope": "cluster-observer",
+      "endpoint": "70",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:08Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "cluster-observer",
+      "endpoint": "71",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:08Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-api-publisher",
+      "endpoint": "70",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:08Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-api-publisher",
+      "endpoint": "71",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:08Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-api-viewer",
+      "endpoint": "70",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:09Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-api-viewer",
+      "endpoint": "71",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:09Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-models-publisher",
+      "endpoint": "70",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:10Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-models-publisher",
+      "endpoint": "71",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:10Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-models-viewer",
+      "endpoint": "70",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:10Z",
+      "file_mode": "0o600"
+    },
+    {
+      "scope": "llm-models-viewer",
+      "endpoint": "71",
+      "get_pods": true,
+      "control_secrets_forbidden": true,
+      "expires_at": "2026-09-14T15:33:10Z",
+      "file_mode": "0o600"
+    }
+  ],
+  "credential_files_removed": true
+}
+

@@ -1,0 +1,438 @@
+{
+  "at": "2026-09-14T17:53:53.379933+00:00",
+  "run": "publishing-97882f3f",
+  "checks": [
+    {
+      "name": "platform-admins uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "platform-admins password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "platform-admins authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-api-publishers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-api-publishers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-api-publishers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-api-approvers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-api-approvers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-api-approvers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-api-viewers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-api-viewers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-api-viewers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-models-publishers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-models-publishers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-models-publishers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-models-approvers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-models-approvers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-models-approvers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-models-viewers uses PKCE S256",
+      "passed": true
+    },
+    {
+      "name": "llm-models-viewers password requires TOTP",
+      "passed": true
+    },
+    {
+      "name": "llm-models-viewers authenticated after MFA",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-api-publishers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-api-publishers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-publishers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-publishers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-publishers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-publishers cannot sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-approvers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-api-approvers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-approvers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-approvers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-approvers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-viewers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-api-viewers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-viewers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-viewers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-viewers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api-viewers cannot sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api approver starts sync",
+      "passed": true,
+      "status": 200,
+      "diagnostic": null
+    },
+    {
+      "name": "llm-api workload healthy and placed correctly",
+      "passed": true,
+      "node": "llmpool02",
+      "revision": "fb644e9ca36ede751de68728f29f61ce2418fcf4"
+    },
+    {
+      "name": "llm-api runtime has no API token",
+      "passed": true
+    },
+    {
+      "name": "llm-api ephemeral Secret approved=False",
+      "passed": true
+    },
+    {
+      "name": "llm-api ephemeral Secret approved=True",
+      "passed": true
+    },
+    {
+      "name": "llm-models-publishers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-models-publishers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-publishers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-publishers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-publishers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-publishers cannot sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-approvers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-models-approvers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-approvers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-approvers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-approvers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-viewers sees only own project",
+      "passed": true
+    },
+    {
+      "name": "llm-models-viewers rejects other project read",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-viewers rejects other project sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-viewers cannot edit destination or source",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-viewers cannot directly delete resources",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models-viewers cannot sync",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models approver starts sync",
+      "passed": true,
+      "status": 200,
+      "diagnostic": null
+    },
+    {
+      "name": "llm-models workload healthy and placed correctly",
+      "passed": true,
+      "node": "server-22",
+      "revision": "fb644e9ca36ede751de68728f29f61ce2418fcf4"
+    },
+    {
+      "name": "llm-models runtime has no API token",
+      "passed": true
+    },
+    {
+      "name": "llm-models ephemeral Secret approved=False",
+      "passed": true
+    },
+    {
+      "name": "llm-models ephemeral Secret approved=True",
+      "passed": true
+    },
+    {
+      "name": "approver can attempt a new revision",
+      "passed": true
+    },
+    {
+      "name": "deliberately broken rollout is visible as Degraded",
+      "passed": true,
+      "revision": "5aa16e9b6c57df095d7934cf59b5f6697ea156b1"
+    },
+    {
+      "name": "approver starts rollback",
+      "passed": true,
+      "status": 200,
+      "diagnostic": null
+    },
+    {
+      "name": "rollback restores healthy revision",
+      "passed": true,
+      "revision": "fb644e9ca36ede751de68728f29f61ce2418fcf4"
+    },
+    {
+      "name": "argocd-application-controller rejects llm-api/secrets",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-api/roles",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-api/nodes",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-api/networkpolicies",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-api/serviceaccounts/token",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-api/secrets",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-api/roles",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-api/nodes",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-api/networkpolicies",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-api/serviceaccounts/token",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-models/secrets",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-models/roles",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-models/nodes",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-models/networkpolicies",
+      "passed": true
+    },
+    {
+      "name": "argocd-application-controller rejects llm-models/serviceaccounts/token",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-models/secrets",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-models/roles",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-models/nodes",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-models/networkpolicies",
+      "passed": true
+    },
+    {
+      "name": "argocd-server rejects llm-models/serviceaccounts/token",
+      "passed": true
+    },
+    {
+      "name": "publishing boundary rejects Secret synchronization",
+      "passed": true,
+      "status": 200,
+      "diagnostic": "{\"conditions\": [{\"lastTransitionTime\": \"2026-09-14T17:54:49Z\", \"message\": \"Failed to load live state: failed to get managed objects: unexpected error getting managed object: secrets \\\"publishing-97882f3f-forbidden\\\" is forbidden: User \\\"system:serviceaccount:argocd:argocd-application-controller\\\" cannot get resource \\\"secrets\\\" in API group \\\"\\\" in the namespace \\\"llm-api\\\"\", \"type\": \"ComparisonError\"}], \"controllerNamespace\": \"argocd\", \"health\": {\"lastTransitionTime\": \"2026-09-14T17:54:49Z\", \"status\": \"Missing\"}, \"operationState\": {\"finishedAt\": \"2026-09-14T17:54:49Z\", \"message\": \"ComparisonError: Failed to load live state: failed to get managed objects: unexpected error getting managed object: secrets \\\"publishing-97882f3f-forbidden\\\" is forbidden: User \\\"system:serviceaccount:argocd:argocd-application-controller\\\" cannot get resource \\\"secrets\\\" in API group \\\"\\\" in the namespace \\\"llm-api\\\"\", \"operation\": {\"initiatedBy\": {\"username\": \"publishing-97882f3f-2@invalid.example\"}, \"retry\": {}, \"sync\": {\"revision\": \"fb644e9ca36ede751de68728f29f61ce2418fcf4\", \"source\": {\"path\": \"unsafe\", \"repoURL\": \"http://10.1.201.70:18765/fixture.git\", \"targetRevision\": \"fb644e9ca36ede751de68728f29f61ce2418fcf4\"}, \"syncOptions\": [\"FailOnSharedResource=true\"]}}, \"phase\": \"Error\", \"startedAt\": \"2026-09-14T17:54:49Z\", \"syncResult\": {\"revision\": \"fb644e9ca36ede751de68728f29f61ce2418fcf4\", \"source\": {\"path\": \"unsafe\", \"repoURL\": \"http://10.1.201.70:18765/fixture.git\", \"targetRevision\": \"fb644e9ca36ede751de68728f29f61ce2418fcf4\"}}}, \"reconciledAt\": \"2026-09-14T17:54:49Z\", \"resourceHealthSource\": \"appTree\", \"resources\": [{\"kind\": \"Secret\", \"name\": \"publishing-97882f3f-forbidden\", \"namespace\": \"llm-api\", \"status\": \"Unknown\", \"version\": \"v1\"}], \"sourceHydrator\": {}, \"sourceType\": \"Directory\", \"summary\": {}, \"sync\": {\"comparedTo\": {\"destination\": {\"namespace\": \"llm-api\", \"server\": \"https://kubernetes.default.svc\"}, \"source\": {\"path\": \"unsafe\", \"repoURL\": \"http://10.1.201.70:18765/fixture.git\", "
+    },
+    {
+      "name": "forbidden Secret never created",
+      "passed": true
+    }
+  ],
+  "cleanup": [
+    "application/publishing-97882f3f-api",
+    "application/publishing-97882f3f-models",
+    "application/publishing-97882f3f-unsafe",
+    "llm-api workloads",
+    "llm-models workloads",
+    "llm-api sourceRepos restored",
+    "llm-models sourceRepos restored",
+    "fixture network rule",
+    "fixture HTTP server stopped",
+    "temporary user/d589d289-df4f-425b-adbe-7f8898a2e207",
+    "temporary user/2d751e5e-96df-48b4-a35f-aa111090ecec",
+    "temporary user/6182d807-6991-4fc3-bf25-ef94ab27cedf",
+    "temporary user/017824df-d7c3-43c6-a5d2-fb1c16046483",
+    "temporary user/3dede730-cbd1-45a9-86c9-f5b6277c2af3",
+    "temporary user/95731128-00d3-4e98-9023-d444a281aeb6",
+    "temporary user/063fe44e-584e-44fd-965e-19e92ac2db5d"
+  ],
+  "result": "PLATFORM_PUBLISHING_PASS"
+}

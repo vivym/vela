@@ -1,0 +1,124 @@
+{
+  "at": "2026-09-14T17:55:43.285776+00:00",
+  "targets": [
+    {
+      "labels": {
+        "container": "argocd-server",
+        "endpoint": "metrics",
+        "instance": "10.42.0.12:8083",
+        "job": "argocd-server-metrics",
+        "namespace": "argocd",
+        "pod": "argocd-server-79d6f8f949-7x89q",
+        "service": "argocd-server-metrics"
+      },
+      "health": "up",
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "container": "argocd-server",
+        "endpoint": "metrics",
+        "instance": "10.42.1.106:8083",
+        "job": "argocd-server-metrics",
+        "namespace": "argocd",
+        "pod": "argocd-server-79d6f8f949-sqqq6",
+        "service": "argocd-server-metrics"
+      },
+      "health": "up",
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "container": "argocd-application-controller",
+        "endpoint": "metrics",
+        "instance": "10.42.1.103:8082",
+        "job": "argocd-metrics",
+        "namespace": "argocd",
+        "pod": "argocd-application-controller-0",
+        "service": "argocd-metrics"
+      },
+      "health": "up",
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "container": "argocd-repo-server",
+        "endpoint": "metrics",
+        "instance": "10.42.0.10:8084",
+        "job": "argocd-repo-server",
+        "namespace": "argocd",
+        "pod": "argocd-repo-server-8449c9596f-4w7h5",
+        "service": "argocd-repo-server"
+      },
+      "health": "up",
+      "lastError": ""
+    },
+    {
+      "labels": {
+        "container": "argocd-repo-server",
+        "endpoint": "metrics",
+        "instance": "10.42.1.101:8084",
+        "job": "argocd-repo-server",
+        "namespace": "argocd",
+        "pod": "argocd-repo-server-8449c9596f-6lh2g",
+        "service": "argocd-repo-server"
+      },
+      "health": "up",
+      "lastError": ""
+    }
+  ],
+  "rules": [
+    {
+      "name": "VelaArgoMetricsMissing",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": ""
+    },
+    {
+      "name": "VelaArgoApplicationUnhealthy",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": ""
+    },
+    {
+      "name": "VelaArgoApplicationOutOfSync",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": ""
+    },
+    {
+      "name": "VelaArgoSyncFailed",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": ""
+    }
+  ],
+  "dashboard": {
+    "uid": "vela-platform-publishing",
+    "panels": 7,
+    "provisioned": true
+  },
+  "queries": {
+    "sum(up{namespace=\"argocd\"})": [
+      {
+        "metric": {},
+        "value": [
+          1789408543.209,
+          "5"
+        ]
+      }
+    ],
+    "count(container_memory_working_set_bytes{namespace=\"argocd\",container!=\"\"})": [
+      {
+        "metric": {},
+        "value": [
+          1789408543.211,
+          "6"
+        ]
+      }
+    ],
+    "ALERTS{service=\"platform-publishing\"}": []
+  },
+  "loki_streams_found": 1,
+  "result": "PLATFORM_OBSERVABILITY_PASS"
+}

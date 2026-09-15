@@ -1,0 +1,213 @@
+{
+  "at": "2026-09-14T13:37:39.504974+00:00",
+  "scope": "read-only postflight",
+  "install": {
+    "phase": "complete",
+    "started_at": "2026-09-14T13:33:33.180280+00:00",
+    "dry_run": [
+      "configmap/vela-gateway-tls-sync-2tf79f72fd created (server dry run)",
+      "cronjob.batch/vela-gateway-tls-sync created (server dry run)",
+      "certificate.cert-manager.io/vela-gateway created (server dry run)",
+      "certificate.cert-manager.io/vela-gateway-ca created (server dry run)",
+      "issuer.cert-manager.io/vela-gateway-bootstrap created (server dry run)",
+      "issuer.cert-manager.io/vela-gateway-ca created (server dry run)"
+    ],
+    "apply": [
+      "configmap/vela-gateway-tls-sync-2tf79f72fd created",
+      "cronjob.batch/vela-gateway-tls-sync created",
+      "certificate.cert-manager.io/vela-gateway created",
+      "certificate.cert-manager.io/vela-gateway-ca created",
+      "issuer.cert-manager.io/vela-gateway-bootstrap created",
+      "issuer.cert-manager.io/vela-gateway-ca created"
+    ],
+    "certificate": {
+      "notBefore": "2026-09-14T13:33:34Z",
+      "notAfter": "2026-12-13T13:33:34Z",
+      "renewalTime": "2026-11-13T13:33:34Z",
+      "revision": 1
+    },
+    "job": "vela-gateway-tls-initial-20260914",
+    "result": "CERTIFICATE_AND_AUTO_SYNC_DEPLOYED",
+    "updated_at": "2026-09-14T13:33:44.060003+00:00"
+  },
+  "cronjob_status": {
+    "lastScheduleTime": "2026-09-14T13:35:00Z",
+    "lastSuccessfulTime": "2026-09-14T13:35:07Z"
+  },
+  "jobs": [
+    {
+      "name": "vela-gateway-tls-initial-20260914",
+      "status": {
+        "completionTime": "2026-09-14T13:33:44Z",
+        "conditions": [
+          {
+            "lastProbeTime": "2026-09-14T13:33:44Z",
+            "lastTransitionTime": "2026-09-14T13:33:44Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "SuccessCriteriaMet"
+          },
+          {
+            "lastProbeTime": "2026-09-14T13:33:44Z",
+            "lastTransitionTime": "2026-09-14T13:33:44Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "Complete"
+          }
+        ],
+        "ready": 0,
+        "startTime": "2026-09-14T13:33:34Z",
+        "succeeded": 1,
+        "terminating": 0,
+        "uncountedTerminatedPods": {}
+      },
+      "owner": [
+        {
+          "apiVersion": "batch/v1",
+          "controller": true,
+          "kind": "CronJob",
+          "name": "vela-gateway-tls-sync",
+          "uid": "2142bbb1-2634-45b5-9c7d-6d135b09c667"
+        }
+      ]
+    },
+    {
+      "name": "vela-gateway-tls-sync-29823215",
+      "status": {
+        "completionTime": "2026-09-14T13:35:07Z",
+        "conditions": [
+          {
+            "lastProbeTime": "2026-09-14T13:35:07Z",
+            "lastTransitionTime": "2026-09-14T13:35:07Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "SuccessCriteriaMet"
+          },
+          {
+            "lastProbeTime": "2026-09-14T13:35:07Z",
+            "lastTransitionTime": "2026-09-14T13:35:07Z",
+            "message": "Reached expected number of succeeded pods",
+            "reason": "CompletionsReached",
+            "status": "True",
+            "type": "Complete"
+          }
+        ],
+        "ready": 0,
+        "startTime": "2026-09-14T13:35:00Z",
+        "succeeded": 1,
+        "terminating": 0,
+        "uncountedTerminatedPods": {}
+      },
+      "owner": [
+        {
+          "apiVersion": "batch/v1",
+          "blockOwnerDeletion": true,
+          "controller": true,
+          "kind": "CronJob",
+          "name": "vela-gateway-tls-sync",
+          "uid": "2142bbb1-2634-45b5-9c7d-6d135b09c667"
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "up{job=\"vela-cert-manager\"}": [
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "cert-manager-controller",
+          "endpoint": "http-metrics",
+          "instance": "10.42.0.218:9402",
+          "job": "vela-cert-manager",
+          "namespace": "cert-manager",
+          "pod": "cert-manager-7d6984bf58-l6kg8",
+          "service": "cert-manager"
+        },
+        "value": [
+          1789393060.02,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "cert-manager-controller",
+          "endpoint": "http-metrics",
+          "instance": "10.42.1.251:9402",
+          "job": "vela-cert-manager",
+          "namespace": "cert-manager",
+          "pod": "cert-manager-7d6984bf58-l4rqr",
+          "service": "cert-manager"
+        },
+        "value": [
+          1789393060.02,
+          "1"
+        ]
+      }
+    ],
+    "certmanager_certificate_ready_status{namespace=\"apisix\",name=\"vela-gateway\",condition=\"True\"}": [
+      {
+        "metric": {
+          "__name__": "certmanager_certificate_ready_status",
+          "condition": "True",
+          "container": "cert-manager-controller",
+          "endpoint": "http-metrics",
+          "instance": "10.42.1.251:9402",
+          "issuer_kind": "Issuer",
+          "issuer_name": "vela-gateway-ca",
+          "job": "vela-cert-manager",
+          "name": "vela-gateway",
+          "namespace": "apisix",
+          "pod": "cert-manager-7d6984bf58-l4rqr",
+          "service": "cert-manager"
+        },
+        "value": [
+          1789393060.022,
+          "1"
+        ]
+      }
+    ],
+    "kube_cronjob_status_last_successful_time{namespace=\"apisix\",cronjob=\"vela-gateway-tls-sync\"}": [
+      {
+        "metric": {
+          "__name__": "kube_cronjob_status_last_successful_time",
+          "container": "kube-state-metrics",
+          "cronjob": "vela-gateway-tls-sync",
+          "endpoint": "http",
+          "instance": "10.42.1.7:8080",
+          "job": "kube-state-metrics",
+          "namespace": "apisix",
+          "pod": "monitoring-kube-state-metrics-665f698464-sql9z",
+          "service": "monitoring-kube-state-metrics"
+        },
+        "value": [
+          1789393060.023,
+          "1789392907"
+        ]
+      }
+    ]
+  },
+  "rule_health": [
+    {
+      "name": "VelaGatewayCertificateExpiring",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": null
+    },
+    {
+      "name": "VelaGatewayCertificateNotReady",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": null
+    },
+    {
+      "name": "VelaGatewayCertificateSyncStale",
+      "health": "ok",
+      "state": "inactive",
+      "last_error": null
+    }
+  ]
+}

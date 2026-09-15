@@ -1,0 +1,202 @@
+{
+  "at": "2026-09-14T23:28:32.994236+00:00",
+  "scope": "read-only publishing authorization configuration; no identity mutation",
+  "argo_config": {
+    "argocd-rbac-cm": {
+      "policy.csv": "g, platform-admins, role:admin\np, role:llm-api-publisher, applications, get, llm-api/*, allow\np, role:llm-api-publisher, logs, get, llm-api/*, allow\np, role:llm-api-publisher, projects, get, llm-api, allow\ng, llm-api-publishers, role:llm-api-publisher\np, role:llm-api-approver, applications, get, llm-api/*, allow\np, role:llm-api-approver, logs, get, llm-api/*, allow\np, role:llm-api-approver, projects, get, llm-api, allow\ng, llm-api-approvers, role:llm-api-approver\np, role:llm-api-approver, applications, sync, llm-api/*, allow\np, role:llm-api-viewer, applications, get, llm-api/*, allow\np, role:llm-api-viewer, logs, get, llm-api/*, allow\np, role:llm-api-viewer, projects, get, llm-api, allow\ng, llm-api-viewers, role:llm-api-viewer\np, role:llm-models-publisher, applications, get, llm-models/*, allow\np, role:llm-models-publisher, logs, get, llm-models/*, allow\np, role:llm-models-publisher, projects, get, llm-models, allow\ng, llm-models-publishers, role:llm-models-publisher\np, role:llm-models-approver, applications, get, llm-models/*, allow\np, role:llm-models-approver, logs, get, llm-models/*, allow\np, role:llm-models-approver, projects, get, llm-models, allow\ng, llm-models-approvers, role:llm-models-approver\np, role:llm-models-approver, applications, sync, llm-models/*, allow\np, role:llm-models-viewer, applications, get, llm-models/*, allow\np, role:llm-models-viewer, logs, get, llm-models/*, allow\np, role:llm-models-viewer, projects, get, llm-models, allow\ng, llm-models-viewers, role:llm-models-viewer\n",
+      "policy.default": "role:none",
+      "policy.matchMode": "glob",
+      "scopes": "[groups]"
+    }
+  },
+  "projects": [
+    {
+      "name": "default",
+      "destinations": [],
+      "sourceRepos": [],
+      "clusterResourceWhitelist": [],
+      "namespaceResourceWhitelist": []
+    },
+    {
+      "name": "llm-api",
+      "destinations": [
+        {
+          "namespace": "llm-api",
+          "server": "https://kubernetes.default.svc"
+        }
+      ],
+      "sourceRepos": [],
+      "clusterResourceWhitelist": [],
+      "namespaceResourceWhitelist": [
+        {
+          "group": "",
+          "kind": "ConfigMap"
+        },
+        {
+          "group": "",
+          "kind": "Service"
+        },
+        {
+          "group": "apps",
+          "kind": "Deployment"
+        },
+        {
+          "group": "apps",
+          "kind": "StatefulSet"
+        },
+        {
+          "group": "apps",
+          "kind": "ReplicaSet"
+        },
+        {
+          "group": "batch",
+          "kind": "Job"
+        },
+        {
+          "group": "batch",
+          "kind": "CronJob"
+        },
+        {
+          "group": "autoscaling",
+          "kind": "HorizontalPodAutoscaler"
+        },
+        {
+          "group": "policy",
+          "kind": "PodDisruptionBudget"
+        }
+      ]
+    },
+    {
+      "name": "llm-models",
+      "destinations": [
+        {
+          "namespace": "llm-models",
+          "server": "https://kubernetes.default.svc"
+        }
+      ],
+      "sourceRepos": [],
+      "clusterResourceWhitelist": [],
+      "namespaceResourceWhitelist": [
+        {
+          "group": "",
+          "kind": "ConfigMap"
+        },
+        {
+          "group": "",
+          "kind": "Service"
+        },
+        {
+          "group": "apps",
+          "kind": "Deployment"
+        },
+        {
+          "group": "apps",
+          "kind": "StatefulSet"
+        },
+        {
+          "group": "apps",
+          "kind": "ReplicaSet"
+        },
+        {
+          "group": "batch",
+          "kind": "Job"
+        },
+        {
+          "group": "batch",
+          "kind": "CronJob"
+        },
+        {
+          "group": "autoscaling",
+          "kind": "HorizontalPodAutoscaler"
+        },
+        {
+          "group": "policy",
+          "kind": "PodDisruptionBudget"
+        }
+      ]
+    }
+  ],
+  "cluster_bindings": [],
+  "auth_checks": [
+    {
+      "namespace": "llm-api",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "patch",
+      "resource": "deployments",
+      "exit_code": 0,
+      "allowed": true
+    },
+    {
+      "namespace": "llm-api",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "get",
+      "resource": "secrets",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-api",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "create",
+      "resource": "roles",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-api",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "create",
+      "resource": "networkpolicies",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-api",
+      "subject": "system:serviceaccount:llm-api:llm-api-ci",
+      "verb": "patch",
+      "resource": "deployments",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-models",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "patch",
+      "resource": "deployments",
+      "exit_code": 0,
+      "allowed": true
+    },
+    {
+      "namespace": "llm-models",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "get",
+      "resource": "secrets",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-models",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "create",
+      "resource": "roles",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-models",
+      "subject": "system:serviceaccount:argocd:argocd-application-controller",
+      "verb": "create",
+      "resource": "networkpolicies",
+      "exit_code": 1,
+      "allowed": false
+    },
+    {
+      "namespace": "llm-models",
+      "subject": "system:serviceaccount:llm-models:llm-models-ci",
+      "verb": "patch",
+      "resource": "deployments",
+      "exit_code": 1,
+      "allowed": false
+    }
+  ]
+}

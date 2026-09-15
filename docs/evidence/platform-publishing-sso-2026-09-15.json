@@ -1,0 +1,29 @@
+{
+  "at": "2026-09-14T17:33:22.255826+00:00",
+  "realm": "vela-platform",
+  "issuer": "https://10.1.201.70:30443/identity/realms/vela-platform",
+  "groups": [
+    "platform-admins",
+    "llm-api-publishers",
+    "llm-api-approvers",
+    "llm-api-viewers",
+    "llm-models-publishers",
+    "llm-models-approvers",
+    "llm-models-viewers"
+  ],
+  "client": "argocd",
+  "pkce": "S256",
+  "direct_access_grants": false,
+  "totp_default_action": true,
+  "existing_realms_preserved": [
+    "platform",
+    "customer",
+    "master"
+  ],
+  "routes": [
+    "vela-platform-argocd",
+    "vela-platform-identity"
+  ],
+  "ui": "https://10.1.201.70:30443/argocd/",
+  "result": "PLATFORM_SSO_CONFIGURED"
+}

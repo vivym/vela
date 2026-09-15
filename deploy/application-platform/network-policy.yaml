@@ -1,0 +1,93 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: application-isolation
+  namespace: llm-api
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: llm-models}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: apisix}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: apisix, app.kubernetes.io/instance: apisix}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: prometheus}
+      ports: [{protocol: TCP, port: 9090}]
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: llm-models}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: otel-collector}
+      ports: [{protocol: TCP, port: 4317}, {protocol: TCP, port: 4318}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: application-isolation
+  namespace: llm-models
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: llm-api}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: apisix}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: apisix, app.kubernetes.io/instance: apisix}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - from:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: prometheus}
+      ports: [{protocol: TCP, port: 9090}]
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: llm-api}
+      ports: [{protocol: TCP, port: 8080}, {protocol: TCP, port: 8000}, {protocol: TCP, port: 8443}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: monitoring}
+          podSelector:
+            matchLabels: {app.kubernetes.io/name: otel-collector}
+      ports: [{protocol: TCP, port: 4317}, {protocol: TCP, port: 4318}]

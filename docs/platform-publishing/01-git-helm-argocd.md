@@ -1,54 +1,40 @@
-# Git、Helm 与 Argo CD 发布流程
+# Git、Helm 与 Argo CD
 
-## 组件职责
+GitLab 已存在，部署及对接按用户要求暂缓。Argo CD v3.5.3 已安装；两个
+Project 的 `sourceRepos` 默认空，repo-server 没有外部 Git 的放行规则或凭据。
+没有接入真实仓库前，不创建虚假的生产 Application。
 
-Git 托管服务（GitLab、GitHub、Gitea 或 Forgejo）提供仓库、Pull Request/Merge Request、保护分支、审批和审计。Helm 只负责将应用模板渲染成 Kubernetes 资源。Argo CD 读取被批准的 Git revision，并把声明同步到指定 namespace。
+## 发布过程
 
-Argo CD 接管一个应用后，不要再用人工 `helm upgrade` 写同一组资源。回滚使用 Git revert 或 Argo CD revision sync，避免两个控制器互相覆盖。
+应用发布者在既有 GitLab 提交代码/chart/配置变更。GitLab CI 负责检查与构建，
+以受限仓库身份推送 digest 镜像；该身份不拥有 Kubernetes 写权限。
+审批人审核后在 Argo 同步或回滚本项目。Argo 使用自身 ServiceAccount 写入目标
+namespace；人和旧 CI 不再通过共享 kubeconfig 直接 `helm upgrade`。
 
-## 建议仓库布局
+Argo 渲染 Helm chart，不依赖 Helm release Secret。密码、provider key、TLS 私钥
+由平台管理，应用仓库只保存批准的引用；镜像拉取 Secret 不能被应用挂载读取。
 
-```text
-llm-api-chart/
-  Chart.yaml
-  templates/
-  values.yaml
-platform-environments/
-  apps/llm-team-a/validation/llm-api.yaml
-  apps/llm-team-a/production/llm-api.yaml
-  projects/llm-team-a.yaml
-```
+## 接入真实仓库时的平台操作
 
-应用 chart 放模板；环境仓库只放经过评审的 chart 版本、镜像 digest、资源和非敏感配置。密码、provider key、TLS 私钥只放 Secret 管理系统，Git 中保存引用名和校验信息。
+1. 核对既有 GitLab 地址、仓库只读凭据、服务端 CA、protected branch 和 MR 审批设置。
+2. 只放行 repo-server 到指定 GitLab 地址/端口；Secret 由平台注入，不放进 Git 或日志。
+3. 把准确 repoURL 加入对应 Project，创建固定 `project/repoURL/path/destination` 的 Application。
+4. 指定 digest 镜像和 revision，验收首次同步、业务健康和回滚。
 
-## CI 门禁
+AppProject 限制仓库、namespace 和资源类型，**不能限制 Git path**。
+路径固定依赖平台创建且团队无权编辑的 Application。
+审批人可以选择仓库中的 revision；Argo 的 sync 权限不等于强制验证该 commit 已经
+通过 GitLab MR 审批。该门禁待既有 GitLab 对接时验证。
 
-CI 至少执行：
+## CI 检查
 
-```sh
-helm lint charts/llm-api
-helm template llm-api charts/llm-api -n llm-team-a-validation -f values.yaml > rendered.yaml
-kubectl apply --dry-run=server -f rendered.yaml
-```
-
-随后执行镜像漏洞扫描、digest 检查、资源配额检查、Pod 安全检查、Service 类型检查和 Helm diff。生产分支必须启用强制评审、状态检查、禁止直接 push、签名提交或等效的供应链控制。
-
-## Argo CD 边界
-
-每个团队使用独立 Argo Project：只允许访问该团队的 Git 路径和 namespace，只允许白名单资源类型；生产 Application 由平台创建，团队不能修改 destination、sync policy 或 project。Argo ServiceAccount 不应拥有 cluster-admin。
-
-## 临时验证发布
-
-在 Argo CD 安装前，平台管理员可以执行：
-
-```sh
-helm upgrade --install llm-api ./charts/llm-api \
-  --namespace llm-team-a-validation --create-namespace \
-  --values env/validation.yaml --atomic --timeout 15m --history-max 10
-```
-
-该命令不会创建 APISIX 外部路由。验证完成后，应删除临时 release，并改用 Argo 管理生产资源。
+CI 应执行 Helm lint/template、schema/digest/资源预算/Pod 安全检查和变更比较。
+服务端 dry-run 由平台受控验证入口执行，不应为 CI 恢复生产 namespace 写权限。
+检查 Deployment 时还要检查其 Pod 模板：不安全的模板可能在 ReplicaSet 创建 Pod 时
+才被准入拒绝。
 
 ## 失败和回滚
 
-`--atomic` 在升级失败时回滚 Helm release；Argo 管理的应用应通过 Git revert 回滚。回滚前确认数据库 schema、PVC 数据格式和模型缓存是否兼容，不能只看 Deployment 是否 Ready。
+本次使用临时只读 Git fixture，已经实际验证两个 namespace 同步、故意失败的
+Deployment 升级和审批人回滚。临时仓库服务、Application、工作负载和身份在结束
+时清理。它不承担生产 Git 服务，也不证明真实业务的数据库迁移/PVC 格式兼容。

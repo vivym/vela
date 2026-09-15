@@ -1,0 +1,681 @@
+{
+  "at": "2026-09-14T17:54:57.887396+00:00",
+  "run": "boundary-3cb42e7206",
+  "checks": [
+    {
+      "name": "llm-api retired CI authority rejects GET /api/v1/namespaces/llm-api/secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api retired CI authority rejects POST /api/v1/namespaces/llm-api/configmaps?dryRun=All",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api retired CI authority rejects POST /apis/apps/v1/namespaces/llm-api/deployments?dryRun=All",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects other-secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects other-tenant",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects nodes",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects rbac",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects serviceaccount-create",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects token-mint",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects network-policy",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects monitoring-config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api Argo controller rejects raw-pod",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api viewer GET /pods",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-api viewer GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api viewer GET /configmaps",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api runtime GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api runtime GET /pods",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api ci GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api viewer publish config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api runtime publish config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api controller publish config",
+      "passed": true,
+      "status": 201
+    },
+    {
+      "name": "llm-api service clusterip",
+      "passed": true,
+      "status": 201,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api service nodeport",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api service loadbalancer",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api service externalip",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api service externalname",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api service selectorless",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api secret Opaque",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api secret helm.sh/release.v1",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api secret kubernetes.io/service-account-token",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-api valid restricted Pod",
+      "passed": true,
+      "allowed": true,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects publisher-SA",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects default-SA",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects automount",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects nodeName",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "bypass the scheduler",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects wrong-selector",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "select CPU management",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects custom-scheduler",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "default scheduler",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects preemption",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PreemptionPolicy",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects all-taints",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "bounded Kubernetes",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects windows",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects host-network",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects host-pid",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects host-ipc",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects hostpath",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Pod rejects projected-token",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "API tokens",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api containers rejects privileged",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api containers rejects escalation",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api containers rejects capabilities",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api containers rejects hostport",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api containers rejects floating-image",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "pinned",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api initContainers rejects privileged",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api initContainers rejects escalation",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api initContainers rejects capabilities",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api initContainers rejects hostport",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api initContainers rejects floating-image",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "pinned",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-api Argo controller rejects ephemeralcontainers",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models retired CI authority rejects GET /api/v1/namespaces/llm-models/secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models retired CI authority rejects POST /api/v1/namespaces/llm-models/configmaps?dryRun=All",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models retired CI authority rejects POST /apis/apps/v1/namespaces/llm-models/deployments?dryRun=All",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects other-secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects other-tenant",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects nodes",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects rbac",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects serviceaccount-create",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects token-mint",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects network-policy",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects monitoring-config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models Argo controller rejects raw-pod",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models viewer GET /pods",
+      "passed": true,
+      "status": 200
+    },
+    {
+      "name": "llm-models viewer GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models viewer GET /configmaps",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models runtime GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models runtime GET /pods",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models ci GET /secrets",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models viewer publish config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models runtime publish config",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models controller publish config",
+      "passed": true,
+      "status": 201
+    },
+    {
+      "name": "llm-models service clusterip",
+      "passed": true,
+      "status": 201,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models service nodeport",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models service loadbalancer",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models service externalip",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models service externalname",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models service selectorless",
+      "passed": true,
+      "status": 403,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models secret Opaque",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models secret helm.sh/release.v1",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models secret kubernetes.io/service-account-token",
+      "passed": true,
+      "status": 403
+    },
+    {
+      "name": "llm-models valid restricted Pod",
+      "passed": true,
+      "allowed": true,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects publisher-SA",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects default-SA",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects automount",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "runtime ServiceAccount",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects nodeName",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "bypass the scheduler",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects wrong-selector",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "select CPU management",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects custom-scheduler",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "default scheduler",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects preemption",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PreemptionPolicy",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects all-taints",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "bounded Kubernetes",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects windows",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects host-network",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects host-pid",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects host-ipc",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects hostpath",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": null,
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Pod rejects projected-token",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "API tokens",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models containers rejects privileged",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models containers rejects escalation",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models containers rejects capabilities",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models containers rejects hostport",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models containers rejects floating-image",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "pinned",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models initContainers rejects privileged",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models initContainers rejects escalation",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models initContainers rejects capabilities",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models initContainers rejects hostport",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "PodSecurity",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models initContainers rejects floating-image",
+      "passed": true,
+      "allowed": false,
+      "expected_policy": "pinned",
+      "diagnostic": ""
+    },
+    {
+      "name": "llm-models Argo controller rejects ephemeralcontainers",
+      "passed": true,
+      "status": 403
+    }
+  ],
+  "pods": [],
+  "cleanup": [],
+  "result": "APPLICATION_BOUNDARY_PASS"
+}
