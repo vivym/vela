@@ -344,7 +344,7 @@ func TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal(t *testing.T)
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = recovered.Close() })
-	if history, err := recovered.InspectReservation(t.Context(), f.request.JournalID); err != nil || history != result {
+	if history, err := recovered.InspectReservation(t.Context(), f.request.JournalID); err != nil || !reflect.DeepEqual(history, result) {
 		t.Fatalf("restart lost reservation history: %+v %v", history, err)
 	}
 	if _, err := recovered.ReserveRemote(t.Context(), config); !errors.Is(err, ErrRuntimeStartupRecorded) || registry.calls != 1 {
@@ -384,7 +384,7 @@ func TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter(t *test
 				}
 				t.Cleanup(func() { _ = ledger.Close() })
 			}
-			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || result != (RuntimeStartupReservationRecord{}) || registry.calls != 0 {
+			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) || registry.calls != 0 {
 				t.Fatalf("invalid custody/principal/version reached Fleet: %+v %v calls=%d", result, err, registry.calls)
 			}
 			if mode == "legacy" {
@@ -459,7 +459,7 @@ func TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent(t *testing.T)
 				}
 				return result, nil
 			}
-			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || result != (RuntimeStartupReservationRecord{}) {
+			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) {
 				t.Fatalf("uncertain operation succeeded: %+v %v", result, err)
 			}
 			calls := registry.calls

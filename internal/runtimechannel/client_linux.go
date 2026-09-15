@@ -14,17 +14,30 @@ import (
 
 // Exchange authenticates a root Node peer at a root-owned 0660 socket whose
 // group matches this non-root Runtime. All directories must be root-owned and
-// non-writable by group/others, with no symlinks. It accepts both modern pidfs
-// pidfds and older anon_inode:[pidfd] handles when procfs fdinfo exposes the
-// kernel Pid/NSpid identity; it never falls back to reacquiring numeric PIDs.
+// non-writable by group/others, with no symlinks. It accepts modern pidfs
+// pidfds and legacy anon_inode:[pidfd] handles only when procfs exposes a
+// comparable kernel Pid/NSpid identity. A legacy handle hidden by a nested PID
+// namespace is structurally valid but cannot be compared here; production
+// callers must use the Node-side identity broker for that case. It never falls
+// back to reacquiring numeric PIDs.
 // The reply is authenticated data, not a startup or retirement grant.
 func Exchange(ctx context.Context, socketPath string, payload []byte) (result []byte, resultErr error) {
-	return ExchangeWithRequestLimit(ctx, socketPath, payload, MaximumPayload)
+	return ExchangeWithRequestLimitAndPIDFDBroker(ctx, socketPath, "", payload, MaximumPayload)
 }
 
 // ExchangeWithRequestLimit opts into a bounded larger request, retaining the
 // default reply limit and all original peer/challenge/socket checks.
 func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []byte, maximum int) (result []byte, resultErr error) {
+	return ExchangeWithRequestLimitAndPIDFDBroker(ctx, socketPath, "", payload, maximum)
+}
+
+// ExchangeWithRequestLimitAndPIDFDBroker is the legacy-pidfd compatible
+// exchange. When the Runtime is in a nested PID namespace on a kernel without
+// pidfs, it sends the already retained peer/message pidfds to the configured
+// root-owned broker for comparison in the host namespace. An empty broker path
+// preserves the strict direct-comparison behavior and therefore fails closed
+// for invisible legacy pidfds.
+func ExchangeWithRequestLimitAndPIDFDBroker(ctx context.Context, socketPath, brokerSocketPath string, payload []byte, maximum int) (result []byte, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			result = nil
@@ -107,6 +120,13 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
 	if err := errors.Join(err, setupErr, socket.check()); err != nil {
 		return nil, err
 	}
+	compare := func(first, second int) error {
+		err := SameLiveProcess(first, second)
+		if err == nil || !errors.Is(err, ErrPIDFDIdentityUnavailable) || brokerSocketPath == "" {
+			return err
+		}
+		return ComparePIDFDsWithBroker(ctx, brokerSocketPath, first, second)
+	}
 	receive := func(maximum int) ([]byte, error) {
 		packet, sender, senderFD, err := ReadPacket(connection, maximum)
 		if err != nil {
@@ -116,7 +136,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
 		if sender != *peer {
 			return nil, ErrIdentity
 		}
-		if err := SameLiveProcess(peerFD, senderFD); err != nil {
+		if err := compare(peerFD, senderFD); err != nil {
 			return nil, err
 		}
 		return packet, nil
@@ -125,7 +145,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
 	if err != nil || len(challenge) != ChallengeSize || !bytes.HasPrefix(challenge, []byte(Protocol)) {
 		return nil, errors.Join(ErrIdentity, err)
 	}
-	if err := errors.Join(context.Cause(ctx), socket.check(), SameLiveProcess(peerFD, peerFD)); err != nil {
+	if err := errors.Join(context.Cause(ctx), socket.check(), compare(peerFD, peerFD)); err != nil {
 		return nil, err
 	}
 	packet := append(bytes.Clone(challenge), payload...)
@@ -143,7 +163,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
 	if err != nil || len(response) <= len(responsePrefix) || !bytes.HasPrefix(response, responsePrefix) {
 		return nil, errors.Join(ErrIdentity, err)
 	}
-	if err := errors.Join(context.Cause(ctx), socket.check(), SameLiveProcess(peerFD, peerFD)); err != nil {
+	if err := errors.Join(context.Cause(ctx), socket.check(), compare(peerFD, peerFD)); err != nil {
 		return nil, err
 	}
 	return bytes.Clone(response[len(responsePrefix):]), nil

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/remediation"
+	"github.com/vivym/vela/internal/tracing"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -99,7 +100,7 @@ func (resolver *StaticAgentResolver) Resolve(ctx context.Context, nodeIdentity s
 	if err != nil {
 		return nil, err
 	}
-	connection, err := grpc.NewClient(endpoint.Address, grpc.WithTransportCredentials(transportCredentials))
+	connection, err := grpc.NewClient(endpoint.Address, grpc.WithTransportCredentials(transportCredentials), grpc.WithStatsHandler(tracing.GRPCHandler{Client: true}))
 	if err != nil {
 		return nil, fmt.Errorf("dial Node Agent %q: %w", nodeIdentity, err)
 	}

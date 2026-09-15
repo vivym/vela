@@ -1,0 +1,27 @@
+[Unit]
+Description=Vela host pidfd identity broker
+Wants=network-online.target
+After=network-online.target
+Before=vela-node-agent.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/vela-pidfd-broker
+EnvironmentFile=/etc/vela/pidfd-broker.env
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+RuntimeDirectory=vela
+RuntimeDirectoryMode=0755
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=false
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

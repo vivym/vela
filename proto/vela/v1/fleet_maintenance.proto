@@ -54,6 +54,9 @@ message RuntimeStartupReservation {
   string node_identity = 2;
   string actor_identity = 3;
   google.protobuf.Timestamp reserved_at = 4;
+  // Fleet-signed, operation-bound authorization consumed by the Node-local
+  // policy issuer. It is evidence, never a Permit or a history lookup token.
+  bytes policy_authorization = 5;
 }
 
 message ReserveRuntimeStartupResponse {

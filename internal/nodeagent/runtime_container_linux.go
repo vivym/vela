@@ -9,6 +9,8 @@ import (
 	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
@@ -110,6 +112,54 @@ func (observer *RuntimeContainerObserver) Inspect(ctx context.Context, target Ru
 		SandboxPIDTargetID: sandbox.Linux.Namespaces.Options.TargetId,
 		ObservedFrom:       from, ObservedThrough: through,
 	}, nil
+}
+
+// VerifyWorkloadAbsent performs the read-only postcondition required after a
+// launcher cleanup. It accepts only the exact targets returned by the current
+// launch and treats an explicit CRI NotFound as absence. A transport error or
+// any remaining matching container/sandbox keeps cleanup unverified.
+func (observer *RuntimeContainerObserver) VerifyWorkloadAbsent(ctx context.Context, targets ...RuntimeContainerTarget) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if observer == nil || observer.reader == nil || len(targets) == 0 {
+		return errors.New("runtime container observer is not configured")
+	}
+	seen := make(map[string]RuntimeContainerTarget, len(targets))
+	sandboxID := ""
+	for _, target := range targets {
+		if err := target.Validate(); err != nil {
+			return err
+		}
+		if sandboxID == "" {
+			sandboxID = target.SandboxID
+		} else if target.SandboxID != sandboxID {
+			return errors.New("CRI cleanup targets do not share one sandbox")
+		}
+		seen[target.ContainerID] = target
+	}
+	for _, target := range seen {
+		listed, err := observer.reader.ListContainers(ctx, &runtimev1.ListContainersRequest{Filter: &runtimev1.ContainerFilter{Id: target.ContainerID, PodSandboxId: target.SandboxID}})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				continue
+			}
+			return fmt.Errorf("verify CRI container cleanup: %w", err)
+		}
+		if listed != nil && len(listed.Containers) != 0 {
+			return errors.New("CRI container cleanup postcondition failed")
+		}
+	}
+	// Both targets must share one sandbox. Verify it once, and require an
+	// explicit NotFound response after the launcher has removed it.
+	_, err := observer.reader.PodSandboxStatus(ctx, &runtimev1.PodSandboxStatusRequest{PodSandboxId: sandboxID})
+	if err == nil {
+		return errors.New("CRI sandbox cleanup postcondition failed")
+	}
+	if status.Code(err) != codes.NotFound {
+		return fmt.Errorf("verify CRI sandbox cleanup: %w", err)
+	}
+	return nil
 }
 
 func (observer *RuntimeContainerObserver) readBoot() (uuid.UUID, error) {

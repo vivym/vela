@@ -8,22 +8,25 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimepolicy"
 )
 
 type startupAuthorizationPolicyFixture struct{}
 
 func (startupAuthorizationPolicyFixture) IssueRuntimeStartupAuthorization(_ context.Context, record RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
+	reservationDigest, _ := runtimepolicy.ReservationBindingDigest(record.OperationID, record.JournalID, record.RequestDigest, record.ReservedAt)
 	return RuntimeStartupAuthorizationEvidence{
-		OperationID: record.OperationID, RequestDigest: record.RequestDigest,
-		EvidenceDigest: sha256.Sum256([]byte("fixture policy evidence")),
-		IssuedAt:       time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+		OperationID: record.OperationID, JournalID: record.JournalID, RequestDigest: record.RequestDigest,
+		ReservationDigest: reservationDigest,
+		EvidenceDigest:    sha256.Sum256([]byte("fixture policy evidence")),
+		IssuedAt:          time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
 	}, nil
 }
 
 var _ RuntimeStartupAuthorizationPolicy = startupAuthorizationPolicyFixture{}
 
 func TestRuntimeStartupAuthorizationEvidenceIsOperationBound(t *testing.T) {
-	record := RuntimeStartupReservationRecord{OperationID: uuid.New(), RequestDigest: sha256.Sum256([]byte("request"))}
+	record := RuntimeStartupReservationRecord{OperationID: uuid.New(), JournalID: uuid.New(), RequestDigest: sha256.Sum256([]byte("request")), ReservedAt: time.Now().UTC()}
 	evidence, err := (startupAuthorizationPolicyFixture{}).IssueRuntimeStartupAuthorization(t.Context(), record)
 	if err != nil {
 		t.Fatal(err)
@@ -53,8 +56,14 @@ func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
 	complete := RuntimeStartupAuthority{
 		Credentials:      []RuntimeCallerCredentials{{UID: 10001, GID: 10001}},
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
-		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
+		AuthorizationPolicy:          startupAuthorizationPolicyFixture{},
+		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
 	}
+	complete.PolicyAuthorizationPublisher = nil
+	if err := complete.validateSources(); err == nil {
+		t.Fatal("authority without policy authorization publisher accepted")
+	}
+	complete.PolicyAuthorizationPublisher = func(context.Context, []byte) error { return nil }
 	if _, _, err := complete.Prepare(context.Background(), &RuntimeCaller{}); err == nil {
 		t.Fatal("authority with missing sources accepted")
 	}
@@ -76,7 +85,8 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
 		Registry:         &startupReservationRegistryFixture{},
 		Credentials:      []RuntimeCallerCredentials{{UID: 10002, GID: 10002}},
 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
-		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
+		AuthorizationPolicy:          startupAuthorizationPolicyFixture{},
+		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
 	}
 	if err := authority.validateSources(); err == nil {
 		t.Fatal("credentials unrelated to verified launch plan accepted")

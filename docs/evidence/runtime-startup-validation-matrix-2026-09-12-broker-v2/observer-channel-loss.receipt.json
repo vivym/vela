@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "observer-channel-loss",
+  "started_at": "2026-09-12T08:22:44.349362804Z",
+  "finished_at": "2026-09-12T08:22:55.89222121Z",
+  "target": {
+    "container_id": "08640ee84c5a0531256eeb177598f06066474d690a7d1292a810b4126b95c9d7",
+    "sandbox_id": "b0258bc1207a741b9316b001fd8ec90bb26a4dd8c42ab020bfdbb7b7312371a9",
+    "pod_uid": "328c90a7-9a03-4fe8-a5f8-b628daccf70e",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-observer-channel-loss",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "9d656a73d364020daa7782ea8ac3929f3bd9b3a8f85ec6099263364c42572007",
+    "sandbox_id": "b0258bc1207a741b9316b001fd8ec90bb26a4dd8c42ab020bfdbb7b7312371a9",
+    "pod_uid": "328c90a7-9a03-4fe8-a5f8-b628daccf70e",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-observer-channel-loss",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 3,
+  "outcome": "failed",
+  "error": "validation scenario observer-channel-loss terminated without a successful policy exchange"
+}

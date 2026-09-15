@@ -18,13 +18,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/runtimechannel"
+	"github.com/vivym/vela/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
 
-const runtimeLauncherProtocolVersion = 1
+const runtimeLauncherProtocolVersion = 2
 
 type runtimeLauncherRequest struct {
 	Version           int               `json:"version"`
@@ -35,27 +35,31 @@ type runtimeLauncherRequest struct {
 }
 
 type runtimeLauncherReply struct {
-	Version      int                              `json:"version"`
-	Target       nodeagent.RuntimeContainerTarget `json:"target"`
-	WorkerTarget nodeagent.RuntimeContainerTarget `json:"worker_target"`
-	// The helper must return exactly three SCM_RIGHTS descriptors in this order:
-	// worker owner pidfd, observer pidfd, observer socket endpoint.
+	Version int `json:"version"`
+	// Validation-only helpers identify themselves on the wire. The production
+	// Node path rejects this marker immediately; production helpers send false.
+	ValidationOnly bool                             `json:"validation_only"`
+	Target         nodeagent.RuntimeContainerTarget `json:"target"`
+	WorkerTarget   nodeagent.RuntimeContainerTarget `json:"worker_target"`
+	// The helper returns four SCM_RIGHTS descriptors: runtime pidfd, worker
+	// owner pidfd, observer pidfd, observer socket endpoint.
 	FDCount int `json:"fd_count"`
 }
 
-type runtimeLauncherPolicyRequest struct {
-	Version       int               `json:"version"`
-	OperationID   uuid.UUID         `json:"operation_id"`
-	RequestDigest [sha256.Size]byte `json:"request_digest"`
-}
-
-type runtimeLauncherPolicyReply struct {
-	Version        int               `json:"version"`
-	OperationID    uuid.UUID         `json:"operation_id"`
-	RequestDigest  [sha256.Size]byte `json:"request_digest"`
-	EvidenceDigest [sha256.Size]byte `json:"evidence_digest"`
-	IssuedAt       time.Time         `json:"issued_at"`
-	ExpiresAt      time.Time         `json:"expires_at"`
+func (reply runtimeLauncherReply) validate(rightsCount int) error {
+	if reply.Version != runtimeLauncherProtocolVersion || reply.FDCount != 4 || rightsCount != 4 {
+		return errors.New("runtime launcher handoff schema is invalid")
+	}
+	if reply.ValidationOnly {
+		return errors.New("validation-only runtime launcher cannot enter the production Node startup path")
+	}
+	if err := reply.Target.Validate(); err != nil {
+		return fmt.Errorf("runtime launcher target: %w", err)
+	}
+	if err := reply.WorkerTarget.Validate(); err != nil {
+		return fmt.Errorf("runtime worker target: %w", err)
+	}
+	return nil
 }
 
 type execRuntimeStartupLauncher struct {
@@ -114,32 +118,26 @@ func (launcher *execRuntimeStartupLauncher) Launch(ctx context.Context, plan *no
 		_ = helper.Close()
 		return runtimeStartupLaunch{}, err
 	}
-	packet, rights, err := control.recv(ctx, 3)
+	packet, rights, err := control.recv(ctx, 4)
 	if err != nil {
 		_ = control.Close()
 		_ = helper.Close()
 		return runtimeStartupLaunch{}, fmt.Errorf("receive runtime launcher handoff: %w", err)
 	}
 	var reply runtimeLauncherReply
-	if err := strictLauncherJSON(packet, &reply); err != nil || reply.Version != runtimeLauncherProtocolVersion || reply.FDCount != 3 || len(rights) != 3 {
+	if err := strictLauncherJSON(packet, &reply); err != nil {
 		closeRights(rights)
 		_ = control.Close()
 		_ = helper.Close()
-		return runtimeStartupLaunch{}, errors.New("runtime launcher handoff schema is invalid")
+		return runtimeStartupLaunch{}, fmt.Errorf("runtime launcher handoff schema is invalid: %w", err)
 	}
-	if err := reply.Target.Validate(); err != nil {
+	if err := reply.validate(len(rights)); err != nil {
 		closeRights(rights)
 		_ = control.Close()
 		_ = helper.Close()
-		return runtimeStartupLaunch{}, fmt.Errorf("runtime launcher target: %w", err)
+		return runtimeStartupLaunch{}, err
 	}
-	if err := reply.WorkerTarget.Validate(); err != nil {
-		closeRights(rights)
-		_ = control.Close()
-		_ = helper.Close()
-		return runtimeStartupLaunch{}, fmt.Errorf("runtime worker target: %w", err)
-	}
-	for _, fd := range rights[:2] {
+	for _, fd := range rights[:3] {
 		if err := setCloexec(fd); err != nil {
 			closeRights(rights)
 			_ = control.Close()
@@ -159,12 +157,14 @@ func (launcher *execRuntimeStartupLauncher) Launch(ctx context.Context, plan *no
 		_ = helper.Close()
 		return runtimeStartupLaunch{}, fmt.Errorf("runtime launcher observer descriptor is not close-on-exec: %w", err)
 	}
-	worker := os.NewFile(uintptr(rights[0]), "runtime-worker-pidfd")
-	observer := os.NewFile(uintptr(rights[1]), "runtime-observer-pidfd")
-	endpoint := os.NewFile(uintptr(rights[2]), "runtime-observer-socket")
+	runtimeFD := os.NewFile(uintptr(rights[0]), "runtime-pidfd")
+	worker := os.NewFile(uintptr(rights[1]), "runtime-worker-pidfd")
+	observer := os.NewFile(uintptr(rights[2]), "runtime-observer-pidfd")
+	endpoint := os.NewFile(uintptr(rights[3]), "runtime-observer-socket")
 	conn, err := net.FileConn(endpoint)
 	_ = endpoint.Close()
 	if err != nil {
+		_ = runtimeFD.Close()
 		_ = worker.Close()
 		_ = observer.Close()
 		_ = control.Close()
@@ -174,13 +174,14 @@ func (launcher *execRuntimeStartupLauncher) Launch(ctx context.Context, plan *no
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
 		_ = conn.Close()
+		_ = runtimeFD.Close()
 		_ = worker.Close()
 		_ = observer.Close()
 		_ = control.Close()
 		_ = helper.Close()
 		return runtimeStartupLaunch{}, errors.New("runtime launcher observer endpoint is not Unix")
 	}
-	return runtimeStartupLaunch{WorkerOwnerPIDFD: worker, ObserverPIDFD: observer, LauncherPIDFD: helper, ObserverConn: unixConn, Target: reply.Target, WorkerTarget: reply.WorkerTarget, Policy: &runtimeLauncherPolicy{control: control}, Close: control.Close}, nil
+	return runtimeStartupLaunch{RuntimePIDFD: runtimeFD, WorkerOwnerPIDFD: worker, ObserverPIDFD: observer, LauncherPIDFD: helper, ObserverConn: unixConn, Target: reply.Target, WorkerTarget: reply.WorkerTarget, Close: control.Close}, nil
 }
 
 func encodeRuntimeLauncherRequest(plan *nodeagent.RuntimeLaunchPlan, startupSocket string) (runtimeLauncherRequest, error) {
@@ -205,28 +206,6 @@ func encodeRuntimeLauncherRequest(plan *nodeagent.RuntimeLaunchPlan, startupSock
 	}
 	podDigest := sha256.Sum256(podWire)
 	return runtimeLauncherRequest{Version: runtimeLauncherProtocolVersion, Manifest: manifestWire, ExpectedPod: podWire, ExpectedPodDigest: podDigest, StartupSocket: startupSocket}, nil
-}
-
-type runtimeLauncherPolicy struct{ control *runtimeLauncherControl }
-
-func (policy *runtimeLauncherPolicy) IssueRuntimeStartupAuthorization(ctx context.Context, record nodeagent.RuntimeStartupReservationRecord) (nodeagent.RuntimeStartupAuthorizationEvidence, error) {
-	if policy == nil || policy.control == nil || ctx == nil {
-		return nodeagent.RuntimeStartupAuthorizationEvidence{}, nodeagent.ErrRuntimeStartupAuthority
-	}
-	request := runtimeLauncherPolicyRequest{Version: runtimeLauncherProtocolVersion, OperationID: record.OperationID, RequestDigest: record.RequestDigest}
-	if err := policy.control.send(ctx, request); err != nil {
-		return nodeagent.RuntimeStartupAuthorizationEvidence{}, err
-	}
-	packet, rights, err := policy.control.recv(ctx, 0)
-	closeRights(rights)
-	if err != nil {
-		return nodeagent.RuntimeStartupAuthorizationEvidence{}, err
-	}
-	var reply runtimeLauncherPolicyReply
-	if err := strictLauncherJSON(packet, &reply); err != nil || reply.Version != runtimeLauncherProtocolVersion || reply.OperationID != record.OperationID || reply.RequestDigest != record.RequestDigest || reply.EvidenceDigest == ([sha256.Size]byte{}) {
-		return nodeagent.RuntimeStartupAuthorizationEvidence{}, nodeagent.ErrRuntimeStartupAuthority
-	}
-	return nodeagent.RuntimeStartupAuthorizationEvidence{OperationID: reply.OperationID, RequestDigest: reply.RequestDigest, EvidenceDigest: reply.EvidenceDigest, IssuedAt: reply.IssuedAt, ExpiresAt: reply.ExpiresAt}, nil
 }
 
 type runtimeLauncherControl struct {
@@ -355,6 +334,9 @@ func (control *runtimeLauncherControl) Close() error {
 		go func() { done <- cmd.Wait() }()
 		select {
 		case err := <-done:
+			if expectedLauncherTermination(err) {
+				return nil
+			}
 			return err
 		case <-time.After(2 * time.Second):
 			_ = cmd.Process.Kill()
@@ -364,7 +346,22 @@ func (control *runtimeLauncherControl) Close() error {
 	return nil
 }
 
+func expectedLauncherTermination(err error) bool {
+	if err == nil {
+		return true
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ProcessState == nil {
+		return false
+	}
+	status, ok := exitErr.ProcessState.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled() && status.Signal() == syscall.SIGTERM
+}
+
 func strictLauncherJSON(wire []byte, value any) error {
+	if err := strictjson.RejectDuplicateKeys(wire); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(wire))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {

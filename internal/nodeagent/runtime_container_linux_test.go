@@ -387,6 +387,56 @@ func TestRuntimeContainerObservationRejectsLostObserverIdentity(t *testing.T) {
 	}
 }
 
+func TestRuntimeContainerCleanupPostconditionRequiresCRIAbsence(t *testing.T) {
+	for _, scenario := range []struct {
+		name       string
+		list       *runtimev1.ListContainersResponse
+		sandboxErr error
+		hookErr    error
+		wantErr    bool
+	}{
+		{name: "container-remains", wantErr: true},
+		{name: "sandbox-remains", list: &runtimev1.ListContainersResponse{}, wantErr: true},
+		{name: "sandbox-not-found", list: &runtimev1.ListContainersResponse{}, sandboxErr: status.Error(codes.NotFound, "removed")},
+		{name: "container-not-found", list: &runtimev1.ListContainersResponse{}, hookErr: status.Error(codes.NotFound, "removed"), sandboxErr: status.Error(codes.NotFound, "removed")},
+		{name: "sandbox-transport-error", list: &runtimev1.ListContainersResponse{}, sandboxErr: status.Error(codes.Unavailable, "runtime unavailable"), wantErr: true},
+		{name: "container-list-transport-error", list: &runtimev1.ListContainersResponse{}, hookErr: status.Error(codes.Unavailable, "runtime unavailable"), wantErr: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			fixture := newContainerCRIServer()
+			if scenario.list != nil {
+				fixture.listed = scenario.list
+			}
+			fixture.hook = func(method string, _ int) error {
+				switch method {
+				case "ListContainers":
+					return scenario.hookErr
+				case "PodSandboxStatus":
+					return scenario.sandboxErr
+				default:
+					return nil
+				}
+			}
+			observer := dialContainerCRI(t, serveContainerCRI(t, fixture))
+			err := observer.VerifyWorkloadAbsent(t.Context(), fixture.target)
+			if (err != nil) != scenario.wantErr {
+				t.Fatalf("cleanup postcondition mismatch: err=%v wantErr=%v", err, scenario.wantErr)
+			}
+		})
+	}
+}
+
+func TestRuntimeContainerCleanupPostconditionRejectsMixedSandboxes(t *testing.T) {
+	fixture := newContainerCRIServer()
+	observer := dialContainerCRI(t, serveContainerCRI(t, fixture))
+	other := fixture.target
+	other.ContainerID = strings.Repeat("d", 64)
+	other.SandboxID = strings.Repeat("e", 64)
+	if err := observer.VerifyWorkloadAbsent(t.Context(), fixture.target, other); err == nil {
+		t.Fatal("cleanup accepted targets from different sandboxes")
+	}
+}
+
 func TestRuntimeContainerObserverRejectsUntrustedSocket(t *testing.T) {
 	for _, fault := range []string{"wrong-owner", "world-access", "symlink", "regular-file", "relative", "network-address"} {
 		t.Run(fault, func(t *testing.T) {

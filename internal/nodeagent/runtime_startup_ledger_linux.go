@@ -202,10 +202,10 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
 // Exact replay and changed callers both reject. A returned record is evidence,
 // never a token that can be exchanged for permission by this API.
 func (ledger *RuntimeStartupLedger) Record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller) (RuntimeStartupRecord, error) {
-	return ledger.record(ctx, plan, pods, observer, caller, nil)
+	return ledger.record(ctx, plan, pods, observer, caller, nil, nil)
 }
 
-func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller, remote *RuntimeStartupRemoteIntent) (RuntimeStartupRecord, error) {
+func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller, remote *RuntimeStartupRemoteIntent, runtimeOwner *RuntimeNamespaceOwner) (RuntimeStartupRecord, error) {
 	if err := contextError(ctx); err != nil {
 		return RuntimeStartupRecord{}, err
 	}
@@ -240,13 +240,16 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
 	if err != nil {
 		return RuntimeStartupRecord{}, err
 	}
-	owner, err := observer.RetainNamespaceOwner(ctx, observation.Caller.Container.Target, caller)
-	if err != nil {
-		return RuntimeStartupRecord{}, err
+	owner := runtimeOwner
+	if owner == nil {
+		owner, err = observer.RetainNamespaceOwner(ctx, observation.Caller.Container.Target, caller)
+		if err != nil {
+			return RuntimeStartupRecord{}, err
+		}
 	}
 	retained := false
 	defer func() {
-		if !retained {
+		if !retained && runtimeOwner == nil {
 			_ = owner.Close()
 		}
 	}()

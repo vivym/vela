@@ -43,6 +43,9 @@ type RuntimeObserverCustody struct {
 // the independently retained pidfd of the trusted creator started by this Node,
 // never a PID/handle supplied by a workload or the incoming offer. The creator
 // must close its endpoint in the target before any target executable runs.
+// In the production attached mode, the observer may be a ptrace tracer rather
+// than the target's Unix parent; the offered pidfd is still checked for a live
+// tracer relationship and compared with the authenticated caller before grant.
 //
 // The original child remains in its initial ptrace stop until Start succeeds.
 // Once the private channel and observer handle are validated, receive errors
@@ -53,10 +56,13 @@ func ReceiveRuntimeObserverCustody(ctx context.Context, connection *net.UnixConn
 }
 
 // ReceiveRuntimeObserverCustodyFromCreator is the launcher composition-root
-// variant. The observer is a direct child of the root-owned launcher helper,
-// which is itself a direct child of Node. creatorPIDFD is the launcher's
-// original kernel handle; its identity is compared with the observer's parent
-// metadata without reopening a numeric PID.
+// variant. In direct-child mode the observer is a direct child of the
+// root-owned launcher helper, which is itself a direct child of Node. In
+// attached mode the observer is the launcher-created tracer and the Runtime
+// target is required to report that tracer in TracerPid while remaining in a
+// ptrace stop; direct PPid equality is intentionally not required for the
+// target. creatorPIDFD is the launcher's original kernel handle and is always
+// checked without reopening a numeric PID.
 func ReceiveRuntimeObserverCustodyFromCreator(ctx context.Context, connection *net.UnixConn, originalObserver, creatorPIDFD *os.File) (*RuntimeObserverCustody, error) {
 	if err := contextError(ctx); err != nil {
 		return nil, err
@@ -109,7 +115,7 @@ func ReceiveRuntimeObserverCustodyFromCreator(ctx context.Context, connection *n
 		if !sameRuntimeObserverFrame(packet, challenge, 'O') {
 			return ErrRuntimeObserverCustody
 		}
-		if err := inspectObserverChild(fd, target, peer.Pid); err != nil {
+		if err := inspectObserverChild(fd, target, peer.Pid, creatorPIDFD != nil); err != nil {
 			return err
 		}
 		custody.target = os.NewFile(uintptr(target), "runtime-observer-original-target")
@@ -407,7 +413,7 @@ func configureRuntimeObserverChannel(connection *net.UnixConn) error {
 	return errors.Join(err, configured)
 }
 
-func inspectObserverChild(observer, target int, observerPID int32) error {
+func inspectObserverChild(observer, target int, observerPID int32, attachedTarget bool) error {
 	if err := checkRuntimePIDFD(observer, observerPID); err != nil {
 		return err
 	}
@@ -435,7 +441,12 @@ func inspectObserverChild(observer, target int, observerPID int32) error {
 			fields[key] = strings.Fields(value)
 		}
 	}
-	for key, expected := range map[string]string{"PPid": strconv.Itoa(int(observerPID)), "TracerPid": strconv.Itoa(int(observerPID)), "Tgid": strconv.Itoa(pid), "Threads": "1"} {
+	expectedFields := map[string]string{"TracerPid": strconv.Itoa(int(observerPID)), "Tgid": strconv.Itoa(pid)}
+	if !attachedTarget {
+		expectedFields["PPid"] = strconv.Itoa(int(observerPID))
+		expectedFields["Threads"] = "1"
+	}
+	for key, expected := range expectedFields {
 		if len(fields[key]) != 1 || fields[key][0] != expected {
 			return ErrRuntimeObserverCustody
 		}

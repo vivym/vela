@@ -25,17 +25,23 @@ kernel connection peer must have UID/GID `0/0`.
 The client enables `SO_PASSCRED` and `SO_PASSPIDFD` before connect, then retains
 `SO_PEERPIDFD`. Every challenge and response must carry matching kernel
 credentials and `SCM_PIDFD`. Both pidfds must have close-on-exec set and remain
-live. On pidfs kernels they must name the same pidfs device/inode. Older kernels
-use the kernel-maintained anonymous pidfd `fdinfo` (`Pid` and complete `NSpid`
-chain) for the equality check; no process is reacquired from a numeric PID and a
-missing handle cannot be reconstructed. This client does not read the host
-process through container procfs.
+live. On pidfs kernels they must name the same pidfs device/inode. Older
+kernels use the kernel-maintained anonymous pidfd `fdinfo` (`Pid` and complete
+`NSpid` chain) only when those fields are visible and non-zero. A nested PID
+namespace may expose `Pid/NSpid=0` for a live peer; the descriptor is then
+structurally valid but equality is unavailable and requires a trusted
+host-side broker. No process is reacquired from a numeric PID and a missing
+handle cannot be reconstructed. This client does not read the host process
+through container procfs.
 
 The namespace experiment explains why numeric PID comparison is insufficient:
 from Runtime PID 1, both its original root Node and a different live root
-delegate report `peer_pid=0`, `message_pid=0`, UID 0 and GID 0. The original
-sender's retained pidfs identity matches; the delegate's does not. The test
-keeps both original and delegated processes alive through comparison.
+delegate report `peer_pid=0`, `message_pid=0`, UID 0 and GID 0. On a pidfs
+kernel the original sender's retained pidfs identity matches and the delegate
+does not. On the target's legacy 6.8 kernel both identities are hidden as
+`Pid/NSpid=0`, so the safe result is fail-closed until the host-side broker is
+used. The test keeps both original and delegated processes alive through
+comparison.
 
 Request framing remains `vela-runtime-caller-v1\0`, 32 random challenge bytes,
 then a nonempty payload of at most 32 KiB. The response begins with the distinct

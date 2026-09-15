@@ -1,0 +1,172 @@
+{
+  "scope": "production-launcher-protocol-smoke",
+  "synthetic_inputs": true,
+  "production_launch_receipt": false,
+  "cri_socket": "/run/k3s/containerd/containerd.sock",
+  "launcher_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+  "observer_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+  "request": {
+    "version": 2,
+    "manifest": {
+      "schema_version": 2,
+      "worker_profile_revision_id": "c9b2f613-a930-4058-a53a-43dff6b0ca98",
+      "worker_role": "cpu-encode",
+      "capacity_slots": 1,
+      "worker_instance_id": "c9b2f613-a930-4058-a53a-43dff6b0ca98",
+      "worker_instance_epoch": 1,
+      "worker_member_id": "db71e891-9d66-4170-bc90-6bf305a0141c",
+      "worker_member_epoch": 1,
+      "device_set_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "membership_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "devices": [
+        {
+          "id": "f14a267f-fcfa-42d5-96c5-c531d68b330f",
+          "epoch": 1
+        }
+      ],
+      "members": [
+        {
+          "id": "db71e891-9d66-4170-bc90-6bf305a0141c",
+          "epoch": 1,
+          "identity_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "device_subset_digest": "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "local_devices": [
+        {
+          "device_id": "f14a267f-fcfa-42d5-96c5-c531d68b330f",
+          "device_epoch": 1,
+          "resource_class": "CPU"
+        }
+      ],
+      "runtimes": [
+        {
+          "model_residency_id": "45bd4189-d16e-4846-abfc-21c53192965a",
+          "runtime_identity": "smoke",
+          "stage_profile_revision_id": "925cc61f-09a0-431a-b339-1cc9030f9c93",
+          "model_runtime_epoch_floor": 0,
+          "component": "CPU_MEDIA",
+          "model_component_revision": "smoke",
+          "runtime_image_digest": "7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+          "command": [
+            "/bin/sleep"
+          ],
+          "scratch_root": "/scratch",
+          "input_root": "/scratch/input",
+          "output_root": "/scratch/output",
+          "initialization_timeout": "1s",
+          "shutdown_timeout": "1s"
+        }
+      ]
+    },
+    "expected_pod": {
+      "metadata": {
+        "name": "vela-launcher-smoke-c9b2f613",
+        "namespace": "default",
+        "uid": "c9b2f613-a930-4058-a53a-43dff6b0ca98"
+      },
+      "spec": {
+        "securityContext": {
+          "runAsUser": 65532,
+          "runAsGroup": 65532
+        },
+        "containers": [
+          {
+            "name": "model-runtime",
+            "image": "localhost/vela-validation/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "command": [
+              "/bin/sh",
+              "-c",
+              "exec /bin/sleep 3600"
+            ],
+            "args": [
+              "ignored",
+              "serve-remote",
+              "--bootstrap-file",
+              "/tmp/runtime-bootstrap.json"
+            ]
+          },
+          {
+            "name": "stage-worker-agent",
+            "image": "localhost/vela-validation/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "command": [
+              "/bin/sleep"
+            ],
+            "args": [
+              "3600"
+            ]
+          }
+        ]
+      }
+    },
+    "expected_pod_digest": [
+      18,
+      222,
+      66,
+      201,
+      113,
+      116,
+      226,
+      9,
+      153,
+      81,
+      73,
+      130,
+      37,
+      37,
+      243,
+      69,
+      148,
+      35,
+      85,
+      163,
+      54,
+      96,
+      178,
+      137,
+      41,
+      111,
+      6,
+      239,
+      151,
+      118,
+      72,
+      240
+    ],
+    "startup_socket": "/run/vela-launcher-smoke-d4ee0c574af645d4bb8f79562ecae316/startup.sock"
+  },
+  "handoff_verified": true,
+  "cleanup_verified": true,
+  "reply": {
+    "version": 2,
+    "validation_only": false,
+    "target": {
+      "container_id": "b32135b3cd23731c320b5c546b2484adaf01cb4a635f314909d09ad9f21517ae",
+      "sandbox_id": "a98f74f8d623a60780d00bb674131f3484535b64ebe0c18118fcca18f93c36e6",
+      "pod_uid": "c9b2f613-a930-4058-a53a-43dff6b0ca98",
+      "pod_namespace": "default",
+      "pod_name": "vela-launcher-smoke-c9b2f613",
+      "container_name": "model-runtime",
+      "container_attempt": 1
+    },
+    "worker_target": {
+      "container_id": "97482ea4a638db45d0cfbf438d1ce3fffd1b4fa40e9f3d8e3f1054f69b808591",
+      "sandbox_id": "a98f74f8d623a60780d00bb674131f3484535b64ebe0c18118fcca18f93c36e6",
+      "pod_uid": "c9b2f613-a930-4058-a53a-43dff6b0ca98",
+      "pod_namespace": "default",
+      "pod_name": "vela-launcher-smoke-c9b2f613",
+      "container_name": "stage-worker-agent",
+      "container_attempt": 1
+    },
+    "fd_count": 4
+  },
+  "descriptor_count": 4,
+  "observer_handshake_verified": true,
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "",
+  "remaining_sandboxes": [],
+  "remaining_containers": [],
+  "elapsed_seconds": 6.699,
+  "passed": true
+}

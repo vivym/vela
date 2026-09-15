@@ -241,11 +241,20 @@ See the [file-lock evidence](../node-runtime-file-lock-evidence-2026-09-07.md).
 `RuntimeCaller.Reply` one challenge-bound response. The client pins a root-owned
 `0660` socket under root-owned non-writable ancestors and authenticates a root
 kernel peer before sending its request. Every received frame carries credentials
-and a live pidfd matching the retained peer's pidfs identity. Numeric PID equality
+and a live pidfd matching the retained peer's kernel identity, either directly
+through pidfs/fdinfo or through the configured host-side broker. Numeric PID equality
 is insufficient: from Runtime's child PID namespace, different root Node-side
 processes can both report PID 0. Distinct response framing, challenge binding,
 payload bounds, one-shot reply and cancellation reject delegation, replay and
-visible endpoint replacement. Linux pidfs is required. Command/endpoint assembly
+visible endpoint replacement. A pidfs-capable kernel is the direct comparison
+path. On kernels such as Ubuntu 24.04's 6.8, pidfd_open returns
+anonymous-inode pidfds; fdinfo Pid/NSpid may be compared only while visible in
+the current namespace. If a Runtime is in a nested PID namespace and those
+fields are zero, the descriptor remains usable for liveness but identity must
+be checked by a trusted host-side broker before the exchange can authorize any
+operation. Worker journal transport therefore requires the canonical
+`VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET` on such hosts, with the broker parent
+directory mounted read-only into the Worker. Numeric PID equality is never a fallback. Command/endpoint assembly
 and domain startup authorization remain open. See the
 [channel evidence](../node-runtime-channel-evidence-2026-09-07.md).
 

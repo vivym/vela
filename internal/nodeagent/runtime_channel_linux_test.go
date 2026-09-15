@@ -552,6 +552,7 @@ func runtimeChannelNamespaceProbe(t *testing.T) {
 	if _, err := connection.Write([]byte("ready")); err != nil {
 		t.Fatal(err)
 	}
+	identityComparable := runtimechannel.SameLiveProcess(peerFD, peerFD) == nil
 	for _, expected := range []string{"original", "delegated"} {
 		packet, sender, senderFD, err := runtimechannel.ReadPacket(connection, 16)
 		if err != nil {
@@ -559,9 +560,13 @@ func runtimeChannelNamespaceProbe(t *testing.T) {
 		}
 		identityErr := runtimechannel.SameLiveProcess(peerFD, senderFD)
 		_ = unix.Close(senderFD)
-		if sender != *peer || string(packet) != expected || (identityErr == nil) != (expected == "original") {
+		wantSame := expected == "original" && identityComparable
+		if sender != *peer || string(packet) != expected || (identityErr == nil) != wantSame {
 			t.Fatalf("PID 0 identity comparison failed: %q sender=%+v err=%v", packet, sender, identityErr)
 		}
-		t.Logf("%s sender: peer_pid=0 message_pid=0 uid=0 gid=0 same_live_pidfs_identity=%t", expected, identityErr == nil)
+		if !identityComparable && !errors.Is(identityErr, runtimechannel.ErrPIDFDIdentityUnavailable) {
+			t.Fatalf("legacy invisible pidfd returned an unrelated error: %v", identityErr)
+		}
+		t.Logf("%s sender: peer_pid=0 message_pid=0 uid=0 same_live_identity=%t comparable=%t", expected, identityErr == nil, identityComparable)
 	}
 }

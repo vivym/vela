@@ -29,6 +29,53 @@ const (
 
 var ErrIdentity = errors.New("runtime channel kernel identity or frame is untrusted")
 
+// ErrPIDFDIdentityUnavailable means the descriptor is a real pidfd but the
+// current procfs view cannot expose a comparable process identity. Linux
+// 6.8's anonymous-inode pidfds report Pid/NSpid as zero for invisible
+// processes in a nested PID namespace. Callers must use a trusted host-side
+// identity check in that case; numeric-PID equality is never a fallback.
+var ErrPIDFDIdentityUnavailable = errors.New("pidfd process identity is not visible in this pid namespace")
+
+// PIDFDIdentityClass describes the identity evidence available from the
+// current procfs view.
+type PIDFDIdentityClass uint8
+
+const (
+	PIDFDIdentityPIDFS PIDFDIdentityClass = iota + 1
+	PIDFDIdentityLegacyVisible
+	PIDFDIdentityLegacyInvisible
+)
+
+// ClassifyPIDFD reports the identity evidence available from the current
+// procfs view without requiring the process to remain live. Callers that need
+// liveness must additionally call PollLivePIDFD. A successful
+// PIDFDIdentityLegacyInvisible result is deliberately not sufficient for
+// SameLiveProcess; it only says that the descriptor itself is a valid pidfd.
+func ClassifyPIDFD(fd int) (PIDFDIdentityClass, error) {
+	if fd < 0 {
+		return 0, ErrIdentity
+	}
+	var filesystem unix.Statfs_t
+	if err := unix.Fstatfs(fd, &filesystem); err != nil {
+		return 0, errors.Join(ErrIdentity, err)
+	}
+	if filesystem.Type == unix.PID_FS_MAGIC {
+		var stat unix.Stat_t
+		if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
+			return 0, errors.Join(ErrIdentity, err)
+		}
+		return PIDFDIdentityPIDFS, nil
+	}
+	legacy, err := readAnonymousPIDFDIdentity(fd)
+	if err != nil {
+		return 0, fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
+	}
+	if legacy.visible {
+		return PIDFDIdentityLegacyVisible, nil
+	}
+	return PIDFDIdentityLegacyInvisible, nil
+}
+
 // ParseAncillary owns all received descriptors. Only one validated kernel
 // message pidfd escapes; rejected SCM_RIGHTS and duplicate pidfds are closed.
 // PID zero is legitimate when the sender is outside the receiver's namespace.
@@ -137,16 +184,19 @@ func readPacket(connection *net.UnixConn, maximum, expectedRights int) ([]byte, 
 	return packet[:count], peer, pidfd, rights, nil
 }
 
-// SameLiveProcess compares retained pidfd identities, including invisible
-// ancestor processes whose namespace-relative credentials both report PID 0.
-// Kernels before pidfs expose pidfds as anonymous inodes; those handles are
-// accepted only when their kernel fdinfo Pid/NSpid identity matches. No PID is
-// used to reacquire a process or to construct a handle.
+// SameLiveProcess compares retained pidfd identities. Kernels before pidfs
+// expose pidfds as anonymous inodes; those handles are accepted only when
+// their kernel fdinfo Pid/NSpid identity is visible and matches. If the
+// current procfs view reports zero for an invisible process, the descriptor is
+// still structurally valid but this function returns
+// ErrPIDFDIdentityUnavailable. No PID is used to reacquire a process or to
+// construct a handle.
 func SameLiveProcess(original, message int) error {
 	type identity struct {
 		device, inode uint64
 		pid, nspid    string
 		pidfs         bool
+		visible       bool
 	}
 	var identities [2]identity
 	for i, fd := range []int{original, message} {
@@ -162,13 +212,13 @@ func SameLiveProcess(original, message int) error {
 			if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
 				return errors.Join(ErrIdentity, err)
 			}
-			identities[i] = identity{device: stat.Dev, inode: stat.Ino, pidfs: true}
+			identities[i] = identity{device: stat.Dev, inode: stat.Ino, pidfs: true, visible: true}
 		} else {
 			legacy, err := readAnonymousPIDFDIdentity(fd)
 			if err != nil {
 				return fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
 			}
-			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid}
+			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid, visible: legacy.visible}
 		}
 		if err := ValidatePIDFD(fd); err != nil {
 			return err
@@ -179,6 +229,9 @@ func SameLiveProcess(original, message int) error {
 		if flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); err != nil || flags&unix.FD_CLOEXEC == 0 {
 			return errors.Join(ErrIdentity, err)
 		}
+	}
+	if !identities[0].visible || !identities[1].visible {
+		return errors.Join(ErrIdentity, ErrPIDFDIdentityUnavailable)
 	}
 	if identities[0].pidfs != identities[1].pidfs {
 		return ErrIdentity
@@ -192,10 +245,12 @@ func SameLiveProcess(original, message int) error {
 	return nil
 }
 
-// ValidatePIDFD verifies that fd is a kernel pidfd with a stable identity and
-// close-on-exec set. It deliberately does not poll for liveness, so callers
-// that need to observe an exit can validate the retained handle first and poll
-// it separately.
+// ValidatePIDFD verifies that fd is a kernel pidfd and has close-on-exec set.
+// It deliberately does not poll for liveness, so callers that need to observe
+// an exit can validate the retained handle first and poll it separately. A
+// legacy pidfd whose fdinfo reports zero is structurally valid; comparing it
+// with another process must handle ErrPIDFDIdentityUnavailable from
+// SameLiveProcess and use a trusted host-side identity check.
 func ValidatePIDFD(fd int) error {
 	if fd < 0 {
 		return ErrIdentity
@@ -219,7 +274,10 @@ func ValidatePIDFD(fd int) error {
 	return nil
 }
 
-type anonymousPIDFDIdentity struct{ pid, nspid string }
+type anonymousPIDFDIdentity struct {
+	pid, nspid string
+	visible    bool
+}
 
 func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 	link, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd))
@@ -231,6 +289,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 		return anonymousPIDFDIdentity{}, err
 	}
 	var result anonymousPIDFDIdentity
+	nspidVisible := true
 	for line := range strings.SplitSeq(string(data), "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
@@ -243,6 +302,9 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 				return anonymousPIDFDIdentity{}, errors.New("fdinfo Pid is invalid")
 			}
 			result.pid = value
+			if value == "0" {
+				nspidVisible = false
+			}
 		case "NSpid":
 			fields := strings.Fields(value)
 			if len(fields) == 0 {
@@ -252,6 +314,9 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 				if !validAnonymousPIDFDNumber(field) {
 					return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is invalid")
 				}
+				if field == "0" {
+					nspidVisible = false
+				}
 			}
 			result.nspid = strings.Join(fields, ",")
 		}
@@ -259,6 +324,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
 	if result.pid == "" || result.nspid == "" {
 		return anonymousPIDFDIdentity{}, errors.New("fdinfo lacks Pid/NSpid")
 	}
+	result.visible = nspidVisible
 	return result, nil
 }
 
@@ -266,6 +332,6 @@ func validAnonymousPIDFDNumber(value string) bool {
 	if value == "-1" {
 		return true
 	}
-	parsed, err := strconv.ParseUint(value, 10, 32)
-	return err == nil && parsed > 0
+	_, err := strconv.ParseUint(value, 10, 32)
+	return err == nil
 }

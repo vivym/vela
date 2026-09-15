@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "policy-response-loss",
+  "started_at": "2026-09-12T16:00:41.910994059Z",
+  "finished_at": "2026-09-12T16:00:52.982341812Z",
+  "target": {
+    "container_id": "f67db435870212704ebc22312e7d528a71bcb5c3ab2e5d61169d92f4b2b12f9e",
+    "sandbox_id": "06db6373cddfe5edaa473f1ac410dd597c654c8f773ee3c749c275b9062c68e2",
+    "pod_uid": "30919a94-32b1-452a-8edc-ff69128ad290",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-policy-response-loss",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "afd53f45af501be7f8d5662c1e51a34c20325494ef32f8107b1f35d740230030",
+    "sandbox_id": "06db6373cddfe5edaa473f1ac410dd597c654c8f773ee3c749c275b9062c68e2",
+    "pod_uid": "30919a94-32b1-452a-8edc-ff69128ad290",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-policy-response-loss",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 4,
+  "outcome": "failed",
+  "error": "validation policy response intentionally suppressed"
+}

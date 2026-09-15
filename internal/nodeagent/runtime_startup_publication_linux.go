@@ -90,7 +90,7 @@ func matchStartupBootstrapConsumption(ctx context.Context, config RuntimeStartup
 	// Rebuild from the actual plan/owner, including its actual public verifier
 	// keys. Reusing a same-shaped publication for another journal is rejected.
 	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
-		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
+		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket, PIDFDBrokerSocket: bootstrap.PIDFDBrokerSocket,
 		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
 	if err != nil || !bytes.Equal(wire, publication.encoded) {
 		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)

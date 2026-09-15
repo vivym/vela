@@ -1,0 +1,3808 @@
+diff --git a/cmd/vela-model-runtime/main.go b/cmd/vela-model-runtime/main.go
+index ce3fc8d..57d8908 100644
+--- a/cmd/vela-model-runtime/main.go
++++ b/cmd/vela-model-runtime/main.go
+@@ -26,6 +26,7 @@ type commandConfig struct {
+ 	journalBindingFile         string
+ 	journalBindingVerifierFile string
+ 	nodeStartupSocket          string
++	pidFDBrokerSocket          string
+ 	socketPath                 string
+ 	cancelTimeout              time.Duration
+ 	shutdownTimeout            time.Duration
+@@ -107,7 +108,7 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
+ 		if err != nil {
+ 			return err
+ 		}
+-		startupGate, err = modelruntime.NewNodeBackendStartupGate(configuration.nodeStartupSocket)
++		startupGate, err = modelruntime.NewNodeBackendStartupGateWithPIDFDBroker(configuration.nodeStartupSocket, configuration.pidFDBrokerSocket)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -187,7 +188,13 @@ func loadCommandConfig() (commandConfig, error) {
+ 		if err != nil {
+ 			return commandConfig{}, err
+ 		}
+-	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET") != "" {
++		if os.Getenv("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET") != "" {
++			configuration.pidFDBrokerSocket, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET")
++			if err != nil {
++				return commandConfig{}, err
++			}
++		}
++	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET") != "" || os.Getenv("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET") != "" {
+ 		return commandConfig{}, errors.New("ModelRuntime journal binding requires VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY")
+ 	}
+ 	configuration.cancelTimeout, err = requiredCommandDuration(
+diff --git a/internal/modelruntime/backend_startup_gate.go b/internal/modelruntime/backend_startup_gate.go
+index 49d9975..91ffd6a 100644
+--- a/internal/modelruntime/backend_startup_gate.go
++++ b/internal/modelruntime/backend_startup_gate.go
+@@ -158,8 +158,17 @@ func (store *executionStateFile) authorizeBackendStartup(ctx context.Context, bi
+ // NewNodeBackendStartupGate creates the production client, not a Node issuer.
+ // Recovery-only startup never calls it and does not require a live Node socket.
+ func NewNodeBackendStartupGate(socketPath string) (RuntimeBackendStartupGate, error) {
++	return NewNodeBackendStartupGateWithPIDFDBroker(socketPath, "")
++}
++
++// NewNodeBackendStartupGateWithPIDFDBroker supplies the optional host-side
++// identity broker for legacy pidfds hidden by a nested PID namespace.
++func NewNodeBackendStartupGateWithPIDFDBroker(socketPath, brokerSocket string) (RuntimeBackendStartupGate, error) {
+ 	if !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || len(socketPath) > maxRuntimeSocketPathBytes || strings.ContainsRune(socketPath, 0) {
+ 		return nil, errors.New("backend startup Node socket must be a canonical local path")
+ 	}
+-	return nodeBackendStartupGate(socketPath), nil
++	if brokerSocket != "" && (!filepath.IsAbs(brokerSocket) || filepath.Clean(brokerSocket) != brokerSocket || len(brokerSocket) > maxRuntimeSocketPathBytes || strings.ContainsRune(brokerSocket, 0)) {
++		return nil, errors.New("pidfd broker socket must be a canonical local path")
++	}
++	return nodeBackendStartupGate(socketPath, brokerSocket), nil
+ }
+diff --git a/internal/modelruntime/backend_startup_gate_linux.go b/internal/modelruntime/backend_startup_gate_linux.go
+index b07bfd5..26cada7 100644
+--- a/internal/modelruntime/backend_startup_gate_linux.go
++++ b/internal/modelruntime/backend_startup_gate_linux.go
+@@ -7,13 +7,13 @@ import (
+ 	"github.com/vivym/vela/internal/runtimechannel"
+ )
+ 
+-func nodeBackendStartupGate(socket string) RuntimeBackendStartupGate {
++func nodeBackendStartupGate(socket, brokerSocket string) RuntimeBackendStartupGate {
+ 	return func(ctx context.Context, request BackendStartupRequest) error {
+ 		document, err := EncodeBackendStartupRequest(request)
+ 		if err != nil {
+ 			return err
+ 		}
+-		response, err := runtimechannel.Exchange(ctx, socket, document)
++		response, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, document, runtimechannel.MaximumPayload)
+ 		if err != nil {
+ 			return err
+ 		}
+diff --git a/internal/modelruntime/backend_startup_gate_other.go b/internal/modelruntime/backend_startup_gate_other.go
+index 5a5bd8e..de1362a 100644
+--- a/internal/modelruntime/backend_startup_gate_other.go
++++ b/internal/modelruntime/backend_startup_gate_other.go
+@@ -7,7 +7,7 @@ import (
+ 	"errors"
+ )
+ 
+-func nodeBackendStartupGate(string) RuntimeBackendStartupGate {
++func nodeBackendStartupGate(string, string) RuntimeBackendStartupGate {
+ 	return func(context.Context, BackendStartupRequest) error {
+ 		return errors.New("backend startup Node authentication requires Linux")
+ 	}
+diff --git a/internal/modelruntime/journal_client_linux.go b/internal/modelruntime/journal_client_linux.go
+index 7976648..da431c9 100644
+--- a/internal/modelruntime/journal_client_linux.go
++++ b/internal/modelruntime/journal_client_linux.go
+@@ -25,6 +25,10 @@ type JournalEndpointResponse struct {
+ // retained metadata as permission to run a backend. Identity must come from
+ // independently approved journal binding, not from the returned receipt.
+ func ExchangeJournalCommand(ctx context.Context, socket string, identity ExecutionJournalIdentity, command JournalCommand) (JournalMutationReceipt, error) {
++	return exchangeJournalCommandWithPIDFDBroker(ctx, socket, "", identity, command)
++}
++
++func exchangeJournalCommandWithPIDFDBroker(ctx context.Context, socket, brokerSocket string, identity ExecutionJournalIdentity, command JournalCommand) (JournalMutationReceipt, error) {
+ 	if identity.JournalID == uuid.Nil || identity.Scope == ([sha256.Size]byte{}) {
+ 		return JournalMutationReceipt{}, ErrJournalCommand
+ 	}
+@@ -32,7 +36,7 @@ func ExchangeJournalCommand(ctx context.Context, socket string, identity Executi
+ 	if err != nil {
+ 		return JournalMutationReceipt{}, err
+ 	}
+-	response, err := runtimechannel.ExchangeWithRequestLimit(ctx, socket, wire, MaximumJournalCommandBytes)
++	response, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, wire, MaximumJournalCommandBytes)
+ 	if err != nil {
+ 		return JournalMutationReceipt{}, err
+ 	}
+@@ -68,16 +72,17 @@ func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity Execu
+ // UnixRuntimeJournalTransport uses the authenticated Node channel for every
+ // mutation and read. It retains no local files and performs no mutation retries.
+ type UnixRuntimeJournalTransport struct {
+-	Socket   string
+-	Identity ExecutionJournalIdentity
++	Socket            string
++	PIDFDBrokerSocket string
++	Identity          ExecutionJournalIdentity
+ }
+ 
+ func (transport UnixRuntimeJournalTransport) Apply(ctx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
+-	return ExchangeJournalCommand(ctx, transport.Socket, transport.Identity, command)
++	return exchangeJournalCommandWithPIDFDBroker(ctx, transport.Socket, transport.PIDFDBrokerSocket, transport.Identity, command)
+ }
+ func (transport UnixRuntimeJournalTransport) Read(ctx context.Context) (JournalDocument, error) {
+ 	return ReadJournalDocument(ctx, transport.Identity, func(ctx context.Context, request JournalReadCommand) (JournalPage, error) {
+-		return ExchangeJournalRead(ctx, transport.Socket, request)
++		return exchangeJournalReadWithPIDFDBroker(ctx, transport.Socket, transport.PIDFDBrokerSocket, request)
+ 	})
+ }
+ 
+@@ -99,11 +104,15 @@ func decodeJournalEndpointResponse(wire []byte, request [sha256.Size]byte) (Jour
+ }
+ 
+ func ExchangeJournalRead(ctx context.Context, socket string, request JournalReadCommand) (JournalPage, error) {
++	return exchangeJournalReadWithPIDFDBroker(ctx, socket, "", request)
++}
++
++func exchangeJournalReadWithPIDFDBroker(ctx context.Context, socket, brokerSocket string, request JournalReadCommand) (JournalPage, error) {
+ 	wire, err := EncodeJournalCommand(JournalCommand{SchemaVersion: 1, Read: &request})
+ 	if err != nil {
+ 		return JournalPage{}, err
+ 	}
+-	reply, err := runtimechannel.Exchange(ctx, socket, wire)
++	reply, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, wire, runtimechannel.MaximumPayload)
+ 	if err != nil {
+ 		// No page escaped the authenticated channel. Retrying a later pure
+ 		// read is safe even if this failed exchange could not authenticate;
+diff --git a/internal/modelruntime/remote_bootstrap.go b/internal/modelruntime/remote_bootstrap.go
+index b5d0f39..cbbec8a 100644
+--- a/internal/modelruntime/remote_bootstrap.go
++++ b/internal/modelruntime/remote_bootstrap.go
+@@ -26,19 +26,20 @@ var ErrRemoteBootstrap = errors.New("remote Runtime bootstrap is not a complete
+ // The Runtime consumes one protected snapshot; no workload environment selects
+ // launch/key files, local journal paths, local epochs or an alternate authorizer.
+ type RemoteRuntimeBootstrap struct {
+-	SchemaVersion   int                      `json:"schema_version"`
+-	Manifest        LaunchManifest           `json:"manifest"`
+-	AuthorityKeys   map[string][]byte        `json:"authority_keys"`
+-	RegistryKeys    map[string][]byte        `json:"registry_keys"`
+-	RegistryBinding []byte                   `json:"registry_binding"`
+-	Identity        ExecutionJournalIdentity `json:"identity"`
+-	Startup         BackendLifecycleStatus   `json:"startup"`
+-	JournalSocket   string                   `json:"journal_socket"`
+-	StartupSocket   string                   `json:"startup_socket"`
+-	RuntimeSocket   string                   `json:"runtime_socket"`
+-	JournalTimeout  time.Duration            `json:"journal_timeout"`
+-	CancelTimeout   time.Duration            `json:"cancel_timeout"`
+-	ShutdownTimeout time.Duration            `json:"shutdown_timeout"`
++	SchemaVersion     int                      `json:"schema_version"`
++	Manifest          LaunchManifest           `json:"manifest"`
++	AuthorityKeys     map[string][]byte        `json:"authority_keys"`
++	RegistryKeys      map[string][]byte        `json:"registry_keys"`
++	RegistryBinding   []byte                   `json:"registry_binding"`
++	Identity          ExecutionJournalIdentity `json:"identity"`
++	Startup           BackendLifecycleStatus   `json:"startup"`
++	JournalSocket     string                   `json:"journal_socket"`
++	StartupSocket     string                   `json:"startup_socket"`
++	RuntimeSocket     string                   `json:"runtime_socket"`
++	PIDFDBrokerSocket string                   `json:"pidfd_broker_socket,omitempty"`
++	JournalTimeout    time.Duration            `json:"journal_timeout"`
++	CancelTimeout     time.Duration            `json:"cancel_timeout"`
++	ShutdownTimeout   time.Duration            `json:"shutdown_timeout"`
+ }
+ 
+ func EncodeRemoteRuntimeBootstrap(config RemoteRuntimeBootstrap) ([]byte, error) {
+@@ -80,6 +81,9 @@ func (config RemoteRuntimeBootstrap) validate() error {
+ 			return ErrRemoteBootstrap
+ 		}
+ 	}
++	if config.PIDFDBrokerSocket != "" && (!filepath.IsAbs(config.PIDFDBrokerSocket) || filepath.Clean(config.PIDFDBrokerSocket) != config.PIDFDBrokerSocket || len(config.PIDFDBrokerSocket) > 100 || strings.ContainsRune(config.PIDFDBrokerSocket, '\x00') || config.PIDFDBrokerSocket == "/") {
++		return ErrRemoteBootstrap
++	}
+ 	if config.JournalSocket == config.StartupSocket || config.JournalSocket == config.RuntimeSocket || config.StartupSocket == config.RuntimeSocket {
+ 		return ErrRemoteBootstrap
+ 	}
+diff --git a/internal/modelruntime/remote_bootstrap_linux.go b/internal/modelruntime/remote_bootstrap_linux.go
+index 4112716..3912934 100644
+--- a/internal/modelruntime/remote_bootstrap_linux.go
++++ b/internal/modelruntime/remote_bootstrap_linux.go
+@@ -138,14 +138,14 @@ func RemoteRuntimeServerConfig(wire []byte, bootstrapPath string) (RuntimeServer
+ 	if err := proto.Unmarshal(bootstrap.RegistryBinding, &binding); err != nil {
+ 		return RuntimeServerConfig{}, err
+ 	}
+-	gate, err := NewNodeBackendStartupGate(bootstrap.StartupSocket)
++	gate, err := NewNodeBackendStartupGateWithPIDFDBroker(bootstrap.StartupSocket, bootstrap.PIDFDBrokerSocket)
+ 	if err != nil {
+ 		return RuntimeServerConfig{}, err
+ 	}
+ 	return RuntimeServerConfig{Manifest: bootstrap.Manifest, Validator: validator, RegistryBinding: &binding, RegistryVerifier: verifier,
+ 		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
+ 		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
+-			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
++			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, PIDFDBrokerSocket: bootstrap.PIDFDBrokerSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
+ 			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error {
+ 				intent := request.Intent
+ 				intent.SchemaVersion, intent.BootstrapDigest, intent.BootstrapPath = 2, consumedDigest, bootstrapPath
+diff --git a/internal/modelruntime/remote_bootstrap_test.go b/internal/modelruntime/remote_bootstrap_test.go
+index d17db06..5963fe0 100644
+--- a/internal/modelruntime/remote_bootstrap_test.go
++++ b/internal/modelruntime/remote_bootstrap_test.go
+@@ -89,3 +89,32 @@ func TestRemoteRuntimeBootstrapCanonicalBinding(t *testing.T) {
+ 		})
+ 	}
+ }
++
++func TestRemoteRuntimeBootstrapPIDFDBrokerSocketRoundTrip(t *testing.T) {
++	config, _, _ := remoteRuntimeServerFixture(t)
++	keys, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{"authority-v1": make([]byte, 32)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(config.RegistryBinding)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: config.Manifest, AuthorityKeys: keys,
++		RegistryKeys: map[string][]byte{"registry": ed25519.NewKeyFromSeed(bytes.Repeat([]byte{17}, 32)).Public().(ed25519.PublicKey)}, RegistryBinding: binding,
++		Identity: config.RemoteStartup.Journal.Identity, Startup: config.RemoteStartup.Journal.Startup,
++		JournalSocket: "/run/vela/journal.sock", StartupSocket: "/run/vela/startup.sock", RuntimeSocket: "/run/vela/runtime.sock",
++		PIDFDBrokerSocket: "/run/vela/pidfd-broker.sock", JournalTimeout: time.Second, CancelTimeout: time.Second, ShutdownTimeout: time.Second}
++	wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
++	if err != nil {
++		t.Fatal(err)
++	}
++	parsed, err := modelruntime.ParseRemoteRuntimeBootstrap(wire)
++	if err != nil || parsed.PIDFDBrokerSocket != bootstrap.PIDFDBrokerSocket {
++		t.Fatalf("pidfd broker socket did not survive canonical round trip: %q %v", parsed.PIDFDBrokerSocket, err)
++	}
++	bootstrap.PIDFDBrokerSocket = "relative.sock"
++	if _, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap); err == nil {
++		t.Fatal("relative pidfd broker socket accepted")
++	}
++}
+diff --git a/internal/nodeagent/journal_server_linux.go b/internal/nodeagent/journal_server_linux.go
+index a8afebb..d7ca447 100644
+--- a/internal/nodeagent/journal_server_linux.go
++++ b/internal/nodeagent/journal_server_linux.go
+@@ -35,19 +35,38 @@ type JournalServerStats struct {
+ }
+ 
+ type JournalServer struct {
+-	endpoint *JournalEndpoint
+-	config   JournalServerConfig
+-	mu       sync.Mutex
+-	stopped  bool
+-	cancel   context.CancelFunc
+-	done     chan struct{}
++	handler JournalHandler
++	config  JournalServerConfig
++	mu      sync.Mutex
++	stopped bool
++	cancel  context.CancelFunc
++	done    chan struct{}
+ 
+ 	accepted, overloaded, authenticated, replied, failed atomic.Uint64
+ 	inFlight, peakInFlight                               atomic.Int64
+ }
+ 
++// JournalHandler is the authenticated domain boundary behind the Node's
++// seqpacket accept loop. It deliberately receives RuntimeCaller rather than
++// an arbitrary payload so every handler can re-check the original kernel
++// process identity before applying a domain operation.
++type JournalHandler interface {
++	Handle(context.Context, *RuntimeCaller) ([]byte, error)
++}
++
+ func NewJournalServer(endpoint *JournalEndpoint, config JournalServerConfig) (*JournalServer, error) {
+-	if endpoint == nil || os.Geteuid() != 0 || os.Getegid() != 0 || len(config.Credentials) == 0 || len(config.Credentials) > 2 ||
++	if endpoint == nil {
++		return nil, errors.New("invalid Node journal server endpoint")
++	}
++	return NewJournalServerForHandler(endpoint, config)
++}
++
++// NewJournalServerForHandler constructs the same bounded, root-owned accept
++// loop for a non-execution Worker journal handler. The handler owns its own
++// domain state and process binding; this constructor only owns transport
++// authentication, overload and shutdown.
++func NewJournalServerForHandler(handler JournalHandler, config JournalServerConfig) (*JournalServer, error) {
++	if handler == nil || os.Geteuid() != 0 || os.Getegid() != 0 || len(config.Credentials) == 0 || len(config.Credentials) > 2 ||
+ 		config.MaxConcurrent < 1 || config.MaxConcurrent > MaximumJournalConnections ||
+ 		config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout {
+ 		return nil, errors.New("invalid Node journal server configuration")
+@@ -58,13 +77,15 @@ func NewJournalServer(endpoint *JournalEndpoint, config JournalServerConfig) (*J
+ 			return nil, ErrRuntimeCallerIdentity
+ 		}
+ 	}
+-	endpoint.mu.Lock()
+-	defer endpoint.mu.Unlock()
+-	if endpoint.owner == nil || endpoint.runtime == nil || endpoint.worker == nil {
+-		return nil, ErrRuntimeNamespaceOwnerLost
++	if endpoint, ok := handler.(*JournalEndpoint); ok {
++		endpoint.mu.Lock()
++		defer endpoint.mu.Unlock()
++		if endpoint.owner == nil || endpoint.runtime == nil || endpoint.worker == nil {
++			return nil, ErrRuntimeNamespaceOwnerLost
++		}
+ 	}
+ 	config.Credentials = slices.Clone(config.Credentials)
+-	return &JournalServer{endpoint: endpoint, config: config}, nil
++	return &JournalServer{handler: handler, config: config}, nil
+ }
+ 
+ func (server *JournalServer) Stats() JournalServerStats {
+@@ -80,7 +101,7 @@ func (server *JournalServer) Stats() JournalServerStats {
+ // One additional accepted socket is immediately closed on overload; the kernel
+ // listen backlog is separate. No waiting Go queue or overload goroutine is made.
+ func (server *JournalServer) Serve(ctx context.Context, listener *net.UnixListener) error {
+-	if server == nil || server.endpoint == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
++	if server == nil || server.handler == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
+ 		return errors.New("node journal server requires context and Unix seqpacket listener")
+ 	}
+ 	server.mu.Lock()
+@@ -167,7 +188,7 @@ func (server *JournalServer) exchange(parent context.Context, connection *net.Un
+ 	}
+ 	defer func() { _ = caller.Close() }()
+ 	server.authenticated.Add(1)
+-	reply, err := server.endpoint.Handle(ctx, caller)
++	reply, err := server.handler.Handle(ctx, caller)
+ 	if err == nil {
+ 		err = caller.Reply(ctx, reply)
+ 	}
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux.go b/internal/nodeagent/runtime_bootstrap_publication_linux.go
+index 3213941..ab9dd13 100644
+--- a/internal/nodeagent/runtime_bootstrap_publication_linux.go
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux.go
+@@ -32,12 +32,12 @@ var ErrRuntimeBootstrapPublication = errors.New("runtime bootstrap publication i
+ // Settings are trusted Node deployment inputs, not Runtime request fields.
+ // The manifest, signed binding, identity and incarnation cannot be supplied here.
+ type RuntimeBootstrapPublicationConfig struct {
+-	Directory                                      string
+-	Plan                                           *RuntimeLaunchPlan
+-	Journal                                        *modelruntime.ExecutionJournalOwner
+-	RegistryKeys                                   map[string][]byte
+-	JournalSocket, StartupSocket, RuntimeSocket    string
+-	JournalTimeout, CancelTimeout, ShutdownTimeout time.Duration
++	Directory                                                      string
++	Plan                                                           *RuntimeLaunchPlan
++	Journal                                                        *modelruntime.ExecutionJournalOwner
++	RegistryKeys                                                   map[string][]byte
++	JournalSocket, StartupSocket, RuntimeSocket, PIDFDBrokerSocket string
++	JournalTimeout, CancelTimeout, ShutdownTimeout                 time.Duration
+ }
+ 
+ type RuntimeBootstrapPublicationRecord struct {
+@@ -61,6 +61,40 @@ type RuntimeBootstrapPublication struct {
+ 	encoded []byte
+ }
+ 
++// Remove deletes a publication owned by this process after Runtime shutdown.
++// It verifies the recorded directory and file identities before unlinking, so
++// a replacement path cannot be removed by an older Node instance.
++func (publication *RuntimeBootstrapPublication) Remove(ctx context.Context, directoryPath string) error {
++	if publication == nil || !filepath.IsAbs(directoryPath) || filepath.Clean(directoryPath) != directoryPath {
++		return ErrRuntimeBootstrapPublication
++	}
++	if err := contextError(ctx); err != nil {
++		return err
++	}
++	directory, err := openRuntimePublicationDirectory(directoryPath)
++	if err != nil {
++		return err
++	}
++	defer directory.Close()
++	if err := runtimePublicationNames(directory, []string{runtimeBootstrapRecordName, runtimeBootstrapFilename}); err != nil {
++		return err
++	}
++	var info unix.Stat_t
++	if err := unix.Fstat(int(directory.Fd()), &info); err != nil || (runtimeStartupFileIdentity{Device: info.Dev, Inode: info.Ino} != publication.record.Directory) {
++		return errors.Join(ErrRuntimeBootstrapPublication, err)
++	}
++	for name, expected := range map[string]runtimeStartupFileIdentity{runtimeBootstrapFilename: publication.record.BootstrapFile, runtimeBootstrapRecordName: publication.record.RecordFile} {
++		var current unix.Stat_t
++		if err := unix.Fstatat(int(directory.Fd()), name, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil || (runtimeStartupFileIdentity{Device: current.Dev, Inode: current.Ino} != expected) {
++			return errors.Join(ErrRuntimeBootstrapPublication, err)
++		}
++		if err := unix.Unlinkat(int(directory.Fd()), name, 0); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
+ func (publication *RuntimeBootstrapPublication) Record() RuntimeBootstrapPublicationRecord {
+ 	if publication == nil {
+ 		return RuntimeBootstrapPublicationRecord{}
+@@ -275,7 +309,7 @@ func buildRuntimeBootstrap(ctx context.Context, config RuntimeBootstrapPublicati
+ 	}
+ 	bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: manifest, AuthorityKeys: keys, RegistryKeys: config.RegistryKeys, RegistryBinding: binding,
+ 		Identity: modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}, Startup: status.BackendLifecycle,
+-		JournalSocket: config.JournalSocket, StartupSocket: config.StartupSocket, RuntimeSocket: config.RuntimeSocket, JournalTimeout: config.JournalTimeout, CancelTimeout: config.CancelTimeout, ShutdownTimeout: config.ShutdownTimeout}
++		JournalSocket: config.JournalSocket, StartupSocket: config.StartupSocket, RuntimeSocket: config.RuntimeSocket, PIDFDBrokerSocket: config.PIDFDBrokerSocket, JournalTimeout: config.JournalTimeout, CancelTimeout: config.CancelTimeout, ShutdownTimeout: config.ShutdownTimeout}
+ 	wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+index 0a31333..195fae2 100644
+--- a/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
++++ b/internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+@@ -163,6 +163,12 @@ func TestRuntimeBootstrapPublication(t *testing.T) {
+ 	if history, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err != nil || history.Record() != publication.Record() {
+ 		t.Fatalf("closed owner destroyed history: %v", err)
+ 	}
++	if err := publication.Remove(t.Context(), config.Directory); err != nil {
++		t.Fatalf("remove owned publication: %v", err)
++	}
++	if _, err := os.Stat(filepath.Join(config.Directory, runtimeBootstrapFilename)); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("bootstrap file remains after owned cleanup: %v", err)
++	}
+ 	t.Log("verified plan and held journal -> immutable snapshot; actual UID/GID 10001 can read only bootstrap; reopening returns history after owner closure")
+ }
+ 
+@@ -215,6 +221,27 @@ func TestRuntimeBootstrapPublicationPreflight(t *testing.T) {
+ 	}
+ }
+ 
++func TestRuntimeBootstrapPublicationCleanupRejectsReplacement(t *testing.T) {
++	config := publicationFixture(t, false)
++	publication, err := PublishRuntimeBootstrap(t.Context(), config)
++	if err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(config.Directory, runtimeBootstrapFilename)
++	if err := os.Remove(path); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(path, []byte("replacement"), 0o440); err != nil {
++		t.Fatal(err)
++	}
++	if err := publication.Remove(t.Context(), config.Directory); err == nil {
++		t.Fatal("cleanup accepted replacement bootstrap inode")
++	}
++	if _, err := os.Stat(path); err != nil {
++		t.Fatalf("cleanup removed replacement bootstrap: %v", err)
++	}
++}
++
+ func TestRuntimeBootstrapPublicationBoundaries(t *testing.T) {
+ 	for _, phase := range []string{"intent-created", "bootstrap-synced", "intent-synced", "renamed", "exposed", "verified"} {
+ 		t.Run(phase, func(t *testing.T) {
+diff --git a/internal/nodeagent/runtime_channel_linux_test.go b/internal/nodeagent/runtime_channel_linux_test.go
+index 175651a..ad75942 100644
+--- a/internal/nodeagent/runtime_channel_linux_test.go
++++ b/internal/nodeagent/runtime_channel_linux_test.go
+@@ -552,6 +552,7 @@ func runtimeChannelNamespaceProbe(t *testing.T) {
+ 	if _, err := connection.Write([]byte("ready")); err != nil {
+ 		t.Fatal(err)
+ 	}
++	identityComparable := runtimechannel.SameLiveProcess(peerFD, peerFD) == nil
+ 	for _, expected := range []string{"original", "delegated"} {
+ 		packet, sender, senderFD, err := runtimechannel.ReadPacket(connection, 16)
+ 		if err != nil {
+@@ -559,9 +560,13 @@ func runtimeChannelNamespaceProbe(t *testing.T) {
+ 		}
+ 		identityErr := runtimechannel.SameLiveProcess(peerFD, senderFD)
+ 		_ = unix.Close(senderFD)
+-		if sender != *peer || string(packet) != expected || (identityErr == nil) != (expected == "original") {
++		wantSame := expected == "original" && identityComparable
++		if sender != *peer || string(packet) != expected || (identityErr == nil) != wantSame {
+ 			t.Fatalf("PID 0 identity comparison failed: %q sender=%+v err=%v", packet, sender, identityErr)
+ 		}
+-		t.Logf("%s sender: peer_pid=0 message_pid=0 uid=0 gid=0 same_live_pidfs_identity=%t", expected, identityErr == nil)
++		if !identityComparable && !errors.Is(identityErr, runtimechannel.ErrPIDFDIdentityUnavailable) {
++			t.Fatalf("legacy invisible pidfd returned an unrelated error: %v", identityErr)
++		}
++		t.Logf("%s sender: peer_pid=0 message_pid=0 uid=0 same_live_identity=%t comparable=%t", expected, identityErr == nil, identityComparable)
+ 	}
+ }
+diff --git a/internal/nodeagent/runtime_container_linux.go b/internal/nodeagent/runtime_container_linux.go
+index 22c1508..e781dee 100644
+--- a/internal/nodeagent/runtime_container_linux.go
++++ b/internal/nodeagent/runtime_container_linux.go
+@@ -9,6 +9,8 @@ import (
+ 	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
+ 	"github.com/google/uuid"
+ 	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
+ 	"google.golang.org/protobuf/proto"
+ 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
+ )
+@@ -112,6 +114,54 @@ func (observer *RuntimeContainerObserver) Inspect(ctx context.Context, target Ru
+ 	}, nil
+ }
+ 
++// VerifyWorkloadAbsent performs the read-only postcondition required after a
++// launcher cleanup. It accepts only the exact targets returned by the current
++// launch and treats an explicit CRI NotFound as absence. A transport error or
++// any remaining matching container/sandbox keeps cleanup unverified.
++func (observer *RuntimeContainerObserver) VerifyWorkloadAbsent(ctx context.Context, targets ...RuntimeContainerTarget) error {
++	if err := contextError(ctx); err != nil {
++		return err
++	}
++	if observer == nil || observer.reader == nil || len(targets) == 0 {
++		return errors.New("runtime container observer is not configured")
++	}
++	seen := make(map[string]RuntimeContainerTarget, len(targets))
++	sandboxID := ""
++	for _, target := range targets {
++		if err := target.Validate(); err != nil {
++			return err
++		}
++		if sandboxID == "" {
++			sandboxID = target.SandboxID
++		} else if target.SandboxID != sandboxID {
++			return errors.New("CRI cleanup targets do not share one sandbox")
++		}
++		seen[target.ContainerID] = target
++	}
++	for _, target := range seen {
++		listed, err := observer.reader.ListContainers(ctx, &runtimev1.ListContainersRequest{Filter: &runtimev1.ContainerFilter{Id: target.ContainerID, PodSandboxId: target.SandboxID}})
++		if err != nil {
++			if status.Code(err) == codes.NotFound {
++				continue
++			}
++			return fmt.Errorf("verify CRI container cleanup: %w", err)
++		}
++		if listed != nil && len(listed.Containers) != 0 {
++			return errors.New("CRI container cleanup postcondition failed")
++		}
++	}
++	// Both targets must share one sandbox. Verify it once, and require an
++	// explicit NotFound response after the launcher has removed it.
++	_, err := observer.reader.PodSandboxStatus(ctx, &runtimev1.PodSandboxStatusRequest{PodSandboxId: sandboxID})
++	if err == nil {
++		return errors.New("CRI sandbox cleanup postcondition failed")
++	}
++	if status.Code(err) != codes.NotFound {
++		return fmt.Errorf("verify CRI sandbox cleanup: %w", err)
++	}
++	return nil
++}
++
+ func (observer *RuntimeContainerObserver) readBoot() (uuid.UUID, error) {
+ 	value, err := observer.bootID()
+ 	if err != nil {
+diff --git a/internal/nodeagent/runtime_container_linux_test.go b/internal/nodeagent/runtime_container_linux_test.go
+index 18ae4a6..e8963a4 100644
+--- a/internal/nodeagent/runtime_container_linux_test.go
++++ b/internal/nodeagent/runtime_container_linux_test.go
+@@ -387,6 +387,56 @@ func TestRuntimeContainerObservationRejectsLostObserverIdentity(t *testing.T) {
+ 	}
+ }
+ 
++func TestRuntimeContainerCleanupPostconditionRequiresCRIAbsence(t *testing.T) {
++	for _, scenario := range []struct {
++		name       string
++		list       *runtimev1.ListContainersResponse
++		sandboxErr error
++		hookErr    error
++		wantErr    bool
++	}{
++		{name: "container-remains", wantErr: true},
++		{name: "sandbox-remains", list: &runtimev1.ListContainersResponse{}, wantErr: true},
++		{name: "sandbox-not-found", list: &runtimev1.ListContainersResponse{}, sandboxErr: status.Error(codes.NotFound, "removed")},
++		{name: "container-not-found", list: &runtimev1.ListContainersResponse{}, hookErr: status.Error(codes.NotFound, "removed"), sandboxErr: status.Error(codes.NotFound, "removed")},
++		{name: "sandbox-transport-error", list: &runtimev1.ListContainersResponse{}, sandboxErr: status.Error(codes.Unavailable, "runtime unavailable"), wantErr: true},
++		{name: "container-list-transport-error", list: &runtimev1.ListContainersResponse{}, hookErr: status.Error(codes.Unavailable, "runtime unavailable"), wantErr: true},
++	} {
++		t.Run(scenario.name, func(t *testing.T) {
++			fixture := newContainerCRIServer()
++			if scenario.list != nil {
++				fixture.listed = scenario.list
++			}
++			fixture.hook = func(method string, _ int) error {
++				switch method {
++				case "ListContainers":
++					return scenario.hookErr
++				case "PodSandboxStatus":
++					return scenario.sandboxErr
++				default:
++					return nil
++				}
++			}
++			observer := dialContainerCRI(t, serveContainerCRI(t, fixture))
++			err := observer.VerifyWorkloadAbsent(t.Context(), fixture.target)
++			if (err != nil) != scenario.wantErr {
++				t.Fatalf("cleanup postcondition mismatch: err=%v wantErr=%v", err, scenario.wantErr)
++			}
++		})
++	}
++}
++
++func TestRuntimeContainerCleanupPostconditionRejectsMixedSandboxes(t *testing.T) {
++	fixture := newContainerCRIServer()
++	observer := dialContainerCRI(t, serveContainerCRI(t, fixture))
++	other := fixture.target
++	other.ContainerID = strings.Repeat("d", 64)
++	other.SandboxID = strings.Repeat("e", 64)
++	if err := observer.VerifyWorkloadAbsent(t.Context(), fixture.target, other); err == nil {
++		t.Fatal("cleanup accepted targets from different sandboxes")
++	}
++}
++
+ func TestRuntimeContainerObserverRejectsUntrustedSocket(t *testing.T) {
+ 	for _, fault := range []string{"wrong-owner", "world-access", "symlink", "regular-file", "relative", "network-address"} {
+ 		t.Run(fault, func(t *testing.T) {
+diff --git a/internal/nodeagent/runtime_namespace_owner_linux.go b/internal/nodeagent/runtime_namespace_owner_linux.go
+index b93ef99..13851ac 100644
+--- a/internal/nodeagent/runtime_namespace_owner_linux.go
++++ b/internal/nodeagent/runtime_namespace_owner_linux.go
+@@ -191,3 +191,18 @@ func (owner *RuntimeNamespaceOwner) Close() error {
+ 	owner.pidfd, owner.exit = nil, nil
+ 	return err
+ }
++
++// Credentials returns the UID/GID observed from the retained original owner.
++// It is configuration evidence for a protected local listener; it does not
++// grant journal or startup authority and cannot reconstruct the pidfd.
++func (owner *RuntimeNamespaceOwner) Credentials() (RuntimeCallerCredentials, error) {
++	if owner == nil {
++		return RuntimeCallerCredentials{}, ErrRuntimeNamespaceOwnerLost
++	}
++	owner.mu.Lock()
++	defer owner.mu.Unlock()
++	if err := owner.checkLocked(); err != nil {
++		return RuntimeCallerCredentials{}, err
++	}
++	return RuntimeCallerCredentials{UID: owner.owner.Process.UID, GID: owner.owner.Process.GID}, nil
++}
+diff --git a/internal/nodeagent/runtime_observer_custody_linux.go b/internal/nodeagent/runtime_observer_custody_linux.go
+index 20b5ce2..aa73362 100644
+--- a/internal/nodeagent/runtime_observer_custody_linux.go
++++ b/internal/nodeagent/runtime_observer_custody_linux.go
+@@ -43,6 +43,9 @@ type RuntimeObserverCustody struct {
+ // the independently retained pidfd of the trusted creator started by this Node,
+ // never a PID/handle supplied by a workload or the incoming offer. The creator
+ // must close its endpoint in the target before any target executable runs.
++// In the production attached mode, the observer may be a ptrace tracer rather
++// than the target's Unix parent; the offered pidfd is still checked for a live
++// tracer relationship and compared with the authenticated caller before grant.
+ //
+ // The original child remains in its initial ptrace stop until Start succeeds.
+ // Once the private channel and observer handle are validated, receive errors
+@@ -53,10 +56,13 @@ func ReceiveRuntimeObserverCustody(ctx context.Context, connection *net.UnixConn
+ }
+ 
+ // ReceiveRuntimeObserverCustodyFromCreator is the launcher composition-root
+-// variant. The observer is a direct child of the root-owned launcher helper,
+-// which is itself a direct child of Node. creatorPIDFD is the launcher's
+-// original kernel handle; its identity is compared with the observer's parent
+-// metadata without reopening a numeric PID.
++// variant. In direct-child mode the observer is a direct child of the
++// root-owned launcher helper, which is itself a direct child of Node. In
++// attached mode the observer is the launcher-created tracer and the Runtime
++// target is required to report that tracer in TracerPid while remaining in a
++// ptrace stop; direct PPid equality is intentionally not required for the
++// target. creatorPIDFD is the launcher's original kernel handle and is always
++// checked without reopening a numeric PID.
+ func ReceiveRuntimeObserverCustodyFromCreator(ctx context.Context, connection *net.UnixConn, originalObserver, creatorPIDFD *os.File) (*RuntimeObserverCustody, error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return nil, err
+@@ -109,7 +115,7 @@ func ReceiveRuntimeObserverCustodyFromCreator(ctx context.Context, connection *n
+ 		if !sameRuntimeObserverFrame(packet, challenge, 'O') {
+ 			return ErrRuntimeObserverCustody
+ 		}
+-		if err := inspectObserverChild(fd, target, peer.Pid); err != nil {
++		if err := inspectObserverChild(fd, target, peer.Pid, creatorPIDFD != nil); err != nil {
+ 			return err
+ 		}
+ 		custody.target = os.NewFile(uintptr(target), "runtime-observer-original-target")
+@@ -407,7 +413,7 @@ func configureRuntimeObserverChannel(connection *net.UnixConn) error {
+ 	return errors.Join(err, configured)
+ }
+ 
+-func inspectObserverChild(observer, target int, observerPID int32) error {
++func inspectObserverChild(observer, target int, observerPID int32, attachedTarget bool) error {
+ 	if err := checkRuntimePIDFD(observer, observerPID); err != nil {
+ 		return err
+ 	}
+@@ -435,7 +441,12 @@ func inspectObserverChild(observer, target int, observerPID int32) error {
+ 			fields[key] = strings.Fields(value)
+ 		}
+ 	}
+-	for key, expected := range map[string]string{"PPid": strconv.Itoa(int(observerPID)), "TracerPid": strconv.Itoa(int(observerPID)), "Tgid": strconv.Itoa(pid), "Threads": "1"} {
++	expectedFields := map[string]string{"TracerPid": strconv.Itoa(int(observerPID)), "Tgid": strconv.Itoa(pid)}
++	if !attachedTarget {
++		expectedFields["PPid"] = strconv.Itoa(int(observerPID))
++		expectedFields["Threads"] = "1"
++	}
++	for key, expected := range expectedFields {
+ 		if len(fields[key]) != 1 || fields[key][0] != expected {
+ 			return ErrRuntimeObserverCustody
+ 		}
+diff --git a/internal/nodeagent/runtime_remote_cli_integration_linux_test.go b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+index bb84e4e..abcbe15 100644
+--- a/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
++++ b/internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+@@ -14,6 +14,7 @@ import (
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
++	"reflect"
+ 	"runtime"
+ 	"slices"
+ 	"testing"
+@@ -370,7 +371,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
+ 				}
+ 				if successful {
+ 					history, err := recovered.InspectReservation(t.Context(), request.JournalID)
+-					if err != nil || history != result {
++					if err != nil || !reflect.DeepEqual(history, result) {
+ 						t.Fatalf("lost recovered CLI receipt: %v", err)
+ 					}
+ 				}
+diff --git a/internal/nodeagent/runtime_startup_authority_linux.go b/internal/nodeagent/runtime_startup_authority_linux.go
+index 468ff80..92a6dcc 100644
+--- a/internal/nodeagent/runtime_startup_authority_linux.go
++++ b/internal/nodeagent/runtime_startup_authority_linux.go
+@@ -9,6 +9,7 @@ import (
+ 
+ 	"github.com/google/uuid"
+ 	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/runtimepolicy"
+ )
+ 
+ var ErrRuntimeStartupAuthority = errors.New("runtime startup authority source is incomplete or untrusted")
+@@ -17,11 +18,13 @@ var ErrRuntimeStartupAuthority = errors.New("runtime startup authority source is
+ // policy after Fleet reservation. The digest is usable only with the exact
+ // operation and request it names, and only during its bounded validity window.
+ type RuntimeStartupAuthorizationEvidence struct {
+-	OperationID    uuid.UUID
+-	RequestDigest  [sha256.Size]byte
+-	EvidenceDigest [sha256.Size]byte
+-	IssuedAt       time.Time
+-	ExpiresAt      time.Time
++	OperationID       uuid.UUID
++	JournalID         uuid.UUID
++	RequestDigest     [sha256.Size]byte
++	ReservationDigest [sha256.Size]byte
++	EvidenceDigest    [sha256.Size]byte
++	IssuedAt          time.Time
++	ExpiresAt         time.Time
+ }
+ 
+ // RuntimeStartupAuthorizationPolicy is the production policy/evidence seam.
+@@ -32,7 +35,11 @@ type RuntimeStartupAuthorizationPolicy interface {
+ }
+ 
+ func validateRuntimeStartupAuthorizationEvidence(evidence RuntimeStartupAuthorizationEvidence, record RuntimeStartupReservationRecord, now time.Time) error {
+-	if evidence.OperationID == uuid.Nil || evidence.OperationID != record.OperationID || evidence.RequestDigest != record.RequestDigest || evidence.EvidenceDigest == ([sha256.Size]byte{}) || evidence.IssuedAt.IsZero() || evidence.ExpiresAt.IsZero() || evidence.IssuedAt.Location() != time.UTC || evidence.ExpiresAt.Location() != time.UTC || !evidence.ExpiresAt.After(evidence.IssuedAt) || !evidence.ExpiresAt.After(now) || evidence.ExpiresAt.Sub(now) > 5*time.Minute || evidence.IssuedAt.After(now.Add(time.Second)) {
++	reservationDigest, err := runtimepolicy.ReservationBindingDigest(record.OperationID, record.JournalID, record.RequestDigest, record.ReservedAt.UTC())
++	if err != nil {
++		return ErrRuntimeStartupAuthority
++	}
++	if evidence.OperationID == uuid.Nil || evidence.OperationID != record.OperationID || evidence.JournalID == uuid.Nil || evidence.JournalID != record.JournalID || evidence.RequestDigest != record.RequestDigest || evidence.ReservationDigest != reservationDigest || evidence.EvidenceDigest == ([sha256.Size]byte{}) || evidence.IssuedAt.IsZero() || evidence.ExpiresAt.IsZero() || evidence.IssuedAt.Location() != time.UTC || evidence.ExpiresAt.Location() != time.UTC || !evidence.ExpiresAt.After(evidence.IssuedAt) || !evidence.ExpiresAt.After(now) || evidence.ExpiresAt.Sub(now) > 5*time.Minute || evidence.IssuedAt.After(now.Add(time.Second)) {
+ 		return ErrRuntimeStartupAuthority
+ 	}
+ 	return nil
+@@ -43,15 +50,19 @@ func validateRuntimeStartupAuthorizationEvidence(evidence RuntimeStartupAuthoriz
+ // no defaults, history fallback or mock Permit path. A value is single-use in
+ // practice because Prepare consumes the ledger's reservation opportunity.
+ type RuntimeStartupAuthority struct {
+-	Ledger              *RuntimeStartupLedger
+-	Plan                *RuntimeLaunchPlan
+-	Pods                RuntimeLaunchPodReader
+-	Observer            *RuntimeContainerObserver
+-	Custody             *RuntimeObserverCustody
+-	Journal             *modelruntime.ExecutionJournalOwner
+-	WorkerOwner         *RuntimeNamespaceOwner
+-	Registry            RuntimeStartupRegistry
+-	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
++	Ledger                       *RuntimeStartupLedger
++	Plan                         *RuntimeLaunchPlan
++	Pods                         RuntimeLaunchPodReader
++	Observer                     *RuntimeContainerObserver
++	Custody                      *RuntimeObserverCustody
++	Journal                      *modelruntime.ExecutionJournalOwner
++	WorkerOwner                  *RuntimeNamespaceOwner
++	RuntimeOwner                 *RuntimeNamespaceOwner
++	RuntimeJournalEndpoint       *JournalEndpoint
++	RuntimePublication           *RuntimeStartupPublicationConfig
++	Registry                     RuntimeStartupRegistry
++	AuthorizationPolicy          RuntimeStartupAuthorizationPolicy
++	PolicyAuthorizationPublisher func(context.Context, []byte) error
+ 	// AuthorizationHash is retained for source compatibility only. It is
+ 	// rejected by validation and cannot authorize a startup by itself.
+ 	AuthorizationHash [sha256.Size]byte
+@@ -62,15 +73,19 @@ type RuntimeStartupAuthority struct {
+ }
+ 
+ type RuntimeStartupAuthorityConfig struct {
+-	Ledger              *RuntimeStartupLedger
+-	Plan                *RuntimeLaunchPlan
+-	Pods                RuntimeLaunchPodReader
+-	Observer            *RuntimeContainerObserver
+-	Custody             *RuntimeObserverCustody
+-	Journal             *modelruntime.ExecutionJournalOwner
+-	WorkerOwner         *RuntimeNamespaceOwner
+-	Registry            RuntimeStartupRegistry
+-	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
++	Ledger                       *RuntimeStartupLedger
++	Plan                         *RuntimeLaunchPlan
++	Pods                         RuntimeLaunchPodReader
++	Observer                     *RuntimeContainerObserver
++	Custody                      *RuntimeObserverCustody
++	Journal                      *modelruntime.ExecutionJournalOwner
++	WorkerOwner                  *RuntimeNamespaceOwner
++	RuntimeOwner                 *RuntimeNamespaceOwner
++	RuntimeJournalEndpoint       *JournalEndpoint
++	RuntimePublication           *RuntimeStartupPublicationConfig
++	Registry                     RuntimeStartupRegistry
++	AuthorizationPolicy          RuntimeStartupAuthorizationPolicy
++	PolicyAuthorizationPublisher func(context.Context, []byte) error
+ 	// AuthorizationHash is deprecated; use AuthorizationPolicy.
+ 	AuthorizationHash [sha256.Size]byte
+ 	Credentials       []RuntimeCallerCredentials
+@@ -86,10 +101,14 @@ func NewRuntimeStartupAuthority(config RuntimeStartupAuthorityConfig) (RuntimeSt
+ 	authority := RuntimeStartupAuthority{
+ 		Ledger: config.Ledger, Plan: config.Plan, Pods: config.Pods, Observer: config.Observer,
+ 		Custody: config.Custody, Journal: config.Journal, WorkerOwner: config.WorkerOwner,
+-		Registry: config.Registry, AuthorizationPolicy: config.AuthorizationPolicy,
+-		AuthorizationHash: config.AuthorizationHash,
+-		Credentials:       append([]RuntimeCallerCredentials(nil), config.Credentials...),
+-		ObserverInterval:  config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
++		RuntimeOwner:           config.RuntimeOwner,
++		RuntimeJournalEndpoint: config.RuntimeJournalEndpoint,
++		RuntimePublication:     config.RuntimePublication,
++		Registry:               config.Registry, AuthorizationPolicy: config.AuthorizationPolicy,
++		PolicyAuthorizationPublisher: config.PolicyAuthorizationPublisher,
++		AuthorizationHash:            config.AuthorizationHash,
++		Credentials:                  append([]RuntimeCallerCredentials(nil), config.Credentials...),
++		ObserverInterval:             config.ObserverInterval, ObserverTimeout: config.ObserverTimeout,
+ 		ExchangeTimeout: config.ExchangeTimeout,
+ 	}
+ 	if err := authority.validateSources(); err != nil {
+@@ -109,7 +128,7 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
+ }
+ 
+ func (authority RuntimeStartupAuthority) validateSources() error {
+-	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil || authority.AuthorizationHash != ([sha256.Size]byte{}) {
++	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil || authority.PolicyAuthorizationPublisher == nil || authority.AuthorizationHash != ([sha256.Size]byte{}) {
+ 		return ErrRuntimeStartupAuthority
+ 	}
+ 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
+@@ -151,11 +170,15 @@ func (authority RuntimeStartupAuthority) Prepare(ctx context.Context, caller *Ru
+ 		Reservation: RuntimeStartupReservationConfig{
+ 			Plan: authority.Plan, Pods: authority.Pods, Observer: authority.Observer,
+ 			Caller: caller, Journal: authority.Journal, Registry: authority.Registry,
++			PolicyAuthorizationPublisher: authority.PolicyAuthorizationPublisher,
++			RuntimeOwner:                 authority.RuntimeOwner,
++			publication:                  authority.RuntimePublication,
+ 		},
+ 		WorkerOwner: authority.WorkerOwner, Observer: authority.Custody,
+ 		AuthorizationPolicy: authority.AuthorizationPolicy, Credentials: authority.Credentials,
+ 		ObserverInterval: authority.ObserverInterval, ObserverTimeout: authority.ObserverTimeout,
+ 		ExchangeTimeout: authority.ExchangeTimeout,
++		JournalEndpoint: authority.RuntimeJournalEndpoint,
+ 	})
+ 	if err != nil {
+ 		return nil, record, err
+diff --git a/internal/nodeagent/runtime_startup_authority_linux_test.go b/internal/nodeagent/runtime_startup_authority_linux_test.go
+index d8053e6..0332ab9 100644
+--- a/internal/nodeagent/runtime_startup_authority_linux_test.go
++++ b/internal/nodeagent/runtime_startup_authority_linux_test.go
+@@ -8,22 +8,25 @@ import (
+ 
+ 	"github.com/google/uuid"
+ 	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/runtimepolicy"
+ )
+ 
+ type startupAuthorizationPolicyFixture struct{}
+ 
+ func (startupAuthorizationPolicyFixture) IssueRuntimeStartupAuthorization(_ context.Context, record RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
++	reservationDigest, _ := runtimepolicy.ReservationBindingDigest(record.OperationID, record.JournalID, record.RequestDigest, record.ReservedAt)
+ 	return RuntimeStartupAuthorizationEvidence{
+-		OperationID: record.OperationID, RequestDigest: record.RequestDigest,
+-		EvidenceDigest: sha256.Sum256([]byte("fixture policy evidence")),
+-		IssuedAt:       time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
++		OperationID: record.OperationID, JournalID: record.JournalID, RequestDigest: record.RequestDigest,
++		ReservationDigest: reservationDigest,
++		EvidenceDigest:    sha256.Sum256([]byte("fixture policy evidence")),
++		IssuedAt:          time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+ 	}, nil
+ }
+ 
+ var _ RuntimeStartupAuthorizationPolicy = startupAuthorizationPolicyFixture{}
+ 
+ func TestRuntimeStartupAuthorizationEvidenceIsOperationBound(t *testing.T) {
+-	record := RuntimeStartupReservationRecord{OperationID: uuid.New(), RequestDigest: sha256.Sum256([]byte("request"))}
++	record := RuntimeStartupReservationRecord{OperationID: uuid.New(), JournalID: uuid.New(), RequestDigest: sha256.Sum256([]byte("request")), ReservedAt: time.Now().UTC()}
+ 	evidence, err := (startupAuthorizationPolicyFixture{}).IssueRuntimeStartupAuthorization(t.Context(), record)
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -53,8 +56,14 @@ func TestRuntimeStartupAuthorityRejectsIncompleteSources(t *testing.T) {
+ 	complete := RuntimeStartupAuthority{
+ 		Credentials:      []RuntimeCallerCredentials{{UID: 10001, GID: 10001}},
+ 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
+-		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
++		AuthorizationPolicy:          startupAuthorizationPolicyFixture{},
++		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
+ 	}
++	complete.PolicyAuthorizationPublisher = nil
++	if err := complete.validateSources(); err == nil {
++		t.Fatal("authority without policy authorization publisher accepted")
++	}
++	complete.PolicyAuthorizationPublisher = func(context.Context, []byte) error { return nil }
+ 	if _, _, err := complete.Prepare(context.Background(), &RuntimeCaller{}); err == nil {
+ 		t.Fatal("authority with missing sources accepted")
+ 	}
+@@ -76,7 +85,8 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
+ 		Registry:         &startupReservationRegistryFixture{},
+ 		Credentials:      []RuntimeCallerCredentials{{UID: 10002, GID: 10002}},
+ 		ObserverInterval: time.Millisecond, ObserverTimeout: time.Second, ExchangeTimeout: time.Second,
+-		AuthorizationPolicy: startupAuthorizationPolicyFixture{},
++		AuthorizationPolicy:          startupAuthorizationPolicyFixture{},
++		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
+ 	}
+ 	if err := authority.validateSources(); err == nil {
+ 		t.Fatal("credentials unrelated to verified launch plan accepted")
+diff --git a/internal/nodeagent/runtime_startup_fleet_linux_test.go b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+index 1fda6e8..952eab2 100644
+--- a/internal/nodeagent/runtime_startup_fleet_linux_test.go
++++ b/internal/nodeagent/runtime_startup_fleet_linux_test.go
+@@ -157,7 +157,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			t.Fatal(err)
+ 		}
+ 		callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
+-		connection, _, _ := runtimeCallerConfiguredConnection(t, "protected-hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
++		connection, _, custody := observedRuntimeCallerConnection(t, wire, callerCredentials)
+ 		caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
+ 		if input.MissingPtrace {
+ 			if err == nil || caller != nil {
+@@ -184,9 +184,32 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 		}
+ 		defer func() { _ = ledger.Close() }()
+ 		config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
+-		result, err := ledger.ReserveRemote(ctx, config)
++		var result RuntimeStartupReservationRecord
++		var orchestration *RuntimeStartupOrchestration
++		var peers journalEndpointFixture
+ 		if input.LoseResponse {
+-			if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
++			result, err = ledger.ReserveRemote(ctx, config)
++		} else {
++			peers = newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++			authority, authorityErr := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++				Ledger: ledger, Plan: plan, Pods: pods, Observer: observer, Custody: custody,
++				Journal: owner, WorkerOwner: peers.worker.owner, Registry: registry,
++				AuthorizationPolicy:          compositionAuthorizationPolicy{},
++				PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++				Credentials:                  []RuntimeCallerCredentials{callerCredentials}, ObserverInterval: 50 * time.Millisecond,
++				ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++			})
++			if authorityErr != nil {
++				t.Fatal(authorityErr)
++			}
++			orchestration, result, err = authority.Prepare(ctx, caller)
++			if err == nil && orchestration == nil {
++				t.Fatal("authority returned no orchestration")
++			}
++			defer func() { _ = orchestration.Close() }()
++		}
++		if input.LoseResponse {
++			if status.Code(err) != codes.Unavailable || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) {
+ 				t.Fatalf("lost response became result: %v", err)
+ 			}
+ 		} else if err != nil || result.OperationID == uuid.Nil {
+@@ -208,13 +231,14 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			t.Fatalf("database history differs from original Node record: %v", err)
+ 		}
+ 		// The issuer is explicitly a trusted-Node fixture, not production policy.
+-		// Normal mode now exercises actual consumption, activation and Worker RPC.
++		// Normal mode now exercises the Node composition root, actual Permit
++		// consumption, activation and Worker RPC.
+ 		authorizationDigest := sha256.Sum256([]byte("fixture startup authorization evidence; no permit"))
+ 		var attempt RuntimeStartupGrantAttempt
+ 		var activated, revoked bool
+ 		var floorAfter int64
++		var compositionReceipt *RuntimeStartupCompositionReceipt
+ 		var activationEndpoint *JournalEndpoint
+-		var peers journalEndpointFixture
+ 		var floorCommand modelruntime.JournalCommand
+ 		identity := modelruntime.ExecutionJournalIdentity{JournalID: journal.JournalID, Scope: journal.Scope, Storage: journal.Storage}
+ 		if input.LoseResponse {
+@@ -224,10 +248,11 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 				t.Fatalf("remote history replaced missing local receipt: %v", attemptErr)
+ 			}
+ 		} else {
+-			peers = newJournalEndpointOwnerFixture(t, 0, nil, true, true)
+-			activationEndpoint, err = NewReadOnlyJournalEndpoint(ctx, owner, ledger.owners[journal.JournalID], peers.worker.owner)
+-			if err != nil {
+-				t.Fatal(err)
++			// Prepare created the endpoint and grant; use that exact endpoint for
++			// the Worker journal exchange below.
++			activationEndpoint = orchestration.coordinator.grant.endpoint
++			if activationEndpoint == nil {
++				t.Fatal("composition did not retain activation endpoint")
+ 			}
+ 			defer func() { _ = activationEndpoint.Close() }()
+ 			signer, err := stageauthority.NewSigner(map[string][]byte{"authority": make([]byte, 32)})
+@@ -239,13 +264,30 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error == "" {
+ 				t.Fatal("pregrant Worker wrote journal")
+ 			}
+-			grant, err := IssueReservedJournalWriteGrant(ctx, activationEndpoint, ledger.owners[journal.JournalID], peers.worker.owner, record.OperationID, authorizationDigest, time.Minute)
+-			if err != nil {
+-				t.Fatal(err)
++			// ServeCaller performs the same one-shot socket exchange used by the
++			// command-level Node path: parse the Runtime payload, consume the
++			// grant and return the signed decision over the held connection.
++			if serveErr := orchestration.ServeCaller(ctx); serveErr != nil {
++				t.Fatalf("ModelRuntime backend Permit exchange failed: %v", serveErr)
++			}
++			receipt, receiptErr := orchestration.CompositionReceipt(ctx)
++			if receiptErr != nil {
++				t.Fatal(receiptErr)
++			}
++			attempt, attemptErr := ledger.InspectJournalGrantAttempt(ctx, journal.JournalID)
++			if attemptErr != nil {
++				t.Fatal(attemptErr)
++			}
++			if err := receipt.VerifyBinding(result.OperationID, result.JournalID, result.RequestDigest, attempt.ReservationDigest, attempt.AuthorizationDigest); err != nil {
++				t.Fatalf("composition receipt binding: %v", err)
+ 			}
+-			attempt, err = ledger.ActivateReservedJournalWriteGrant(ctx, plan, grant)
++			if !receipt.Permit || receipt.Outcome != "permitted" {
++				t.Fatalf("composition receipt did not record Permit: %+v", receipt)
++			}
++			compositionReceipt = &receipt
++			attempt, err = ledger.InspectJournalGrantAttempt(ctx, journal.JournalID)
+ 			if err != nil {
+-				t.Fatalf("activate after real Fleet reservation: %v", err)
++				t.Fatal(err)
+ 			}
+ 			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error != "" {
+ 				t.Fatalf("postgrant Worker write: %+v", reply)
+@@ -265,6 +307,13 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			}
+ 			floorAfter = current.Floor
+ 		}
++		if orchestration != nil {
++			if err := orchestration.Close(); err != nil {
++				t.Fatal(err)
++			}
++			orchestration = nil
++			revoked = activated
++		}
+ 		if err := ledger.Close(); err != nil {
+ 			t.Fatal(err)
+ 		}
+@@ -296,7 +345,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			if !errors.Is(err, os.ErrNotExist) {
+ 				t.Fatalf("lost response created receipt: %v", err)
+ 			}
+-		} else if err != nil || receipt != result {
++		} else if err != nil || !reflect.DeepEqual(receipt, result) {
+ 			t.Fatalf("lost local receipt: %v", err)
+ 		}
+ 		grantHistory, grantErr := recovered.InspectJournalGrantAttempt(ctx, journal.JournalID)
+@@ -324,9 +373,10 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
+ 			HasReceipt          bool
+ 			WorkerJournal       stageworkeragent.AssignmentJournalStatus
+ 			GrantAttempt        *RuntimeStartupGrantAttempt
++			CompositionReceipt  *RuntimeStartupCompositionReceipt
+ 			Activated, Revoked  bool
+ 			PostActivationFloor int64
+-		}{expected, recordWire, !input.LoseResponse, worker, grantReport, activated, revoked, floorAfter})
++		}{expected, recordWire, !input.LoseResponse, worker, grantReport, compositionReceipt, activated, revoked, floorAfter})
+ 		if err != nil {
+ 			t.Fatal(err)
+ 		}
+diff --git a/internal/nodeagent/runtime_startup_image_integration_linux_test.go b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+index 7b39ebd..4b022e1 100644
+--- a/internal/nodeagent/runtime_startup_image_integration_linux_test.go
++++ b/internal/nodeagent/runtime_startup_image_integration_linux_test.go
+@@ -9,6 +9,7 @@ import (
+ 	"errors"
+ 	"os"
+ 	"path/filepath"
++	"reflect"
+ 	"strings"
+ 	"testing"
+ 	"time"
+@@ -293,7 +294,7 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 						t.Fatalf("returned history mutated live association: %v", err)
+ 					}
+ 				}
+-			} else if err == nil || result != (RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
++			} else if err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
+ 				t.Fatalf("failed observation returned a receipt: %+v %v", result, err)
+ 			}
+ 			if wantIntent != 0 {
+@@ -310,7 +311,7 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
+ 				defer func() { _ = recovered.Close() }()
+ 				history, err := recovered.InspectReservation(t.Context(), request.JournalID)
+ 				if fault == "none" || fault == "publication-valid" {
+-					if err != nil || history != result {
++					if err != nil || !reflect.DeepEqual(history, result) {
+ 						t.Fatalf("recovery lost receipt: %v", err)
+ 					}
+ 					if publication != nil && recovered.starts[request.JournalID].Remote.Bootstrap.Publication != published.Record() {
+diff --git a/internal/nodeagent/runtime_startup_launcher_linux.go b/internal/nodeagent/runtime_startup_launcher_linux.go
+index 7d258b3..db5fc80 100644
+--- a/internal/nodeagent/runtime_startup_launcher_linux.go
++++ b/internal/nodeagent/runtime_startup_launcher_linux.go
+@@ -10,6 +10,7 @@ import (
+ // RuntimeStartupLauncher. All process handles must originate from the current
+ // launch invocation. The Node owns the descriptors after successful assembly.
+ type RuntimeStartupLaunch struct {
++	RuntimePIDFD     *os.File
+ 	WorkerOwnerPIDFD *os.File
+ 	ObserverPIDFD    *os.File
+ 	// LauncherPIDFD is the original pidfd of the root-owned helper process.
+diff --git a/internal/nodeagent/runtime_startup_ledger_linux.go b/internal/nodeagent/runtime_startup_ledger_linux.go
+index bb2651f..2376f4c 100644
+--- a/internal/nodeagent/runtime_startup_ledger_linux.go
++++ b/internal/nodeagent/runtime_startup_ledger_linux.go
+@@ -202,10 +202,10 @@ func OpenRuntimeStartupLedger(ctx context.Context, directory, nodeIdentity strin
+ // Exact replay and changed callers both reject. A returned record is evidence,
+ // never a token that can be exchanged for permission by this API.
+ func (ledger *RuntimeStartupLedger) Record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller) (RuntimeStartupRecord, error) {
+-	return ledger.record(ctx, plan, pods, observer, caller, nil)
++	return ledger.record(ctx, plan, pods, observer, caller, nil, nil)
+ }
+ 
+-func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller, remote *RuntimeStartupRemoteIntent) (RuntimeStartupRecord, error) {
++func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLaunchPlan, pods RuntimeLaunchPodReader, observer *RuntimeContainerObserver, caller *RuntimeCaller, remote *RuntimeStartupRemoteIntent, runtimeOwner *RuntimeNamespaceOwner) (RuntimeStartupRecord, error) {
+ 	if err := contextError(ctx); err != nil {
+ 		return RuntimeStartupRecord{}, err
+ 	}
+@@ -240,13 +240,16 @@ func (ledger *RuntimeStartupLedger) record(ctx context.Context, plan *RuntimeLau
+ 	if err != nil {
+ 		return RuntimeStartupRecord{}, err
+ 	}
+-	owner, err := observer.RetainNamespaceOwner(ctx, observation.Caller.Container.Target, caller)
+-	if err != nil {
+-		return RuntimeStartupRecord{}, err
++	owner := runtimeOwner
++	if owner == nil {
++		owner, err = observer.RetainNamespaceOwner(ctx, observation.Caller.Container.Target, caller)
++		if err != nil {
++			return RuntimeStartupRecord{}, err
++		}
+ 	}
+ 	retained := false
+ 	defer func() {
+-		if !retained {
++		if !retained && runtimeOwner == nil {
+ 			_ = owner.Close()
+ 		}
+ 	}()
+diff --git a/internal/nodeagent/runtime_startup_orchestration_linux.go b/internal/nodeagent/runtime_startup_orchestration_linux.go
+index acf1c0b..4459c24 100644
+--- a/internal/nodeagent/runtime_startup_orchestration_linux.go
++++ b/internal/nodeagent/runtime_startup_orchestration_linux.go
+@@ -63,6 +63,17 @@ func (orchestration *RuntimeStartupOrchestration) ServeCaller(ctx context.Contex
+ 	return orchestration.server.HandleCaller(ctx, orchestration.caller)
+ }
+ 
++// ExpectedBackendStartupRequest returns the immutable request captured during
++// composition. It is a read-only evidence source for command-level receipt
++// binding; it does not grant permission or expose any mutable coordinator
++// state.
++func (orchestration *RuntimeStartupOrchestration) ExpectedBackendStartupRequest() (modelruntime.BackendStartupRequest, error) {
++	if orchestration == nil || orchestration.coordinator == nil {
++		return modelruntime.BackendStartupRequest{}, ErrRuntimeStartupAuthority
++	}
++	return orchestration.coordinator.expected, nil
++}
++
+ // Wait keeps the Node-owned startup composition alive after the one-shot
+ // startup reply. A successful Permit starts a monitored lifetime; returning
+ // from ServeCaller must not close custody or the runtime immediately.
+diff --git a/internal/nodeagent/runtime_startup_orchestration_linux_test.go b/internal/nodeagent/runtime_startup_orchestration_linux_test.go
+index 24f9bdb..2ac2f27 100644
+--- a/internal/nodeagent/runtime_startup_orchestration_linux_test.go
++++ b/internal/nodeagent/runtime_startup_orchestration_linux_test.go
+@@ -24,6 +24,27 @@ func TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput(t *testing.T) {
+ 	}
+ }
+ 
++func TestRuntimeStartupOrchestrationExposesImmutableExpectedRequest(t *testing.T) {
++	if request, err := (*RuntimeStartupOrchestration)(nil).ExpectedBackendStartupRequest(); request != (modelruntime.BackendStartupRequest{}) || !errors.Is(err, ErrRuntimeStartupAuthority) {
++		t.Fatalf("nil orchestration request=%+v err=%v", request, err)
++	}
++	f, custody := observedActivationFixture(t)
++	expected := f.ledger.starts[f.identity.JournalID].Request
++	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
++		Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
++		Credentials:      []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
++		ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer orchestration.Close()
++	got, err := orchestration.ExpectedBackendStartupRequest()
++	if err != nil || got != expected {
++		t.Fatalf("expected request changed at orchestration boundary: got=%+v want=%+v err=%v", got, expected, err)
++	}
++}
++
+ func TestRuntimeStartupOrchestrationShutdownDuringPersistence(t *testing.T) {
+ 	f, custody := observedActivationFixture(t)
+ 	expected := f.ledger.starts[f.identity.JournalID].Request
+diff --git a/internal/nodeagent/runtime_startup_prepare_linux.go b/internal/nodeagent/runtime_startup_prepare_linux.go
+index a6a844f..e044b1a 100644
+--- a/internal/nodeagent/runtime_startup_prepare_linux.go
++++ b/internal/nodeagent/runtime_startup_prepare_linux.go
+@@ -22,12 +22,24 @@ type RemoteStartupOrchestrationConfig struct {
+ 	ObserverInterval    time.Duration
+ 	ObserverTimeout     time.Duration
+ 	ExchangeTimeout     time.Duration
++	JournalEndpoint     *JournalEndpoint
+ }
+ 
+ func validateRemoteStartupOrchestrationConfig(config RemoteStartupOrchestrationConfig) error {
+ 	if config.Reservation.Plan == nil || config.Reservation.Journal == nil || config.Reservation.Caller == nil || config.Reservation.Observer == nil || config.Reservation.Registry == nil || config.WorkerOwner == nil || config.Observer == nil || config.AuthorizationPolicy == nil {
+ 		return ErrRuntimeStartupLedger
+ 	}
++	if config.JournalEndpoint != nil {
++		if config.Reservation.RuntimeOwner == nil {
++			return ErrRuntimeStartupLedger
++		}
++		config.JournalEndpoint.mu.Lock()
++		bound := config.JournalEndpoint.owner == config.Reservation.Journal && config.JournalEndpoint.runtime != nil && config.JournalEndpoint.worker != nil && config.Reservation.RuntimeOwner.pidfd != nil && config.WorkerOwner.pidfd != nil && runtimechannel.SameLiveProcess(int(config.JournalEndpoint.runtime.Fd()), int(config.Reservation.RuntimeOwner.pidfd.Fd())) == nil && runtimechannel.SameLiveProcess(int(config.JournalEndpoint.worker.Fd()), int(config.WorkerOwner.pidfd.Fd())) == nil
++		config.JournalEndpoint.mu.Unlock()
++		if !bound {
++			return ErrRuntimeStartupLedger
++		}
++	}
+ 	if len(config.Credentials) == 0 || config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout || config.ObserverInterval <= 0 || config.ObserverInterval > time.Second || config.ObserverTimeout <= 0 || config.ObserverTimeout > 5*time.Second {
+ 		return ErrRuntimeStartupLedger
+ 	}
+@@ -51,11 +63,11 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
+ 	if err := validateRemoteStartupOrchestrationConfig(config); err != nil {
+ 		return nil, RuntimeStartupReservationRecord{}, err
+ 	}
+-	var endpoint *JournalEndpoint
++	endpoint := config.JournalEndpoint
+ 	transferred := false
+ 	defer func() {
+ 		if !transferred {
+-			if endpoint != nil {
++			if endpoint != nil && config.JournalEndpoint == nil {
+ 				_ = endpoint.Close()
+ 			}
+ 			_ = config.Observer.Close()
+@@ -80,9 +92,11 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
+ 	if runtimeOwner == nil {
+ 		return nil, record, ErrRuntimeNamespaceOwnerLost
+ 	}
+-	endpoint, err = NewReadOnlyJournalEndpoint(ctx, config.Reservation.Journal, runtimeOwner, config.WorkerOwner)
+-	if err != nil {
+-		return nil, record, err
++	if endpoint == nil {
++		endpoint, err = NewReadOnlyJournalEndpoint(ctx, config.Reservation.Journal, runtimeOwner, config.WorkerOwner)
++		if err != nil {
++			return nil, record, err
++		}
+ 	}
+ 	grant, err := IssueReservedJournalWriteGrant(ctx, endpoint, runtimeOwner, config.WorkerOwner, record.OperationID, authorizationDigest, time.Minute)
+ 	if err != nil {
+diff --git a/internal/nodeagent/runtime_startup_publication_linux.go b/internal/nodeagent/runtime_startup_publication_linux.go
+index 8dfad5e..151d675 100644
+--- a/internal/nodeagent/runtime_startup_publication_linux.go
++++ b/internal/nodeagent/runtime_startup_publication_linux.go
+@@ -90,7 +90,7 @@ func matchStartupBootstrapConsumption(ctx context.Context, config RuntimeStartup
+ 	// Rebuild from the actual plan/owner, including its actual public verifier
+ 	// keys. Reusing a same-shaped publication for another journal is rejected.
+ 	wire, err := buildRuntimeBootstrap(ctx, RuntimeBootstrapPublicationConfig{Plan: config.Plan, Journal: config.Journal, RegistryKeys: bootstrap.RegistryKeys,
+-		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket,
++		JournalSocket: bootstrap.JournalSocket, StartupSocket: bootstrap.StartupSocket, RuntimeSocket: bootstrap.RuntimeSocket, PIDFDBrokerSocket: bootstrap.PIDFDBrokerSocket,
+ 		JournalTimeout: bootstrap.JournalTimeout, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout})
+ 	if err != nil || !bytes.Equal(wire, publication.encoded) {
+ 		return modelruntime.BackendStartupRequest{}, errors.Join(ErrRuntimeStartupPublication, err)
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux.go b/internal/nodeagent/runtime_startup_reservation_linux.go
+index 7319cbf..0399723 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux.go
+@@ -5,6 +5,7 @@ import (
+ 	"crypto/sha256"
+ 	"encoding/json"
+ 	"errors"
++	"fmt"
+ 	"os"
+ 	"reflect"
+ 	"slices"
+@@ -28,13 +29,17 @@ type RuntimeStartupRegistry interface {
+ }
+ 
+ type RuntimeStartupReservationConfig struct {
+-	Plan        *RuntimeLaunchPlan
+-	Pods        RuntimeLaunchPodReader
+-	Observer    *RuntimeContainerObserver
+-	Caller      *RuntimeCaller
+-	Journal     *modelruntime.ExecutionJournalOwner
+-	Registry    RuntimeStartupRegistry
+-	publication *RuntimeStartupPublicationConfig
++	Plan                         *RuntimeLaunchPlan
++	Pods                         RuntimeLaunchPodReader
++	Observer                     *RuntimeContainerObserver
++	Caller                       *RuntimeCaller
++	Journal                      *modelruntime.ExecutionJournalOwner
++	Registry                     RuntimeStartupRegistry
++	PolicyAuthorizationPublisher func(context.Context, []byte) error
++	// RuntimeOwner is optionally retained before the Runtime sends its startup
++	// handshake. The ledger then reuses this exact pidfd for the durable record.
++	RuntimeOwner *RuntimeNamespaceOwner
++	publication  *RuntimeStartupPublicationConfig
+ }
+ 
+ // RuntimeStartupRemoteIntent binds Node's held storage and actual journal
+@@ -52,11 +57,12 @@ type RuntimeStartupRemoteIntent struct {
+ // RuntimeStartupReservationRecord records a committed Fleet reservation. It
+ // has no Fresh or Permit field and is never sufficient for backend startup.
+ type RuntimeStartupReservationRecord struct {
+-	OperationID   uuid.UUID         `json:"operation_id"`
+-	JournalID     uuid.UUID         `json:"journal_id"`
+-	RequestDigest [sha256.Size]byte `json:"request_digest"`
+-	ReservedAt    time.Time         `json:"reserved_at"`
+-	RecordedAt    time.Time         `json:"recorded_at"`
++	OperationID         uuid.UUID         `json:"operation_id"`
++	JournalID           uuid.UUID         `json:"journal_id"`
++	RequestDigest       [sha256.Size]byte `json:"request_digest"`
++	ReservedAt          time.Time         `json:"reserved_at"`
++	RecordedAt          time.Time         `json:"recorded_at"`
++	PolicyAuthorization []byte            `json:"policy_authorization,omitempty"`
+ }
+ 
+ // ReserveRemote records the exact owner/intent before calling Fleet once, then
+@@ -90,7 +96,7 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
+ 		copy := *image.first.RemoteCLI
+ 		remote.RemoteCLI = &copy
+ 	}
+-	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote)
++	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote, config.RuntimeOwner)
+ 	if err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+@@ -124,6 +130,14 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
+ 	if !reservation.Fresh || reservation.ReservedAt.IsZero() || !reflect.DeepEqual(reservation.RuntimeStartupRequest, request) {
+ 		return RuntimeStartupReservationRecord{}, ErrRuntimeStartupRecorded
+ 	}
++	if config.PolicyAuthorizationPublisher != nil {
++		if len(reservation.PolicyAuthorization) == 0 {
++			return RuntimeStartupReservationRecord{}, errors.New("Fleet reservation did not include policy authorization")
++		}
++		if err := config.PolicyAuthorizationPublisher(ctx, reservation.PolicyAuthorization); err != nil {
++			return RuntimeStartupReservationRecord{}, fmt.Errorf("publish Fleet policy authorization: %w", err)
++		}
++	}
+ 	if err := image.check(ctx, config, record); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+@@ -131,7 +145,7 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+ 	result := RuntimeStartupReservationRecord{OperationID: record.OperationID, JournalID: record.Request.JournalID,
+-		RequestDigest: sha256.Sum256(wire), ReservedAt: reservation.ReservedAt.UTC(), RecordedAt: time.Now().UTC()}
++		RequestDigest: sha256.Sum256(wire), ReservedAt: reservation.ReservedAt.UTC(), RecordedAt: time.Now().UTC(), PolicyAuthorization: slices.Clone(reservation.PolicyAuthorization)}
+ 	if err := ledger.append(ctx, runtimeStartupEntry{Reservation: &result}); err != nil {
+ 		return RuntimeStartupReservationRecord{}, err
+ 	}
+diff --git a/internal/nodeagent/runtime_startup_reservation_linux_test.go b/internal/nodeagent/runtime_startup_reservation_linux_test.go
+index d7f42df..6f6a7a0 100644
+--- a/internal/nodeagent/runtime_startup_reservation_linux_test.go
++++ b/internal/nodeagent/runtime_startup_reservation_linux_test.go
+@@ -344,7 +344,7 @@ func TestRuntimeStartupReservationLinksOriginalOwnerAndNodeJournal(t *testing.T)
+ 		t.Fatal(err)
+ 	}
+ 	t.Cleanup(func() { _ = recovered.Close() })
+-	if history, err := recovered.InspectReservation(t.Context(), f.request.JournalID); err != nil || history != result {
++	if history, err := recovered.InspectReservation(t.Context(), f.request.JournalID); err != nil || !reflect.DeepEqual(history, result) {
+ 		t.Fatalf("restart lost reservation history: %+v %v", history, err)
+ 	}
+ 	if _, err := recovered.ReserveRemote(t.Context(), config); !errors.Is(err, ErrRuntimeStartupRecorded) || registry.calls != 1 {
+@@ -384,7 +384,7 @@ func TestRuntimeStartupReservationRejectsWrongOwnerRoutesAndLegacyWriter(t *test
+ 				}
+ 				t.Cleanup(func() { _ = ledger.Close() })
+ 			}
+-			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || result != (RuntimeStartupReservationRecord{}) || registry.calls != 0 {
++			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) || registry.calls != 0 {
+ 				t.Fatalf("invalid custody/principal/version reached Fleet: %+v %v calls=%d", result, err, registry.calls)
+ 			}
+ 			if mode == "legacy" {
+@@ -459,7 +459,7 @@ func TestRuntimeStartupReservationFailuresNeverRetryConsumedIntent(t *testing.T)
+ 				}
+ 				return result, nil
+ 			}
+-			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || result != (RuntimeStartupReservationRecord{}) {
++			if result, err := ledger.ReserveRemote(t.Context(), config); err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) {
+ 				t.Fatalf("uncertain operation succeeded: %+v %v", result, err)
+ 			}
+ 			calls := registry.calls
+diff --git a/internal/runtimechannel/client_linux.go b/internal/runtimechannel/client_linux.go
+index c85b681..41aec48 100644
+--- a/internal/runtimechannel/client_linux.go
++++ b/internal/runtimechannel/client_linux.go
+@@ -14,17 +14,30 @@ import (
+ 
+ // Exchange authenticates a root Node peer at a root-owned 0660 socket whose
+ // group matches this non-root Runtime. All directories must be root-owned and
+-// non-writable by group/others, with no symlinks. It accepts both modern pidfs
+-// pidfds and older anon_inode:[pidfd] handles when procfs fdinfo exposes the
+-// kernel Pid/NSpid identity; it never falls back to reacquiring numeric PIDs.
++// non-writable by group/others, with no symlinks. It accepts modern pidfs
++// pidfds and legacy anon_inode:[pidfd] handles only when procfs exposes a
++// comparable kernel Pid/NSpid identity. A legacy handle hidden by a nested PID
++// namespace is structurally valid but cannot be compared here; production
++// callers must use the Node-side identity broker for that case. It never falls
++// back to reacquiring numeric PIDs.
+ // The reply is authenticated data, not a startup or retirement grant.
+ func Exchange(ctx context.Context, socketPath string, payload []byte) (result []byte, resultErr error) {
+-	return ExchangeWithRequestLimit(ctx, socketPath, payload, MaximumPayload)
++	return ExchangeWithRequestLimitAndPIDFDBroker(ctx, socketPath, "", payload, MaximumPayload)
+ }
+ 
+ // ExchangeWithRequestLimit opts into a bounded larger request, retaining the
+ // default reply limit and all original peer/challenge/socket checks.
+ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []byte, maximum int) (result []byte, resultErr error) {
++	return ExchangeWithRequestLimitAndPIDFDBroker(ctx, socketPath, "", payload, maximum)
++}
++
++// ExchangeWithRequestLimitAndPIDFDBroker is the legacy-pidfd compatible
++// exchange. When the Runtime is in a nested PID namespace on a kernel without
++// pidfs, it sends the already retained peer/message pidfds to the configured
++// root-owned broker for comparison in the host namespace. An empty broker path
++// preserves the strict direct-comparison behavior and therefore fails closed
++// for invisible legacy pidfds.
++func ExchangeWithRequestLimitAndPIDFDBroker(ctx context.Context, socketPath, brokerSocketPath string, payload []byte, maximum int) (result []byte, resultErr error) {
+ 	defer func() {
+ 		if resultErr != nil {
+ 			result = nil
+@@ -107,6 +120,13 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
+ 	if err := errors.Join(err, setupErr, socket.check()); err != nil {
+ 		return nil, err
+ 	}
++	compare := func(first, second int) error {
++		err := SameLiveProcess(first, second)
++		if err == nil || !errors.Is(err, ErrPIDFDIdentityUnavailable) || brokerSocketPath == "" {
++			return err
++		}
++		return ComparePIDFDsWithBroker(ctx, brokerSocketPath, first, second)
++	}
+ 	receive := func(maximum int) ([]byte, error) {
+ 		packet, sender, senderFD, err := ReadPacket(connection, maximum)
+ 		if err != nil {
+@@ -116,7 +136,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
+ 		if sender != *peer {
+ 			return nil, ErrIdentity
+ 		}
+-		if err := SameLiveProcess(peerFD, senderFD); err != nil {
++		if err := compare(peerFD, senderFD); err != nil {
+ 			return nil, err
+ 		}
+ 		return packet, nil
+@@ -125,7 +145,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
+ 	if err != nil || len(challenge) != ChallengeSize || !bytes.HasPrefix(challenge, []byte(Protocol)) {
+ 		return nil, errors.Join(ErrIdentity, err)
+ 	}
+-	if err := errors.Join(context.Cause(ctx), socket.check(), SameLiveProcess(peerFD, peerFD)); err != nil {
++	if err := errors.Join(context.Cause(ctx), socket.check(), compare(peerFD, peerFD)); err != nil {
+ 		return nil, err
+ 	}
+ 	packet := append(bytes.Clone(challenge), payload...)
+@@ -143,7 +163,7 @@ func ExchangeWithRequestLimit(ctx context.Context, socketPath string, payload []
+ 	if err != nil || len(response) <= len(responsePrefix) || !bytes.HasPrefix(response, responsePrefix) {
+ 		return nil, errors.Join(ErrIdentity, err)
+ 	}
+-	if err := errors.Join(context.Cause(ctx), socket.check(), SameLiveProcess(peerFD, peerFD)); err != nil {
++	if err := errors.Join(context.Cause(ctx), socket.check(), compare(peerFD, peerFD)); err != nil {
+ 		return nil, err
+ 	}
+ 	return bytes.Clone(response[len(responsePrefix):]), nil
+diff --git a/internal/runtimechannel/wire_linux.go b/internal/runtimechannel/wire_linux.go
+index 8950370..2cd7d94 100644
+--- a/internal/runtimechannel/wire_linux.go
++++ b/internal/runtimechannel/wire_linux.go
+@@ -29,6 +29,53 @@ const (
+ 
+ var ErrIdentity = errors.New("runtime channel kernel identity or frame is untrusted")
+ 
++// ErrPIDFDIdentityUnavailable means the descriptor is a real pidfd but the
++// current procfs view cannot expose a comparable process identity. Linux
++// 6.8's anonymous-inode pidfds report Pid/NSpid as zero for invisible
++// processes in a nested PID namespace. Callers must use a trusted host-side
++// identity check in that case; numeric-PID equality is never a fallback.
++var ErrPIDFDIdentityUnavailable = errors.New("pidfd process identity is not visible in this pid namespace")
++
++// PIDFDIdentityClass describes the identity evidence available from the
++// current procfs view.
++type PIDFDIdentityClass uint8
++
++const (
++	PIDFDIdentityPIDFS PIDFDIdentityClass = iota + 1
++	PIDFDIdentityLegacyVisible
++	PIDFDIdentityLegacyInvisible
++)
++
++// ClassifyPIDFD reports the identity evidence available from the current
++// procfs view without requiring the process to remain live. Callers that need
++// liveness must additionally call PollLivePIDFD. A successful
++// PIDFDIdentityLegacyInvisible result is deliberately not sufficient for
++// SameLiveProcess; it only says that the descriptor itself is a valid pidfd.
++func ClassifyPIDFD(fd int) (PIDFDIdentityClass, error) {
++	if fd < 0 {
++		return 0, ErrIdentity
++	}
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(fd, &filesystem); err != nil {
++		return 0, errors.Join(ErrIdentity, err)
++	}
++	if filesystem.Type == unix.PID_FS_MAGIC {
++		var stat unix.Stat_t
++		if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
++			return 0, errors.Join(ErrIdentity, err)
++		}
++		return PIDFDIdentityPIDFS, nil
++	}
++	legacy, err := readAnonymousPIDFDIdentity(fd)
++	if err != nil {
++		return 0, fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
++	}
++	if legacy.visible {
++		return PIDFDIdentityLegacyVisible, nil
++	}
++	return PIDFDIdentityLegacyInvisible, nil
++}
++
+ // ParseAncillary owns all received descriptors. Only one validated kernel
+ // message pidfd escapes; rejected SCM_RIGHTS and duplicate pidfds are closed.
+ // PID zero is legitimate when the sender is outside the receiver's namespace.
+@@ -137,16 +184,19 @@ func readPacket(connection *net.UnixConn, maximum, expectedRights int) ([]byte,
+ 	return packet[:count], peer, pidfd, rights, nil
+ }
+ 
+-// SameLiveProcess compares retained pidfd identities, including invisible
+-// ancestor processes whose namespace-relative credentials both report PID 0.
+-// Kernels before pidfs expose pidfds as anonymous inodes; those handles are
+-// accepted only when their kernel fdinfo Pid/NSpid identity matches. No PID is
+-// used to reacquire a process or to construct a handle.
++// SameLiveProcess compares retained pidfd identities. Kernels before pidfs
++// expose pidfds as anonymous inodes; those handles are accepted only when
++// their kernel fdinfo Pid/NSpid identity is visible and matches. If the
++// current procfs view reports zero for an invisible process, the descriptor is
++// still structurally valid but this function returns
++// ErrPIDFDIdentityUnavailable. No PID is used to reacquire a process or to
++// construct a handle.
+ func SameLiveProcess(original, message int) error {
+ 	type identity struct {
+ 		device, inode uint64
+ 		pid, nspid    string
+ 		pidfs         bool
++		visible       bool
+ 	}
+ 	var identities [2]identity
+ 	for i, fd := range []int{original, message} {
+@@ -162,13 +212,13 @@ func SameLiveProcess(original, message int) error {
+ 			if err := unix.Fstat(fd, &stat); err != nil || stat.Ino == 0 {
+ 				return errors.Join(ErrIdentity, err)
+ 			}
+-			identities[i] = identity{device: stat.Dev, inode: stat.Ino, pidfs: true}
++			identities[i] = identity{device: stat.Dev, inode: stat.Ino, pidfs: true, visible: true}
+ 		} else {
+ 			legacy, err := readAnonymousPIDFDIdentity(fd)
+ 			if err != nil {
+ 				return fmt.Errorf("%w: pidfd filesystem type %#x; legacy fdinfo identity unavailable: %v", ErrIdentity, filesystem.Type, err)
+ 			}
+-			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid}
++			identities[i] = identity{pid: legacy.pid, nspid: legacy.nspid, visible: legacy.visible}
+ 		}
+ 		if err := ValidatePIDFD(fd); err != nil {
+ 			return err
+@@ -180,6 +230,9 @@ func SameLiveProcess(original, message int) error {
+ 			return errors.Join(ErrIdentity, err)
+ 		}
+ 	}
++	if !identities[0].visible || !identities[1].visible {
++		return errors.Join(ErrIdentity, ErrPIDFDIdentityUnavailable)
++	}
+ 	if identities[0].pidfs != identities[1].pidfs {
+ 		return ErrIdentity
+ 	}
+@@ -192,10 +245,12 @@ func SameLiveProcess(original, message int) error {
+ 	return nil
+ }
+ 
+-// ValidatePIDFD verifies that fd is a kernel pidfd with a stable identity and
+-// close-on-exec set. It deliberately does not poll for liveness, so callers
+-// that need to observe an exit can validate the retained handle first and poll
+-// it separately.
++// ValidatePIDFD verifies that fd is a kernel pidfd and has close-on-exec set.
++// It deliberately does not poll for liveness, so callers that need to observe
++// an exit can validate the retained handle first and poll it separately. A
++// legacy pidfd whose fdinfo reports zero is structurally valid; comparing it
++// with another process must handle ErrPIDFDIdentityUnavailable from
++// SameLiveProcess and use a trusted host-side identity check.
+ func ValidatePIDFD(fd int) error {
+ 	if fd < 0 {
+ 		return ErrIdentity
+@@ -219,7 +274,10 @@ func ValidatePIDFD(fd int) error {
+ 	return nil
+ }
+ 
+-type anonymousPIDFDIdentity struct{ pid, nspid string }
++type anonymousPIDFDIdentity struct {
++	pid, nspid string
++	visible    bool
++}
+ 
+ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+ 	link, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", fd))
+@@ -231,6 +289,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+ 		return anonymousPIDFDIdentity{}, err
+ 	}
+ 	var result anonymousPIDFDIdentity
++	nspidVisible := true
+ 	for line := range strings.SplitSeq(string(data), "\n") {
+ 		key, value, ok := strings.Cut(line, ":")
+ 		if !ok {
+@@ -243,6 +302,9 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+ 				return anonymousPIDFDIdentity{}, errors.New("fdinfo Pid is invalid")
+ 			}
+ 			result.pid = value
++			if value == "0" {
++				nspidVisible = false
++			}
+ 		case "NSpid":
+ 			fields := strings.Fields(value)
+ 			if len(fields) == 0 {
+@@ -252,6 +314,9 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+ 				if !validAnonymousPIDFDNumber(field) {
+ 					return anonymousPIDFDIdentity{}, errors.New("fdinfo NSpid is invalid")
+ 				}
++				if field == "0" {
++					nspidVisible = false
++				}
+ 			}
+ 			result.nspid = strings.Join(fields, ",")
+ 		}
+@@ -259,6 +324,7 @@ func readAnonymousPIDFDIdentity(fd int) (anonymousPIDFDIdentity, error) {
+ 	if result.pid == "" || result.nspid == "" {
+ 		return anonymousPIDFDIdentity{}, errors.New("fdinfo lacks Pid/NSpid")
+ 	}
++	result.visible = nspidVisible
+ 	return result, nil
+ }
+ 
+@@ -266,6 +332,6 @@ func validAnonymousPIDFDNumber(value string) bool {
+ 	if value == "-1" {
+ 		return true
+ 	}
+-	parsed, err := strconv.ParseUint(value, 10, 32)
+-	return err == nil && parsed > 0
++	_, err := strconv.ParseUint(value, 10, 32)
++	return err == nil
+ }
+diff --git a/internal/runtimechannel/wire_linux_test.go b/internal/runtimechannel/wire_linux_test.go
+index d24f52d..e6ab35b 100644
+--- a/internal/runtimechannel/wire_linux_test.go
++++ b/internal/runtimechannel/wire_linux_test.go
+@@ -15,6 +15,13 @@ func TestSameLiveProcessReportsPidfdFilesystem(t *testing.T) {
+ 		t.Skipf("pidfd_open unavailable: %v", err)
+ 	}
+ 	defer unix.Close(fd)
++	class, err := ClassifyPIDFD(fd)
++	if err != nil {
++		t.Fatalf("classify pidfd: %v", err)
++	}
++	if class != PIDFDIdentityPIDFS && class != PIDFDIdentityLegacyVisible {
++		t.Fatalf("self pidfd was classified as invisible: %d", class)
++	}
+ 
+ 	var filesystem unix.Statfs_t
+ 	if err := unix.Fstatfs(fd, &filesystem); err != nil {
+diff --git a/internal/nodeagent/runtime_startup_authority_composition_linux_test.go b/internal/nodeagent/runtime_startup_authority_composition_linux_test.go
+new file mode 100644
+index 0000000..b7c9a96
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_authority_composition_linux_test.go
+@@ -0,0 +1,441 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/fleet"
++	"github.com/vivym/vela/internal/modelruntime"
++	"github.com/vivym/vela/internal/runtimepolicy"
++)
++
++// compositionAuthorizationPolicy is deliberately test-only. It models the
++// independent issuer boundary while keeping the reservation, grant and
++// orchestration on the real Node composition path.
++type compositionAuthorizationPolicy struct{}
++
++type invalidCompositionAuthorizationPolicy struct{}
++
++type lossCompositionAuthorizationPolicy struct{}
++
++func (compositionAuthorizationPolicy) IssueRuntimeStartupAuthorization(_ context.Context, record RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
++	reservationDigest, err := runtimepolicy.ReservationBindingDigest(record.OperationID, record.JournalID, record.RequestDigest, record.ReservedAt)
++	if err != nil {
++		return RuntimeStartupAuthorizationEvidence{}, err
++	}
++	now := time.Now().UTC()
++	return RuntimeStartupAuthorizationEvidence{
++		OperationID:       record.OperationID,
++		JournalID:         record.JournalID,
++		RequestDigest:     record.RequestDigest,
++		ReservationDigest: reservationDigest,
++		// Keep the fixture digest stable so the process-level harness can bind
++		// its durable grant attempt to the same independently issued evidence.
++		EvidenceDigest: sha256.Sum256([]byte("fixture startup authorization evidence; no permit")),
++		IssuedAt:       now,
++		ExpiresAt:      now.Add(time.Minute),
++	}, nil
++}
++
++func (invalidCompositionAuthorizationPolicy) IssueRuntimeStartupAuthorization(context.Context, RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
++	return RuntimeStartupAuthorizationEvidence{}, nil
++}
++
++func (lossCompositionAuthorizationPolicy) IssueRuntimeStartupAuthorization(context.Context, RuntimeStartupReservationRecord) (RuntimeStartupAuthorizationEvidence, error) {
++	return RuntimeStartupAuthorizationEvidence{}, context.DeadlineExceeded
++}
++
++func TestRuntimeStartupAuthorityPrepareComposesReservationAndGrant(t *testing.T) {
++	var custody *RuntimeObserverCustody
++	fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++	if custody == nil {
++		t.Fatal("fixture did not create observer custody")
++	}
++	ledger, _ := startupTestLedger(t)
++	peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++	registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++	registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++		return fleet.RuntimeStartupReservation{
++			RuntimeStartupRequest: request,
++			Fresh:                 true,
++			ReservedAt:            time.Now().UTC(),
++			PolicyAuthorization:   []byte("temporary signed Fleet authorization"),
++		}, nil
++	}
++	credentials, err := fixture.plan.CallerCredentials()
++	if err != nil {
++		t.Fatal(err)
++	}
++	authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++		Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++		Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++		Registry: registry, AuthorizationPolicy: compositionAuthorizationPolicy{},
++		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++		Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++		ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	orchestration, record, err := authority.Prepare(t.Context(), fixture.caller)
++	if err != nil {
++		t.Fatalf("compose authority: %v", err)
++	}
++	if orchestration == nil || record.OperationID == uuid.Nil || registry.calls != 1 {
++		t.Fatalf("composition did not produce one reservation: orchestration=%v record=%+v calls=%d", orchestration != nil, record, registry.calls)
++	}
++	pending, err := orchestration.CompositionReceipt(t.Context())
++	if err != nil || pending.Permit || pending.Outcome != "pending" || pending.Verify() != nil {
++		t.Fatalf("pending composition receipt invalid: %+v err=%v", pending, err)
++	}
++	wire, err := orchestration.coordinator.HandleBackendStartupWithCaller(t.Context(), fixture.caller, fixture.request)
++	var decision modelruntime.BackendStartupDecision
++	if err != nil || json.Unmarshal(wire, &decision) != nil || !decision.Permit {
++		t.Fatalf("backend Permit through composition failed: wire=%s err=%v", wire, err)
++	}
++	permitted, err := orchestration.CompositionReceipt(t.Context())
++	if err != nil || !permitted.Permit || permitted.Outcome != "permitted" || permitted.Verify() != nil || permitted.OperationID != record.OperationID {
++		t.Fatalf("permitted composition receipt invalid: %+v err=%v", permitted, err)
++	}
++	// A Permit is only useful as validation evidence when its typed receipt can
++	// survive process boundaries. Persist the exact JSON bytes, replay them and
++	// verify both the self-digest and the operation-bound authority material.
++	receiptPath := filepath.Join(t.TempDir(), "runtime-startup-composition.json")
++	receiptWire, err := json.Marshal(permitted)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(receiptPath, receiptWire, 0o600); err != nil {
++		t.Fatal(err)
++	}
++	replayedWire, err := os.ReadFile(receiptPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var replayed RuntimeStartupCompositionReceipt
++	if err := json.Unmarshal(replayedWire, &replayed); err != nil {
++		t.Fatal(err)
++	}
++	if err := replayed.Verify(); err != nil {
++		t.Fatalf("persisted composition receipt failed self verification: %v", err)
++	}
++	// Bind the replay against the independently retained reservation record and
++	// request, rather than feeding the receipt's own digests back as expected
++	// values. This catches a receipt that is internally self-consistent but
++	// belongs to a different operation or authority record.
++	reservationWire, err := json.Marshal(record)
++	if err != nil {
++		t.Fatal(err)
++	}
++	reservationDigest := sha256.Sum256(reservationWire)
++	backendRequestWire, err := modelruntime.EncodeBackendStartupRequest(fixture.request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	backendRequestDigest := sha256.Sum256(backendRequestWire)
++	if err := replayed.VerifyBinding(record.OperationID, record.JournalID, backendRequestDigest, reservationDigest, permitted.AuthorizationDigest); err != nil {
++		t.Fatalf("persisted composition receipt lost operation binding: %v", err)
++	}
++	if err := orchestration.Close(); err != nil {
++		t.Fatal(err)
++	}
++	revoked, err := orchestration.CompositionReceipt(t.Context())
++	if err != nil || revoked.Permit || revoked.Outcome != "revoked" || revoked.Verify() != nil {
++		t.Fatalf("revoked composition receipt invalid: %+v err=%v", revoked, err)
++	}
++	if retry, _, err := authority.Prepare(t.Context(), fixture.caller); err == nil || retry != nil {
++		t.Fatalf("duplicate startup was accepted: orchestration=%v error=%v", retry != nil, err)
++	}
++}
++
++func TestRuntimeStartupCompositionNodeRestartDoesNotReissueAuthority(t *testing.T) {
++	var custody *RuntimeObserverCustody
++	fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++	ledger, directory := startupTestLedger(t)
++	registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++	registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++		return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC(), PolicyAuthorization: []byte("temporary signed Fleet authorization")}, nil
++	}
++	credentials, err := fixture.plan.CallerCredentials()
++	if err != nil {
++		t.Fatal(err)
++	}
++	authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++		Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++		Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: newJournalEndpointOwnerFixture(t, 0, nil, true, true).worker.owner,
++		Registry: registry, AuthorizationPolicy: compositionAuthorizationPolicy{},
++		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++		Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++		ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	orchestration, record, err := authority.Prepare(t.Context(), fixture.caller)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := orchestration.coordinator.HandleBackendStartupWithCaller(t.Context(), fixture.caller, fixture.request); err != nil {
++		t.Fatal(err)
++	}
++	if err := orchestration.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := ledger.Close(); err != nil {
++		t.Fatal(err)
++	}
++	recovered, err := OpenRuntimeStartupLedger(t.Context(), directory, "cpu-node", false)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer recovered.Close()
++	reservationConfig.RuntimeOwner = nil
++	if retry, retryErr := recovered.ReserveRemote(t.Context(), reservationConfig); retryErr == nil || retryErr != ErrRuntimeStartupRecorded || retry.OperationID != uuid.Nil || registry.calls != 1 {
++		t.Fatalf("Node restart reissued startup authority: retry=%+v err=%v calls=%d record=%+v", retry, retryErr, registry.calls, record)
++	}
++	if _, err := recovered.InspectJournalGrantAttempt(t.Context(), fixture.request.JournalID); err != nil {
++		t.Fatalf("Node restart lost durable grant attempt: %v", err)
++	}
++}
++
++func TestRuntimeStartupAuthorityCompositionFailsClosedOnPolicyOrFleetEvidence(t *testing.T) {
++	for _, scenario := range []string{"invalid-policy-evidence", "missing-fleet-authorization"} {
++		t.Run(scenario, func(t *testing.T) {
++			var custody *RuntimeObserverCustody
++			fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++			ledger, _ := startupTestLedger(t)
++			peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++			registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++			if scenario == "invalid-policy-evidence" {
++				registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++					return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC(), PolicyAuthorization: []byte("temporary signed Fleet authorization")}, nil
++				}
++			}
++			credentials, err := fixture.plan.CallerCredentials()
++			if err != nil {
++				t.Fatal(err)
++			}
++			policy := RuntimeStartupAuthorizationPolicy(compositionAuthorizationPolicy{})
++			if scenario == "invalid-policy-evidence" {
++				policy = invalidCompositionAuthorizationPolicy{}
++			}
++			authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++				Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++				Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++				Registry: registry, AuthorizationPolicy: policy,
++				PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++				Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++				ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			orchestration, _, err := authority.Prepare(t.Context(), fixture.caller)
++			if err == nil || orchestration != nil {
++				t.Fatalf("invalid composition was accepted: orchestration=%v error=%v", orchestration != nil, err)
++			}
++		})
++	}
++}
++
++func TestRuntimeStartupCompositionReceiptRejectsAuthorityGaps(t *testing.T) {
++	var custody *RuntimeObserverCustody
++	fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++	ledger, _ := startupTestLedger(t)
++	peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++	registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++	registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++		return fleet.RuntimeStartupReservation{
++			RuntimeStartupRequest: request,
++			Fresh:                 true,
++			ReservedAt:            time.Now().UTC(),
++			PolicyAuthorization:   []byte("temporary signed Fleet authorization"),
++		}, nil
++	}
++	credentials, err := fixture.plan.CallerCredentials()
++	if err != nil {
++		t.Fatal(err)
++	}
++	authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++		Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++		Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++		Registry: registry, AuthorizationPolicy: compositionAuthorizationPolicy{},
++		PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++		Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++		ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	orchestration, _, err := authority.Prepare(t.Context(), fixture.caller)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer orchestration.Close()
++	wire, err := orchestration.coordinator.HandleBackendStartupWithCaller(t.Context(), fixture.caller, fixture.request)
++	if err != nil {
++		t.Fatalf("backend Permit through composition failed: %v", err)
++	}
++	var decision modelruntime.BackendStartupDecision
++	if err := json.Unmarshal(wire, &decision); err != nil || !decision.Permit {
++		t.Fatalf("backend decision=%+v err=%v", decision, err)
++	}
++	receipt, err := orchestration.CompositionReceipt(t.Context())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := receipt.Verify(); err != nil {
++		t.Fatal(err)
++	}
++	if err := receipt.VerifyBinding(receipt.OperationID, receipt.JournalID, receipt.RequestDigest, receipt.ReservationDigest, receipt.AuthorizationDigest); err != nil {
++		t.Fatalf("receipt binding verification failed: %v", err)
++	}
++	wrongOperation := uuid.New()
++	if err := receipt.VerifyBinding(wrongOperation, receipt.JournalID, receipt.RequestDigest, receipt.ReservationDigest, receipt.AuthorizationDigest); err == nil {
++		t.Fatal("receipt from another operation was accepted")
++	}
++	for _, mutate := range []func(*RuntimeStartupCompositionReceipt){
++		func(r *RuntimeStartupCompositionReceipt) { r.ReservationDigest = [sha256.Size]byte{} },
++		func(r *RuntimeStartupCompositionReceipt) { r.AuthorizationDigest = [sha256.Size]byte{} },
++		func(r *RuntimeStartupCompositionReceipt) { r.RequestDigest = [sha256.Size]byte{} },
++		func(r *RuntimeStartupCompositionReceipt) {
++			r.Outcome = "unknown"
++			r.ReceiptDigest = receiptDigest(*r)
++		},
++	} {
++		invalid := receipt
++		mutate(&invalid)
++		invalid.ReceiptDigest = receiptDigest(invalid)
++		if err := invalid.Verify(); err == nil {
++			t.Fatalf("receipt with authority gap was accepted: %+v", invalid)
++		}
++	}
++}
++
++func TestRuntimeStartupAuthorityCompositionFailureMatrix(t *testing.T) {
++	t.Run("policy-response-loss", func(t *testing.T) {
++		var custody *RuntimeObserverCustody
++		fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++		ledger, _ := startupTestLedger(t)
++		peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++		registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++		registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++			return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC(), PolicyAuthorization: []byte("temporary signed Fleet authorization")}, nil
++		}
++		credentials, err := fixture.plan.CallerCredentials()
++		if err != nil {
++			t.Fatal(err)
++		}
++		authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++			Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++			Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++			Registry: reservationConfig.Registry, AuthorizationPolicy: lossCompositionAuthorizationPolicy{},
++			PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++			Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++			ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++		})
++		if err != nil {
++			t.Fatal(err)
++		}
++		orchestration, record, err := authority.Prepare(t.Context(), fixture.caller)
++		if err == nil || orchestration != nil || record.OperationID == uuid.Nil {
++			t.Fatalf("policy response loss crossed authority boundary: orchestration=%v record=%+v err=%v", orchestration != nil, record, err)
++		}
++		if _, err := ledger.InspectJournalGrantAttempt(t.Context(), fixture.request.JournalID); err == nil {
++			t.Fatal("policy response loss consumed a startup grant")
++		}
++		if reservation, inspectErr := ledger.InspectReservation(t.Context(), fixture.request.JournalID); inspectErr != nil || reservation.OperationID == uuid.Nil {
++			t.Fatalf("policy response loss did not retain the committed reservation: %+v err=%v", reservation, inspectErr)
++		}
++	})
++
++	t.Run("caller-replacement", func(t *testing.T) {
++		var custody *RuntimeObserverCustody
++		fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++		ledger, _ := startupTestLedger(t)
++		peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++		credentials, err := fixture.plan.CallerCredentials()
++		if err != nil {
++			t.Fatal(err)
++		}
++		payload := fixture.caller.Payload()
++		connection, _, _ := runtimeCallerConfiguredConnection(t, "hold-after-disconnect", "unixpacket", payload, credentials, true)
++		replacement, err := ReceiveRuntimeCaller(t.Context(), connection, credentials)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer replacement.Close()
++		authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++			Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++			Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++			Registry: reservationConfig.Registry, AuthorizationPolicy: compositionAuthorizationPolicy{},
++			PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++			Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++			ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++		})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if orchestration, record, err := authority.Prepare(t.Context(), replacement); err == nil || orchestration != nil || record.OperationID != uuid.Nil {
++			t.Fatalf("caller replacement was accepted: orchestration=%v record=%+v err=%v", orchestration != nil, record, err)
++		}
++		if _, err := ledger.InspectReservation(t.Context(), fixture.request.JournalID); err == nil {
++			t.Fatal("caller replacement created a reservation")
++		}
++	})
++
++	t.Run("observer-loss", func(t *testing.T) {
++		var custody *RuntimeObserverCustody
++		fixture, reservationConfig := newRemoteReservationFixture(t, false, &custody)
++		ledger, _ := startupTestLedger(t)
++		peers := newJournalEndpointOwnerFixture(t, 0, nil, true, true)
++		registry := reservationConfig.Registry.(*startupReservationRegistryFixture)
++		registry.reserve = func(_ context.Context, request fleet.RuntimeStartupRequest) (fleet.RuntimeStartupReservation, error) {
++			return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, Fresh: true, ReservedAt: time.Now().UTC(), PolicyAuthorization: []byte("temporary signed Fleet authorization")}, nil
++		}
++		credentials, err := fixture.plan.CallerCredentials()
++		if err != nil {
++			t.Fatal(err)
++		}
++		authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
++			Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
++			Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
++			Registry: registry, AuthorizationPolicy: compositionAuthorizationPolicy{},
++			PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
++			Credentials:                  []RuntimeCallerCredentials{credentials}, ObserverInterval: 50 * time.Millisecond,
++			ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
++		})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := custody.Revoke(); err != nil {
++			t.Fatal(err)
++		}
++		orchestration, _, err := authority.Prepare(t.Context(), fixture.caller)
++		if err != nil {
++			if _, grantErr := ledger.InspectJournalGrantAttempt(t.Context(), fixture.request.JournalID); grantErr == nil {
++				t.Fatal("observer loss consumed a startup grant before failing")
++			}
++			return
++		}
++		if orchestration == nil {
++			t.Fatal("observer loss returned no orchestration")
++		}
++		defer orchestration.Close()
++		if err := orchestration.ServeCaller(t.Context()); err == nil {
++			t.Fatal("observer loss produced a Permit")
++		}
++		receipt, receiptErr := orchestration.CompositionReceipt(t.Context())
++		if receiptErr != nil || receipt.Verify() != nil || receipt.Permit {
++			t.Fatalf("observer loss receipt is not failed closed: %+v err=%v", receipt, receiptErr)
++		}
++	})
++}
+diff --git a/internal/nodeagent/runtime_startup_failure_receipt_linux.go b/internal/nodeagent/runtime_startup_failure_receipt_linux.go
+new file mode 100644
+index 0000000..363e6c2
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_failure_receipt_linux.go
+@@ -0,0 +1,163 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++
++	"github.com/google/uuid"
++)
++
++type RuntimeStartupFailurePhase string
++
++const (
++	RuntimeStartupFailureResourceLoad  RuntimeStartupFailurePhase = "resource-load"
++	RuntimeStartupFailureLauncher      RuntimeStartupFailurePhase = "launcher"
++	RuntimeStartupFailureCompose       RuntimeStartupFailurePhase = "compose"
++	RuntimeStartupFailureCaller        RuntimeStartupFailurePhase = "caller"
++	RuntimeStartupFailureReservation   RuntimeStartupFailurePhase = "reservation"
++	RuntimeStartupFailureAuthorization RuntimeStartupFailurePhase = "authorization"
++	RuntimeStartupFailureGrant         RuntimeStartupFailurePhase = "grant"
++	RuntimeStartupFailureBackend       RuntimeStartupFailurePhase = "backend"
++	RuntimeStartupFailureShutdown      RuntimeStartupFailurePhase = "shutdown"
++	RuntimeStartupFailureNodeRestart   RuntimeStartupFailurePhase = "node-restart"
++	RuntimeStartupFailureBrokerRestart RuntimeStartupFailurePhase = "broker-restart"
++	RuntimeStartupFailureCleanup       RuntimeStartupFailurePhase = "cleanup"
++)
++
++type RuntimeStartupFailureReceiptInput struct {
++	RunID, OperationID, JournalID uuid.UUID
++	Phase                         RuntimeStartupFailurePhase
++	Cause                         error
++	RequestDigest                 [sha256.Size]byte
++	ReservationDigest             [sha256.Size]byte
++	AuthorizationDigest           [sha256.Size]byte
++	GrantAttemptDigest            [sha256.Size]byte
++	ReservationCreated            bool
++	GrantCreated                  bool
++	PermitIssued                  bool
++	CleanupVerified               bool
++}
++
++// RuntimeStartupFailureReceipt records a startup attempt that stopped before a
++// successful composition receipt could be produced. It deliberately permits a
++// nil OperationID and JournalID when failure happened before durable
++// reservation. A missing object is represented by false, never by a fabricated
++// digest or UUID.
++type RuntimeStartupFailureReceipt struct {
++	SchemaVersion       int               `json:"schema_version"`
++	RunID               uuid.UUID         `json:"run_id"`
++	OperationID         uuid.UUID         `json:"operation_id,omitempty"`
++	JournalID           uuid.UUID         `json:"journal_id,omitempty"`
++	Phase               string            `json:"phase"`
++	ErrorDigest         [sha256.Size]byte `json:"error_digest"`
++	RequestDigest       [sha256.Size]byte `json:"request_digest,omitempty"`
++	ReservationDigest   [sha256.Size]byte `json:"reservation_digest,omitempty"`
++	AuthorizationDigest [sha256.Size]byte `json:"authorization_digest,omitempty"`
++	GrantAttemptDigest  [sha256.Size]byte `json:"grant_attempt_digest,omitempty"`
++	ReservationCreated  bool              `json:"reservation_created"`
++	GrantCreated        bool              `json:"grant_created"`
++	PermitIssued        bool              `json:"permit_issued"`
++	CleanupVerified     bool              `json:"cleanup_verified"`
++	ReceiptDigest       [sha256.Size]byte `json:"receipt_digest"`
++}
++
++// NewRuntimeStartupFailureReceipt binds the error text to the receipt without
++// persisting the text itself. Callers should pass the exact stage error and
++// independently observed resource booleans.
++func NewRuntimeStartupFailureReceipt(input RuntimeStartupFailureReceiptInput) RuntimeStartupFailureReceipt {
++	receipt := RuntimeStartupFailureReceipt{
++		SchemaVersion:       1,
++		RunID:               input.RunID,
++		OperationID:         input.OperationID,
++		JournalID:           input.JournalID,
++		Phase:               string(input.Phase),
++		RequestDigest:       input.RequestDigest,
++		ReservationDigest:   input.ReservationDigest,
++		AuthorizationDigest: input.AuthorizationDigest,
++		GrantAttemptDigest:  input.GrantAttemptDigest,
++		ReservationCreated:  input.ReservationCreated,
++		GrantCreated:        input.GrantCreated,
++		PermitIssued:        input.PermitIssued,
++		CleanupVerified:     input.CleanupVerified,
++	}
++	if input.Cause != nil {
++		receipt.ErrorDigest = sha256.Sum256([]byte(input.Cause.Error()))
++	}
++	receipt.ReceiptDigest = failureReceiptDigest(receipt)
++	return receipt
++}
++
++func failureReceiptDigest(receipt RuntimeStartupFailureReceipt) [sha256.Size]byte {
++	receipt.ReceiptDigest = [sha256.Size]byte{}
++	wire, _ := marshalFailureReceipt(receipt)
++	return sha256.Sum256(wire)
++}
++
++// marshalFailureReceipt is kept in this file so digest encoding cannot be
++// changed accidentally by callers. JSON is deterministic for this fixed
++// struct and UUID/array fields.
++func marshalFailureReceipt(receipt RuntimeStartupFailureReceipt) ([]byte, error) {
++	return json.Marshal(receipt)
++}
++
++// Verify checks structural invariants and the monotonic authority ordering.
++// It does not claim that cleanup was actually performed; that fact must come
++// from the driver which sets CleanupVerified after inspecting the resources.
++func (receipt RuntimeStartupFailureReceipt) Verify() error {
++	if receipt.SchemaVersion != 1 || receipt.RunID == uuid.Nil || receipt.Phase == "" || receipt.ErrorDigest == ([sha256.Size]byte{}) || receipt.ReceiptDigest != failureReceiptDigest(receipt) {
++		return errors.New("runtime startup failure receipt is invalid")
++	}
++	switch RuntimeStartupFailurePhase(receipt.Phase) {
++	case RuntimeStartupFailureResourceLoad, RuntimeStartupFailureLauncher, RuntimeStartupFailureCompose, RuntimeStartupFailureCaller, RuntimeStartupFailureReservation, RuntimeStartupFailureAuthorization, RuntimeStartupFailureGrant, RuntimeStartupFailureBackend, RuntimeStartupFailureShutdown, RuntimeStartupFailureNodeRestart, RuntimeStartupFailureBrokerRestart, RuntimeStartupFailureCleanup:
++	default:
++		return errors.New("runtime startup failure receipt has unknown phase")
++	}
++	if !receipt.ReservationCreated && (receipt.OperationID != uuid.Nil || receipt.JournalID != uuid.Nil || receipt.GrantCreated || receipt.PermitIssued) {
++		return errors.New("runtime startup failure receipt contains authority before reservation")
++	}
++	if receipt.ReservationCreated && (receipt.OperationID == uuid.Nil || receipt.JournalID == uuid.Nil) {
++		return errors.New("runtime startup failure receipt reservation identity is incomplete")
++	}
++	if receipt.ReservationCreated && receipt.RequestDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup failure receipt reservation digest is missing")
++	}
++	if receipt.ReservationCreated && receipt.ReservationDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup failure receipt reservation binding is missing")
++	}
++	if !receipt.ReservationCreated && (receipt.RequestDigest != ([sha256.Size]byte{}) || receipt.ReservationDigest != ([sha256.Size]byte{}) || receipt.AuthorizationDigest != ([sha256.Size]byte{}) || receipt.GrantAttemptDigest != ([sha256.Size]byte{})) {
++		return errors.New("runtime startup failure receipt contains digest before reservation")
++	}
++	if !receipt.GrantCreated && receipt.PermitIssued {
++		return errors.New("runtime startup failure receipt contains Permit without grant")
++	}
++	if receipt.GrantCreated && receipt.GrantAttemptDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup failure receipt grant digest is missing")
++	}
++	if receipt.GrantCreated && receipt.AuthorizationDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup failure receipt authorization binding is missing")
++	}
++	if receipt.Phase == string(RuntimeStartupFailureAuthorization) || receipt.Phase == string(RuntimeStartupFailureGrant) || receipt.Phase == string(RuntimeStartupFailureBackend) || receipt.Phase == string(RuntimeStartupFailureShutdown) || receipt.Phase == string(RuntimeStartupFailureCleanup) || receipt.Phase == string(RuntimeStartupFailureNodeRestart) || receipt.Phase == string(RuntimeStartupFailureBrokerRestart) {
++		if !receipt.ReservationCreated {
++			return errors.New("runtime startup failure receipt phase has no reservation")
++		}
++	}
++	if receipt.Phase == string(RuntimeStartupFailureResourceLoad) || receipt.Phase == string(RuntimeStartupFailureLauncher) || receipt.Phase == string(RuntimeStartupFailureCompose) || receipt.Phase == string(RuntimeStartupFailureCaller) || receipt.Phase == string(RuntimeStartupFailureReservation) || receipt.Phase == string(RuntimeStartupFailureAuthorization) || receipt.Phase == string(RuntimeStartupFailureGrant) {
++		if receipt.GrantCreated || receipt.PermitIssued {
++			return errors.New("runtime startup failure receipt phase contains a later authority")
++		}
++	}
++	if receipt.Phase == string(RuntimeStartupFailureResourceLoad) || receipt.Phase == string(RuntimeStartupFailureLauncher) || receipt.Phase == string(RuntimeStartupFailureCompose) || receipt.Phase == string(RuntimeStartupFailureCaller) || receipt.Phase == string(RuntimeStartupFailureReservation) {
++		if receipt.AuthorizationDigest != ([sha256.Size]byte{}) || receipt.GrantAttemptDigest != ([sha256.Size]byte{}) {
++			return errors.New("runtime startup failure receipt phase contains later authority bindings")
++		}
++	}
++	if receipt.Phase == string(RuntimeStartupFailureResourceLoad) || receipt.Phase == string(RuntimeStartupFailureLauncher) || receipt.Phase == string(RuntimeStartupFailureCompose) || receipt.Phase == string(RuntimeStartupFailureCaller) {
++		if receipt.ReservationDigest != ([sha256.Size]byte{}) {
++			return errors.New("runtime startup failure receipt phase contains reservation binding")
++		}
++	}
++	return nil
++}
+diff --git a/internal/nodeagent/runtime_startup_failure_receipt_linux_test.go b/internal/nodeagent/runtime_startup_failure_receipt_linux_test.go
+new file mode 100644
+index 0000000..00f9339
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_failure_receipt_linux_test.go
+@@ -0,0 +1,70 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"crypto/sha256"
++	"errors"
++	"testing"
++
++	"github.com/google/uuid"
++)
++
++func TestRuntimeStartupFailureReceiptAllowsPreReservationFailure(t *testing.T) {
++	receipt := NewRuntimeStartupFailureReceipt(RuntimeStartupFailureReceiptInput{RunID: uuid.New(), Phase: RuntimeStartupFailureLauncher, Cause: errors.New("helper exited before handoff"), CleanupVerified: true})
++	if err := receipt.Verify(); err != nil {
++		t.Fatalf("pre-reservation failure receipt rejected: %v", err)
++	}
++}
++
++func TestRuntimeStartupFailureReceiptRequiresMonotonicAuthority(t *testing.T) {
++	runID, operationID, journalID := uuid.New(), uuid.New(), uuid.New()
++	valid := NewRuntimeStartupFailureReceipt(RuntimeStartupFailureReceiptInput{RunID: runID, OperationID: operationID, JournalID: journalID, Phase: RuntimeStartupFailureBackend, Cause: errors.New("Permit response lost"), RequestDigest: sha256.Sum256([]byte("request")), ReservationDigest: sha256.Sum256([]byte("reservation")), AuthorizationDigest: sha256.Sum256([]byte("authorization")), GrantAttemptDigest: sha256.Sum256([]byte("grant")), ReservationCreated: true, GrantCreated: true, CleanupVerified: true})
++	if err := valid.Verify(); err != nil {
++		t.Fatal(err)
++	}
++	invalid := valid
++	invalid.PermitIssued = true
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err != nil {
++		t.Fatalf("Permit-bearing failed receipt should remain structurally valid: %v", err)
++	}
++	invalid = valid
++	invalid.GrantCreated = false
++	invalid.PermitIssued = true
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err == nil {
++		t.Fatal("Permit without grant was accepted")
++	}
++	invalid = valid
++	invalid.Phase = "arbitrary"
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err == nil {
++		t.Fatal("unknown failure phase was accepted")
++	}
++	invalid = valid
++	invalid.ReservationDigest = [sha256.Size]byte{}
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err == nil {
++		t.Fatal("grant receipt without reservation binding was accepted")
++	}
++	invalid = valid
++	invalid.AuthorizationDigest = [sha256.Size]byte{}
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err == nil {
++		t.Fatal("grant receipt without authorization binding was accepted")
++	}
++	invalid = valid
++	invalid.Phase = string(RuntimeStartupFailureCompose)
++	invalid.ReceiptDigest = failureReceiptDigest(invalid)
++	if err := invalid.Verify(); err == nil {
++		t.Fatal("compose receipt with a later grant was accepted")
++	}
++}
++
++func TestRuntimeStartupFailureReceiptRejectsFabricatedAuthorityBeforeReservation(t *testing.T) {
++	receipt := NewRuntimeStartupFailureReceipt(RuntimeStartupFailureReceiptInput{RunID: uuid.New(), OperationID: uuid.New(), Phase: RuntimeStartupFailureCaller, Cause: errors.New("caller rejected"), CleanupVerified: true})
++	if err := receipt.Verify(); err == nil {
++		t.Fatal("pre-reservation receipt with fabricated operation was accepted")
++	}
++}
+diff --git a/internal/nodeagent/runtime_startup_receipt_linux.go b/internal/nodeagent/runtime_startup_receipt_linux.go
+new file mode 100644
+index 0000000..f0a077c
+--- /dev/null
++++ b/internal/nodeagent/runtime_startup_receipt_linux.go
+@@ -0,0 +1,158 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/modelruntime"
++)
++
++// RuntimeStartupCompositionReceipt is a typed, validation-stage projection of
++// one startup operation. Every digest is derived from the exact bytes held by
++// the Node ledger or startup request. It records a Permit decision; it does
++// not by itself promote a release or assert production readiness.
++type RuntimeStartupCompositionReceipt struct {
++	SchemaVersion       int               `json:"schema_version"`
++	OperationID         uuid.UUID         `json:"operation_id"`
++	JournalID           uuid.UUID         `json:"journal_id"`
++	RequestDigest       [sha256.Size]byte `json:"request_digest"`
++	ReservationDigest   [sha256.Size]byte `json:"reservation_digest"`
++	AuthorizationDigest [sha256.Size]byte `json:"authorization_digest"`
++	GrantAttemptDigest  [sha256.Size]byte `json:"grant_attempt_digest"`
++	Permit              bool              `json:"permit"`
++	Outcome             string            `json:"outcome"`
++	ReceiptDigest       [sha256.Size]byte `json:"receipt_digest"`
++}
++
++// CompositionReceipt snapshots the durable grant fence and the coordinator's
++// one-shot decision. Calling it before the backend request is handled returns a
++// receipt with Permit=false and Outcome="pending"; no synthetic Permit is
++// inferred from reservation or grant existence.
++func (orchestration *RuntimeStartupOrchestration) CompositionReceipt(ctx context.Context) (RuntimeStartupCompositionReceipt, error) {
++	if orchestration == nil || orchestration.coordinator == nil || ctx == nil {
++		return RuntimeStartupCompositionReceipt{}, ErrRuntimeStartupAuthority
++	}
++	coordinator := orchestration.coordinator
++	coordinator.mu.Lock()
++	handled := coordinator.handled
++	closed := coordinator.closed
++	permit := coordinator.observation != nil && !closed
++	coordinator.mu.Unlock()
++	// Grant attempts are indexed by journal ID, while the grant retains only
++	// operation identity. Resolve the index from the immutable ledger map and
++	// then use the public inspection method so all state checks remain intact.
++	coordinator.ledger.mu.Lock()
++	var journalID uuid.UUID
++	for candidateJournalID, candidate := range coordinator.ledger.grantAttempts {
++		if candidate.OperationID == coordinator.grant.operationID {
++			journalID = candidateJournalID
++			break
++		}
++	}
++	coordinator.ledger.mu.Unlock()
++	requestWire, err := modelruntime.EncodeBackendStartupRequest(coordinator.expected)
++	if err != nil {
++		return RuntimeStartupCompositionReceipt{}, err
++	}
++	requestDigest := sha256.Sum256(requestWire)
++	if journalID == uuid.Nil {
++		// Before the backend's one-shot request arrives the durable grant attempt
++		// does not exist yet. Return an explicitly pending receipt; callers must
++		// never interpret it as a Permit.
++		receipt := RuntimeStartupCompositionReceipt{SchemaVersion: 1, OperationID: coordinator.grant.operationID, JournalID: coordinator.expected.JournalID, RequestDigest: requestDigest, Outcome: "pending"}
++		receipt.ReceiptDigest = receiptDigest(receipt)
++		return receipt, nil
++	}
++	attempt, err := coordinator.ledger.InspectJournalGrantAttempt(ctx, journalID)
++	if err != nil {
++		return RuntimeStartupCompositionReceipt{}, err
++	}
++	attemptWire, err := json.Marshal(attempt)
++	if err != nil {
++		return RuntimeStartupCompositionReceipt{}, err
++	}
++	receipt := RuntimeStartupCompositionReceipt{SchemaVersion: 1, OperationID: attempt.OperationID, JournalID: attempt.JournalID, RequestDigest: requestDigest, ReservationDigest: attempt.ReservationDigest, AuthorizationDigest: attempt.AuthorizationDigest, GrantAttemptDigest: sha256.Sum256(attemptWire), Permit: permit}
++	switch {
++	case permit:
++		receipt.Outcome = "permitted"
++	case closed:
++		receipt.Outcome = "revoked"
++	case handled:
++		receipt.Outcome = "denied"
++	default:
++		receipt.Outcome = "pending"
++	}
++	receipt.ReceiptDigest = receiptDigest(receipt)
++	return receipt, nil
++}
++
++func receiptDigest(receipt RuntimeStartupCompositionReceipt) [sha256.Size]byte {
++	receipt.ReceiptDigest = [sha256.Size]byte{}
++	wire, _ := json.Marshal(receipt)
++	return sha256.Sum256(wire)
++}
++
++// Verify checks the receipt's self digest and rejects an empty identity or an
++// impossible outcome. It is intended for receipt consumers and evidence
++// writers, not as an authorization path.
++func (receipt RuntimeStartupCompositionReceipt) Verify() error {
++	if receipt.SchemaVersion != 1 || receipt.OperationID == uuid.Nil || receipt.JournalID == uuid.Nil || receipt.RequestDigest == ([sha256.Size]byte{}) || receipt.ReceiptDigest != receiptDigest(receipt) {
++		return errors.New("runtime startup composition receipt is invalid")
++	}
++	if receipt.Outcome == "pending" {
++		if receipt.Permit || receipt.GrantAttemptDigest != ([sha256.Size]byte{}) || receipt.ReservationDigest != ([sha256.Size]byte{}) || receipt.AuthorizationDigest != ([sha256.Size]byte{}) {
++			return errors.New("pending runtime startup composition receipt contains authority")
++		}
++		return nil
++	}
++	if receipt.GrantAttemptDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup composition receipt has no grant attempt")
++	}
++	if receipt.ReservationDigest == ([sha256.Size]byte{}) || receipt.AuthorizationDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup composition receipt has incomplete authority digests")
++	}
++	switch receipt.Outcome {
++	case "permitted":
++		if !receipt.Permit {
++			return errors.New("runtime startup composition receipt outcome is inconsistent")
++		}
++	case "revoked", "denied":
++		if receipt.Permit {
++			return errors.New("runtime startup composition receipt outcome is inconsistent")
++		}
++	default:
++		return errors.New("runtime startup composition receipt has unknown outcome")
++	}
++	if receipt.Permit && receipt.Outcome != "permitted" || !receipt.Permit && receipt.Outcome == "permitted" {
++		return errors.New("runtime startup composition receipt outcome is inconsistent")
++	}
++	return nil
++}
++
++// VerifyBinding checks that a receipt belongs to the exact operation and
++// authority material selected by its consumer. Verify only checks the receipt
++// self-digest and structural invariants; this method adds the external binding
++// that prevents a valid receipt from one startup being replayed for another.
++func (receipt RuntimeStartupCompositionReceipt) VerifyBinding(operationID, journalID uuid.UUID, requestDigest, reservationDigest, authorizationDigest [sha256.Size]byte) error {
++	if err := receipt.Verify(); err != nil {
++		return err
++	}
++	if operationID == uuid.Nil || journalID == uuid.Nil || requestDigest == ([sha256.Size]byte{}) {
++		return errors.New("runtime startup composition binding is incomplete")
++	}
++	if receipt.OperationID != operationID || receipt.JournalID != journalID || receipt.RequestDigest != requestDigest {
++		return errors.New("runtime startup composition receipt identity does not match operation")
++	}
++	if receipt.Outcome == "pending" {
++		return nil
++	}
++	if reservationDigest == ([sha256.Size]byte{}) || authorizationDigest == ([sha256.Size]byte{}) || receipt.ReservationDigest != reservationDigest || receipt.AuthorizationDigest != authorizationDigest {
++		return errors.New("runtime startup composition receipt authority does not match operation")
++	}
++	return nil
++}
+diff --git a/internal/nodeagent/worker_journal_linux.go b/internal/nodeagent/worker_journal_linux.go
+new file mode 100644
+index 0000000..eed28af
+--- /dev/null
++++ b/internal/nodeagent/worker_journal_linux.go
+@@ -0,0 +1,375 @@
++package nodeagent
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/hex"
++	"errors"
++	"os"
++	"sync"
++	"time"
++
++	"github.com/vivym/vela/internal/runtimechannel"
++	"github.com/vivym/vela/internal/stageworkeragent"
++	"github.com/vivym/vela/internal/workerjournalwire"
++)
++
++var (
++	ErrWorkerJournalIdentity = errors.New("Worker journal caller identity is not authorized")
++	ErrWorkerJournalClosed   = errors.New("Worker journal endpoint is closed")
++)
++
++// WorkerJournalEndpoint is the Node-owned authority for the two journals used
++// by a Stage Worker. The Worker receives no journal directory and cannot
++// select storage; every operation is checked against the retained original
++// Worker pidfd and the immutable journal identity.
++type WorkerJournalEndpoint struct {
++	mu              sync.Mutex
++	input           *stageworkeragent.FileInputTransferJournal
++	materialization *stageworkeragent.FileMaterializationJournal
++	worker          *os.File
++	identity        workerjournalwire.Identity
++	pidfdBroker     string
++	writable        bool
++	uploads         map[string]*materializationUpload
++}
++
++const workerJournalChunkBytes = 12 << 10
++const workerJournalMaximumUploads = 8
++
++type materializationUpload struct {
++	operation string
++	id        string
++	total     int
++	digest    [sha256.Size]byte
++	next      int
++	data      []byte
++	deadline  time.Time
++}
++
++type WorkerJournalEndpointConfig struct {
++	Input             *stageworkeragent.FileInputTransferJournal
++	Materialization   *stageworkeragent.FileMaterializationJournal
++	WorkerOwner       *RuntimeNamespaceOwner
++	Identity          workerjournalwire.Identity
++	PIDFDBrokerSocket string
++}
++
++func NewWorkerJournalEndpoint(ctx context.Context, config WorkerJournalEndpointConfig) (*WorkerJournalEndpoint, error) {
++	if ctx == nil || os.Geteuid() != 0 || config.Input == nil || config.Materialization == nil || config.WorkerOwner == nil ||
++		config.Identity.JournalID == (workerjournalwire.Identity{}).JournalID || config.Identity.Scope == ([sha256.Size]byte{}) {
++		return nil, ErrWorkerJournalIdentity
++	}
++	worker, err := retainJournalProcess(ctx, config.WorkerOwner)
++	if err != nil {
++		return nil, err
++	}
++	return &WorkerJournalEndpoint{input: config.Input, materialization: config.Materialization, worker: worker,
++		identity: config.Identity, pidfdBroker: config.PIDFDBrokerSocket, uploads: make(map[string]*materializationUpload)}, nil
++}
++
++func (endpoint *WorkerJournalEndpoint) Handle(ctx context.Context, caller *RuntimeCaller) ([]byte, error) {
++	if endpoint == nil || caller == nil || ctx == nil {
++		return nil, ErrWorkerJournalIdentity
++	}
++	endpoint.mu.Lock()
++	defer endpoint.mu.Unlock()
++	if endpoint.worker == nil {
++		return nil, ErrWorkerJournalClosed
++	}
++	if _, err := caller.Inspect(ctx); err != nil {
++		return nil, err
++	}
++	if err := endpoint.sameWorker(ctx, caller); err != nil {
++		return nil, err
++	}
++	payload := caller.Payload()
++	request, identity, err := workerjournalwire.ParseRequest(payload)
++	if err != nil || identity != endpoint.identity {
++		return nil, ErrWorkerJournalIdentity
++	}
++	requestDigest := sha256.Sum256(payload)
++	response := workerjournalwire.Response{}
++	if !endpoint.writable && workerJournalRequestMutates(request) {
++		return workerjournalwire.EncodeResponse(requestDigest, workerjournalwire.Response{Error: "REJECTED"})
++	}
++	switch {
++	case request.Input != nil:
++		response, err = endpoint.handleInput(ctx, request.Input)
++	case request.Materialize != nil:
++		response, err = endpoint.handleMaterialization(ctx, request.RequestID, request.Materialize)
++	default:
++		err = workerjournalwire.ErrProtocol
++	}
++	if err != nil {
++		response = workerjournalwire.Response{Error: classifyWorkerJournalError(ctx, err)}
++	}
++	return workerjournalwire.EncodeResponse(requestDigest, response)
++}
++
++// Activate opens mutation authority only after the independent Runtime startup
++// grant has been consumed. Reads remain available during the pre-grant
++// startup snapshot phase.
++func (endpoint *WorkerJournalEndpoint) Activate(ctx context.Context) error {
++	if endpoint == nil || ctx == nil {
++		return ErrWorkerJournalIdentity
++	}
++	endpoint.mu.Lock()
++	defer endpoint.mu.Unlock()
++	if endpoint.worker == nil {
++		return ErrWorkerJournalClosed
++	}
++	if err := context.Cause(ctx); err != nil {
++		return err
++	}
++	if err := runtimechannel.PollLivePIDFD(int(endpoint.worker.Fd())); err != nil {
++		return err
++	}
++	endpoint.writable = true
++	return nil
++}
++
++func (endpoint *WorkerJournalEndpoint) handleInput(ctx context.Context, request *workerjournalwire.InputRequest) (workerjournalwire.Response, error) {
++	digest, err := decodeWorkerDigest(request.TokenDigest)
++	if err != nil {
++		return workerjournalwire.Response{}, err
++	}
++	switch request.Operation {
++	case "load":
++		record, found, err := endpoint.input.Load(ctx, digest)
++		if err != nil || !found {
++			return workerjournalwire.Response{Found: found}, err
++		}
++		encoded, err := stageworkeragent.EncodeInputTransferJournalRecord(record)
++		return workerjournalwire.Response{Found: true, InputRecord: encoded}, err
++	case "put_pending", "mark_consumed":
++		record, err := stageworkeragent.DecodeInputTransferJournalRecord(request.Record)
++		if err != nil || record.TokenDigest != digest {
++			return workerjournalwire.Response{}, err
++		}
++		if request.Operation == "put_pending" {
++			err = endpoint.input.PutPending(ctx, record)
++		} else {
++			err = endpoint.input.MarkConsumed(ctx, record)
++		}
++		return workerjournalwire.Response{}, err
++	default:
++		return workerjournalwire.Response{}, workerjournalwire.ErrProtocol
++	}
++}
++
++func (endpoint *WorkerJournalEndpoint) handleMaterialization(ctx context.Context, requestID string, request *workerjournalwire.MaterializeRequest) (workerjournalwire.Response, error) {
++	switch request.Operation {
++	case "ensure_capacity":
++		return workerjournalwire.Response{}, endpoint.materialization.EnsureCapacity(ctx)
++	case "put":
++		recordWire, final, err := endpoint.acceptMaterializationChunk(requestID, request)
++		if err != nil || !final {
++			return workerjournalwire.Response{}, err
++		}
++		record, err := stageworkeragent.DecodePendingMaterialization(recordWire)
++		if err != nil {
++			return workerjournalwire.Response{}, err
++		}
++		if current, foundErr := endpoint.currentMaterialization(ctx, record.ID); foundErr != nil {
++			return workerjournalwire.Response{}, foundErr
++		} else if current != nil {
++			if err := stageworkeragent.ValidateMaterializationTransition(*current, record); err != nil {
++				return workerjournalwire.Response{}, err
++			}
++		}
++		return workerjournalwire.Response{}, endpoint.materialization.Put(ctx, record)
++	case "list":
++		records, err := endpoint.materialization.List(ctx)
++		if err != nil {
++			return workerjournalwire.Response{}, err
++		}
++		encoded := make([][]byte, 0, len(records))
++		digestHash := sha256.New()
++		for _, record := range records {
++			wire, encodeErr := stageworkeragent.EncodePendingMaterialization(record)
++			if encodeErr != nil {
++				return workerjournalwire.Response{}, encodeErr
++			}
++			var length [8]byte
++			binary.BigEndian.PutUint64(length[:], uint64(len(wire)))
++			_, _ = digestHash.Write(length[:])
++			_, _ = digestHash.Write(wire)
++			encoded = append(encoded, wire)
++		}
++		pageSize := request.PageSize
++		if pageSize == 0 {
++			pageSize = 1
++		}
++		if request.Offset > len(encoded) {
++			return workerjournalwire.Response{}, errors.New("Worker materialization list offset is invalid")
++		}
++		end := request.Offset + pageSize
++		if end > len(encoded) {
++			end = len(encoded)
++		}
++		page := encoded[request.Offset:end]
++		listDigest := hex.EncodeToString(digestHash.Sum(nil))
++		if len(page) == 1 && len(page[0]) > workerJournalChunkBytes {
++			chunkOffset := request.ChunkOffset
++			if chunkOffset > len(page[0]) {
++				return workerjournalwire.Response{}, errors.New("Worker materialization record chunk offset is invalid")
++			}
++			chunkEnd := chunkOffset + workerJournalChunkBytes
++			if chunkEnd > len(page[0]) {
++				chunkEnd = len(page[0])
++			}
++			recordDigest := sha256.Sum256(page[0])
++			return workerjournalwire.Response{MaterializationNext: request.Offset, MaterializationDigest: listDigest, MaterializationMore: end < len(encoded), MaterializationRecordChunk: page[0][chunkOffset:chunkEnd], MaterializationRecordOffset: chunkOffset, MaterializationRecordTotal: len(page[0]), MaterializationRecordDigest: hex.EncodeToString(recordDigest[:]), MaterializationRecordMore: chunkEnd < len(page[0])}, nil
++		}
++		return workerjournalwire.Response{MaterializationList: page, MaterializationNext: end, MaterializationDigest: listDigest, MaterializationMore: end < len(encoded)}, nil
++	case "delete":
++		recordWire, final, err := endpoint.acceptMaterializationChunk(requestID, request)
++		if err != nil || !final {
++			return workerjournalwire.Response{}, err
++		}
++		record, err := stageworkeragent.DecodePendingMaterialization(recordWire)
++		if err != nil || record.ID != request.ID || record.ConfirmedDisposition == "" {
++			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is invalid")
++		}
++		current, currentErr := endpoint.currentMaterialization(ctx, request.ID)
++		if currentErr != nil || current == nil {
++			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is stale")
++		}
++		currentWire, encodeErr := stageworkeragent.EncodePendingMaterialization(*current)
++		if encodeErr != nil || !bytes.Equal(currentWire, recordWire) {
++			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is stale")
++		}
++		return workerjournalwire.Response{}, endpoint.materialization.Delete(ctx, request.ID)
++	default:
++		return workerjournalwire.Response{}, workerjournalwire.ErrProtocol
++	}
++}
++
++func (endpoint *WorkerJournalEndpoint) acceptMaterializationChunk(requestID string, request *workerjournalwire.MaterializeRequest) ([]byte, bool, error) {
++	if requestID == "" || request == nil || len(request.Record) == 0 {
++		return nil, false, workerjournalwire.ErrProtocol
++	}
++	digest, err := decodeWorkerDigest(request.ChunkDigest)
++	if err != nil {
++		return nil, false, err
++	}
++	now := time.Now()
++	for id, pending := range endpoint.uploads {
++		if pending == nil || now.After(pending.deadline) {
++			delete(endpoint.uploads, id)
++		}
++	}
++	upload := endpoint.uploads[requestID]
++	if upload == nil {
++		if request.ChunkOffset != 0 {
++			return nil, false, errors.New("Worker materialization chunk sequence is invalid")
++		}
++		if len(endpoint.uploads) >= workerJournalMaximumUploads {
++			return nil, false, errors.New("Worker materialization chunk uploads are full")
++		}
++		upload = &materializationUpload{operation: request.Operation, id: request.ID, total: request.ChunkTotal, digest: digest, deadline: now.Add(2 * time.Minute)}
++		endpoint.uploads[requestID] = upload
++	}
++	if time.Now().After(upload.deadline) || upload.operation != request.Operation || upload.id != request.ID || upload.total != request.ChunkTotal || upload.digest != digest || upload.next != request.ChunkOffset {
++		delete(endpoint.uploads, requestID)
++		return nil, false, errors.New("Worker materialization chunk sequence is invalid")
++	}
++	if upload.next+len(request.Record) > upload.total || upload.total > 4<<20 {
++		delete(endpoint.uploads, requestID)
++		return nil, false, errors.New("Worker materialization chunk size is invalid")
++	}
++	upload.data = append(upload.data, request.Record...)
++	upload.next += len(request.Record)
++	if !request.ChunkFinal {
++		return nil, false, nil
++	}
++	if upload.next != upload.total || sha256.Sum256(upload.data) != upload.digest {
++		delete(endpoint.uploads, requestID)
++		return nil, false, errors.New("Worker materialization chunk digest is invalid")
++	}
++	data := append([]byte(nil), upload.data...)
++	delete(endpoint.uploads, requestID)
++	return data, true, nil
++}
++
++func (endpoint *WorkerJournalEndpoint) currentMaterialization(ctx context.Context, id string) (*stageworkeragent.PendingMaterialization, error) {
++	records, err := endpoint.materialization.List(ctx)
++	if err != nil {
++		return nil, err
++	}
++	for index := range records {
++		if records[index].ID == id {
++			return &records[index], nil
++		}
++	}
++	return nil, nil
++}
++
++func (endpoint *WorkerJournalEndpoint) sameWorker(ctx context.Context, caller *RuntimeCaller) error {
++	if endpoint == nil {
++		return ErrWorkerJournalClosed
++	}
++	caller.mu.Lock()
++	defer caller.mu.Unlock()
++	if caller.pidfd == nil || endpoint.worker == nil {
++		return ErrWorkerJournalClosed
++	}
++	return endpoint.sameWorkerLocked(ctx, caller.pidfd)
++}
++
++func (endpoint *WorkerJournalEndpoint) sameWorkerLocked(ctx context.Context, callerPIDFD *os.File) error {
++	if callerPIDFD == nil || endpoint.worker == nil {
++		return ErrWorkerJournalClosed
++	}
++	err := runtimechannel.SameLiveProcess(int(endpoint.worker.Fd()), int(callerPIDFD.Fd()))
++	if errors.Is(err, runtimechannel.ErrPIDFDIdentityUnavailable) && endpoint.pidfdBroker != "" {
++		return runtimechannel.ComparePIDFDsWithBroker(ctx, endpoint.pidfdBroker, int(endpoint.worker.Fd()), int(callerPIDFD.Fd()))
++	}
++	return err
++}
++
++func workerJournalRequestMutates(request workerjournalwire.Request) bool {
++	return request.Input != nil && request.Input.Operation != "load" || request.Materialize != nil && request.Materialize.Operation != "list"
++}
++
++func (endpoint *WorkerJournalEndpoint) Close() error {
++	if endpoint == nil {
++		return nil
++	}
++	endpoint.mu.Lock()
++	defer endpoint.mu.Unlock()
++	if endpoint.worker == nil {
++		return nil
++	}
++	err := endpoint.worker.Close()
++	endpoint.worker = nil
++	endpoint.writable = false
++	endpoint.uploads = nil
++	return err
++}
++
++func classifyWorkerJournalError(ctx context.Context, err error) string {
++	if err == nil {
++		return ""
++	}
++	if context.Cause(ctx) != nil {
++		return "UNCERTAIN"
++	}
++	return "REJECTED"
++}
++
++func decodeWorkerDigest(value string) ([sha256.Size]byte, error) {
++	decoded, err := hex.DecodeString(value)
++	if err != nil || len(decoded) != sha256.Size {
++		return [sha256.Size]byte{}, errors.New("invalid Worker journal digest")
++	}
++	var digest [sha256.Size]byte
++	copy(digest[:], decoded)
++	if digest == ([sha256.Size]byte{}) {
++		return [sha256.Size]byte{}, errors.New("invalid Worker journal digest")
++	}
++	return digest, nil
++}
+diff --git a/internal/nodeagent/worker_journal_linux_test.go b/internal/nodeagent/worker_journal_linux_test.go
+new file mode 100644
+index 0000000..f18e902
+--- /dev/null
++++ b/internal/nodeagent/worker_journal_linux_test.go
+@@ -0,0 +1,66 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"testing"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/workerjournalwire"
++)
++
++func TestWorkerJournalMaterializationChunkAssembly(t *testing.T) {
++	endpoint := &WorkerJournalEndpoint{uploads: make(map[string]*materializationUpload)}
++	payload := bytes.Repeat([]byte("materialization-record"), 3000)
++	digest := sha256.Sum256(payload)
++	requestID := uuid.NewString()
++	for offset := 0; offset < len(payload); {
++		end := offset + workerJournalChunkBytes
++		if end > len(payload) {
++			end = len(payload)
++		}
++		request := &workerjournalwire.MaterializeRequest{Operation: "put", ID: "record-1", Record: payload[offset:end], ChunkOffset: offset, ChunkTotal: len(payload), ChunkDigest: hex.EncodeToString(digest[:]), ChunkFinal: end == len(payload)}
++		assembled, final, err := endpoint.acceptMaterializationChunk(requestID, request)
++		if err != nil {
++			t.Fatalf("chunk %d: %v", offset, err)
++		}
++		if end != len(payload) {
++			if final || assembled != nil {
++				t.Fatalf("non-final chunk returned final=%v bytes=%d", final, len(assembled))
++			}
++		} else if !final || !bytes.Equal(assembled, payload) {
++			t.Fatalf("final assembly mismatch: final=%v bytes=%d", final, len(assembled))
++		}
++		offset = end
++	}
++	if len(endpoint.uploads) != 0 {
++		t.Fatal("completed upload was retained")
++	}
++	if _, _, err := endpoint.acceptMaterializationChunk(requestID, &workerjournalwire.MaterializeRequest{Operation: "put", ID: "record-1", Record: []byte("late"), ChunkOffset: 0, ChunkTotal: 4, ChunkDigest: hex.EncodeToString(digest[:]), ChunkFinal: true}); err == nil {
++		t.Fatal("reused request ID accepted after completion")
++	}
++}
++
++func TestWorkerJournalMaterializationChunkRejectsDigestAndSequence(t *testing.T) {
++	endpoint := &WorkerJournalEndpoint{uploads: make(map[string]*materializationUpload)}
++	good := sha256.Sum256([]byte("abcdef"))
++	request := func(offset int, data string, final bool) *workerjournalwire.MaterializeRequest {
++		return &workerjournalwire.MaterializeRequest{Operation: "delete", ID: "record-1", Record: []byte(data), ChunkOffset: offset, ChunkTotal: 6, ChunkDigest: hex.EncodeToString(good[:]), ChunkFinal: final}
++	}
++	if _, _, err := endpoint.acceptMaterializationChunk("sequence", request(1, "a", false)); err == nil {
++		t.Fatal("non-zero first offset accepted")
++	}
++	wrong := sha256.Sum256([]byte("wrong"))
++	if _, _, err := endpoint.acceptMaterializationChunk("digest", &workerjournalwire.MaterializeRequest{Operation: "put", ID: "record-1", Record: []byte("abcdef"), ChunkOffset: 0, ChunkTotal: 6, ChunkDigest: hex.EncodeToString(wrong[:]), ChunkFinal: true}); err == nil {
++		t.Fatal("wrong digest accepted")
++	}
++	if _, _, err := endpoint.acceptMaterializationChunk("order", request(0, "abc", false)); err != nil {
++		t.Fatal(err)
++	}
++	if _, _, err := endpoint.acceptMaterializationChunk("order", request(4, "ef", true)); err == nil {
++		t.Fatal("offset gap accepted")
++	}
++}
+diff --git a/internal/nodeagent/worker_journal_rpc_linux_test.go b/internal/nodeagent/worker_journal_rpc_linux_test.go
+new file mode 100644
+index 0000000..4e7561c
+--- /dev/null
++++ b/internal/nodeagent/worker_journal_rpc_linux_test.go
+@@ -0,0 +1,184 @@
++//go:build linux
++
++package nodeagent
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"syscall"
++	"testing"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/vivym/vela/internal/runtimechannel"
++	"github.com/vivym/vela/internal/stageartifact"
++	"github.com/vivym/vela/internal/stageworkeragent"
++	"github.com/vivym/vela/internal/workerjournalwire"
++)
++
++func TestWorkerJournalRPCPreActivationAndMutation(t *testing.T) {
++	if os.Geteuid() != 0 {
++		t.Skip("requires root Node journal server")
++	}
++	inputRoot := filepath.Join("/var/tmp", fmt.Sprintf("vela-worker-input-%d", os.Getpid()))
++	if err := os.RemoveAll(inputRoot); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(inputRoot) })
++	input, err := stageworkeragent.NewFileInputTransferJournal(inputRoot)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = input.Close() })
++
++	identity := workerjournalwire.Identity{JournalID: uuid.New(), Scope: sha256.Sum256([]byte("rpc-worker-scope"))}
++	socketPath := filepath.Join("/run", fmt.Sprintf("vela-worker-journal-test-%d.sock", os.Getpid()))
++	_ = os.Remove(socketPath)
++	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socketPath, Net: "unixpacket"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = listener.Close(); _ = os.Remove(socketPath) })
++	if err := errors.Join(os.Chown(socketPath, 0, 65532), os.Chmod(socketPath, 0o660)); err != nil {
++		t.Fatal(err)
++	}
++
++	workerPID := -1
++	child := exec.Command(os.Args[0], "-test.run=^TestWorkerJournalRPCClientHelper$")
++	readyPath := filepath.Join("/tmp", fmt.Sprintf("vela-worker-journal-ready-%d", os.Getpid()))
++	activatePath := filepath.Join("/tmp", fmt.Sprintf("vela-worker-journal-activate-%d", os.Getpid()))
++	_ = os.Remove(readyPath)
++	_ = os.Remove(activatePath)
++	child.Env = append(os.Environ(),
++		"VELA_WORKER_RPC_HELPER=1",
++		"VELA_WORKER_RPC_SOCKET="+socketPath,
++		"VELA_WORKER_RPC_JOURNAL_ID="+identity.JournalID.String(),
++		"VELA_WORKER_RPC_SCOPE="+hex.EncodeToString(identity.Scope[:]),
++		"VELA_WORKER_RPC_READY="+readyPath,
++		"VELA_WORKER_RPC_ACTIVATE="+activatePath,
++	)
++	child.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65532, Gid: 65532}, PidFD: &workerPID}
++	if err := child.Start(); err != nil {
++		t.Fatal(err)
++	}
++	if workerPID < 0 {
++		_ = child.Process.Kill()
++		_ = child.Wait()
++		t.Fatal("child did not provide original pidfd")
++	}
++	worker := os.NewFile(uintptr(workerPID), "worker-journal-owner")
++	defer worker.Close()
++	endpoint := &WorkerJournalEndpoint{input: input, worker: worker, identity: identity, uploads: make(map[string]*materializationUpload)}
++	server, err := NewJournalServerForHandler(endpoint, JournalServerConfig{Credentials: []RuntimeCallerCredentials{{UID: 65532, GID: 65532}}, MaxConcurrent: 2, ExchangeTimeout: 10 * time.Second})
++	if err != nil {
++		t.Fatal(err)
++	}
++	serverDone := make(chan error, 1)
++	go func() { serverDone <- server.Serve(context.Background(), listener) }()
++
++	deadline := time.Now().Add(10 * time.Second)
++	for {
++		if _, statErr := os.Stat(readyPath); statErr == nil {
++			break
++		}
++		if time.Now().After(deadline) {
++			_ = child.Process.Kill()
++			_ = child.Wait()
++			t.Fatal("Worker did not complete pre-activation exchanges")
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++	if err := endpoint.Activate(context.Background()); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(activatePath, []byte("activate"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := child.Wait(); err != nil {
++		t.Fatal(err)
++	}
++	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	if err := server.Shutdown(shutdownCtx); err != nil {
++		t.Fatal(err)
++	}
++	if err := <-serverDone; err != nil && !errors.Is(err, net.ErrClosed) {
++		t.Fatal(err)
++	}
++	record, found, err := input.Load(context.Background(), sha256.Sum256([]byte("worker-rpc-token")))
++	if err != nil || !found || record.Consumed {
++		t.Fatalf("Node-owned journal result: found=%v consumed=%v err=%v", found, record.Consumed, err)
++	}
++	t.Log("pre-activation mutation rejected; activation enabled the same retained Worker pidfd for mutation")
++}
++
++func TestWorkerJournalRPCClientHelper(t *testing.T) {
++	if os.Getenv("VELA_WORKER_RPC_HELPER") != "1" {
++		return
++	}
++	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++	defer cancel()
++	id, err := uuid.Parse(os.Getenv("VELA_WORKER_RPC_JOURNAL_ID"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	scopeBytes, err := hex.DecodeString(os.Getenv("VELA_WORKER_RPC_SCOPE"))
++	if err != nil || len(scopeBytes) != sha256.Size {
++		t.Fatal("invalid scope")
++	}
++	var scope [sha256.Size]byte
++	copy(scope[:], scopeBytes)
++	identity := workerjournalwire.Identity{JournalID: id, Scope: scope}
++	exchange := func(input *workerjournalwire.InputRequest) workerjournalwire.Response {
++		wire, digest, encodeErr := workerjournalwire.EncodeRequest(identity, input, nil)
++		if encodeErr != nil {
++			t.Fatal(encodeErr)
++		}
++		reply, exchangeErr := runtimechannel.ExchangeWithRequestLimit(ctx, os.Getenv("VELA_WORKER_RPC_SOCKET"), wire, workerjournalwire.MaximumRequestBytes)
++		if exchangeErr != nil {
++			t.Fatal(exchangeErr)
++		}
++		response, parseErr := workerjournalwire.ParseResponse(reply, digest)
++		if parseErr != nil {
++			t.Fatal(parseErr)
++		}
++		return response
++	}
++	token := sha256.Sum256([]byte("worker-rpc-token"))
++	encoded, err := stageworkeragent.EncodeInputTransferJournalRecord(stageworkeragent.InputTransferJournalRecord{TokenDigest: token, Command: stageartifact.ConsumeTransferCommand{CommandID: uuid.New(), TicketID: uuid.New(), TokenDigest: token, Destination: stageartifact.TransferDestination{WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 1, ModelResidencyID: uuid.New(), ModelRuntimeEpoch: 1, ConnectorRevisionID: uuid.New()}, OutcomeDigest: sha256.Sum256([]byte("outcome")), ConsumedAt: time.Now().UTC()}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if response := exchange(&workerjournalwire.InputRequest{Operation: "load", TokenDigest: hex.EncodeToString(token[:])}); response.Found {
++		t.Fatal("empty Node journal unexpectedly found a record")
++	}
++	if response := exchange(&workerjournalwire.InputRequest{Operation: "put_pending", TokenDigest: hex.EncodeToString(token[:]), Record: encoded}); response.Error != "REJECTED" {
++		t.Fatalf("pre-activation mutation response = %q", response.Error)
++	}
++	if err := os.WriteFile(os.Getenv("VELA_WORKER_RPC_READY"), []byte("ready"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	for {
++		if _, statErr := os.Stat(os.Getenv("VELA_WORKER_RPC_ACTIVATE")); statErr == nil {
++			break
++		}
++		if err := ctx.Err(); err != nil {
++			t.Fatal(err)
++		}
++		time.Sleep(10 * time.Millisecond)
++	}
++	if response := exchange(&workerjournalwire.InputRequest{Operation: "put_pending", TokenDigest: hex.EncodeToString(token[:]), Record: encoded}); response.Error != "" {
++		t.Fatalf("activated mutation response = %q", response.Error)
++	}
++	response := exchange(&workerjournalwire.InputRequest{Operation: "load", TokenDigest: hex.EncodeToString(token[:])})
++	if !response.Found || len(response.InputRecord) == 0 {
++		t.Fatal("activated Node journal record was not readable")
++	}
++}
+diff --git a/internal/runtimechannel/pidfd_broker_external_linux_test.go b/internal/runtimechannel/pidfd_broker_external_linux_test.go
+new file mode 100644
+index 0000000..08cc758
+--- /dev/null
++++ b/internal/runtimechannel/pidfd_broker_external_linux_test.go
+@@ -0,0 +1,117 @@
++//go:build linux
++
++package runtimechannel
++
++import (
++	"context"
++	"errors"
++	"os"
++	"os/exec"
++	"strings"
++	"syscall"
++	"testing"
++
++	"golang.org/x/sys/unix"
++)
++
++// TestPIDFDBrokerExternalSocket exercises a separately deployed root-owned
++// broker. It is opt-in so ordinary unit tests never depend on host services.
++// The child receives retained pidfds through SCM_RIGHTS and never serializes a
++// numeric PID. Set VELA_PIDFD_BROKER_EXTERNAL_SOCKET to run this against the
++// host service.
++func TestPIDFDBrokerExternalSocket(t *testing.T) {
++	socket := os.Getenv("VELA_PIDFD_BROKER_EXTERNAL_SOCKET")
++	if socket == "" {
++		t.Skip("VELA_PIDFD_BROKER_EXTERNAL_SOCKET is not configured")
++	}
++	if os.Geteuid() != 0 {
++		t.Skip("external broker test requires root to pass retained pidfds")
++	}
++	for _, mode := range []string{"same", "different", "nested-same", "wrong-gid"} {
++		t.Run(mode, func(t *testing.T) {
++			child := exec.Command(os.Args[0], "-test.run=^TestPIDFDBrokerExternalClient$")
++			child.Env = append(os.Environ(),
++				"VELA_PIDFD_BROKER_EXTERNAL_CLIENT=1",
++				"VELA_PIDFD_BROKER_EXTERNAL_SOCKET="+socket,
++				"VELA_PIDFD_BROKER_EXTERNAL_MODE="+mode,
++			)
++			credential := uint32(65532)
++			if mode == "wrong-gid" {
++				credential = 65533
++			}
++			child.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: credential, Gid: credential}}
++			if mode == "nested-same" {
++				hostPIDFD, err := unix.PidfdOpen(os.Getpid(), 0)
++				if err != nil {
++					t.Skipf("pidfd_open unavailable: %v", err)
++				}
++				t.Cleanup(func() { _ = unix.Close(hostPIDFD) })
++				child.ExtraFiles = []*os.File{os.NewFile(uintptr(hostPIDFD), "nested-host-pidfd")}
++				child.SysProcAttr.Cloneflags = unix.CLONE_NEWPID
++			}
++			output, err := child.CombinedOutput()
++			if err != nil {
++				if mode == "nested-same" && strings.Contains(string(output), "operation not permitted") {
++					t.Skipf("nested PID namespace is blocked by host policy: %s", output)
++				}
++				t.Fatalf("external broker client: %s: %v", output, err)
++			}
++		})
++	}
++}
++
++func TestPIDFDBrokerExternalClient(t *testing.T) {
++	if os.Getenv("VELA_PIDFD_BROKER_EXTERNAL_CLIENT") != "1" {
++		return
++	}
++	mode := os.Getenv("VELA_PIDFD_BROKER_EXTERNAL_MODE")
++	self, err := unix.PidfdOpen(os.Getpid(), 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(self)
++	first, second := self, self
++	if mode == "nested-same" {
++		first = 3
++		second = 3
++		if _, err := unix.FcntlInt(uintptr(first), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
++			t.Fatal(err)
++		}
++		if err := ValidatePIDFD(first); err != nil {
++			t.Fatal(err)
++		}
++		if os.Getenv("VELA_PIDFD_BROKER_DEBUG") == "1" {
++			if identity, classifyErr := ClassifyPIDFD(first); classifyErr != nil {
++				t.Logf("nested pidfd classify error: %v", classifyErr)
++			} else {
++				t.Logf("nested pidfd class: %d", identity)
++			}
++			if directErr := SameLiveProcess(first, second); directErr != nil {
++				t.Logf("nested direct comparison: %v", directErr)
++			}
++		}
++	}
++	if mode == "different" {
++		second, err = unix.PidfdOpen(os.Getppid(), 0)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer unix.Close(second)
++	}
++	err = ComparePIDFDsWithBroker(context.Background(), os.Getenv("VELA_PIDFD_BROKER_EXTERNAL_SOCKET"), first, second)
++	if mode == "wrong-gid" {
++		if !errors.Is(err, ErrPIDFDBrokerUnavailable) {
++			t.Fatalf("wrong GID result = %v, want ErrPIDFDBrokerUnavailable", err)
++		}
++		return
++	}
++	if mode == "same" || mode == "nested-same" {
++		if err != nil {
++			t.Fatalf("same retained pidfd rejected: %v", err)
++		}
++		return
++	}
++	if !errors.Is(err, ErrIdentity) {
++		t.Fatalf("different retained pidfd result = %v, want ErrIdentity", err)
++	}
++}
+diff --git a/internal/runtimechannel/pidfd_broker_linux.go b/internal/runtimechannel/pidfd_broker_linux.go
+new file mode 100644
+index 0000000..aa45153
+--- /dev/null
++++ b/internal/runtimechannel/pidfd_broker_linux.go
+@@ -0,0 +1,279 @@
++//go:build linux
++
++package runtimechannel
++
++import (
++	"context"
++	"crypto/rand"
++	"errors"
++	"net"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++const (
++	pidFDBrokerProtocol = "vela-pidfd-broker-v1\x00"
++	pidFDBrokerFrame    = len(pidFDBrokerProtocol) + 32
++	pidFDBrokerReply    = pidFDBrokerFrame + 1
++)
++
++var (
++	// ErrPIDFDBrokerUnavailable is returned when an invisible legacy pidfd
++	// needs a host-side comparison but no trusted broker was configured.
++	ErrPIDFDBrokerUnavailable = errors.New("trusted host-side pidfd identity broker is unavailable")
++	ErrPIDFDBrokerProtocol    = errors.New("pidfd identity broker protocol is invalid")
++)
++
++// ComparePIDFDsWithBroker asks a root-owned broker to compare two already
++// retained pidfds in the broker's PID namespace. The descriptors are sent as
++// SCM_RIGHTS; no numeric PID is serialized or reopened. The broker must be
++// published as a root-owned 0660 Unix seqpacket socket whose group is the
++// caller's configured Runtime GID.
++func ComparePIDFDsWithBroker(ctx context.Context, socketPath string, first, second int) error {
++	if ctx == nil || socketPath == "" || first < 0 || second < 0 {
++		return ErrPIDFDBrokerUnavailable
++	}
++	if err := ValidatePIDFD(first); err != nil {
++		return err
++	}
++	if err := ValidatePIDFD(second); err != nil {
++		return err
++	}
++	if err := errors.Join(PollLivePIDFD(first), PollLivePIDFD(second)); err != nil {
++		return err
++	}
++	socket, err := openNodeSocket(socketPath)
++	if err != nil {
++		return errors.Join(ErrPIDFDBrokerUnavailable, err)
++	}
++	defer func() { _ = socket.close() }()
++	connection, err := (&net.Dialer{Timeout: HandshakeTimeout}).DialContext(ctx, "unixpacket", socket.address())
++	if err != nil {
++		return errors.Join(ErrPIDFDBrokerUnavailable, err)
++	}
++	unixConnection, ok := connection.(*net.UnixConn)
++	if !ok {
++		_ = connection.Close()
++		return ErrPIDFDBrokerProtocol
++	}
++	defer func() { _ = unixConnection.Close() }()
++	if err := checkPIDFDBrokerPeer(unixConnection); err != nil {
++		return err
++	}
++	deadline := time.Now().Add(HandshakeTimeout)
++	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
++		deadline = limit
++	}
++	if err := unixConnection.SetDeadline(deadline); err != nil {
++		return err
++	}
++	frame := make([]byte, pidFDBrokerFrame)
++	copy(frame, pidFDBrokerProtocol)
++	if _, err := rand.Read(frame[len(pidFDBrokerProtocol):]); err != nil {
++		return err
++	}
++	if err := sendPIDFDBrokerFrame(unixConnection, frame, []int{first, second}); err != nil {
++		return err
++	}
++	reply, err := readPIDFDBrokerFrame(unixConnection, pidFDBrokerReply)
++	if err != nil {
++		return err
++	}
++	if len(reply) != pidFDBrokerReply || string(reply[:len(pidFDBrokerProtocol)]) != pidFDBrokerProtocol ||
++		!bytesEqual(reply[len(pidFDBrokerProtocol):pidFDBrokerFrame], frame[len(pidFDBrokerProtocol):]) {
++		return ErrPIDFDBrokerProtocol
++	}
++	if reply[len(reply)-1] != 1 {
++		return ErrIdentity
++	}
++	return nil
++}
++
++// ServePIDFDBroker serves one-shot comparisons for a root-owned Node process.
++// The accepted peer is restricted to the configured non-root Runtime GID.
++// Each request owns exactly two pidfds and each connection is closed after one
++// response, preventing descriptor or request state from being reused.
++func ServePIDFDBroker(ctx context.Context, listener *net.UnixListener, runtimeGID uint32) error {
++	if ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" || runtimeGID == 0 {
++		return ErrPIDFDBrokerProtocol
++	}
++	stop := context.AfterFunc(ctx, func() { _ = listener.Close() })
++	defer stop()
++	for {
++		connection, err := listener.AcceptUnix()
++		if err != nil {
++			if ctx.Err() != nil {
++				return context.Cause(ctx)
++			}
++			return err
++		}
++		if err := servePIDFDBrokerConnection(ctx, connection, runtimeGID); err != nil {
++			_ = connection.Close()
++		}
++	}
++}
++
++func servePIDFDBrokerConnection(ctx context.Context, connection *net.UnixConn, runtimeGID uint32) error {
++	defer connection.Close()
++	peer, err := pidFDBrokerPeer(connection)
++	if err != nil || peer.Uid == 0 || peer.Gid != runtimeGID {
++		return errors.Join(ErrIdentity, err)
++	}
++	deadline := time.Now().Add(HandshakeTimeout)
++	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
++		deadline = limit
++	}
++	if err := connection.SetDeadline(deadline); err != nil {
++		return err
++	}
++	frame, rights, err := readPIDFDBrokerRequest(connection)
++	if err != nil {
++		return err
++	}
++	defer func() {
++		for _, fd := range rights {
++			_ = unix.Close(fd)
++		}
++	}()
++	matched := false
++	if err := SameLiveProcess(rights[0], rights[1]); err == nil {
++		matched = true
++	}
++	reply := make([]byte, pidFDBrokerReply)
++	copy(reply, pidFDBrokerProtocol)
++	copy(reply[len(pidFDBrokerProtocol):pidFDBrokerFrame], frame[len(pidFDBrokerProtocol):])
++	if matched {
++		reply[len(reply)-1] = 1
++	}
++	return writePIDFDBrokerFrame(connection, reply)
++}
++
++func checkPIDFDBrokerPeer(connection *net.UnixConn) error {
++	peer, err := pidFDBrokerPeer(connection)
++	if err != nil || peer.Uid != 0 || peer.Gid != 0 {
++		return errors.Join(ErrIdentity, err)
++	}
++	return nil
++}
++
++func pidFDBrokerPeer(connection *net.UnixConn) (*unix.Ucred, error) {
++	raw, err := connection.SyscallConn()
++	if err != nil {
++		return nil, err
++	}
++	var peer *unix.Ucred
++	var peerErr error
++	if err := raw.Control(func(fd uintptr) { peer, peerErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED) }); err != nil {
++		return nil, err
++	}
++	return peer, peerErr
++}
++
++func sendPIDFDBrokerFrame(connection *net.UnixConn, frame []byte, rights []int) error {
++	if connection == nil || len(frame) == 0 || len(rights) != 2 {
++		return ErrPIDFDBrokerProtocol
++	}
++	raw, err := connection.SyscallConn()
++	if err != nil {
++		return err
++	}
++	var sendErr error
++	var count int
++	if err := raw.Write(func(fd uintptr) bool {
++		count, sendErr = unix.SendmsgN(int(fd), frame, unix.UnixRights(rights...), nil, 0)
++		return true
++	}); err != nil {
++		return err
++	}
++	if sendErr != nil || count != len(frame) {
++		return errors.Join(ErrPIDFDBrokerProtocol, sendErr)
++	}
++	return nil
++}
++
++func writePIDFDBrokerFrame(connection *net.UnixConn, frame []byte) error {
++	count, err := connection.Write(frame)
++	if err != nil || count != len(frame) {
++		return errors.Join(ErrPIDFDBrokerProtocol, err)
++	}
++	return nil
++}
++
++func readPIDFDBrokerFrame(connection *net.UnixConn, maximum int) ([]byte, error) {
++	frame := make([]byte, maximum)
++	count, err := connection.Read(frame)
++	if err != nil {
++		return nil, err
++	}
++	if count != maximum {
++		return nil, ErrPIDFDBrokerProtocol
++	}
++	return frame[:count], nil
++}
++
++func readPIDFDBrokerRequest(connection *net.UnixConn) ([]byte, []int, error) {
++	raw, err := connection.SyscallConn()
++	if err != nil {
++		return nil, nil, err
++	}
++	frame := make([]byte, pidFDBrokerFrame)
++	oob := make([]byte, unix.CmsgSpace(2*4)+unix.CmsgSpace(4))
++	var count, oobCount, flags int
++	var receiveErr error
++	if err := raw.Read(func(fd uintptr) bool {
++		count, oobCount, flags, _, receiveErr = unix.Recvmsg(int(fd), frame, oob, unix.MSG_CMSG_CLOEXEC)
++		return true
++	}); err != nil {
++		return nil, nil, err
++	}
++	if receiveErr != nil || count != len(frame) || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 ||
++		string(frame[:len(pidFDBrokerProtocol)]) != pidFDBrokerProtocol {
++		return nil, nil, errors.Join(ErrPIDFDBrokerProtocol, receiveErr)
++	}
++	messages, err := unix.ParseSocketControlMessage(oob[:oobCount])
++	if err != nil {
++		return nil, nil, errors.Join(ErrPIDFDBrokerProtocol, err)
++	}
++	var rights []int
++	for _, message := range messages {
++		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_RIGHTS || len(rights) != 0 {
++			closePIDFDBrokerRights(rights)
++			return nil, nil, ErrPIDFDBrokerProtocol
++		}
++		rights, err = unix.ParseUnixRights(&message)
++		if err != nil {
++			closePIDFDBrokerRights(rights)
++			return nil, nil, errors.Join(ErrPIDFDBrokerProtocol, err)
++		}
++	}
++	if len(rights) != 2 {
++		closePIDFDBrokerRights(rights)
++		return nil, nil, ErrPIDFDBrokerProtocol
++	}
++	for _, fd := range rights {
++		if err := ValidatePIDFD(fd); err != nil {
++			closePIDFDBrokerRights(rights)
++			return nil, nil, err
++		}
++	}
++	return frame, rights, nil
++}
++
++func closePIDFDBrokerRights(rights []int) {
++	for _, fd := range rights {
++		_ = unix.Close(fd)
++	}
++}
++
++func bytesEqual(first, second []byte) bool {
++	if len(first) != len(second) {
++		return false
++	}
++	for index := range first {
++		if first[index] != second[index] {
++			return false
++		}
++	}
++	return true
++}
+diff --git a/internal/runtimechannel/pidfd_broker_linux_test.go b/internal/runtimechannel/pidfd_broker_linux_test.go
+new file mode 100644
+index 0000000..02b2bcc
+--- /dev/null
++++ b/internal/runtimechannel/pidfd_broker_linux_test.go
+@@ -0,0 +1,199 @@
++//go:build linux
++
++package runtimechannel
++
++import (
++	"context"
++	"errors"
++	"net"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++func TestPIDFDBrokerComparesRetainedHandles(t *testing.T) {
++	if os.Geteuid() != 0 {
++		t.Skip("requires a root broker and non-root broker client")
++	}
++	// The broker socket contract rejects writable ancestors. macOS/Linux test
++	// runners commonly place TempDir below sticky /tmp, so use /run where the
++	// ancestor chain can satisfy the root-owned non-writable requirement.
++	root, err := os.MkdirTemp("/run", "vela-pidfd-broker-")
++	if err != nil {
++		t.Skipf("/run is unavailable for root-owned broker fixture: %v", err)
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(root) })
++	if err := os.Chmod(root, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	socketPath := filepath.Join(root, "pidfd-broker.sock")
++	// Keep the executable outside /run: some validation hosts mount /run with
++	// noexec while still requiring the broker socket itself to live there.
++	helperRoot, err := os.MkdirTemp("/var/tmp", "vela-pidfd-helper-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chmod(helperRoot, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = os.RemoveAll(helperRoot) })
++	helperPath := filepath.Join(helperRoot, "runtimechannel.test")
++	helper, err := os.ReadFile(os.Args[0])
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(helperPath, helper, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chmod(helperPath, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socketPath, Net: "unixpacket"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer listener.Close()
++	const runtimeGID = 65532
++	if err := os.Chown(socketPath, 0, runtimeGID); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chmod(socketPath, 0o660); err != nil {
++		t.Fatal(err)
++	}
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	serverDone := make(chan error, 1)
++	go func() { serverDone <- ServePIDFDBroker(ctx, listener, runtimeGID) }()
++	for _, mode := range []string{"same", "different", "nested-same", "wrong-gid"} {
++		t.Run(mode, func(t *testing.T) {
++			child := exec.Command(helperPath, "-test.run=^TestPIDFDBrokerClientHelper$")
++			child.Env = append(os.Environ(), "VELA_PIDFD_BROKER_CLIENT=1", "VELA_PIDFD_BROKER_SOCKET="+socketPath, "VELA_PIDFD_BROKER_MODE="+mode)
++			credential := uint32(runtimeGID)
++			if mode == "wrong-gid" {
++				credential = 65533
++			}
++			child.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: credential, Gid: credential}}
++			if mode == "nested-same" {
++				hostPIDFD, err := unix.PidfdOpen(os.Getpid(), 0)
++				if err != nil {
++					t.Skipf("pidfd_open unavailable for nested host handle: %v", err)
++				}
++				t.Cleanup(func() { _ = unix.Close(hostPIDFD) })
++				child.ExtraFiles = []*os.File{os.NewFile(uintptr(hostPIDFD), "nested-host-pidfd")}
++				child.SysProcAttr.Cloneflags = unix.CLONE_NEWPID
++			}
++			output, err := child.CombinedOutput()
++			if err != nil {
++				if mode == "nested-same" && strings.Contains(string(output), "operation not permitted") {
++					t.Skipf("nested PID namespace is blocked by container policy: %s", output)
++				}
++				t.Fatalf("broker client: %s: %v", output, err)
++			}
++		})
++	}
++	cancel()
++	select {
++	case <-serverDone:
++	case <-time.After(time.Second):
++		t.Fatal("pidfd broker did not stop after cancellation")
++	}
++	if err := os.Remove(socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
++		t.Fatal("remove stopped broker socket: ", err)
++	}
++	probe, err := unix.PidfdOpen(os.Getpid(), 0)
++	if err != nil {
++		t.Fatal("open restart probe pidfd: ", err)
++	}
++	if err := ComparePIDFDsWithBroker(context.Background(), socketPath, probe, probe); !errors.Is(err, ErrPIDFDBrokerUnavailable) {
++		_ = unix.Close(probe)
++		t.Fatalf("request during broker downtime returned %v, want ErrPIDFDBrokerUnavailable", err)
++	}
++	_ = unix.Close(probe)
++	// A stopped broker must not leave a usable authority path behind. After the
++	// socket is recreated, a fresh descriptor handoff may succeed; no request
++	// state from the previous listener is reused.
++	restartedListener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: socketPath, Net: "unixpacket"})
++	if err != nil {
++		t.Fatal("restart pidfd broker listener: ", err)
++	}
++	t.Cleanup(func() { _ = restartedListener.Close() })
++	if err := os.Chown(socketPath, 0, runtimeGID); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chmod(socketPath, 0o660); err != nil {
++		t.Fatal(err)
++	}
++	restartedCtx, restartCancel := context.WithCancel(context.Background())
++	restartedDone := make(chan error, 1)
++	go func() { restartedDone <- ServePIDFDBroker(restartedCtx, restartedListener, runtimeGID) }()
++	child := exec.Command(helperPath, "-test.run=^TestPIDFDBrokerClientHelper$")
++	child.Env = append(os.Environ(), "VELA_PIDFD_BROKER_CLIENT=1", "VELA_PIDFD_BROKER_SOCKET="+socketPath, "VELA_PIDFD_BROKER_MODE=same")
++	child.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: runtimeGID, Gid: runtimeGID}}
++	if output, err := child.CombinedOutput(); err != nil {
++		restartCancel()
++		<-restartedDone
++		t.Fatalf("broker client after restart: %s: %v", output, err)
++	}
++	restartCancel()
++	select {
++	case <-restartedDone:
++	case <-time.After(time.Second):
++		t.Fatal("restarted pidfd broker did not stop after cancellation")
++	}
++}
++
++func TestPIDFDBrokerClientHelper(t *testing.T) {
++	if os.Getenv("VELA_PIDFD_BROKER_CLIENT") != "1" {
++		return
++	}
++	mode := os.Getenv("VELA_PIDFD_BROKER_MODE")
++	self, err := unix.PidfdOpen(os.Getpid(), 0)
++	if err != nil {
++		t.Skipf("pidfd_open unavailable: %v", err)
++	}
++	defer unix.Close(self)
++	second := self
++	first := self
++	if mode == "nested-same" {
++		first = 3
++		second = 3
++		if _, err := unix.FcntlInt(uintptr(first), unix.F_SETFD, unix.FD_CLOEXEC); err != nil {
++			t.Fatalf("set inherited pidfd close-on-exec: %v", err)
++		}
++		if err := ValidatePIDFD(first); err != nil {
++			t.Fatalf("inherited host pidfd invalid: %v", err)
++		}
++	}
++	if mode == "different" {
++		second, err = unix.PidfdOpen(os.Getppid(), 0)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer unix.Close(second)
++	}
++	if mode == "nested-same" {
++		if err := SameLiveProcess(first, second); err != nil && !errors.Is(err, ErrPIDFDIdentityUnavailable) {
++			t.Fatalf("nested direct comparison = %v, want success or ErrPIDFDIdentityUnavailable", err)
++		}
++	}
++	err = ComparePIDFDsWithBroker(context.Background(), os.Getenv("VELA_PIDFD_BROKER_SOCKET"), first, second)
++	if mode == "wrong-gid" {
++		if !errors.Is(err, ErrPIDFDBrokerUnavailable) {
++			t.Fatalf("wrong runtime GID result = %v, want ErrPIDFDBrokerUnavailable", err)
++		}
++		return
++	}
++	if mode == "same" || mode == "nested-same" {
++		if err != nil {
++			t.Fatalf("same retained pidfd rejected: %v", err)
++		}
++	} else if !errors.Is(err, ErrIdentity) {
++		t.Fatalf("different retained pidfd result: %v", err)
++	}
++}

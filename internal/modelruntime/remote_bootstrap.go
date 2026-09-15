@@ -26,19 +26,20 @@ var ErrRemoteBootstrap = errors.New("remote Runtime bootstrap is not a complete 
 // The Runtime consumes one protected snapshot; no workload environment selects
 // launch/key files, local journal paths, local epochs or an alternate authorizer.
 type RemoteRuntimeBootstrap struct {
-	SchemaVersion   int                      `json:"schema_version"`
-	Manifest        LaunchManifest           `json:"manifest"`
-	AuthorityKeys   map[string][]byte        `json:"authority_keys"`
-	RegistryKeys    map[string][]byte        `json:"registry_keys"`
-	RegistryBinding []byte                   `json:"registry_binding"`
-	Identity        ExecutionJournalIdentity `json:"identity"`
-	Startup         BackendLifecycleStatus   `json:"startup"`
-	JournalSocket   string                   `json:"journal_socket"`
-	StartupSocket   string                   `json:"startup_socket"`
-	RuntimeSocket   string                   `json:"runtime_socket"`
-	JournalTimeout  time.Duration            `json:"journal_timeout"`
-	CancelTimeout   time.Duration            `json:"cancel_timeout"`
-	ShutdownTimeout time.Duration            `json:"shutdown_timeout"`
+	SchemaVersion     int                      `json:"schema_version"`
+	Manifest          LaunchManifest           `json:"manifest"`
+	AuthorityKeys     map[string][]byte        `json:"authority_keys"`
+	RegistryKeys      map[string][]byte        `json:"registry_keys"`
+	RegistryBinding   []byte                   `json:"registry_binding"`
+	Identity          ExecutionJournalIdentity `json:"identity"`
+	Startup           BackendLifecycleStatus   `json:"startup"`
+	JournalSocket     string                   `json:"journal_socket"`
+	StartupSocket     string                   `json:"startup_socket"`
+	RuntimeSocket     string                   `json:"runtime_socket"`
+	PIDFDBrokerSocket string                   `json:"pidfd_broker_socket,omitempty"`
+	JournalTimeout    time.Duration            `json:"journal_timeout"`
+	CancelTimeout     time.Duration            `json:"cancel_timeout"`
+	ShutdownTimeout   time.Duration            `json:"shutdown_timeout"`
 }
 
 func EncodeRemoteRuntimeBootstrap(config RemoteRuntimeBootstrap) ([]byte, error) {
@@ -79,6 +80,9 @@ func (config RemoteRuntimeBootstrap) validate() error {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || len(path) > 100 || strings.ContainsRune(path, '\x00') || path == "/" {
 			return ErrRemoteBootstrap
 		}
+	}
+	if config.PIDFDBrokerSocket != "" && (!filepath.IsAbs(config.PIDFDBrokerSocket) || filepath.Clean(config.PIDFDBrokerSocket) != config.PIDFDBrokerSocket || len(config.PIDFDBrokerSocket) > 100 || strings.ContainsRune(config.PIDFDBrokerSocket, '\x00') || config.PIDFDBrokerSocket == "/") {
+		return ErrRemoteBootstrap
 	}
 	if config.JournalSocket == config.StartupSocket || config.JournalSocket == config.RuntimeSocket || config.StartupSocket == config.RuntimeSocket {
 		return ErrRemoteBootstrap

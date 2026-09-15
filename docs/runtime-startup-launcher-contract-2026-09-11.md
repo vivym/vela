@@ -56,28 +56,39 @@ helper，并把控制 socket 作为 inherited FD 3 传入。控制通道是
 `expected_pod` 是 verified plan 的 canonical Kubernetes Pod JSON，digest 是其
 SHA-256。helper 必须逐字段核对 Pod 与自身 CRI 创建请求，不能让环境变量或 caller
 payload 覆盖这些字段。helper 必须回传
-`{version, target, fd_count:3}`，并在同一个 `SCM_RIGHTS` 消息中按顺序附带
-`WorkerOwnerPIDFD`、`ObserverPIDFD`、observer socket endpoint。前两个 descriptor 必须
-通过 Node 的 pidfd identity/liveness 校验，第三个必须是 Unix socket。
-Node 在接收后为三个 descriptor 强制设置 `FD_CLOEXEC`，无法设置时立即拒绝。
+`{version, validation_only:false, target, worker_target, fd_count:4}`，并在同一个 `SCM_RIGHTS` 消息中按顺序附带
+Runtime pidfd、Worker owner pidfd、observer pidfd 和 observer socket endpoint。
+`RuntimePIDFD`、`WorkerOwnerPIDFD`、`ObserverPIDFD`、observer socket endpoint。前三个 descriptor 必须
+通过 Node 的 pidfd identity/liveness 校验，第四个必须是 Unix socket。
+Node 在接收后为四个 descriptor 强制设置 `FD_CLOEXEC`，无法设置时立即拒绝。
+validation helper 必须回传 `validation_only:true`；生产 Node 收到该标志时立即拒绝并
+关闭本次句柄，避免 root-owned 验证程序因错误配置进入生产启动链。
 
-Node 同时保留启动 helper 自己的原始 pidfd。observer 必须是该 helper 的直接子进程；
-Node 在接收 custody 时将 observer 的 `PPid` 与 helper pidfd 的内核 `Pid` 绑定。旧的
-直系 Node 子进程测试入口仍只允许 `PPid == Node`，不能用孙进程绕过这个检查。
+Node 同时保留启动 helper 自己的原始 pidfd。direct-child observer 必须是该 helper 的直接
+子进程，Node 在接收 custody 时将 observer 的 `PPid` 与 helper pidfd 的内核 `Pid` 绑定。
+production attached observer 使用同一 helper 创建的 tracer；Runtime 必须处于 ptrace stop，且
+`/proc/<runtime>/status` 的 `TracerPid` 必须等于 observer pidfd 对应的 pid，此模式不要求
+Runtime 的 `PPid` 等于 observer。两种模式都只使用内核 pidfd 和 `/proc` 身份字段，不从
+numeric PID 重开句柄。
 
-Fleet reservation 成功后，Node 在同一控制通道发送
-`{version, operation_id, request_digest}`。helper 必须返回相同 operation/request 绑定的
-`evidence_digest`、UTC `issued_at`/`expires_at`；Node 再执行统一的 5 分钟窗口和时间顺序
-校验。helper 退出、通道关闭、descriptor 数量不符、target 不合法或 policy 回包不匹配
+Fleet reservation 成功后，Node 通过独立的 root-owned
+`VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET` 请求外部 issuer。请求绑定
+`operation_id`、`journal_id`、`request_digest` 和完整 `reservation_digest`；issuer 只能在
+消费 Fleet 预先签名且一次性的 authorization 文件后返回同样绑定的
+`evidence_digest`、UTC `issued_at`/`expires_at` 和 Ed25519 签名。Node 执行统一的五分钟
+窗口、时间顺序和公钥校验。issuer 退出、通道关闭、target 不合法或 policy 回包不匹配
 都会 fail-closed，并终止本次 helper 及其未转移的进程。
-Node 不再接受仅由调用方提供的裸 authorization digest；没有 helper policy 回包就不会
-创建 journal write grant，也不会向 ModelRuntime 返回 Permit。
+Node 不接受仅由调用方提供的裸 authorization digest；没有外部 issuer 的有效回包就不会
+创建 journal write grant，也不会向 ModelRuntime 返回 Permit。旧的 helper 内置 policy
+frame 仅保留给历史测试适配器，不能作为生产 authority。
 
 ## 当前实现状态
 
-仓库已经实现 contract 的 Node 侧 composition、受保护 helper adapter 和失败清理。生产
-部署仍必须提供实现上述 wire contract 的 helper；目标主机现有 `exec-observer` 属于实验
-fixture，不能满足该 contract，也不能把它配置为生产 helper。
+仓库已经实现 contract 的 Node 侧 composition、受保护 helper adapter、失败清理，以及
+production launcher 内置的 attached observer mode。生产部署可以将
+`VELA_RUNTIME_LAUNCHER_OBSERVER_PATH` 指向同一份 source-matched launcher binary；该 mode
+通过继承的 Runtime 原始 pidfd attach 到本次 CRI Runtime，再完成 custody handshake。目标主机
+现有 `exec-observer` 仍属于实验 fixture，不能继续配置为生产 observer。
 
 ## Validation-only helper boundary
 
@@ -88,15 +99,30 @@ PodSandbox 和 `model-runtime` container，创建 observer socketpair，返回�
 删除它创建的精确 workload。生产 helper 不能读取历史 target、numeric PID、旧 receipt
 或以 policy response 代替 CRI/进程证据，也不能被配置到生产默认路径。
 
-当前 validation helper 的 CRI task API 只暴露 numeric task PID，因此 Worker descriptor
-由 `pidfd_open(task_pid)` 得到，receipt 和代码注释明确标记为 validation-only。这个路径
-不能满足生产 contract；生产 helper 必须在受信任的创建边界取得并交接原始 pidfd，禁止从
-numeric PID 重开句柄。
+当前 validation helper 在容器内 wrapper 启动边界调用 `pidfd_open(getpid())`，通过
+`SCM_RIGHTS` 把原始句柄交给宿主，再 `exec` 实际命令；宿主只用 CRI task PID 做关联
+核对，不从 numeric PID 重开句柄。这关闭了旧 validation helper 的句柄交接偏差，但
+仍未证明 production observer、policy issuer 或完整 Node composition。
 
 validation helper 的 Worker 必须显式使用 `VELA_VALIDATION_WORKER_IMAGE` 和
 `VELA_VALIDATION_WORKER_COMMAND`（简单 argv，禁止 shell 展开）；默认值不能假设 runtime
 镜像内存在 `/pause`。receipt 必须同时记录 Runtime 与 Worker target，且在 helper 退出后
 用实际 CRI socket 对应的 containerd namespace 核对两个 container 和 sandbox 均已消失。
+
+Worker journal socket 的 validation mount contract 也必须闭合：签名 Pod 的
+`stage-worker-agent` 必须提供 canonical absolute
+`VELA_WORKER_JOURNAL_SOCKET`；helper 将该路径的 parent directory 以 read-only host
+mount 映射到同一 container path，并把相同值注入 Worker。Node 在 launcher 返回后才在
+该 host directory 创建 root-owned `0660` socket，因此不能把 socket 文件本身作为
+启动前的 bind mount；目录挂载保证 Worker 能看到随后创建和替换的 socket，同时不暴露
+Node journal 文件目录。缺少该环境、路径非 canonical、或 mount 与 signed Pod 不一致时，
+validation helper 必须在创建 Worker 前 fail-closed。
+
+目标机不支持 `pidfs` 时，签名 Pod 还必须声明 canonical
+`VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET`。helper 将 broker socket 的 parent directory
+以 read-only host mount 映射到 Worker，并注入相同路径；broker socket 本身不能在启动前
+作为单文件 bind mount。缺少 broker、目录不可信或 Pod 声明不一致时，必须在创建 Worker
+前 fail-closed，不能退回 numeric PID。
 
 为验证 Node 的拒绝和回收路径，validation-only helper 支持以下受控
 `VELA_VALIDATION_SCENARIO`：`caller-replacement`、`observer-channel-loss`、

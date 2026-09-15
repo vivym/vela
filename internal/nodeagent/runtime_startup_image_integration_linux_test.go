@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -293,7 +294,7 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 						t.Fatalf("returned history mutated live association: %v", err)
 					}
 				}
-			} else if err == nil || result != (RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
+			} else if err == nil || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) || len(ledger.reservations) != 0 {
 				t.Fatalf("failed observation returned a receipt: %+v %v", result, err)
 			}
 			if wantIntent != 0 {
@@ -310,7 +311,7 @@ func verifyRuntimeStartupImageReservation(t *testing.T, fixture *containerdProce
 				defer func() { _ = recovered.Close() }()
 				history, err := recovered.InspectReservation(t.Context(), request.JournalID)
 				if fault == "none" || fault == "publication-valid" {
-					if err != nil || history != result {
+					if err != nil || !reflect.DeepEqual(history, result) {
 						t.Fatalf("recovery lost receipt: %v", err)
 					}
 					if publication != nil && recovered.starts[request.JournalID].Remote.Bootstrap.Publication != published.Record() {

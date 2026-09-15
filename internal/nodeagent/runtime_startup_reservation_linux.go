@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -28,13 +29,17 @@ type RuntimeStartupRegistry interface {
 }
 
 type RuntimeStartupReservationConfig struct {
-	Plan        *RuntimeLaunchPlan
-	Pods        RuntimeLaunchPodReader
-	Observer    *RuntimeContainerObserver
-	Caller      *RuntimeCaller
-	Journal     *modelruntime.ExecutionJournalOwner
-	Registry    RuntimeStartupRegistry
-	publication *RuntimeStartupPublicationConfig
+	Plan                         *RuntimeLaunchPlan
+	Pods                         RuntimeLaunchPodReader
+	Observer                     *RuntimeContainerObserver
+	Caller                       *RuntimeCaller
+	Journal                      *modelruntime.ExecutionJournalOwner
+	Registry                     RuntimeStartupRegistry
+	PolicyAuthorizationPublisher func(context.Context, []byte) error
+	// RuntimeOwner is optionally retained before the Runtime sends its startup
+	// handshake. The ledger then reuses this exact pidfd for the durable record.
+	RuntimeOwner *RuntimeNamespaceOwner
+	publication  *RuntimeStartupPublicationConfig
 }
 
 // RuntimeStartupRemoteIntent binds Node's held storage and actual journal
@@ -52,11 +57,12 @@ type RuntimeStartupRemoteIntent struct {
 // RuntimeStartupReservationRecord records a committed Fleet reservation. It
 // has no Fresh or Permit field and is never sufficient for backend startup.
 type RuntimeStartupReservationRecord struct {
-	OperationID   uuid.UUID         `json:"operation_id"`
-	JournalID     uuid.UUID         `json:"journal_id"`
-	RequestDigest [sha256.Size]byte `json:"request_digest"`
-	ReservedAt    time.Time         `json:"reserved_at"`
-	RecordedAt    time.Time         `json:"recorded_at"`
+	OperationID         uuid.UUID         `json:"operation_id"`
+	JournalID           uuid.UUID         `json:"journal_id"`
+	RequestDigest       [sha256.Size]byte `json:"request_digest"`
+	ReservedAt          time.Time         `json:"reserved_at"`
+	RecordedAt          time.Time         `json:"recorded_at"`
+	PolicyAuthorization []byte            `json:"policy_authorization,omitempty"`
 }
 
 // ReserveRemote records the exact owner/intent before calling Fleet once, then
@@ -90,7 +96,7 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 		copy := *image.first.RemoteCLI
 		remote.RemoteCLI = &copy
 	}
-	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote)
+	record, err := ledger.record(ctx, config.Plan, config.Pods, config.Observer, config.Caller, &remote, config.RuntimeOwner)
 	if err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
@@ -124,6 +130,14 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 	if !reservation.Fresh || reservation.ReservedAt.IsZero() || !reflect.DeepEqual(reservation.RuntimeStartupRequest, request) {
 		return RuntimeStartupReservationRecord{}, ErrRuntimeStartupRecorded
 	}
+	if config.PolicyAuthorizationPublisher != nil {
+		if len(reservation.PolicyAuthorization) == 0 {
+			return RuntimeStartupReservationRecord{}, errors.New("Fleet reservation did not include policy authorization")
+		}
+		if err := config.PolicyAuthorizationPublisher(ctx, reservation.PolicyAuthorization); err != nil {
+			return RuntimeStartupReservationRecord{}, fmt.Errorf("publish Fleet policy authorization: %w", err)
+		}
+	}
 	if err := image.check(ctx, config, record); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}
@@ -131,7 +145,7 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 		return RuntimeStartupReservationRecord{}, err
 	}
 	result := RuntimeStartupReservationRecord{OperationID: record.OperationID, JournalID: record.Request.JournalID,
-		RequestDigest: sha256.Sum256(wire), ReservedAt: reservation.ReservedAt.UTC(), RecordedAt: time.Now().UTC()}
+		RequestDigest: sha256.Sum256(wire), ReservedAt: reservation.ReservedAt.UTC(), RecordedAt: time.Now().UTC(), PolicyAuthorization: slices.Clone(reservation.PolicyAuthorization)}
 	if err := ledger.append(ctx, runtimeStartupEntry{Reservation: &result}); err != nil {
 		return RuntimeStartupReservationRecord{}, err
 	}

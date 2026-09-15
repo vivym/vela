@@ -35,6 +35,9 @@ func loadDurableWorkerLaunch(configuration config) (*durableWorkerLaunch, error)
 		return nil, errors.New("durable Worker requires launch manifest, Registry binding and verifier, canonical assignment journal directory and history bound")
 	}
 	for _, root := range []string{configuration.productionStateRoot, configuration.inputRoot, configuration.inputTransferJournalRoot, configuration.outputRoot, configuration.materializationJournalRoot} {
+		if root == "" {
+			continue
+		}
 		if root == configuration.assignmentAdmissionRoot || strings.HasPrefix(root, configuration.assignmentAdmissionRoot+string(filepath.Separator)) ||
 			strings.HasPrefix(configuration.assignmentAdmissionRoot, root+string(filepath.Separator)) {
 			return nil, errors.New("assignment journal must not overlap other Worker state or content roots")

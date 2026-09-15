@@ -89,3 +89,32 @@ func TestRemoteRuntimeBootstrapCanonicalBinding(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoteRuntimeBootstrapPIDFDBrokerSocketRoundTrip(t *testing.T) {
+	config, _, _ := remoteRuntimeServerFixture(t)
+	keys, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{"authority-v1": make([]byte, 32)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := proto.MarshalOptions{Deterministic: true}.Marshal(config.RegistryBinding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: config.Manifest, AuthorityKeys: keys,
+		RegistryKeys: map[string][]byte{"registry": ed25519.NewKeyFromSeed(bytes.Repeat([]byte{17}, 32)).Public().(ed25519.PublicKey)}, RegistryBinding: binding,
+		Identity: config.RemoteStartup.Journal.Identity, Startup: config.RemoteStartup.Journal.Startup,
+		JournalSocket: "/run/vela/journal.sock", StartupSocket: "/run/vela/startup.sock", RuntimeSocket: "/run/vela/runtime.sock",
+		PIDFDBrokerSocket: "/run/vela/pidfd-broker.sock", JournalTimeout: time.Second, CancelTimeout: time.Second, ShutdownTimeout: time.Second}
+	wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := modelruntime.ParseRemoteRuntimeBootstrap(wire)
+	if err != nil || parsed.PIDFDBrokerSocket != bootstrap.PIDFDBrokerSocket {
+		t.Fatalf("pidfd broker socket did not survive canonical round trip: %q %v", parsed.PIDFDBrokerSocket, err)
+	}
+	bootstrap.PIDFDBrokerSocket = "relative.sock"
+	if _, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap); err == nil {
+		t.Fatal("relative pidfd broker socket accepted")
+	}
+}

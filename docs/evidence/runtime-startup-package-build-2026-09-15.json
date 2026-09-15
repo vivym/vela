@@ -1,0 +1,69 @@
+{
+  "at": "2026-09-15T01:13:53.254674+00:00",
+  "result": "RUNTIME_STARTUP_PACKAGE_BUILD_VERIFY_PASS",
+  "revision": "92199f2975b6dd0b5809313f3086d5c3ea217884",
+  "directory": "/Users/viv/projs/vela/.runtime-startup-build-1789434798972692000",
+  "files": [
+    {
+      "path": "pidfd-broker-contract.json",
+      "bytes": 341,
+      "sha256": "f1d4573feea589dd8fc9cede2ce2369a153a38eaf5de1d5c2349d47c469e25bb"
+    },
+    {
+      "path": "pidfd-broker.env.example",
+      "bytes": 308,
+      "sha256": "68bc40737d7307ed252b06fb4b21b10be978820ca6d45b3e9a4887cc1ca0c277"
+    },
+    {
+      "path": "pidfd-broker.service",
+      "bytes": 550,
+      "sha256": "af31cd6d6ebb0e19b906c349f85c6028300c805943e00c8eb15563f0504473c8"
+    },
+    {
+      "path": "runtime-launcher-contract.json",
+      "bytes": 350,
+      "sha256": "5312b9668c68b58dd2abaa9c7876336688e39811c9f56fa25d57c8a87d8a348b"
+    },
+    {
+      "path": "runtime-policy-issuer-contract.json",
+      "bytes": 359,
+      "sha256": "30a44694c2ef2fb80d94207cacded0f4334232ec8e3699db95ce40cb4c72e070"
+    },
+    {
+      "path": "runtime-policy-issuer.env.example",
+      "bytes": 676,
+      "sha256": "aee6eea8b581a5c93c55c67cae3766e77aeaf00b5b3a56b6e5e773e833961bb9"
+    },
+    {
+      "path": "runtime-policy-issuer.service",
+      "bytes": 804,
+      "sha256": "ea1ca1b129a57875a8cbdc9922851282dbbf29f1e736a411b7f0cb78ffeabf36"
+    },
+    {
+      "path": "runtime-startup-packages.json",
+      "bytes": 1148,
+      "sha256": "d08af9c49fdefab41696b7a1410491904c42ae72aba613d54431a6de92d8b592"
+    },
+    {
+      "path": "runtime-startup-provisioning.json",
+      "bytes": 674,
+      "sha256": "29564029809dea3f892baee0de89272c566e4c1d35d858d24036606a2d3201b3"
+    },
+    {
+      "path": "vela-pidfd-broker",
+      "bytes": 2252926,
+      "sha256": "224f53945aa9478445b5edd4fcd6b29ab233af0cc823da09ed27071b86a591b4"
+    },
+    {
+      "path": "vela-runtime-launcher",
+      "bytes": 52437118,
+      "sha256": "765cc7648dfb058fd8ff6ce23180611c52ce75438a99af3d289e34bcec907242"
+    },
+    {
+      "path": "vela-runtime-policy-issuer",
+      "bytes": 3080318,
+      "sha256": "ccbb62ad704e12ba0012606af0776278cae8e5eb5efb196151766624e84ecfea"
+    }
+  ],
+  "verified_command": "go run ./cmd/vela-release-artifacts verify-runtime-startup-packages <canonical-dir> <HEAD>"
+}

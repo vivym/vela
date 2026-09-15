@@ -138,14 +138,14 @@ func RemoteRuntimeServerConfig(wire []byte, bootstrapPath string) (RuntimeServer
 	if err := proto.Unmarshal(bootstrap.RegistryBinding, &binding); err != nil {
 		return RuntimeServerConfig{}, err
 	}
-	gate, err := NewNodeBackendStartupGate(bootstrap.StartupSocket)
+	gate, err := NewNodeBackendStartupGateWithPIDFDBroker(bootstrap.StartupSocket, bootstrap.PIDFDBrokerSocket)
 	if err != nil {
 		return RuntimeServerConfig{}, err
 	}
 	return RuntimeServerConfig{Manifest: bootstrap.Manifest, Validator: validator, RegistryBinding: &binding, RegistryVerifier: verifier,
 		SocketPath: bootstrap.RuntimeSocket, CancelTimeout: bootstrap.CancelTimeout, ShutdownTimeout: bootstrap.ShutdownTimeout, MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 		RemoteStartup: &RemoteRuntimeStartup{Journal: RemoteExecutionJournalConfig{Manifest: bootstrap.Manifest, Validator: validator, Identity: bootstrap.Identity, Startup: bootstrap.Startup,
-			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
+			Transport: UnixRuntimeJournalTransport{Socket: bootstrap.JournalSocket, PIDFDBrokerSocket: bootstrap.PIDFDBrokerSocket, Identity: bootstrap.Identity}, Timeout: bootstrap.JournalTimeout},
 			Authorize: func(ctx context.Context, request RemoteBackendStartupRequest) error {
 				intent := request.Intent
 				intent.SchemaVersion, intent.BootstrapDigest, intent.BootstrapPath = 2, consumedDigest, bootstrapPath

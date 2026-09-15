@@ -8,9 +8,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/nodeagent"
 	"golang.org/x/sys/unix"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestRuntimeLauncherRequestBindsExpectedPodDigest(t *testing.T) {
@@ -33,8 +38,32 @@ func TestRuntimeLauncherRequestBindsExpectedPodDigest(t *testing.T) {
 	}
 }
 
+func TestRuntimeStartupLaunchTargetsBindLivePodUID(t *testing.T) {
+	// A signed launch plan carries a Pod template and therefore normally has
+	// no Kubernetes metadata.uid. The launcher supplies the UID of the live Pod;
+	// CRI/Kubernetes observation binds that UID before reservation.
+	uid := uuid.New()
+	target := nodeagent.RuntimeContainerTarget{
+		ContainerID: strings.Repeat("a", 64), SandboxID: strings.Repeat("b", 64),
+		PodUID: uid, PodNamespace: "vela-system", PodName: "vela-worker",
+		ContainerName: "model-runtime", ContainerAttempt: 1,
+	}
+	worker := target
+	worker.ContainerID, worker.ContainerName = strings.Repeat("c", 64), "stage-worker-agent"
+	launch := runtimeStartupLaunch{Target: target, WorkerTarget: worker}
+	if err := validateRuntimeStartupLaunchTargets(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: target.PodNamespace, Name: target.PodName}}, launch); err != nil {
+		t.Fatalf("template without UID rejected live launcher target: %v", err)
+	}
+	launch.WorkerTarget.PodUID = uuid.New()
+	if err := validateRuntimeStartupLaunchTargets(&corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: target.PodNamespace, Name: target.PodName}}, launch); err == nil {
+		t.Fatal("runtime and worker targets with different live Pod UIDs were accepted")
+	}
+}
+
 func TestStrictLauncherJSONRejectsUnknownAndTrailingFields(t *testing.T) {
-	var reply runtimeLauncherPolicyReply
+	var reply struct {
+		Version int `json:"version"`
+	}
 	if err := strictLauncherJSON([]byte(`{"version":1,"operation_id":"00000000-0000-0000-0000-000000000001","request_digest":[1],"evidence_digest":[2],"issued_at":"2026-01-01T00:00:00Z","expires_at":"2026-01-01T00:01:00Z","extra":true}`), &reply); err == nil {
 		t.Fatal("unknown launcher field was accepted")
 	}
@@ -42,6 +71,26 @@ func TestStrictLauncherJSONRejectsUnknownAndTrailingFields(t *testing.T) {
 		Version int `json:"version"`
 	}{}); err == nil {
 		t.Fatal("trailing launcher frame was accepted")
+	}
+	if err := strictLauncherJSON([]byte(`{"version":1,"version":2}`), &struct {
+		Version int `json:"version"`
+	}{}); err == nil {
+		t.Fatal("duplicate launcher field was accepted")
+	}
+}
+
+func TestRuntimeLauncherReplyRejectsValidationOnlyHelper(t *testing.T) {
+	target := nodeagent.RuntimeContainerTarget{ContainerID: strings.Repeat("a", 64), SandboxID: strings.Repeat("b", 64),
+		PodUID: uuid.New(), PodNamespace: "vela-cpu", PodName: "runtime", ContainerName: "model-runtime", ContainerAttempt: 1}
+	worker := target
+	worker.ContainerID, worker.ContainerName = strings.Repeat("c", 64), "stage-worker-agent"
+	reply := runtimeLauncherReply{Version: runtimeLauncherProtocolVersion, Target: target, WorkerTarget: worker, FDCount: 4}
+	if err := reply.validate(4); err != nil {
+		t.Fatalf("valid production handoff: %v", err)
+	}
+	reply.ValidationOnly = true
+	if err := reply.validate(3); err == nil || !strings.Contains(err.Error(), "validation-only") {
+		t.Fatalf("validation-only helper was not rejected: %v", err)
 	}
 }
 

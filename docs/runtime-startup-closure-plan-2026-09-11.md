@@ -14,7 +14,7 @@
 | startup evidence | `RuntimeStartupAuthorizationPolicy` | evidence 绑定 operation/request digest，UTC，最长 5 分钟；裸 `AuthorizationHash` fail-closed |
 | startup ledger | `VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY` + `OpenRuntimeStartupLedger` | 独立目录、Node-owned lock、逆序关闭；不再与 execution journal state 混用 |
 | shutdown owner | `runtimeStartupLifecycle` | orchestration 先 revoke/stop，再释放 listener、registry、observer、journal |
-| pidfs 兼容 | `RuntimeCaller`/observer 使用 pidfd API | 目标 Ubuntu 24.04 / kernel 6.8 已验证；不要求升级目标系统 |
+| pidfs 兼容 | `RuntimeCaller`/observer 使用 pidfd API；legacy invisible pidfd 通过 root-owned host broker 比较 | 目标 Ubuntu 24.04 / kernel 6.8 已验证；broker 已部署并通过权限、restart、replacement 和跨 namespace receipt；仍需接入真实 Node composition |
 
 ## 现在的剩余项（按依赖顺序）
 
@@ -27,9 +27,12 @@
    operation-bound policy。
    validation-only 的五类 helper fault 现在由
    `hack/run-runtime-startup-validation-matrix.py` 统一驱动，并按实际 CRI namespace
-   核对精确 workload 回收；这仍不等于 Node/Fleet 生产 receipt。
+   核对精确 workload 回收；2026-09-12 已在加入 Worker journal socket parent read-only
+   mount 后重新完成六场景矩阵；随后使用真实部署 broker 重跑并保存 receipt，但这仍不等于
+   Node/Fleet 生产 receipt。
 2. **真实端到端验证**：validation-only helper 已能在目标机 CRI namespace 创建独立
-   `model-runtime`/`stage-worker-agent`、回传两个 target 和三个 descriptor，并在退出时
+   `model-runtime`/`stage-worker-agent`、回传两个 target 和四个 descriptor（含 Runtime
+   pidfd），并在退出时
    清理精确 workload；仍需用 Node composition root 贯穿 Pod/CRI/Fleet/journal/ModelRuntime
    CPU Job，覆盖 caller replacement、observer loss、回包丢失和 restart。测试 fixture 不能
    接入生产入口。
@@ -46,6 +49,9 @@
 2. Node crash/restart：只读取历史，不重建 owner、custody、grant 或 permission。
 3. 目标主机 native race：在 `marslab` 的 source-matched checkout 运行，保留原有 dirty 文件，不覆盖部署 workload。
 4. 真实 CPU Job：同一 composition root 贯穿 Pod/CRI/Fleet/journal/ModelRuntime；完成前不得提升 Production Gates。
+
+Node startup ledger 的十个 crash boundary 已在目标机 native 通过；这只是 ledger recovery
+证据，仍要在真实 composition 中重放并绑定 CRI、observer 和 Worker journal 生命周期。
 
 ## 当前外部阻塞
 

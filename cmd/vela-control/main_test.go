@@ -125,6 +125,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Fleet gRPC client CA", missingEnv: "VELA_FLEET_GRPC_CLIENT_CA_FILE"},
 		{name: "Fleet Controller SPIFFE identity", missingEnv: "VELA_FLEET_CONTROLLER_SPIFFE_ID"},
 		{name: "Fleet Controller actor identity", missingEnv: "VELA_FLEET_CONTROLLER_ACTOR_IDENTITY"},
+		{name: "Fleet runtime policy private key", missingEnv: "VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -370,6 +371,7 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_FLEET_GRPC_CLIENT_CA_FILE", "/run/tls/fleet-control/client-ca.crt")
 	t.Setenv("VELA_FLEET_CONTROLLER_SPIFFE_ID", "spiffe://vela.internal/fleet-controller/primary")
 	t.Setenv("VELA_FLEET_CONTROLLER_ACTOR_IDENTITY", "fleet-controller/primary")
+	t.Setenv("VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE", "/etc/vela/fleet-runtime-policy.key")
 	t.Setenv(
 		"VELA_CREDENTIAL_PEPPER_BASE64",
 		base64.StdEncoding.EncodeToString(make([]byte, 32)),

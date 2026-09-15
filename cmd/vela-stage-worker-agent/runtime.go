@@ -27,11 +27,29 @@ import (
 	"github.com/vivym/vela/internal/stageworkermembertransport"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	"github.com/vivym/vela/internal/tracing"
+	"github.com/vivym/vela/internal/workerjournalwire"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
 
 const maxArtifactRootCABytes = 4 << 20
+
+func workerJournalIdentity(binding *velav1.WorkerBootstrapBinding) (workerjournalwire.Identity, error) {
+	var identity workerjournalwire.Identity
+	if binding == nil || binding.GetPair() == nil {
+		return identity, errors.New("verified Worker journal binding is required for Node-owned journals")
+	}
+	id, err := uuid.Parse(binding.GetPair().GetWorkerJournalId())
+	if err != nil || id == uuid.Nil || len(binding.GetPair().GetWorkerScope()) != sha256.Size {
+		return identity, errors.New("verified Worker journal binding identity is invalid")
+	}
+	identity.JournalID = id
+	copy(identity.Scope[:], binding.GetPair().GetWorkerScope())
+	if identity.Scope == ([sha256.Size]byte{}) {
+		return workerjournalwire.Identity{}, errors.New("verified Worker journal binding scope is empty")
+	}
+	return identity, nil
+}
 
 type productionAuthorityConsumers struct {
 	newMemberServer func(
@@ -57,17 +75,18 @@ type stageWorkerRuntime interface {
 type stageWorkerRuntimeBuilder func(context.Context, config) (stageWorkerRuntime, error)
 
 type productionRuntime struct {
-	agent                 *stageworkeragent.ProductionAgent
-	inputJournal          *stageworkeragent.FileInputTransferJournal
-	control               *stageworkertransport.Client
-	modelRuntime          *modelruntimetransport.Client
-	memberClients         []*stageworkermembertransport.Client
-	memberServer          *grpc.Server
-	memberListener        net.Listener
-	memberServeErrors     chan error
-	memberShutdownTimeout time.Duration
-	state                 *stageworkeragent.FileProductionState
-	admission             *stageworkeragent.FileAssignmentAdmission
+	agent                  *stageworkeragent.ProductionAgent
+	inputJournal           stageworkeragent.InputTransferJournal
+	materializationJournal stageworkeragent.MaterializationJournal
+	control                *stageworkertransport.Client
+	modelRuntime           *modelruntimetransport.Client
+	memberClients          []*stageworkermembertransport.Client
+	memberServer           *grpc.Server
+	memberListener         net.Listener
+	memberServeErrors      chan error
+	memberShutdownTimeout  time.Duration
+	state                  *stageworkeragent.FileProductionState
+	admission              *stageworkeragent.FileAssignmentAdmission
 }
 
 func runWithContext(ctx context.Context, configuration config) error {
@@ -117,6 +136,9 @@ func newProductionRuntimeUsing(
 	launch, err := loadDurableWorkerLaunch(configuration)
 	if err != nil {
 		return nil, err
+	}
+	if configuration.workerJournalSocket != "" && launch == nil {
+		return nil, errors.New("node-owned Worker journal transport requires durable launch and verified binding")
 	}
 	keyring, err := stageauthority.ReadKeyringFile(configuration.authorityKeyringFile)
 	if err != nil {
@@ -387,18 +409,31 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(err)
 	}
-	materializationJournal, err := stageworkeragent.NewFileMaterializationJournal(
-		configuration.materializationJournalRoot,
-		configuration.materializationJournalLimit,
-	)
-	if err != nil {
-		return fail(fmt.Errorf("configure StageArtifact materialization journal: %w", err))
-	}
-	runtime.inputJournal, err = stageworkeragent.NewFileInputTransferJournal(
-		configuration.inputTransferJournalRoot,
-	)
-	if err != nil {
-		return fail(fmt.Errorf("configure Stage input transfer journal: %w", err))
+	if configuration.workerJournalSocket != "" {
+		identity, identityErr := workerJournalIdentity(launch.admission.RegistryBinding)
+		if identityErr != nil {
+			return fail(identityErr)
+		}
+		remoteConfig := stageworkeragent.RemoteWorkerJournalConfig{Socket: configuration.workerJournalSocket,
+			PIDFDBrokerSocket: configuration.workerJournalPIDFDBrokerSocket, Identity: identity}
+		if runtime.inputJournal, err = stageworkeragent.NewRemoteInputTransferJournal(remoteConfig); err != nil { //nolint:staticcheck // The non-Linux stub always rejects; Linux construction can succeed.
+			return fail(fmt.Errorf("configure Node-owned input transfer journal: %w", err))
+		}
+		if runtime.materializationJournal, err = stageworkeragent.NewRemoteMaterializationJournal(remoteConfig); err != nil { //nolint:staticcheck // The non-Linux stub always rejects; Linux construction can succeed.
+			return fail(fmt.Errorf("configure Node-owned materialization journal: %w", err))
+		}
+	} else {
+		materializationJournal, journalErr := stageworkeragent.NewFileMaterializationJournal(
+			configuration.materializationJournalRoot, configuration.materializationJournalLimit,
+		)
+		if journalErr != nil {
+			return fail(fmt.Errorf("configure StageArtifact materialization journal: %w", journalErr))
+		}
+		runtime.materializationJournal = materializationJournal
+		runtime.inputJournal, err = stageworkeragent.NewFileInputTransferJournal(configuration.inputTransferJournalRoot)
+		if err != nil {
+			return fail(fmt.Errorf("configure Stage input transfer journal: %w", err))
+		}
 	}
 	outputSource, err := stageartifact.NewFilesystemLocalOutputSource(configuration.outputRoot)
 	if err != nil {
@@ -440,7 +475,7 @@ func newProductionRuntimeUsing(
 		Validator:               materializationValidator,
 		Source:                  outputSource,
 		Publisher:               publisher,
-		Journal:                 materializationJournal,
+		Journal:                 runtime.materializationJournal,
 		ScratchRetirer:          stageworkeragent.RetainScratchRetirer{},
 		OutputOwnershipContract: stageworkeragent.AttemptOwnedFilesystemScratchV1,
 		SourceLossEvidence:      sourceLossEvidenceProvider(configuration, time.Now),
@@ -556,8 +591,16 @@ func (runtime *productionRuntime) Close() error {
 		runtime.memberListener = nil
 	}
 	if runtime.inputJournal != nil {
-		closeErr = errors.Join(closeErr, runtime.inputJournal.Close())
+		if closer, ok := runtime.inputJournal.(interface{ Close() error }); ok {
+			closeErr = errors.Join(closeErr, closer.Close())
+		}
 		runtime.inputJournal = nil
+	}
+	if runtime.materializationJournal != nil {
+		if closer, ok := runtime.materializationJournal.(interface{ Close() error }); ok {
+			closeErr = errors.Join(closeErr, closer.Close())
+		}
+		runtime.materializationJournal = nil
 	}
 	if runtime.admission != nil {
 		if err := runtime.admission.Close(); err != nil {
@@ -666,6 +709,9 @@ func ensureStageWorkerDirectories(configuration config) error {
 		configuration.materializationJournalRoot,
 	}
 	for _, path := range paths {
+		if path == "" {
+			continue
+		}
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			return fmt.Errorf("create Stage Worker private directory %s: %w", path, err)
 		}

@@ -318,6 +318,18 @@ func encodeFileMaterializationRecord(record PendingMaterialization) ([]byte, err
 	return document, nil
 }
 
+// EncodePendingMaterialization serializes one validated materialization record
+// for the Node-owned journal transport.
+func EncodePendingMaterialization(record PendingMaterialization) ([]byte, error) {
+	return encodeFileMaterializationRecord(record)
+}
+
+// DecodePendingMaterialization validates a record received from the Node-owned
+// journal transport.
+func DecodePendingMaterialization(document []byte) (PendingMaterialization, error) {
+	return decodeFileMaterializationRecord(document)
+}
+
 func decodeFileMaterializationRecord(document []byte) (PendingMaterialization, error) {
 	if len(document) == 0 || len(document) > maxMaterializationJournalRecordBytes {
 		return PendingMaterialization{}, errors.New("materialization journal document is invalid")

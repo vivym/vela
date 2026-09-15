@@ -1,0 +1,151 @@
+ebd9cc4d0cb48efacce77c3040d2e048c216158c
+ M Makefile
+ M cmd/vela-control/main.go
+ M cmd/vela-control/main_test.go
+ M cmd/vela-model-runtime/main.go
+ M cmd/vela-node-agent/main.go
+ M cmd/vela-node-agent/main_test.go
+ M cmd/vela-node-agent/runtime_startup_authority_linux.go
+ M cmd/vela-node-agent/runtime_startup_authority_linux_test.go
+ M cmd/vela-node-agent/runtime_startup_config.go
+ M cmd/vela-node-agent/runtime_startup_launcher_linux.go
+ M cmd/vela-node-agent/runtime_startup_launcher_linux_test.go
+ M cmd/vela-release-artifacts/main.go
+ M cmd/vela-release-bundle/main.go
+ M cmd/vela-stage-worker-agent/durable.go
+ M cmd/vela-stage-worker-agent/main.go
+ M cmd/vela-stage-worker-agent/main_test.go
+ M cmd/vela-stage-worker-agent/runtime.go
+ M cmd/vela-validation-runtime-launcher/main.go
+ M db/migrations/00095_runtime_startup_reservation.sql
+ M deploy/lab-v2/30-control.yaml.tmpl
+ M deploy/node-agent/README.md
+ M deploy/vela-control/runtime-config.yaml
+ M docs/evidence/runtime-startup-composition-2026-09-12/pidfd-compat.log
+ M docs/marslab-native-validation-2026-09-11.md
+ M docs/node-runtime-channel-evidence-2026-09-07.md
+ M docs/runtime-startup-closure-plan-2026-09-11.md
+ M docs/runtime-startup-composition-evidence-2026-09-12.md
+ M docs/runtime-startup-launcher-contract-2026-09-11.md
+ M docs/runtime-startup-validation-gap-analysis-2026-09-12.md
+ M docs/runtime-startup-validation-matrix-evidence-2026-09-12.md
+ M docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md
+ M docs/specs/0041-host-package-release-artifact-assembly.md
+ M docs/specs/0053-worker-bootstrap-lifecycle.md
+ M hack/run-runtime-startup-validation-matrix.py
+ M internal/fleet/runtime_startup.go
+ M internal/fleet/service.go
+ M internal/fleetcontroller/worker_instance_actuator.go
+ M internal/fleetcontroller/worker_instance_actuator_test.go
+ M internal/fleettransport/runtime_startup.go
+ M internal/integration/runtime_startup_node_process_test.go
+ M internal/integration/runtime_startup_reservation_test.go
+ M internal/journalbinding/binding.go
+ M internal/modelruntime/backend_startup_gate.go
+ M internal/modelruntime/backend_startup_gate_linux.go
+ M internal/modelruntime/backend_startup_gate_other.go
+ M internal/modelruntime/journal_client_linux.go
+ M internal/modelruntime/remote_bootstrap.go
+ M internal/modelruntime/remote_bootstrap_linux.go
+ M internal/modelruntime/remote_bootstrap_test.go
+ M internal/nodeagent/journal_server_linux.go
+ M internal/nodeagent/runtime_bootstrap_publication_linux.go
+ M internal/nodeagent/runtime_bootstrap_publication_linux_test.go
+ M internal/nodeagent/runtime_channel_linux_test.go
+ M internal/nodeagent/runtime_container_linux.go
+ M internal/nodeagent/runtime_container_linux_test.go
+ M internal/nodeagent/runtime_namespace_owner_linux.go
+ M internal/nodeagent/runtime_observer_custody_linux.go
+ M internal/nodeagent/runtime_remote_cli_integration_linux_test.go
+ M internal/nodeagent/runtime_startup_authority_linux.go
+ M internal/nodeagent/runtime_startup_authority_linux_test.go
+ M internal/nodeagent/runtime_startup_fleet_linux_test.go
+ M internal/nodeagent/runtime_startup_image_integration_linux_test.go
+ M internal/nodeagent/runtime_startup_launcher_linux.go
+ M internal/nodeagent/runtime_startup_ledger_linux.go
+ M internal/nodeagent/runtime_startup_orchestration_linux.go
+ M internal/nodeagent/runtime_startup_orchestration_linux_test.go
+ M internal/nodeagent/runtime_startup_prepare_linux.go
+ M internal/nodeagent/runtime_startup_publication_linux.go
+ M internal/nodeagent/runtime_startup_reservation_linux.go
+ M internal/nodeagent/runtime_startup_reservation_linux_test.go
+ M internal/releasebundle/build.go
+ M internal/releasebundle/bundle_test.go
+ M internal/releasebundle/io.go
+ M internal/releasebundle/model.go
+ M internal/runtimechannel/client_linux.go
+ M internal/runtimechannel/wire_linux.go
+ M internal/runtimechannel/wire_linux_test.go
+ M internal/stageworkeragent/input_transfer_journal.go
+ M internal/stageworkeragent/materialization.go
+ M internal/stageworkeragent/materialization_file_journal.go
+ M internal/stageworkeragent/materialization_journal_test.go
+ M internal/store/sqlc/models.go
+ M proto/gen/vela/v1/fleet_maintenance.pb.go
+ M proto/vela/v1/fleet_maintenance.proto
+?? cmd/vela-control/runtime_policy.go
+?? cmd/vela-node-agent/runtime_policy_client_linux.go
+?? cmd/vela-node-agent/runtime_startup_composition_linux_test.go
+?? cmd/vela-node-agent/runtime_startup_failure_receipt_linux_test.go
+?? cmd/vela-pidfd-broker/
+?? cmd/vela-runtime-launcher/
+?? cmd/vela-runtime-policy-issuer/
+?? cmd/vela-validation-runtime-launcher/pidfd_offer_linux.go
+?? cmd/vela-validation-runtime-launcher/pidfd_offer_linux_test.go
+?? db/migrations/00096_runtime_startup_authorization.sql
+?? deploy/node-agent/pidfd-broker.env.example
+?? deploy/node-agent/runtime-policy-issuer.env.example
+?? deploy/node-agent/vela-pidfd-broker.service
+?? deploy/node-agent/vela-runtime-policy-issuer.service
+?? docs/evidence/pidfd-broker-deployment-2026-09-12/
+?? docs/evidence/runtime-startup-broker-restart-2026-09-13.md
+?? docs/evidence/runtime-startup-command-composition-failclosed-2026-09-13/
+?? docs/evidence/runtime-startup-composition-2026-09-13-v2/
+?? docs/evidence/runtime-startup-composition-2026-09-13-v3/
+?? docs/evidence/runtime-startup-composition-2026-09-13/
+?? docs/evidence/runtime-startup-composition-node-restart-2026-09-13.md
+?? docs/evidence/runtime-startup-composition-replay-2026-09-13.md
+?? docs/evidence/runtime-startup-failure-receipt-snapshot-2026-09-13.md
+?? docs/evidence/runtime-startup-node-process-2026-09-13/
+?? docs/evidence/runtime-startup-node-restart-2026-09-12.md
+?? docs/evidence/runtime-startup-nodeagent-native-2026-09-13/
+?? docs/evidence/runtime-startup-pidfd-release-race-2026-09-13.md
+?? docs/evidence/runtime-startup-production-launcher-smoke-2026-09-12.json
+?? docs/evidence/runtime-startup-production-launcher-smoke-2026-09-12.md
+?? docs/evidence/runtime-startup-production-launcher-smoke-2026-09-13-v2-repeat.json
+?? docs/evidence/runtime-startup-production-launcher-smoke-2026-09-13-v2.json
+?? docs/evidence/runtime-startup-production-launcher-smoke-2026-09-13-v2.md
+?? docs/evidence/runtime-startup-validation-matrix-2026-09-12-broker-v2/
+?? docs/evidence/runtime-startup-validation-matrix-2026-09-12-broker/
+?? docs/evidence/runtime-startup-validation-matrix-2026-09-12-pidfd-corrected/
+?? docs/evidence/runtime-startup-validation-matrix-2026-09-12-worker-journal/
+?? docs/evidence/runtime-startup-validation-matrix-2026-09-13-v2/
+?? docs/runtime-startup-closure-status-2026-09-12.md
+?? docs/runtime-startup-production-deployment-2026-09-12.md
+?? docs/runtime-startup-validation-closure-audit-2026-09-13.md
+?? docs/runtime-startup-validation-execution-plan-2026-09-13.md
+?? docs/runtime-startup-validation-next-steps-2026-09-13.md
+?? docs/runtime-startup-validation-problem-analysis-2026-09-13.md
+?? hack/production_launcher_smoke_test.py
+?? hack/run-production-launcher-smoke.py
+?? hack/runtime_startup_composition_preflight.py
+?? hack/runtime_startup_composition_preflight_test.py
+?? hack/runtime_startup_validation_matrix_test.py
+?? internal/integration/runtime_startup_authorization_test.go
+?? internal/nodeagent/runtime_startup_authority_composition_linux_test.go
+?? internal/nodeagent/runtime_startup_failure_receipt_linux.go
+?? internal/nodeagent/runtime_startup_failure_receipt_linux_test.go
+?? internal/nodeagent/runtime_startup_receipt_linux.go
+?? internal/nodeagent/worker_journal_linux.go
+?? internal/nodeagent/worker_journal_linux_test.go
+?? internal/nodeagent/worker_journal_rpc_linux_test.go
+?? internal/releaseartifacts/runtime_startup_packages.go
+?? internal/releaseartifacts/runtime_startup_packages_test.go
+?? internal/runtimechannel/pidfd_broker_external_linux_test.go
+?? internal/runtimechannel/pidfd_broker_linux.go
+?? internal/runtimechannel/pidfd_broker_linux_test.go
+?? internal/runtimepolicy/
+?? internal/stageworkeragent/remote_journal_linux.go
+?? internal/stageworkeragent/remote_journal_other.go
+?? internal/workerjournalwire/
+?? vela-runtime-launcher

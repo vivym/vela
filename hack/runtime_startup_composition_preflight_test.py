@@ -1,0 +1,107 @@
+import importlib.util
+import os
+import pathlib
+import unittest
+
+
+SPEC = importlib.util.spec_from_file_location(
+    "runtime_startup_composition_preflight",
+    pathlib.Path(__file__).with_name("runtime_startup_composition_preflight.py"),
+)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(MODULE)
+
+
+class CompositionPreflightTest(unittest.TestCase):
+    def test_missing_inputs_fail_closed_without_exposing_values(self):
+        code, report = MODULE.run({})
+        self.assertNotEqual(code, 0)
+        self.assertFalse(report["ready"])
+        self.assertIn("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET", report["failed_checks"])
+        for check in report["checks"]:
+            self.assertNotIn("value", check)
+
+    def test_deferred_runtime_paths_are_not_reported_as_ready_failures(self):
+        pathlib.Path("/tmp/vela-preflight").mkdir(mode=0o700, exist_ok=True)
+        environment = {name: "/tmp/vela-preflight/" + name.lower() for name in MODULE.REQUIRED_PATH_ENV}
+        try:
+            code, report = MODULE.run(environment)
+            self.assertNotEqual(code, 0)
+            statuses = {item["name"]: item["status"] for item in report["checks"]}
+            expected = "deferred" if os.geteuid() == 0 else "parent_untrusted"
+            self.assertEqual(statuses["VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"], expected)
+            self.assertEqual(statuses["VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY"], expected)
+        finally:
+            pathlib.Path("/tmp/vela-preflight").rmdir()
+
+    def test_present_socket_must_be_a_socket(self):
+        environment = {name: "/tmp/vela-preflight/" + name.lower() for name in MODULE.REQUIRED_PATH_ENV}
+        environment["VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"] = __file__
+        _, report = MODULE.run(environment)
+        check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_CRI_SOCKET")
+        self.assertEqual(check["status"], "wrong_type")
+
+    def test_deferred_path_requires_existing_trusted_parent(self):
+        environment = {name: "/tmp/vela-preflight/" + name.lower() for name in MODULE.REQUIRED_PATH_ENV}
+        environment["VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"] = "/tmp/vela-preflight/missing-parent/startup.sock"
+        _, report = MODULE.run(environment)
+        check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET")
+        self.assertEqual(check["status"], "parent_missing")
+        self.assertIn("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET", report["failed_checks"])
+
+    def test_deferred_path_rejects_group_or_other_writable_parent(self):
+        parent = pathlib.Path("/tmp/vela-preflight-writable-parent")
+        parent.mkdir(mode=0o777, exist_ok=True)
+        try:
+            environment = {name: "/tmp/vela-preflight/" + name.lower() for name in MODULE.REQUIRED_PATH_ENV}
+            environment["VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"] = str(parent / "startup.sock")
+            _, report = MODULE.run(environment)
+            check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET")
+            self.assertEqual(check["status"], "parent_untrusted")
+        finally:
+            parent.rmdir()
+
+    def test_deferred_path_rejects_symlink_parent(self):
+        base = pathlib.Path("/tmp/vela-preflight-symlink")
+        outside = pathlib.Path("/tmp/vela-preflight-symlink-target")
+        outside.mkdir(mode=0o700, exist_ok=True)
+        base.unlink(missing_ok=True)
+        base.symlink_to(outside, target_is_directory=True)
+        try:
+            environment = {name: "/tmp/vela-preflight-symlink/startup.sock" for name in MODULE.REQUIRED_PATH_ENV}
+            _, report = MODULE.run(environment)
+            check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET")
+            self.assertEqual(check["status"], "parent_wrong_type")
+        finally:
+            base.unlink(missing_ok=True)
+            outside.rmdir()
+
+    def test_broken_socket_symlink_is_not_deferred(self):
+        path = pathlib.Path("/tmp/vela-preflight-broken.sock")
+        path.unlink(missing_ok=True)
+        path.symlink_to("/tmp/vela-preflight-no-such-target.sock")
+        try:
+            environment = {name: str(path) for name in MODULE.REQUIRED_PATH_ENV}
+            _, report = MODULE.run(environment)
+            check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET")
+            self.assertEqual(check["status"], "symlink")
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_existing_state_directory_requires_trusted_mode(self):
+        directory = pathlib.Path("/tmp/vela-preflight-state")
+        directory.mkdir(mode=0o777, exist_ok=True)
+        directory.chmod(0o777)
+        try:
+            environment = {name: "/tmp/vela-preflight-state" for name in MODULE.REQUIRED_PATH_ENV}
+            _, report = MODULE.run(environment)
+            check = next(item for item in report["checks"] if item["name"] == "VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY")
+            self.assertEqual(check["status"], "untrusted")
+        finally:
+            directory.chmod(0o700)
+            directory.rmdir()
+
+
+if __name__ == "__main__":
+    unittest.main()

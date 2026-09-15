@@ -19,6 +19,26 @@ import (
 
 type testDeviceEpochSource map[string]int64
 
+func TestConfigurationPathsOverlap(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		left, right string
+		overlap     bool
+	}{
+		{name: "same", left: "/run/vela/node.sock", right: "/run/vela/node.sock", overlap: true},
+		{name: "socket-under-root", left: "/run/vela", right: "/run/vela/worker.sock", overlap: true},
+		{name: "root-under-socket", left: "/run/vela/worker.sock", right: "/run/vela", overlap: true},
+		{name: "sibling-prefix", left: "/run/vela", right: "/run/vela2", overlap: false},
+		{name: "separate", left: "/run/node", right: "/var/lib/vela", overlap: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := configurationPathsOverlap(test.left, test.right); got != test.overlap {
+				t.Fatalf("configurationPathsOverlap(%q, %q) = %v, want %v", test.left, test.right, got, test.overlap)
+			}
+		})
+	}
+}
+
 func (source testDeviceEpochSource) CurrentDeviceEpoch(gpuUUID string) (int64, bool) {
 	epoch, ok := source[gpuUUID]
 	return epoch, ok
@@ -54,6 +74,15 @@ func TestLoadConfigRuntimeStartupRequiresEveryAuthoritySource(t *testing.T) {
 		"VELA_NODE_AGENT_RUNTIME_KUBECONFIG",
 		"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET",
 		"VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH",
+		"VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET",
+		"VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE",
+		"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE",
+		"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY",
+		"VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET",
+		"VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY",
+		"VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY",
+		"VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET",
+		"VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_LIMIT",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -61,7 +90,11 @@ func TestLoadConfigRuntimeStartupRequiresEveryAuthoritySource(t *testing.T) {
 			t.Setenv("VELA_NODE_AGENT_RUNTIME_STARTUP_ENABLED", "1")
 			root := t.TempDir()
 			for _, source := range cases {
-				t.Setenv(source, filepath.Join(root, strings.ToLower(strings.TrimPrefix(source, "VELA_NODE_AGENT_"))))
+				if source == "VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_LIMIT" {
+					t.Setenv(source, "32")
+				} else {
+					t.Setenv(source, filepath.Join(root, strings.ToLower(strings.TrimPrefix(source, "VELA_NODE_AGENT_"))))
+				}
 			}
 			t.Setenv(name, "")
 			if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), name) {
@@ -139,7 +172,7 @@ func TestLoadRuntimeStartupRegistryRequiresEnabledContext(t *testing.T) {
 		t.Fatalf("disabled registry result registry=%v closePresent=%t error=%v", registry, closeFn != nil, err)
 	}
 	configuration.runtimeStartupEnabled = true
-	if registry, closeFn, err := loadRuntimeStartupRegistry(nil, configuration); err == nil || registry != nil || closeFn != nil || !strings.Contains(err.Error(), "context") {
+	if registry, closeFn, err := loadRuntimeStartupRegistry(nil, configuration); err == nil || registry != nil || closeFn != nil || !strings.Contains(err.Error(), "context") { //nolint:staticcheck // Exercise explicit invalid-context rejection.
 		t.Fatalf("nil context registry result registry=%v closePresent=%t error=%v", registry, closeFn != nil, err)
 	}
 }

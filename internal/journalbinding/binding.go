@@ -31,6 +31,19 @@ type Signer struct {
 
 type Verifier struct{ keys map[string]ed25519.PublicKey }
 
+// PublicKeys returns a defensive copy suitable for embedding in a Runtime
+// bootstrap snapshot. The private verifier state remains immutable.
+func (verifier *Verifier) PublicKeys() map[string][]byte {
+	if verifier == nil {
+		return nil
+	}
+	keys := make(map[string][]byte, len(verifier.keys))
+	for id, key := range verifier.keys {
+		keys[id] = slices.Clone(key)
+	}
+	return keys
+}
+
 type JournalKind int
 
 const (

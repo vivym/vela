@@ -337,7 +337,11 @@ func newJournalEndpointOwnerFixture(t *testing.T, epochOffset int64, configure f
 	if os.Geteuid() != 0 {
 		t.Skip("requires root Node and independent non-root PID namespaces")
 	}
-	root, err := os.MkdirTemp("/run", "vela-journal-endpoint-")
+	// Keep the disposable fixture independent of the test image's host-style
+	// filesystem layout. Validation images may intentionally omit /run; the
+	// fixture only needs a private root-owned directory and does not represent
+	// a production socket location.
+	root, err := os.MkdirTemp("/tmp", "vje-")
 	if err != nil {
 		t.Fatal(err)
 	}

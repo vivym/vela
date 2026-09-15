@@ -32,12 +32,12 @@ var ErrRuntimeBootstrapPublication = errors.New("runtime bootstrap publication i
 // Settings are trusted Node deployment inputs, not Runtime request fields.
 // The manifest, signed binding, identity and incarnation cannot be supplied here.
 type RuntimeBootstrapPublicationConfig struct {
-	Directory                                      string
-	Plan                                           *RuntimeLaunchPlan
-	Journal                                        *modelruntime.ExecutionJournalOwner
-	RegistryKeys                                   map[string][]byte
-	JournalSocket, StartupSocket, RuntimeSocket    string
-	JournalTimeout, CancelTimeout, ShutdownTimeout time.Duration
+	Directory                                                      string
+	Plan                                                           *RuntimeLaunchPlan
+	Journal                                                        *modelruntime.ExecutionJournalOwner
+	RegistryKeys                                                   map[string][]byte
+	JournalSocket, StartupSocket, RuntimeSocket, PIDFDBrokerSocket string
+	JournalTimeout, CancelTimeout, ShutdownTimeout                 time.Duration
 }
 
 type RuntimeBootstrapPublicationRecord struct {
@@ -59,6 +59,40 @@ type RuntimeBootstrapPublicationRecord struct {
 type RuntimeBootstrapPublication struct {
 	record  RuntimeBootstrapPublicationRecord
 	encoded []byte
+}
+
+// Remove deletes a publication owned by this process after Runtime shutdown.
+// It verifies the recorded directory and file identities before unlinking, so
+// a replacement path cannot be removed by an older Node instance.
+func (publication *RuntimeBootstrapPublication) Remove(ctx context.Context, directoryPath string) error {
+	if publication == nil || !filepath.IsAbs(directoryPath) || filepath.Clean(directoryPath) != directoryPath {
+		return ErrRuntimeBootstrapPublication
+	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	directory, err := openRuntimePublicationDirectory(directoryPath)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	if err := runtimePublicationNames(directory, []string{runtimeBootstrapRecordName, runtimeBootstrapFilename}); err != nil {
+		return err
+	}
+	var info unix.Stat_t
+	if err := unix.Fstat(int(directory.Fd()), &info); err != nil || (runtimeStartupFileIdentity{Device: info.Dev, Inode: info.Ino} != publication.record.Directory) {
+		return errors.Join(ErrRuntimeBootstrapPublication, err)
+	}
+	for name, expected := range map[string]runtimeStartupFileIdentity{runtimeBootstrapFilename: publication.record.BootstrapFile, runtimeBootstrapRecordName: publication.record.RecordFile} {
+		var current unix.Stat_t
+		if err := unix.Fstatat(int(directory.Fd()), name, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil || (runtimeStartupFileIdentity{Device: current.Dev, Inode: current.Ino} != expected) {
+			return errors.Join(ErrRuntimeBootstrapPublication, err)
+		}
+		if err := unix.Unlinkat(int(directory.Fd()), name, 0); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (publication *RuntimeBootstrapPublication) Record() RuntimeBootstrapPublicationRecord {
@@ -275,7 +309,7 @@ func buildRuntimeBootstrap(ctx context.Context, config RuntimeBootstrapPublicati
 	}
 	bootstrap := modelruntime.RemoteRuntimeBootstrap{SchemaVersion: 1, Manifest: manifest, AuthorityKeys: keys, RegistryKeys: config.RegistryKeys, RegistryBinding: binding,
 		Identity: modelruntime.ExecutionJournalIdentity{JournalID: status.JournalID, Scope: status.Scope, Storage: status.Storage}, Startup: status.BackendLifecycle,
-		JournalSocket: config.JournalSocket, StartupSocket: config.StartupSocket, RuntimeSocket: config.RuntimeSocket, JournalTimeout: config.JournalTimeout, CancelTimeout: config.CancelTimeout, ShutdownTimeout: config.ShutdownTimeout}
+		JournalSocket: config.JournalSocket, StartupSocket: config.StartupSocket, RuntimeSocket: config.RuntimeSocket, PIDFDBrokerSocket: config.PIDFDBrokerSocket, JournalTimeout: config.JournalTimeout, CancelTimeout: config.CancelTimeout, ShutdownTimeout: config.ShutdownTimeout}
 	wire, err := modelruntime.EncodeRemoteRuntimeBootstrap(bootstrap)
 	if err != nil {
 		return nil, err

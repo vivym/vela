@@ -143,7 +143,7 @@ func TestRuntimeStartupReservationConcurrentFirstUseAndHistory(t *testing.T) {
 		assertFleetFailure(t, err, fleet.FailureNotFound)
 	}
 	for _, command := range []string{"UPDATE runtime_startup_reservations SET reserved_at = clock_timestamp()",
-		"DELETE FROM runtime_startup_reservations", "TRUNCATE runtime_startup_reservations"} {
+		"DELETE FROM runtime_startup_reservations", "TRUNCATE runtime_startup_reservations CASCADE"} {
 		if _, err := database.Admin.Exec(command); err == nil || !strings.Contains(err.Error(), "immutable") {
 			t.Fatalf("mutable reservation history: %s: %v", command, err)
 		}

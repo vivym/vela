@@ -648,6 +648,8 @@ func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser
 			"vela_lookup_worker_bootstrap_v2(uuid,text,text)",
 			"vela_reserve_runtime_startup(uuid,uuid,text,text,uuid,bytea,uuid,bytea,bytea,jsonb)",
 			"vela_lookup_runtime_startup(uuid,text,text)",
+			"vela_store_runtime_startup_authorization(uuid,bytea)",
+			"vela_get_runtime_startup_authorization(uuid)",
 		},
 	})
 }

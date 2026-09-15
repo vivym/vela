@@ -137,7 +137,7 @@ $$;
 ALTER FUNCTION vela_recovery_inventory() RENAME TO vela_recovery_inventory_v94;
 REVOKE ALL ON FUNCTION vela_recovery_inventory_v94() FROM vela_recovery;
 -- +goose StatementBegin
-CREATE FUNCTION vela_recovery_inventory() RETURNS jsonb
+CREATE OR REPLACE FUNCTION vela_recovery_inventory() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public AS $$
     SELECT public.vela_recovery_inventory_v94() || jsonb_build_object(
         'runtime_startup_reservations', (SELECT count(*) FROM public.runtime_startup_reservations));

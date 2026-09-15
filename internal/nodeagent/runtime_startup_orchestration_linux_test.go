@@ -24,6 +24,27 @@ func TestRuntimeStartupOrchestrationRequiresEveryAuthorityInput(t *testing.T) {
 	}
 }
 
+func TestRuntimeStartupOrchestrationExposesImmutableExpectedRequest(t *testing.T) {
+	if request, err := (*RuntimeStartupOrchestration)(nil).ExpectedBackendStartupRequest(); request != (modelruntime.BackendStartupRequest{}) || !errors.Is(err, ErrRuntimeStartupAuthority) {
+		t.Fatalf("nil orchestration request=%+v err=%v", request, err)
+	}
+	f, custody := observedActivationFixture(t)
+	expected := f.ledger.starts[f.identity.JournalID].Request
+	orchestration, err := NewRuntimeStartupOrchestration(RuntimeStartupOrchestrationConfig{
+		Ledger: f.ledger, Plan: f.plan, ExpectedRequest: expected, Grant: f.grant, Observer: custody,
+		Credentials:      []RuntimeCallerCredentials{{UID: f.plan.uid, GID: f.plan.gid}},
+		ObserverInterval: 50 * time.Millisecond, ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orchestration.Close()
+	got, err := orchestration.ExpectedBackendStartupRequest()
+	if err != nil || got != expected {
+		t.Fatalf("expected request changed at orchestration boundary: got=%+v want=%+v err=%v", got, expected, err)
+	}
+}
+
 func TestRuntimeStartupOrchestrationShutdownDuringPersistence(t *testing.T) {
 	f, custody := observedActivationFixture(t)
 	expected := f.ledger.starts[f.identity.JournalID].Request

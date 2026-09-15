@@ -17,6 +17,40 @@ with one package-bound `ExecStart`; extra start hooks or conflicting directives
 fail closed. Host configuration, capability files, PKI, hardware identity, and
 live service enablement remain external and require their own release evidence.
 
+## Runtime startup policy issuer
+
+When runtime startup is enabled, provision these Node Agent settings in its
+root-owned environment file:
+
+```text
+VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET=/run/vela-runtime-policy/issuer.sock
+VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE=/etc/vela/runtime-policy-issuer/reply-public.key
+VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE=/etc/vela/runtime-policy-issuer/fleet-authorization.pub
+VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY=/var/lib/vela/runtime-policy-issuer/authorizations
+```
+
+The issuer reply public key and Fleet authorization public key are distinct
+root-owned files under a root-owned, non-writable directory. The matching
+private key for the issuer reply is read only by
+`vela-runtime-policy-issuer`; it is never placed in the Node environment. The
+issuer also requires the Fleet authorization public key and its root-owned,
+one-shot authorization directory, plus the durable reply cache directory,
+shown in `runtime-policy-issuer.env.example`:
+
+```text
+VELA_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY=/var/lib/vela/runtime-policy-issuer/authorizations
+VELA_RUNTIME_POLICY_REPLY_CACHE_DIRECTORY=/var/lib/vela/runtime-policy-issuer/replies
+```
+
+Both directories must exist before first start, be owned by `root:root`, and
+have mode `0700`; files are created as `0600`. The reply cache is part of the
+issuer crash/retry contract: after a reply is signed, exact bytes are persisted
+before they are sent, so a lost response can be retried without a second
+authorization or a different signature. Cache entries are validated against
+the full request and expiry window. Start the issuer before the Node Agent.
+Missing paths or an unavailable issuer fail closed during Node startup; a
+validation helper policy response cannot satisfy this requirement.
+
 ## Runtime image maintenance service
 
 `vela-runtime-image-maintenance.service` runs the same package binary with
@@ -411,12 +445,24 @@ VELA_NODE_AGENT_RUNTIME_CRI_SOCKET
 VELA_NODE_AGENT_RUNTIME_KUBECONFIG
 VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET
 VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH
+VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET
+VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE
+VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE
+VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY
+VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET
+VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY
+VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY
+VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET
 ```
 
 The Kubernetes source is parsed from the exact file named by
 `VELA_NODE_AGENT_RUNTIME_KUBECONFIG`; the loader requires a root-owned,
 non-writable regular file and never falls back to in-cluster credentials or
 the ambient `KUBECONFIG` environment.
+The production launcher uses the same trust rule for its kubeconfig and uses
+the separate `VELA_RUNTIME_LAUNCHER_*` variables documented in
+`docs/runtime-startup-production-deployment-2026-09-12.md`; a kubeconfig is a
+regular configuration file and does not need executable permissions.
 
 Runtime startup uses a separately scoped Fleet connection and checks that the
 certificate URI matches the configured Node Agent identity. The existing
@@ -454,6 +500,18 @@ descriptors, target schema, pidfd identity/liveness, and every operation-bound
 policy response. A missing, writable, malformed, or disconnected helper fails
 closed.
 
+The policy response is production-authorized only when Node is configured with
+`VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET` and
+`VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE`, and the distinct
+`VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE`. Node then verifies an
+Ed25519 reply from the separately supervised `vela-runtime-policy-issuer`;
+the launcher control channel is not an authorization source. The issuer
+consumes a one-shot Fleet authorization attestation from its root-owned
+directory before signing. Missing keys, non-root peers, replayed or expired
+attestations, wrong journal/reservation digests, and malformed frames fail
+closed. The repository never generates production keys or fabricates Fleet
+attestations.
+
 ### Linux pidfd compatibility
 
 Runtime startup custody works on kernels that expose pidfds through either
@@ -462,4 +520,8 @@ Agent validates the kernel-maintained `/proc/self/fdinfo/<fd>` `Pid`/`NSpid`
 identity, `FD_CLOEXEC`, and pidfd liveness. It never reopens a process from a
 numeric PID, and an unavailable or malformed fdinfo record fails closed. Docker
 image or compiler changes cannot add pidfd support because pidfd semantics come
-from the host kernel.
+from the host kernel. When Worker journal transport is enabled,
+`VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET` is mandatory. On kernels
+without `pidfs` it must point at the root-owned broker socket; an unconfigured
+or unavailable broker fails startup/transport closed instead of falling back to
+a numeric PID.

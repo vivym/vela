@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "local Docker Linux namespace",
+  "result": "PASS",
+  "race_detector": true,
+  "artifacts": {
+    "nodeagent": "344816eace440cf279d30d3b2142795a23f7fbd4c70b6be032fde95b136fce32",
+    "runtime_command": "1823290f2c4c14395d254ce28099cd75f0b87f61a99fd1964a9d73fa18ac3850",
+    "model_runtime": "2a4a7471976e259ddf484b20327eeec887c5c190777f17c366715733c4475da9",
+    "exec_observer": "343b53f42a00edc174cb6ad80a6cb0139706253a6e981171efdfde173b29cf02",
+    "exec_probe": "33e44203a041620c32e01f7985154b1e3c66a5106a4913c39a189b5085be97a2"
+  },
+  "assertions": [
+    "native Node authority and reservation paths pass",
+    "observer custody and retained pidfd paths pass",
+    "journal observation and grant activation paths pass",
+    "orchestration and server shutdown paths pass",
+    "bootstrap publication paths pass",
+    "no selected test skipped, failed or reported a race"
+  ],
+  "scope": "race-instrumented validation fixture; no production Fleet, issuer, images or Launch Receipt"
+}

@@ -41,8 +41,11 @@ const (
 	modelRuntimeSocketPath       = modelRuntimeSocketRoot + "/private/runtime.sock"
 	modelRuntimePrivateRoot      = "/etc/vela-model-runtime/private"
 	modelRuntimeLaunchManifest   = modelRuntimePrivateRoot + "/launch.json"
-	modelRuntimeVerifierKeyring  = modelRuntimePrivateRoot + "/authority/verifier-keyring.json"
-	modelRuntimeEpochDirectory   = stageWorkerScratchRoot + "/model-runtime-epochs"
+	// Keep the bootstrap file outside the Runtime socket volume. Node bind
+	// mounts the per-startup publication directory at this location.
+	modelRuntimeBootstrapPath   = "/run/vela-model-runtime-bootstrap/bootstrap.json"
+	modelRuntimeVerifierKeyring = modelRuntimePrivateRoot + "/authority/verifier-keyring.json"
+	modelRuntimeEpochDirectory  = stageWorkerScratchRoot + "/model-runtime-epochs"
 )
 
 var (
@@ -1230,6 +1233,8 @@ func workerInstanceRuntimeContainer(
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name: "model-runtime", Image: bundle.RuntimeImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"/usr/local/bin/vela-model-runtime"},
+		Args:            []string{"serve-remote", "--bootstrap-file", modelRuntimeBootstrapPath},
 		Env: []corev1.EnvVar{
 			literalEnvironment("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE", modelRuntimeLaunchManifest),
 			literalEnvironment("VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE", modelRuntimeVerifierKeyring),

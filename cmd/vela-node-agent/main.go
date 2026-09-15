@@ -56,54 +56,63 @@ var (
 )
 
 type config struct {
-	address                      string
-	nodeIdentity                 string
-	agentID                      uuid.UUID
-	agentEpoch                   int64
-	serverCertificate            string
-	serverPrivateKey             string
-	controllerCA                 string
-	receiptDirectory             string
-	controllersFile              string
-	commandsFile                 string
-	capabilitiesFile             string
-	postcheckPath                string
-	postcheckArgs                []string
-	fencePath                    string
-	fenceArgs                    []string
-	rateMinimumInterval          time.Duration
-	rateWindow                   time.Duration
-	rateMax                      int
-	fleetAddress                 string
-	fleetServerName              string
-	fleetCA                      string
-	fleetClientCertificate       string
-	fleetClientPrivateKey        string
-	workerInstancesFile          string
-	workerInstanceStateDirectory string
-	nvidiaSMIPath                string
-	pciBusDevicesRoot            string
-	sysDevicesRoot               string
-	nvidiaDriverVersionPath      string
-	bootIDPath                   string
-	workerInstanceReportInterval time.Duration
-	workerInstanceCallTimeout    time.Duration
-	workerInstanceBackoffInitial time.Duration
-	workerInstanceBackoffMax     time.Duration
-	workerInstanceEvidenceTTL    time.Duration
-	fleetDialTimeout             time.Duration
-	runtimeStartupEnabled        bool
-	runtimeLaunchManifestFile    string
-	runtimeBundleManifestFile    string
-	runtimeBindingFile           string
-	runtimeBindingVerifierFile   string
-	runtimeStageVerifierFile     string
-	runtimeJournalStateDir       string
-	runtimeStartupLedgerDir      string
-	runtimeCRISocket             string
-	runtimeKubeconfig            string
-	runtimeStartupSocket         string
-	runtimeLauncherPath          string
+	address                                 string
+	nodeIdentity                            string
+	agentID                                 uuid.UUID
+	agentEpoch                              int64
+	serverCertificate                       string
+	serverPrivateKey                        string
+	controllerCA                            string
+	receiptDirectory                        string
+	controllersFile                         string
+	commandsFile                            string
+	capabilitiesFile                        string
+	postcheckPath                           string
+	postcheckArgs                           []string
+	fencePath                               string
+	fenceArgs                               []string
+	rateMinimumInterval                     time.Duration
+	rateWindow                              time.Duration
+	rateMax                                 int
+	fleetAddress                            string
+	fleetServerName                         string
+	fleetCA                                 string
+	fleetClientCertificate                  string
+	fleetClientPrivateKey                   string
+	workerInstancesFile                     string
+	workerInstanceStateDirectory            string
+	nvidiaSMIPath                           string
+	pciBusDevicesRoot                       string
+	sysDevicesRoot                          string
+	nvidiaDriverVersionPath                 string
+	bootIDPath                              string
+	workerInstanceReportInterval            time.Duration
+	workerInstanceCallTimeout               time.Duration
+	workerInstanceBackoffInitial            time.Duration
+	workerInstanceBackoffMax                time.Duration
+	workerInstanceEvidenceTTL               time.Duration
+	fleetDialTimeout                        time.Duration
+	runtimeStartupEnabled                   bool
+	runtimeLaunchManifestFile               string
+	runtimeBundleManifestFile               string
+	runtimeBindingFile                      string
+	runtimeBindingVerifierFile              string
+	runtimeStageVerifierFile                string
+	runtimeJournalStateDir                  string
+	runtimeStartupLedgerDir                 string
+	runtimeCRISocket                        string
+	runtimeKubeconfig                       string
+	runtimeStartupSocket                    string
+	runtimeLauncherPath                     string
+	runtimePolicyIssuerSocket               string
+	runtimePolicyPublicKeyFile              string
+	runtimePolicyAuthorizationPublicKeyFile string
+	runtimePolicyAuthorizationDirectory     string
+	workerJournalSocket                     string
+	workerJournalInputRoot                  string
+	workerJournalMaterializationRoot        string
+	workerJournalMaterializationLimit       int
+	workerJournalPIDFDBrokerSocket          string
 }
 
 type commandConfig struct {
@@ -499,35 +508,43 @@ func loadConfig() (config, error) {
 		fleetClientCertificate: os.Getenv(
 			"VELA_NODE_AGENT_FLEET_CLIENT_CERT_FILE",
 		),
-		fleetClientPrivateKey:        os.Getenv("VELA_NODE_AGENT_FLEET_CLIENT_KEY_FILE"),
-		workerInstancesFile:          os.Getenv("VELA_NODE_AGENT_WORKER_INSTANCES_FILE"),
-		workerInstanceStateDirectory: os.Getenv("VELA_NODE_AGENT_WORKER_INSTANCE_STATE_DIRECTORY"),
-		nvidiaSMIPath:                os.Getenv("VELA_NODE_AGENT_NVIDIA_SMI_PATH"),
-		pciBusDevicesRoot:            os.Getenv("VELA_NODE_AGENT_PCI_BUS_DEVICES_ROOT"),
-		sysDevicesRoot:               os.Getenv("VELA_NODE_AGENT_SYS_DEVICES_ROOT"),
-		nvidiaDriverVersionPath:      os.Getenv("VELA_NODE_AGENT_NVIDIA_DRIVER_VERSION_PATH"),
-		bootIDPath:                   os.Getenv("VELA_NODE_AGENT_BOOT_ID_PATH"),
-		rateMinimumInterval:          defaultRateInterval,
-		rateWindow:                   defaultRateWindow,
-		rateMax:                      defaultRateMax,
-		workerInstanceReportInterval: defaultWorkerInstanceReportInterval,
-		workerInstanceCallTimeout:    defaultWorkerInstanceCallTimeout,
-		workerInstanceBackoffInitial: defaultWorkerInstanceBackoffInitial,
-		workerInstanceBackoffMax:     defaultWorkerInstanceBackoffMax,
-		workerInstanceEvidenceTTL:    defaultWorkerInstanceEvidenceTTL,
-		fleetDialTimeout:             defaultFleetDialTimeout,
-		runtimeStartupEnabled:        runtimeStartupEnabled,
-		runtimeLaunchManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE"),
-		runtimeBundleManifestFile:    os.Getenv("VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE"),
-		runtimeBindingFile:           os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_FILE"),
-		runtimeBindingVerifierFile:   os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE"),
-		runtimeStageVerifierFile:     os.Getenv("VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE"),
-		runtimeJournalStateDir:       os.Getenv("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"),
-		runtimeStartupLedgerDir:      os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY"),
-		runtimeCRISocket:             os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
-		runtimeKubeconfig:            os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
-		runtimeStartupSocket:         os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
-		runtimeLauncherPath:          os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH"),
+		fleetClientPrivateKey:                   os.Getenv("VELA_NODE_AGENT_FLEET_CLIENT_KEY_FILE"),
+		workerInstancesFile:                     os.Getenv("VELA_NODE_AGENT_WORKER_INSTANCES_FILE"),
+		workerInstanceStateDirectory:            os.Getenv("VELA_NODE_AGENT_WORKER_INSTANCE_STATE_DIRECTORY"),
+		nvidiaSMIPath:                           os.Getenv("VELA_NODE_AGENT_NVIDIA_SMI_PATH"),
+		pciBusDevicesRoot:                       os.Getenv("VELA_NODE_AGENT_PCI_BUS_DEVICES_ROOT"),
+		sysDevicesRoot:                          os.Getenv("VELA_NODE_AGENT_SYS_DEVICES_ROOT"),
+		nvidiaDriverVersionPath:                 os.Getenv("VELA_NODE_AGENT_NVIDIA_DRIVER_VERSION_PATH"),
+		bootIDPath:                              os.Getenv("VELA_NODE_AGENT_BOOT_ID_PATH"),
+		rateMinimumInterval:                     defaultRateInterval,
+		rateWindow:                              defaultRateWindow,
+		rateMax:                                 defaultRateMax,
+		workerInstanceReportInterval:            defaultWorkerInstanceReportInterval,
+		workerInstanceCallTimeout:               defaultWorkerInstanceCallTimeout,
+		workerInstanceBackoffInitial:            defaultWorkerInstanceBackoffInitial,
+		workerInstanceBackoffMax:                defaultWorkerInstanceBackoffMax,
+		workerInstanceEvidenceTTL:               defaultWorkerInstanceEvidenceTTL,
+		fleetDialTimeout:                        defaultFleetDialTimeout,
+		runtimeStartupEnabled:                   runtimeStartupEnabled,
+		runtimeLaunchManifestFile:               os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE"),
+		runtimeBundleManifestFile:               os.Getenv("VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE"),
+		runtimeBindingFile:                      os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_FILE"),
+		runtimeBindingVerifierFile:              os.Getenv("VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE"),
+		runtimeStageVerifierFile:                os.Getenv("VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE"),
+		runtimeJournalStateDir:                  os.Getenv("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"),
+		runtimeStartupLedgerDir:                 os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY"),
+		runtimeCRISocket:                        os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
+		runtimeKubeconfig:                       os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
+		runtimeStartupSocket:                    os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
+		runtimeLauncherPath:                     os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH"),
+		runtimePolicyIssuerSocket:               os.Getenv("VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET"),
+		runtimePolicyPublicKeyFile:              os.Getenv("VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE"),
+		runtimePolicyAuthorizationPublicKeyFile: os.Getenv("VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE"),
+		runtimePolicyAuthorizationDirectory:     os.Getenv("VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY"),
+		workerJournalSocket:                     os.Getenv("VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET"),
+		workerJournalInputRoot:                  os.Getenv("VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY"),
+		workerJournalMaterializationRoot:        os.Getenv("VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY"),
+		workerJournalPIDFDBrokerSocket:          os.Getenv("VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET"),
 	}
 	configuration.agentEpoch, err = positiveInt64Env("VELA_NODE_AGENT_EPOCH")
 	if err != nil {
@@ -656,17 +673,25 @@ func loadConfig() (config, error) {
 	}
 	if configuration.runtimeStartupEnabled {
 		for name, value := range map[string]string{
-			"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE":     configuration.runtimeLaunchManifestFile,
-			"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE":     configuration.runtimeBundleManifestFile,
-			"VELA_NODE_AGENT_RUNTIME_BINDING_FILE":             configuration.runtimeBindingFile,
-			"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE":    configuration.runtimeBindingVerifierFile,
-			"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE":      configuration.runtimeStageVerifierFile,
-			"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY":  configuration.runtimeJournalStateDir,
-			"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": configuration.runtimeStartupLedgerDir,
-			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":               configuration.runtimeCRISocket,
-			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":               configuration.runtimeKubeconfig,
-			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":           configuration.runtimeStartupSocket,
-			"VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH":            configuration.runtimeLauncherPath,
+			"VELA_NODE_AGENT_RUNTIME_LAUNCH_MANIFEST_FILE":                 configuration.runtimeLaunchManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BUNDLE_MANIFEST_FILE":                 configuration.runtimeBundleManifestFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_FILE":                         configuration.runtimeBindingFile,
+			"VELA_NODE_AGENT_RUNTIME_BINDING_VERIFIER_FILE":                configuration.runtimeBindingVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_STAGE_VERIFIER_FILE":                  configuration.runtimeStageVerifierFile,
+			"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY":              configuration.runtimeJournalStateDir,
+			"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY":             configuration.runtimeStartupLedgerDir,
+			"VELA_NODE_AGENT_RUNTIME_CRI_SOCKET":                           configuration.runtimeCRISocket,
+			"VELA_NODE_AGENT_RUNTIME_KUBECONFIG":                           configuration.runtimeKubeconfig,
+			"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET":                       configuration.runtimeStartupSocket,
+			"VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH":                        configuration.runtimeLauncherPath,
+			"VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET":                 configuration.runtimePolicyIssuerSocket,
+			"VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE":               configuration.runtimePolicyPublicKeyFile,
+			"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE": configuration.runtimePolicyAuthorizationPublicKeyFile,
+			"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY":       configuration.runtimePolicyAuthorizationDirectory,
+			"VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET":                        configuration.workerJournalSocket,
+			"VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY":               configuration.workerJournalInputRoot,
+			"VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY":     configuration.workerJournalMaterializationRoot,
+			"VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET":           configuration.workerJournalPIDFDBrokerSocket,
 		} {
 			if value == "" {
 				return config{}, fmt.Errorf("%s is required when runtime startup is enabled", name)
@@ -676,8 +701,67 @@ func loadConfig() (config, error) {
 				return config{}, fmt.Errorf("%s must be an absolute clean path", name)
 			}
 		}
+		for name, value := range map[string]string{
+			"VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET":                    configuration.workerJournalSocket,
+			"VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY":           configuration.workerJournalInputRoot,
+			"VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY": configuration.workerJournalMaterializationRoot,
+			"VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET":       configuration.workerJournalPIDFDBrokerSocket,
+		} {
+			if value == "" {
+				continue
+			}
+			cleaned := filepath.Clean(value)
+			if !filepath.IsAbs(cleaned) || cleaned != value {
+				return config{}, fmt.Errorf("%s must be an absolute clean path", name)
+			}
+		}
+		limit, err := positiveInt64EnvOptional("VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_LIMIT", 100000)
+		if err != nil {
+			return config{}, err
+		}
+		if limit == 0 {
+			return config{}, errors.New("VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_LIMIT is required when runtime startup is enabled")
+		}
+		configuration.workerJournalMaterializationLimit = int(limit)
+		paths := []struct {
+			name, path string
+		}{
+			{"VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET", configuration.runtimeStartupSocket},
+			{"VELA_NODE_AGENT_RUNTIME_POLICY_ISSUER_SOCKET", configuration.runtimePolicyIssuerSocket},
+			{"VELA_NODE_AGENT_RUNTIME_POLICY_PUBLIC_KEY_FILE", configuration.runtimePolicyPublicKeyFile},
+			{"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_PUBLIC_KEY_FILE", configuration.runtimePolicyAuthorizationPublicKeyFile},
+			{"VELA_NODE_AGENT_RUNTIME_POLICY_AUTHORIZATION_DIRECTORY", configuration.runtimePolicyAuthorizationDirectory},
+			{"VELA_NODE_AGENT_WORKER_JOURNAL_SOCKET", configuration.workerJournalSocket},
+			{"VELA_NODE_AGENT_WORKER_JOURNAL_PIDFD_BROKER_SOCKET", configuration.workerJournalPIDFDBrokerSocket},
+			{"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY", configuration.runtimeJournalStateDir},
+			{"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY", configuration.runtimeStartupLedgerDir},
+			{"VELA_NODE_AGENT_WORKER_INPUT_JOURNAL_DIRECTORY", configuration.workerJournalInputRoot},
+			{"VELA_NODE_AGENT_WORKER_MATERIALIZATION_JOURNAL_DIRECTORY", configuration.workerJournalMaterializationRoot},
+		}
+		for index, left := range paths {
+			for _, right := range paths[index+1:] {
+				if configurationPathsOverlap(left.path, right.path) {
+					return config{}, fmt.Errorf("%s overlaps %s", left.name, right.name)
+				}
+			}
+		}
 	}
 	return configuration, nil
+}
+
+func configurationPathsOverlap(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if left == right {
+		return true
+	}
+	leftToRight, leftErr := filepath.Rel(left, right)
+	rightToLeft, rightErr := filepath.Rel(right, left)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	return leftToRight != ".." && !strings.HasPrefix(leftToRight, ".."+string(filepath.Separator)) ||
+		rightToLeft != ".." && !strings.HasPrefix(rightToLeft, ".."+string(filepath.Separator))
 }
 
 func parseBoolEnv(name string) (bool, error) {
@@ -698,6 +782,18 @@ func positiveInt64Env(name string) (int64, error) {
 		return 0, fmt.Errorf("%s must be a positive int64", name)
 	}
 	return value, nil
+}
+
+func positiveInt64EnvOptional(name string, maximum int64) (int64, error) {
+	value := os.Getenv(name)
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || parsed <= 0 || parsed > maximum {
+		return 0, fmt.Errorf("%s must be a positive int64 no greater than %d", name, maximum)
+	}
+	return parsed, nil
 }
 
 func loadControllerIdentities(path string) (map[string]string, error) {

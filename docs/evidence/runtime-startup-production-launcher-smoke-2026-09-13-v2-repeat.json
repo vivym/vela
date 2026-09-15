@@ -1,0 +1,30 @@
+{
+  "scope": "production-launcher-protocol-smoke-repeat",
+  "synthetic_inputs": true,
+  "production_launch_receipt": false,
+  "host": "marslab@100.111.196.116",
+  "cri_socket": "/run/k3s/containerd/containerd.sock",
+  "runs": [
+    {
+      "passed": true,
+      "launcher_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+      "observer_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+      "descriptor_count": 4,
+      "handoff_verified": true,
+      "observer_handshake_verified": true,
+      "cleanup_verified": true,
+      "elapsed_seconds": 6.699
+    },
+    {
+      "passed": true,
+      "launcher_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+      "observer_sha256": "a0db97ccd5ee8e9f98bf972a628fe161758eeb7d9a67c098de4fff899f54fbd3",
+      "descriptor_count": 4,
+      "handoff_verified": true,
+      "observer_handshake_verified": true,
+      "cleanup_verified": true,
+      "elapsed_seconds": 6.605
+    }
+  ],
+  "all_passed": true
+}

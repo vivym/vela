@@ -35,19 +35,38 @@ type JournalServerStats struct {
 }
 
 type JournalServer struct {
-	endpoint *JournalEndpoint
-	config   JournalServerConfig
-	mu       sync.Mutex
-	stopped  bool
-	cancel   context.CancelFunc
-	done     chan struct{}
+	handler JournalHandler
+	config  JournalServerConfig
+	mu      sync.Mutex
+	stopped bool
+	cancel  context.CancelFunc
+	done    chan struct{}
 
 	accepted, overloaded, authenticated, replied, failed atomic.Uint64
 	inFlight, peakInFlight                               atomic.Int64
 }
 
+// JournalHandler is the authenticated domain boundary behind the Node's
+// seqpacket accept loop. It deliberately receives RuntimeCaller rather than
+// an arbitrary payload so every handler can re-check the original kernel
+// process identity before applying a domain operation.
+type JournalHandler interface {
+	Handle(context.Context, *RuntimeCaller) ([]byte, error)
+}
+
 func NewJournalServer(endpoint *JournalEndpoint, config JournalServerConfig) (*JournalServer, error) {
-	if endpoint == nil || os.Geteuid() != 0 || os.Getegid() != 0 || len(config.Credentials) == 0 || len(config.Credentials) > 2 ||
+	if endpoint == nil {
+		return nil, errors.New("invalid Node journal server endpoint")
+	}
+	return NewJournalServerForHandler(endpoint, config)
+}
+
+// NewJournalServerForHandler constructs the same bounded, root-owned accept
+// loop for a non-execution Worker journal handler. The handler owns its own
+// domain state and process binding; this constructor only owns transport
+// authentication, overload and shutdown.
+func NewJournalServerForHandler(handler JournalHandler, config JournalServerConfig) (*JournalServer, error) {
+	if handler == nil || os.Geteuid() != 0 || os.Getegid() != 0 || len(config.Credentials) == 0 || len(config.Credentials) > 2 ||
 		config.MaxConcurrent < 1 || config.MaxConcurrent > MaximumJournalConnections ||
 		config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout {
 		return nil, errors.New("invalid Node journal server configuration")
@@ -58,13 +77,15 @@ func NewJournalServer(endpoint *JournalEndpoint, config JournalServerConfig) (*J
 			return nil, ErrRuntimeCallerIdentity
 		}
 	}
-	endpoint.mu.Lock()
-	defer endpoint.mu.Unlock()
-	if endpoint.owner == nil || endpoint.runtime == nil || endpoint.worker == nil {
-		return nil, ErrRuntimeNamespaceOwnerLost
+	if endpoint, ok := handler.(*JournalEndpoint); ok {
+		endpoint.mu.Lock()
+		defer endpoint.mu.Unlock()
+		if endpoint.owner == nil || endpoint.runtime == nil || endpoint.worker == nil {
+			return nil, ErrRuntimeNamespaceOwnerLost
+		}
 	}
 	config.Credentials = slices.Clone(config.Credentials)
-	return &JournalServer{endpoint: endpoint, config: config}, nil
+	return &JournalServer{handler: handler, config: config}, nil
 }
 
 func (server *JournalServer) Stats() JournalServerStats {
@@ -80,7 +101,7 @@ func (server *JournalServer) Stats() JournalServerStats {
 // One additional accepted socket is immediately closed on overload; the kernel
 // listen backlog is separate. No waiting Go queue or overload goroutine is made.
 func (server *JournalServer) Serve(ctx context.Context, listener *net.UnixListener) error {
-	if server == nil || server.endpoint == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
+	if server == nil || server.handler == nil || ctx == nil || listener == nil || listener.Addr().Network() != "unixpacket" {
 		return errors.New("node journal server requires context and Unix seqpacket listener")
 	}
 	server.mu.Lock()
@@ -167,7 +188,7 @@ func (server *JournalServer) exchange(parent context.Context, connection *net.Un
 	}
 	defer func() { _ = caller.Close() }()
 	server.authenticated.Add(1)
-	reply, err := server.endpoint.Handle(ctx, caller)
+	reply, err := server.handler.Handle(ctx, caller)
 	if err == nil {
 		err = caller.Reply(ctx, reply)
 	}

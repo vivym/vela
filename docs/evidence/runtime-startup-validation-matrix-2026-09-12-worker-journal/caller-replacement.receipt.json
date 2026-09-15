@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "caller-replacement",
+  "started_at": "2026-09-12T07:40:03.161016789Z",
+  "finished_at": "2026-09-12T07:40:14.425374344Z",
+  "target": {
+    "container_id": "c7fdce820243d6bc4e66340b20aa45c67184c169ceb76218daee73087d1585a6",
+    "sandbox_id": "81e23253807dab1fbc974b3d72af95697a13a4602b9e984103189ade75a739e5",
+    "pod_uid": "1d991555-f2c1-434b-a44f-4b6e8af18ddb",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-caller-replacement",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "f705b183445ef81d15b3f3adcda115c791fbf3ffedcbc82308a68fee8a6227f3",
+    "sandbox_id": "81e23253807dab1fbc974b3d72af95697a13a4602b9e984103189ade75a739e5",
+    "pod_uid": "1d991555-f2c1-434b-a44f-4b6e8af18ddb",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-caller-replacement",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 3,
+  "outcome": "failed",
+  "error": "validation scenario caller-replacement terminated without a successful policy exchange"
+}

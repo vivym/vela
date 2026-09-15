@@ -157,7 +157,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		callerCredentials := RuntimeCallerCredentials{UID: plan.uid, GID: plan.gid}
-		connection, _, _ := runtimeCallerConfiguredConnection(t, "protected-hold-after-disconnect", "unixpacket", wire, callerCredentials, true)
+		connection, _, custody := observedRuntimeCallerConnection(t, wire, callerCredentials)
 		caller, err := ReceiveRuntimeCaller(ctx, connection, callerCredentials)
 		if input.MissingPtrace {
 			if err == nil || caller != nil {
@@ -184,9 +184,32 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 		}
 		defer func() { _ = ledger.Close() }()
 		config := RuntimeStartupReservationConfig{Plan: plan, Pods: pods, Observer: observer, Caller: caller, Journal: owner, Registry: registry}
-		result, err := ledger.ReserveRemote(ctx, config)
+		var result RuntimeStartupReservationRecord
+		var orchestration *RuntimeStartupOrchestration
+		var peers journalEndpointFixture
 		if input.LoseResponse {
-			if status.Code(err) != codes.Unavailable || result != (RuntimeStartupReservationRecord{}) {
+			result, err = ledger.ReserveRemote(ctx, config)
+		} else {
+			peers = newJournalEndpointOwnerFixture(t, 0, nil, true, true)
+			authority, authorityErr := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
+				Ledger: ledger, Plan: plan, Pods: pods, Observer: observer, Custody: custody,
+				Journal: owner, WorkerOwner: peers.worker.owner, Registry: registry,
+				AuthorizationPolicy:          compositionAuthorizationPolicy{},
+				PolicyAuthorizationPublisher: func(context.Context, []byte) error { return nil },
+				Credentials:                  []RuntimeCallerCredentials{callerCredentials}, ObserverInterval: 50 * time.Millisecond,
+				ObserverTimeout: 500 * time.Millisecond, ExchangeTimeout: time.Second,
+			})
+			if authorityErr != nil {
+				t.Fatal(authorityErr)
+			}
+			orchestration, result, err = authority.Prepare(ctx, caller)
+			if err == nil && orchestration == nil {
+				t.Fatal("authority returned no orchestration")
+			}
+			defer func() { _ = orchestration.Close() }()
+		}
+		if input.LoseResponse {
+			if status.Code(err) != codes.Unavailable || !reflect.DeepEqual(result, RuntimeStartupReservationRecord{}) {
 				t.Fatalf("lost response became result: %v", err)
 			}
 		} else if err != nil || result.OperationID == uuid.Nil {
@@ -208,13 +231,14 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			t.Fatalf("database history differs from original Node record: %v", err)
 		}
 		// The issuer is explicitly a trusted-Node fixture, not production policy.
-		// Normal mode now exercises actual consumption, activation and Worker RPC.
+		// Normal mode now exercises the Node composition root, actual Permit
+		// consumption, activation and Worker RPC.
 		authorizationDigest := sha256.Sum256([]byte("fixture startup authorization evidence; no permit"))
 		var attempt RuntimeStartupGrantAttempt
 		var activated, revoked bool
 		var floorAfter int64
+		var compositionReceipt *RuntimeStartupCompositionReceipt
 		var activationEndpoint *JournalEndpoint
-		var peers journalEndpointFixture
 		var floorCommand modelruntime.JournalCommand
 		identity := modelruntime.ExecutionJournalIdentity{JournalID: journal.JournalID, Scope: journal.Scope, Storage: journal.Storage}
 		if input.LoseResponse {
@@ -224,10 +248,11 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 				t.Fatalf("remote history replaced missing local receipt: %v", attemptErr)
 			}
 		} else {
-			peers = newJournalEndpointOwnerFixture(t, 0, nil, true, true)
-			activationEndpoint, err = NewReadOnlyJournalEndpoint(ctx, owner, ledger.owners[journal.JournalID], peers.worker.owner)
-			if err != nil {
-				t.Fatal(err)
+			// Prepare created the endpoint and grant; use that exact endpoint for
+			// the Worker journal exchange below.
+			activationEndpoint = orchestration.coordinator.grant.endpoint
+			if activationEndpoint == nil {
+				t.Fatal("composition did not retain activation endpoint")
 			}
 			defer func() { _ = activationEndpoint.Close() }()
 			signer, err := stageauthority.NewSigner(map[string][]byte{"authority": make([]byte, 32)})
@@ -239,13 +264,30 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error == "" {
 				t.Fatal("pregrant Worker wrote journal")
 			}
-			grant, err := IssueReservedJournalWriteGrant(ctx, activationEndpoint, ledger.owners[journal.JournalID], peers.worker.owner, record.OperationID, authorizationDigest, time.Minute)
+			// ServeCaller performs the same one-shot socket exchange used by the
+			// command-level Node path: parse the Runtime payload, consume the
+			// grant and return the signed decision over the held connection.
+			if serveErr := orchestration.ServeCaller(ctx); serveErr != nil {
+				t.Fatalf("ModelRuntime backend Permit exchange failed: %v", serveErr)
+			}
+			receipt, receiptErr := orchestration.CompositionReceipt(ctx)
+			if receiptErr != nil {
+				t.Fatal(receiptErr)
+			}
+			attempt, attemptErr := ledger.InspectJournalGrantAttempt(ctx, journal.JournalID)
+			if attemptErr != nil {
+				t.Fatal(attemptErr)
+			}
+			if err := receipt.VerifyBinding(result.OperationID, result.JournalID, result.RequestDigest, attempt.ReservationDigest, attempt.AuthorizationDigest); err != nil {
+				t.Fatalf("composition receipt binding: %v", err)
+			}
+			if !receipt.Permit || receipt.Outcome != "permitted" {
+				t.Fatalf("composition receipt did not record Permit: %+v", receipt)
+			}
+			compositionReceipt = &receipt
+			attempt, err = ledger.InspectJournalGrantAttempt(ctx, journal.JournalID)
 			if err != nil {
 				t.Fatal(err)
-			}
-			attempt, err = ledger.ActivateReservedJournalWriteGrant(ctx, plan, grant)
-			if err != nil {
-				t.Fatalf("activate after real Fleet reservation: %v", err)
 			}
 			if reply := journalEndpointExchange(t, activationEndpoint, peers.listener, peers.worker, identity, floorCommand, false); reply.Error != "" {
 				t.Fatalf("postgrant Worker write: %+v", reply)
@@ -264,6 +306,13 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 				t.Fatalf("lost response changed journal floor: %+v %v", current, err)
 			}
 			floorAfter = current.Floor
+		}
+		if orchestration != nil {
+			if err := orchestration.Close(); err != nil {
+				t.Fatal(err)
+			}
+			orchestration = nil
+			revoked = activated
 		}
 		if err := ledger.Close(); err != nil {
 			t.Fatal(err)
@@ -296,7 +345,7 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			if !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("lost response created receipt: %v", err)
 			}
-		} else if err != nil || receipt != result {
+		} else if err != nil || !reflect.DeepEqual(receipt, result) {
 			t.Fatalf("lost local receipt: %v", err)
 		}
 		grantHistory, grantErr := recovered.InspectJournalGrantAttempt(ctx, journal.JournalID)
@@ -324,9 +373,10 @@ func TestRuntimeStartupFleetProcessHelper(t *testing.T) {
 			HasReceipt          bool
 			WorkerJournal       stageworkeragent.AssignmentJournalStatus
 			GrantAttempt        *RuntimeStartupGrantAttempt
+			CompositionReceipt  *RuntimeStartupCompositionReceipt
 			Activated, Revoked  bool
 			PostActivationFloor int64
-		}{expected, recordWire, !input.LoseResponse, worker, grantReport, activated, revoked, floorAfter})
+		}{expected, recordWire, !input.LoseResponse, worker, grantReport, compositionReceipt, activated, revoked, floorAfter})
 		if err != nil {
 			t.Fatal(err)
 		}

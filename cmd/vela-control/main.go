@@ -125,6 +125,7 @@ type config struct {
 	fleetDatabaseURL                       string
 	fleetControllerSPIFFEIdentity          string
 	fleetControllerActorIdentity           string
+	fleetRuntimePolicyPrivateKeyFile       string
 	authDatabaseURL                        string
 	humanAuthDatabaseURL                   string
 	humanMembershipAuthDatabaseURL         string
@@ -923,6 +924,17 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Fleet service: %w", err)
 	}
+	runtimePolicyPrivateKey, err := readRuntimePolicyPrivateKey(configuration.fleetRuntimePolicyPrivateKeyFile)
+	if err != nil {
+		return fmt.Errorf("load Fleet runtime policy signing key: %w", err)
+	}
+	runtimePolicyProducer, err := fleet.NewSignedRuntimeStartupAuthorizationProducer(runtimePolicyPrivateKey, nil)
+	if err != nil {
+		return fmt.Errorf("configure Fleet runtime policy signer: %w", err)
+	}
+	if err := fleetService.SetRuntimeStartupAuthorizationSource(runtimePolicyProducer); err != nil {
+		return fmt.Errorf("install Fleet runtime policy signer: %w", err)
+	}
 	fleetMaintenanceAdapter, err := fleettransport.NewServer(
 		fleetService,
 		fleettransport.Config{
@@ -1424,6 +1436,7 @@ func loadConfig() (config, error) {
 		fleetDatabaseURL:                  os.Getenv("VELA_FLEET_DATABASE_URL"),
 		fleetControllerSPIFFEIdentity:     os.Getenv("VELA_FLEET_CONTROLLER_SPIFFE_ID"),
 		fleetControllerActorIdentity:      os.Getenv("VELA_FLEET_CONTROLLER_ACTOR_IDENTITY"),
+		fleetRuntimePolicyPrivateKeyFile:  os.Getenv("VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE"),
 		authDatabaseURL:                   os.Getenv("VELA_AUTH_DATABASE_URL"),
 		humanAuthDatabaseURL:              os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
 		humanMembershipAuthDatabaseURL:    os.Getenv("VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"),
@@ -1687,10 +1700,14 @@ func loadConfig() (config, error) {
 		"VELA_FLEET_GRPC_CLIENT_CA_FILE":                             configuration.fleetGRPCClientCAFile,
 		"VELA_FLEET_CONTROLLER_SPIFFE_ID":                            configuration.fleetControllerSPIFFEIdentity,
 		"VELA_FLEET_CONTROLLER_ACTOR_IDENTITY":                       configuration.fleetControllerActorIdentity,
+		"VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE":                 configuration.fleetRuntimePolicyPrivateKeyFile,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)
 		}
+	}
+	if cleaned := filepath.Clean(configuration.fleetRuntimePolicyPrivateKeyFile); !filepath.IsAbs(cleaned) || cleaned != configuration.fleetRuntimePolicyPrivateKeyFile {
+		return config{}, errors.New("VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE must be an absolute clean path")
 	}
 	for name, value := range map[string]string{
 		"VELA_REMEDIATION_NODE_AGENTS_FILE": configuration.remediationNodeAgentsFile,

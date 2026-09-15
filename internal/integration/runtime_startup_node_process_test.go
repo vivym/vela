@@ -142,6 +142,7 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 					StartupDigest       [sha256.Size]byte `json:"startup_digest"`
 					AuthorizationDigest [sha256.Size]byte `json:"authorization_digest"`
 				}
+				CompositionReceipt json.RawMessage
 			}
 			found := false
 			for _, line := range strings.Split(string(output), "\n") {
@@ -174,6 +175,16 @@ func TestRuntimeStartupNodeProcessPostgresTLS(t *testing.T) {
 				report.GrantAttempt.JournalID != report.Request.RuntimeJournalID.String() || report.GrantAttempt.StartupDigest != digest ||
 				report.GrantAttempt.AuthorizationDigest != sha256.Sum256([]byte("fixture startup authorization evidence; no permit")) {
 				t.Fatal("grant fence is not bound to original Node/Fleet operation and fixture evidence")
+			} else if len(report.CompositionReceipt) == 0 || string(report.CompositionReceipt) == "null" {
+				t.Fatalf("missing composition receipt: %s", report.CompositionReceipt)
+			} else {
+				var receipt struct {
+					Permit  bool   `json:"permit"`
+					Outcome string `json:"outcome"`
+				}
+				if err := json.Unmarshal(report.CompositionReceipt, &receipt); err != nil || !receipt.Permit || receipt.Outcome != "permitted" {
+					t.Fatalf("invalid composition receipt: %s (%v)", report.CompositionReceipt, err)
+				}
 			}
 			if !bytes.Equal(digest[:], report.Request.OwnerObservationDigest) {
 				t.Fatal("database owner digest does not bind the full original Node record")

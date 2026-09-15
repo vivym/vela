@@ -1,0 +1,30 @@
+[Unit]
+Description=Vela runtime startup policy issuer
+Wants=network-online.target
+After=network-online.target
+Before=vela-node-agent.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/vela-runtime-policy-issuer
+EnvironmentFile=/etc/vela/runtime-policy-issuer.env
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+RuntimeDirectory=vela-runtime-policy
+RuntimeDirectoryMode=0755
+StateDirectory=vela/runtime-policy-issuer
+StateDirectoryMode=0700
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0700 /var/lib/vela/runtime-policy-issuer/authorizations /var/lib/vela/runtime-policy-issuer/replies
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=false
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

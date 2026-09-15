@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "local-docker-desktop",
+  "test": "TestRuntimeStartupNodeProcessPostgresTLS",
+  "command": "VELA_RUNTIME_STARTUP_NODE_IMAGE=sha256:3f8407c3d32fbdebb0d87640fb1248e82522b8e73c9abcaff6893ee6676013f1 go test -tags=integration ./internal/integration -run TestRuntimeStartupNodeProcessPostgresTLS -count=1 -v",
+  "result": "PASS",
+  "scenarios": {
+    "normal": "PASS",
+    "committed-response-lost": "PASS",
+    "missing-ptrace": "PASS"
+  },
+  "image_sha256": "3f8407c3d32fbdebb0d87640fb1248e82522b8e73c9abcaff6893ee6676013f1",
+  "nodeagent_test_sha256": "6335e253b5652ce8c959b419e3a9e6e3d8184b5676f5f4180c961e0685c57b55",
+  "assertions": [
+    "TLS 1.3 Fleet reservation",
+    "durable reservation and authorization history",
+    "committed response loss does not create a local receipt or grant",
+    "missing SYS_PTRACE is rejected before Fleet reservation",
+    "normal activation and revocation use the same Worker journal"
+  ],
+  "scope": "Node/Fleet/PostgreSQL/TLS fixture process integration; no cmd/vela-node-agent daemon composition, production Permit or Launch Receipt"
+}

@@ -246,3 +246,18 @@ func TestLoadConfigDurableAssignmentRequiresCompleteRecoverySettings(t *testing.
 		})
 	}
 }
+
+func TestLoadConfigRemoteJournalRequiresPIDFDBroker(t *testing.T) {
+	setValidStageWorkerEnv(t)
+	root := t.TempDir()
+	t.Setenv("VELA_WORKER_JOURNAL_SOCKET", filepath.Join(root, "worker.sock"))
+	t.Setenv("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET", "")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET") {
+		t.Fatalf("remote journal without broker error = %v", err)
+	}
+	t.Setenv("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET", filepath.Join(root, "pidfd-broker.sock"))
+	configuration, err := loadConfig()
+	if err != nil || configuration.workerJournalSocket == "" || configuration.workerJournalPIDFDBrokerSocket == "" {
+		t.Fatalf("remote journal with broker configuration = %+v error=%v", configuration, err)
+	}
+}

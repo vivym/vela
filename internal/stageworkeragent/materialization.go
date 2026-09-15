@@ -648,6 +648,49 @@ func validatePendingMaterialization(record PendingMaterialization) error {
 	return nil
 }
 
+// ValidateMaterializationTransition enforces the append-only lifecycle of a
+// pending output. A Node-owned journal may persist the same record's next
+// phase, but it must reject replacement, rollback, or clearing of evidence.
+func ValidateMaterializationTransition(previous, next PendingMaterialization) error {
+	if err := validatePendingMaterialization(previous); err != nil {
+		return err
+	}
+	if err := validatePendingMaterialization(next); err != nil {
+		return err
+	}
+	if previous.ID != next.ID || !proto.Equal(previous.StageAuthority, next.StageAuthority) || !proto.Equal(previous.LocalReceipt, next.LocalReceipt) {
+		return errors.New("materialization journal identity or sealed receipt changed")
+	}
+	if previous.MaterializationAuthority != nil && !proto.Equal(previous.MaterializationAuthority, next.MaterializationAuthority) {
+		return errors.New("materialization authority changed")
+	}
+	if previous.ObjectVersion != "" && previous.ObjectVersion != next.ObjectVersion {
+		return errors.New("materialization object version changed")
+	}
+	if previous.CommittedAt.IsZero() {
+		if !next.CommittedAt.IsZero() && next.CommittedAt.Before(previous.CommittedAt) {
+			return errors.New("materialization commit time moved backwards")
+		}
+	} else if !previous.CommittedAt.Equal(next.CommittedAt) {
+		return errors.New("materialization commit time changed")
+	}
+	if previous.SourceLoss != nil {
+		if next.SourceLoss == nil || *previous.SourceLoss != *next.SourceLoss {
+			return errors.New("materialization source-loss evidence changed")
+		}
+	}
+	if previous.ConfirmedDisposition != "" && previous.ConfirmedDisposition != next.ConfirmedDisposition {
+		return errors.New("materialization confirmed disposition changed")
+	}
+	if previous.CommitCommandID != "" && previous.CommitCommandID != next.CommitCommandID {
+		return errors.New("materialization commit command identity changed")
+	}
+	if previous.SourceLossCommandID != "" && previous.SourceLossCommandID != next.SourceLossCommandID {
+		return errors.New("materialization source-loss command identity changed")
+	}
+	return nil
+}
+
 func materializationCommandID(pendingID, operation string) string {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("vela:stage-materialization:"+operation+":"+pendingID)).String()
 }

@@ -158,8 +158,17 @@ func (store *executionStateFile) authorizeBackendStartup(ctx context.Context, bi
 // NewNodeBackendStartupGate creates the production client, not a Node issuer.
 // Recovery-only startup never calls it and does not require a live Node socket.
 func NewNodeBackendStartupGate(socketPath string) (RuntimeBackendStartupGate, error) {
+	return NewNodeBackendStartupGateWithPIDFDBroker(socketPath, "")
+}
+
+// NewNodeBackendStartupGateWithPIDFDBroker supplies the optional host-side
+// identity broker for legacy pidfds hidden by a nested PID namespace.
+func NewNodeBackendStartupGateWithPIDFDBroker(socketPath, brokerSocket string) (RuntimeBackendStartupGate, error) {
 	if !filepath.IsAbs(socketPath) || filepath.Clean(socketPath) != socketPath || len(socketPath) > maxRuntimeSocketPathBytes || strings.ContainsRune(socketPath, 0) {
 		return nil, errors.New("backend startup Node socket must be a canonical local path")
 	}
-	return nodeBackendStartupGate(socketPath), nil
+	if brokerSocket != "" && (!filepath.IsAbs(brokerSocket) || filepath.Clean(brokerSocket) != brokerSocket || len(brokerSocket) > maxRuntimeSocketPathBytes || strings.ContainsRune(brokerSocket, 0)) {
+		return nil, errors.New("pidfd broker socket must be a canonical local path")
+	}
+	return nodeBackendStartupGate(socketPath, brokerSocket), nil
 }

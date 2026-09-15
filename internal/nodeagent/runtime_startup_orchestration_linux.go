@@ -63,6 +63,17 @@ func (orchestration *RuntimeStartupOrchestration) ServeCaller(ctx context.Contex
 	return orchestration.server.HandleCaller(ctx, orchestration.caller)
 }
 
+// ExpectedBackendStartupRequest returns the immutable request captured during
+// composition. It is a read-only evidence source for command-level receipt
+// binding; it does not grant permission or expose any mutable coordinator
+// state.
+func (orchestration *RuntimeStartupOrchestration) ExpectedBackendStartupRequest() (modelruntime.BackendStartupRequest, error) {
+	if orchestration == nil || orchestration.coordinator == nil {
+		return modelruntime.BackendStartupRequest{}, ErrRuntimeStartupAuthority
+	}
+	return orchestration.coordinator.expected, nil
+}
+
 // Wait keeps the Node-owned startup composition alive after the one-shot
 // startup reply. A successful Permit starts a monitored lifetime; returning
 // from ServeCaller must not close custody or the runtime immediately.

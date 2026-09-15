@@ -286,6 +286,19 @@ func decodeInputTransferJournalRecord(document []byte) (InputTransferJournalReco
 	return record, nil
 }
 
+// EncodeInputTransferJournalRecord serializes one validated domain record for
+// the Node-owned journal transport. The bytes contain no filesystem path or
+// caller identity and can be replayed only through the typed journal API.
+func EncodeInputTransferJournalRecord(record InputTransferJournalRecord) ([]byte, error) {
+	return encodeInputTransferJournalRecord(record)
+}
+
+// DecodeInputTransferJournalRecord validates a record received from the
+// Node-owned journal transport.
+func DecodeInputTransferJournalRecord(document []byte) (InputTransferJournalRecord, error) {
+	return decodeInputTransferJournalRecord(document)
+}
+
 func decodeInputTransferDigest(value string) ([sha256.Size]byte, error) {
 	var result [sha256.Size]byte
 	decoded, err := hex.DecodeString(value)

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "normal",
+  "started_at": "2026-09-12T16:00:06.750410148Z",
+  "finished_at": "2026-09-12T16:00:18.121660471Z",
+  "target": {
+    "container_id": "aea12350dc5591aedbcc35e4101007a8fec11ab33f277c103f6885ba139c1c5c",
+    "sandbox_id": "e3b146f2b454ef1047905f2adfc7b67587553710c4c7c54495fe07eb004e812d",
+    "pod_uid": "523e90d7-3ff8-4958-837f-652c500d190a",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-normal",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "db5894e1f5ae3d2ff78fb3144df70771154cbb1c765e58615e387509a7a4cfa4",
+    "sandbox_id": "e3b146f2b454ef1047905f2adfc7b67587553710c4c7c54495fe07eb004e812d",
+    "pod_uid": "523e90d7-3ff8-4958-837f-652c500d190a",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-normal",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 4,
+  "outcome": "completed"
+}

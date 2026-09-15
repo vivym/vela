@@ -7,13 +7,13 @@ import (
 	"github.com/vivym/vela/internal/runtimechannel"
 )
 
-func nodeBackendStartupGate(socket string) RuntimeBackendStartupGate {
+func nodeBackendStartupGate(socket, brokerSocket string) RuntimeBackendStartupGate {
 	return func(ctx context.Context, request BackendStartupRequest) error {
 		document, err := EncodeBackendStartupRequest(request)
 		if err != nil {
 			return err
 		}
-		response, err := runtimechannel.Exchange(ctx, socket, document)
+		response, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, document, runtimechannel.MaximumPayload)
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "helper-crash",
+  "started_at": "2026-09-12T06:30:16.252337728Z",
+  "finished_at": "2026-09-12T06:30:16.979572798Z",
+  "target": {
+    "container_id": "340773250fbef434998d873e2679c6839ae75ce263d46836b71ea1d1ec8e8c28",
+    "sandbox_id": "364f0f0d3465d1d4174b8e5e97682f7df942ce268b2d6ab64aa5a4eaaf7ef338",
+    "pod_uid": "deccc8dc-cbc1-422a-9114-70ec02220e2d",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-helper-crash",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "ccdd0a72d35ab705400d291d73da59ad1e6a8172fc183fbe17e9aa3a91d3fada",
+    "sandbox_id": "364f0f0d3465d1d4174b8e5e97682f7df942ce268b2d6ab64aa5a4eaaf7ef338",
+    "pod_uid": "deccc8dc-cbc1-422a-9114-70ec02220e2d",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-helper-crash",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 3,
+  "outcome": "failed",
+  "error": "validation helper crashed: intentional validation helper crash"
+}

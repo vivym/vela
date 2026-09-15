@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "marslab",
+  "kernel": "6.8.0-137-generic",
+  "result": "PASS",
+  "tests": [
+    "TestRuntimeStartupAuthorityPrepareComposesReservationAndGrant",
+    "TestRuntimeStartupOrchestrationExposesImmutableExpectedRequest",
+    "TestRuntimeStartupCompositionNodeRestartDoesNotReissueAuthority",
+    "TestRuntimeStartupAuthorityCompositionFailureMatrix/policy-response-loss",
+    "TestRuntimeStartupAuthorityCompositionFailureMatrix/caller-replacement",
+    "TestRuntimeStartupAuthorityCompositionFailureMatrix/observer-loss"
+  ],
+  "nodeagent_test_sha256": "35b4bece6eb13a5b1d2c605a3a58043a056564fb1f474e6faf692bff6cafaf42",
+  "observer_source_sha256": "7d8227d1b12bad8fbf13eea39f359272ebd10c98703f43a830a58a838d3b48cb",
+  "probe_source_sha256": "0192835c4d2b1f46aaa2a6d79455b6c5c29f2208ad68e0a700139d2c9323c99f",
+  "assertions": [
+    "one Fleet reservation per operation",
+    "startup grant and fake backend Permit are operation-bound",
+    "receipt replay uses independent backend request digest",
+    "receipt replay uses independent durable reservation digest",
+    "Node restart does not reissue authority",
+    "policy loss, caller replacement and observer loss fail closed"
+  ],
+  "scope": "validation fixture composition only; no production Fleet, issuer, images or Launch Receipt"
+}

@@ -191,3 +191,18 @@ func (owner *RuntimeNamespaceOwner) Close() error {
 	owner.pidfd, owner.exit = nil, nil
 	return err
 }
+
+// Credentials returns the UID/GID observed from the retained original owner.
+// It is configuration evidence for a protected local listener; it does not
+// grant journal or startup authority and cannot reconstruct the pidfd.
+func (owner *RuntimeNamespaceOwner) Credentials() (RuntimeCallerCredentials, error) {
+	if owner == nil {
+		return RuntimeCallerCredentials{}, ErrRuntimeNamespaceOwnerLost
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if err := owner.checkLocked(); err != nil {
+		return RuntimeCallerCredentials{}, err
+	}
+	return RuntimeCallerCredentials{UID: owner.owner.Process.UID, GID: owner.owner.Process.GID}, nil
+}

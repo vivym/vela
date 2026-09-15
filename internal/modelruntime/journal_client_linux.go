@@ -25,6 +25,10 @@ type JournalEndpointResponse struct {
 // retained metadata as permission to run a backend. Identity must come from
 // independently approved journal binding, not from the returned receipt.
 func ExchangeJournalCommand(ctx context.Context, socket string, identity ExecutionJournalIdentity, command JournalCommand) (JournalMutationReceipt, error) {
+	return exchangeJournalCommandWithPIDFDBroker(ctx, socket, "", identity, command)
+}
+
+func exchangeJournalCommandWithPIDFDBroker(ctx context.Context, socket, brokerSocket string, identity ExecutionJournalIdentity, command JournalCommand) (JournalMutationReceipt, error) {
 	if identity.JournalID == uuid.Nil || identity.Scope == ([sha256.Size]byte{}) {
 		return JournalMutationReceipt{}, ErrJournalCommand
 	}
@@ -32,7 +36,7 @@ func ExchangeJournalCommand(ctx context.Context, socket string, identity Executi
 	if err != nil {
 		return JournalMutationReceipt{}, err
 	}
-	response, err := runtimechannel.ExchangeWithRequestLimit(ctx, socket, wire, MaximumJournalCommandBytes)
+	response, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, wire, MaximumJournalCommandBytes)
 	if err != nil {
 		return JournalMutationReceipt{}, err
 	}
@@ -68,16 +72,17 @@ func parseJournalResponse(wire []byte, request [sha256.Size]byte, identity Execu
 // UnixRuntimeJournalTransport uses the authenticated Node channel for every
 // mutation and read. It retains no local files and performs no mutation retries.
 type UnixRuntimeJournalTransport struct {
-	Socket   string
-	Identity ExecutionJournalIdentity
+	Socket            string
+	PIDFDBrokerSocket string
+	Identity          ExecutionJournalIdentity
 }
 
 func (transport UnixRuntimeJournalTransport) Apply(ctx context.Context, command JournalCommand) (JournalMutationReceipt, error) {
-	return ExchangeJournalCommand(ctx, transport.Socket, transport.Identity, command)
+	return exchangeJournalCommandWithPIDFDBroker(ctx, transport.Socket, transport.PIDFDBrokerSocket, transport.Identity, command)
 }
 func (transport UnixRuntimeJournalTransport) Read(ctx context.Context) (JournalDocument, error) {
 	return ReadJournalDocument(ctx, transport.Identity, func(ctx context.Context, request JournalReadCommand) (JournalPage, error) {
-		return ExchangeJournalRead(ctx, transport.Socket, request)
+		return exchangeJournalReadWithPIDFDBroker(ctx, transport.Socket, transport.PIDFDBrokerSocket, request)
 	})
 }
 
@@ -99,11 +104,15 @@ func decodeJournalEndpointResponse(wire []byte, request [sha256.Size]byte) (Jour
 }
 
 func ExchangeJournalRead(ctx context.Context, socket string, request JournalReadCommand) (JournalPage, error) {
+	return exchangeJournalReadWithPIDFDBroker(ctx, socket, "", request)
+}
+
+func exchangeJournalReadWithPIDFDBroker(ctx context.Context, socket, brokerSocket string, request JournalReadCommand) (JournalPage, error) {
 	wire, err := EncodeJournalCommand(JournalCommand{SchemaVersion: 1, Read: &request})
 	if err != nil {
 		return JournalPage{}, err
 	}
-	reply, err := runtimechannel.Exchange(ctx, socket, wire)
+	reply, err := runtimechannel.ExchangeWithRequestLimitAndPIDFDBroker(ctx, socket, brokerSocket, wire, runtimechannel.MaximumPayload)
 	if err != nil {
 		// No page escaped the authenticated channel. Retrying a later pure
 		// read is safe even if this failed exchange could not authenticate;

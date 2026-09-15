@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "validation_only": true,
+  "scenario": "helper-timeout",
+  "started_at": "2026-09-12T08:15:52.03635931Z",
+  "finished_at": "2026-09-12T08:16:03.289205531Z",
+  "target": {
+    "container_id": "9f91f38b735f1ce887f2c01bedf4ac9ed5b2feee65ed2e6a05e03c313124dfe8",
+    "sandbox_id": "dfd7f53c497936431cb6d4354b81c34fb1d9649f869605b6c5a422120df3252e",
+    "pod_uid": "ee99f45e-9cc6-42e7-96f5-d07527ad1153",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-helper-timeout",
+    "container_name": "model-runtime",
+    "container_attempt": 1
+  },
+  "worker_target": {
+    "container_id": "cf59c060b59cb87cc2fd06bba459917597995a56f200d13b0eac230246f4543b",
+    "sandbox_id": "dfd7f53c497936431cb6d4354b81c34fb1d9649f869605b6c5a422120df3252e",
+    "pod_uid": "ee99f45e-9cc6-42e7-96f5-d07527ad1153",
+    "pod_namespace": "default",
+    "pod_name": "vela-validation-helper-timeout",
+    "container_name": "stage-worker-agent",
+    "container_attempt": 1
+  },
+  "fd_count": 3,
+  "outcome": "failed",
+  "error": "validation scenario helper-timeout terminated without a successful policy exchange"
+}

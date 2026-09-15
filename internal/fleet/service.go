@@ -61,7 +61,8 @@ type MutationAuthorizationResult struct {
 }
 
 type Service struct {
-	registryPool *pgxpool.Pool
+	registryPool                      *pgxpool.Pool
+	runtimeStartupAuthorizationSource RuntimeStartupAuthorizationProducer
 }
 
 func NewService(registryPool *pgxpool.Pool) (*Service, error) {
@@ -69,6 +70,17 @@ func NewService(registryPool *pgxpool.Pool) (*Service, error) {
 		return nil, errors.New("worker Registry database pool is required")
 	}
 	return &Service{registryPool: registryPool}, nil
+}
+
+// SetRuntimeStartupAuthorizationSource installs the Fleet signing source used
+// after a reservation commit. It is intentionally explicit; without it the
+// reservation API remains evidence-only and cannot feed a Node startup grant.
+func (service *Service) SetRuntimeStartupAuthorizationSource(source RuntimeStartupAuthorizationProducer) error {
+	if service == nil || service.registryPool == nil || source == nil {
+		return errors.New("runtime startup authorization source is invalid")
+	}
+	service.runtimeStartupAuthorizationSource = source
+	return nil
 }
 
 func (service *Service) AuthorizeMutation(

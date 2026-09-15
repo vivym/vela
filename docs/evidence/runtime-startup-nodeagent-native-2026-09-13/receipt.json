@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "marslab",
+  "kernel": "6.8.0-137-generic",
+  "result": "PASS",
+  "scope": "native Node runtime-startup authority, coordinator, orchestration and observer-custody tests",
+  "groups": [
+    "TestRuntimeStartupAuthority*",
+    "TestRuntimeStartupCompositionReceiptRejectsAuthorityGaps",
+    "TestRuntimeStartupCoordinator*",
+    "TestRuntimeStartupOrchestration*",
+    "TestRuntimeObserverCustody"
+  ],
+  "temporary_inputs": ["exec-observer", "exec-probe", "source-matched Linux test binary"],
+  "production_launch_receipt": false,
+  "limitations": [
+    "cmd/vela-node-agent command-level resource assembly was not exercised",
+    "production Fleet and policy issuer were not used",
+    "no production ModelRuntime Permit was issued"
+  ]
+}

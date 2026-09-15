@@ -163,6 +163,12 @@ func TestRuntimeBootstrapPublication(t *testing.T) {
 	if history, err := InspectRuntimeBootstrapPublication(t.Context(), config.Directory); err != nil || history.Record() != publication.Record() {
 		t.Fatalf("closed owner destroyed history: %v", err)
 	}
+	if err := publication.Remove(t.Context(), config.Directory); err != nil {
+		t.Fatalf("remove owned publication: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(config.Directory, runtimeBootstrapFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("bootstrap file remains after owned cleanup: %v", err)
+	}
 	t.Log("verified plan and held journal -> immutable snapshot; actual UID/GID 10001 can read only bootstrap; reopening returns history after owner closure")
 }
 
@@ -212,6 +218,27 @@ func TestRuntimeBootstrapPublicationPreflight(t *testing.T) {
 				t.Fatalf("preflight wrote intent: %v", err)
 			}
 		})
+	}
+}
+
+func TestRuntimeBootstrapPublicationCleanupRejectsReplacement(t *testing.T) {
+	config := publicationFixture(t, false)
+	publication, err := PublishRuntimeBootstrap(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(config.Directory, runtimeBootstrapFilename)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement"), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	if err := publication.Remove(t.Context(), config.Directory); err == nil {
+		t.Fatal("cleanup accepted replacement bootstrap inode")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("cleanup removed replacement bootstrap: %v", err)
 	}
 }
 

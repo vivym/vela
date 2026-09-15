@@ -27,6 +27,7 @@ type commandConfig struct {
 	journalBindingFile         string
 	journalBindingVerifierFile string
 	nodeStartupSocket          string
+	pidFDBrokerSocket          string
 	socketPath                 string
 	cancelTimeout              time.Duration
 	shutdownTimeout            time.Duration
@@ -113,7 +114,7 @@ func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 		if err != nil {
 			return err
 		}
-		startupGate, err = modelruntime.NewNodeBackendStartupGate(configuration.nodeStartupSocket)
+		startupGate, err = modelruntime.NewNodeBackendStartupGateWithPIDFDBroker(configuration.nodeStartupSocket, configuration.pidFDBrokerSocket)
 		if err != nil {
 			return err
 		}
@@ -193,7 +194,13 @@ func loadCommandConfig() (commandConfig, error) {
 		if err != nil {
 			return commandConfig{}, err
 		}
-	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET") != "" {
+		if os.Getenv("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET") != "" {
+			configuration.pidFDBrokerSocket, err = requiredCommandAbsolutePath("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET")
+			if err != nil {
+				return commandConfig{}, err
+			}
+		}
+	} else if os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_JOURNAL_BINDING_VERIFIER_KEYRING_FILE") != "" || os.Getenv("VELA_MODEL_RUNTIME_NODE_STARTUP_SOCKET") != "" || os.Getenv("VELA_MODEL_RUNTIME_PIDFD_BROKER_SOCKET") != "" {
 		return commandConfig{}, errors.New("ModelRuntime journal binding requires VELA_MODEL_RUNTIME_EXECUTION_STATE_DIRECTORY")
 	}
 	configuration.cancelTimeout, err = requiredCommandDuration(

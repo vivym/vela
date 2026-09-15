@@ -43,15 +43,16 @@ SHA-256 为：
 实验 `exec-observer` 提升为 production launcher，也不提升九个 Production Gates。
 
 本轮新增 Node 内置 helper adapter：启动时校验 root-owned helper，使用 inherited FD 3
-的 `SOCK_SEQPACKET` 控制通道，严格解析首帧和 `SCM_RIGHTS` 中的两个 pidfd 与 observer
-endpoint，并在 Fleet reservation 后发送 operation/request-bound policy 请求。目标机尚未
+的 `SOCK_SEQPACKET` 控制通道，严格解析首帧和历史 `SCM_RIGHTS` 中的两个 pidfd 与 observer
+endpoint，并在 Fleet reservation 后发送 operation/request-bound policy 请求。当前协议已升级为
+四个 descriptor；目标机尚未
 安装实现该 wire contract 的生产 helper，因此这部分只完成了本地构建与 fail-closed 路径
 验证，Production Gates 仍保持 `0/9`。
 
 ## validation-only CRI cleanup
 
 随后在同一目标机以 `VELA_VALIDATION_ONLY=1` 重跑一次真实 CRI helper。helper 创建了实际
-的 containerd sandbox/container，并返回三个 `SCM_RIGHTS` descriptor；Node 侧控制通道
+的 containerd sandbox/container，并返回历史三个 `SCM_RIGHTS` descriptor；Node 侧控制通道
 收到 `SIGTERM` 后，context-aware receive 正常退出，helper 使用独立 cleanup context 完成
 `StopContainer`、`RemoveContainer`、`StopPodSandbox` 和 `RemovePodSandbox`。退出码为 `0`，
 精确的 container/sandbox ID 在 containerd 中均已不存在，任务列表也不再包含该 workload。

@@ -29,15 +29,19 @@ import (
 	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/strictjson"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	corev1 "k8s.io/api/core/v1"
 	runtimev1 "k8s.io/cri-api/pkg/apis/runtime/v1"
 )
 
-const protocolVersion = 1
+const (
+	protocolVersion         = 1 // policy channel wire version
+	launcherProtocolVersion = 2 // launcher handoff wire version
+)
 
 type launcherRequest struct {
 	Version           int               `json:"version"`
@@ -48,25 +52,31 @@ type launcherRequest struct {
 }
 
 type launcherReply struct {
-	Version      int                              `json:"version"`
-	Target       nodeagent.RuntimeContainerTarget `json:"target"`
-	WorkerTarget nodeagent.RuntimeContainerTarget `json:"worker_target"`
-	FDCount      int                              `json:"fd_count"`
+	Version        int                              `json:"version"`
+	ValidationOnly bool                             `json:"validation_only"`
+	Target         nodeagent.RuntimeContainerTarget `json:"target"`
+	WorkerTarget   nodeagent.RuntimeContainerTarget `json:"worker_target"`
+	// SCM_RIGHTS order is Runtime pidfd, Worker pidfd, observer pidfd, observer socket.
+	FDCount int `json:"fd_count"`
 }
 
 type policyRequest struct {
-	Version       int               `json:"version"`
-	OperationID   uuid.UUID         `json:"operation_id"`
-	RequestDigest [sha256.Size]byte `json:"request_digest"`
+	Version           int               `json:"version"`
+	OperationID       uuid.UUID         `json:"operation_id"`
+	JournalID         uuid.UUID         `json:"journal_id"`
+	RequestDigest     [sha256.Size]byte `json:"request_digest"`
+	ReservationDigest [sha256.Size]byte `json:"reservation_digest"`
 }
 
 type policyReply struct {
-	Version        int               `json:"version"`
-	OperationID    uuid.UUID         `json:"operation_id"`
-	RequestDigest  [sha256.Size]byte `json:"request_digest"`
-	EvidenceDigest [sha256.Size]byte `json:"evidence_digest"`
-	IssuedAt       time.Time         `json:"issued_at"`
-	ExpiresAt      time.Time         `json:"expires_at"`
+	Version           int               `json:"version"`
+	OperationID       uuid.UUID         `json:"operation_id"`
+	JournalID         uuid.UUID         `json:"journal_id"`
+	RequestDigest     [sha256.Size]byte `json:"request_digest"`
+	ReservationDigest [sha256.Size]byte `json:"reservation_digest"`
+	EvidenceDigest    [sha256.Size]byte `json:"evidence_digest"`
+	IssuedAt          time.Time         `json:"issued_at"`
+	ExpiresAt         time.Time         `json:"expires_at"`
 }
 
 type validationReceipt struct {
@@ -95,13 +105,23 @@ type validationWorkload struct {
 	observer     *exec.Cmd
 	observerPID  *os.File
 	observerEnd  *os.File
+	runtimeOffer *pidfdOfferListener
+	workerOffer  *pidfdOfferListener
 	volumeRoot   string
 	receiptPath  string
 	scenario     string
 	startedAt    time.Time
+	handedOff    int
 }
 
 func main() {
+	if os.Getenv("VELA_VALIDATION_PIDFD_OFFER") == "1" {
+		if err := runPIDFDOffer(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	controlFD := 3
 	flag.IntVar(&controlFD, "vela-runtime-launcher-control-fd", 3, "inherited launcher control descriptor")
 	flag.Parse()
@@ -145,7 +165,7 @@ func run(ctx context.Context, fd int) (runErr error) {
 		return fmt.Errorf("receive launcher request: %w", err)
 	}
 	var request launcherRequest
-	if err := strictJSON(packet, &request); err != nil || request.Version != protocolVersion {
+	if err := strictJSON(packet, &request); err != nil || request.Version != launcherProtocolVersion {
 		return errors.New("validation launcher request schema is invalid")
 	}
 	if len(request.ExpectedPod) == 0 || sha256.Sum256(request.ExpectedPod) != request.ExpectedPodDigest {
@@ -190,14 +210,18 @@ func run(ctx context.Context, fd int) (runErr error) {
 		}
 	}()
 
-	reply, err := json.Marshal(launcherReply{Version: protocolVersion, Target: workload.target, WorkerTarget: workload.workerTarget, FDCount: 3})
+	reply, err := json.Marshal(launcherReply{Version: launcherProtocolVersion, ValidationOnly: true, Target: workload.target, WorkerTarget: workload.workerTarget, FDCount: 4})
 	if err != nil {
 		return err
 	}
-	if err := sendFrameWithRights(fd, reply, []int{int(workload.workerPIDFD.Fd()), int(workload.observerPID.Fd()), int(workload.observerEnd.Fd())}); err != nil {
+	if err := sendFrameWithRights(fd, reply, []int{int(workload.runtimePIDFD.Fd()), int(workload.workerPIDFD.Fd()), int(workload.observerPID.Fd()), int(workload.observerEnd.Fd())}); err != nil {
 		return fmt.Errorf("send validation launcher handoff: %w", err)
 	}
+	workload.handedOff = 4
 	if getenvDefault("VELA_VALIDATION_SCENARIO", "") == "observer-channel-loss" {
+		if err := unix.Shutdown(int(workload.observerEnd.Fd()), unix.SHUT_RDWR); err != nil {
+			return fmt.Errorf("interrupt validation observer channel: %w", err)
+		}
 		_ = workload.observerEnd.Close()
 		workload.observerEnd = nil
 	}
@@ -238,8 +262,10 @@ func run(ctx context.Context, fd int) (runErr error) {
 			return errors.New("validation policy response intentionally suppressed")
 		}
 		issued := time.Now().UTC()
-		evidence := sha256.Sum256(append(request.RequestDigest[:], request.OperationID[:]...))
-		reply, err := json.Marshal(policyReply{Version: protocolVersion, OperationID: request.OperationID, RequestDigest: request.RequestDigest, EvidenceDigest: evidence, IssuedAt: issued, ExpiresAt: issued.Add(2 * time.Minute)})
+		evidenceInput := append(append([]byte(nil), request.RequestDigest[:]...), request.OperationID[:]...)
+		evidenceInput = append(evidenceInput, request.ReservationDigest[:]...)
+		evidence := sha256.Sum256(evidenceInput)
+		reply, err := json.Marshal(policyReply{Version: protocolVersion, OperationID: request.OperationID, JournalID: request.JournalID, RequestDigest: request.RequestDigest, ReservationDigest: request.ReservationDigest, EvidenceDigest: evidence, IssuedAt: issued, ExpiresAt: issued.Add(2 * time.Minute)})
 		if err != nil {
 			return err
 		}
@@ -286,11 +312,14 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 		return nil, err
 	}
 	workload = &validationWorkload{connection: connection, runtime: runtimev1.NewRuntimeServiceClient(connection), image: runtimev1.NewImageServiceClient(connection), tasks: tasksapi.NewTasksClient(connection), receiptPath: os.Getenv("VELA_VALIDATION_RECEIPT_PATH"), scenario: getenvDefault("VELA_VALIDATION_SCENARIO", "unspecified"), startedAt: time.Now().UTC()}
+	activeWorkload := workload
 	cleanup := true
 	defer func() {
 		if cleanup {
-			cleanupErr := workload.cleanup(context.Background())
-			_ = writeValidationReceipt(workload, runErr, cleanupErr)
+			workload = activeWorkload // preserve exact partial targets for the failure receipt
+			cleanupErr := activeWorkload.cleanup(context.Background())
+			runErr = errors.Join(runErr, cleanupErr)
+			runErr = errors.Join(runErr, writeValidationReceipt(activeWorkload, runErr, cleanupErr))
 		}
 	}()
 
@@ -317,17 +346,19 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 		return nil, fmt.Errorf("run validation PodSandbox: %w", err)
 	}
 	workload.target.SandboxID = sandbox.PodSandboxId
-	defer func() {
-		if cleanup {
-			_, _ = workload.runtime.StopPodSandbox(context.Background(), &runtimev1.StopPodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
-			_, _ = workload.runtime.RemovePodSandbox(context.Background(), &runtimev1.RemovePodSandboxRequest{PodSandboxId: sandbox.PodSandboxId})
-		}
-	}()
 	root, err := os.MkdirTemp("/tmp", "vela-validation-launcher-")
 	if err != nil {
 		return nil, err
 	}
 	workload.volumeRoot = root
+	workload.runtimeOffer, err = newPIDFDOfferListener(root, "runtime", uid, gid)
+	if err != nil {
+		return nil, err
+	}
+	workload.workerOffer, err = newPIDFDOfferListener(root, "worker", uid, gid)
+	if err != nil {
+		return nil, err
+	}
 	mounts, err := validationMounts(pod, container, root, startupSocket, socketPath)
 	if err != nil {
 		return nil, err
@@ -361,6 +392,22 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 			&runtimev1.KeyValue{Key: "VELA_VALIDATION_PAYLOAD_FILE", Value: "/vela-validation/payload"},
 		)
 	}
+	launcherBinary, err := os.Executable()
+	if err != nil || !filepath.IsAbs(launcherBinary) || filepath.Clean(launcherBinary) != launcherBinary {
+		return nil, errors.New("validation launcher executable path is invalid")
+	}
+	mounts = append(mounts,
+		&runtimev1.Mount{ContainerPath: "/vela-validation/pidfd-offer", HostPath: launcherBinary, Readonly: true},
+		&runtimev1.Mount{ContainerPath: "/vela-validation/offer", HostPath: workload.runtimeOffer.directory, Readonly: true},
+	)
+	if len(command) == 0 {
+		return nil, errors.New("validation launcher requires an explicit runtime command")
+	}
+	runtimeCommand := append([]string(nil), command...)
+	runtimeArgs := append([]string(nil), arguments...)
+	command = []string{"/vela-validation/pidfd-offer"}
+	arguments = append([]string{"--socket", workload.runtimeOffer.containerPath, "--"}, append(runtimeCommand, runtimeArgs...)...)
+	envs = append(envs, &runtimev1.KeyValue{Key: "VELA_VALIDATION_PIDFD_OFFER", Value: "1"})
 	containerConfig := &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: container.Name, Attempt: 1}, Image: &runtimev1.ImageSpec{Image: container.Image}, Command: command, Args: arguments, Envs: envs, Mounts: mounts, LogPath: "validation-runtime.log", Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: int64(uidValue)}, RunAsGroup: &runtimev1.Int64Value{Value: int64(gidValue)}, ReadonlyRootfs: false, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}}}
 	// Create the observer endpoint before any target executable can start. This
 	// preserves the creation-time ordering required by the launcher contract;
@@ -384,7 +431,7 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 	if _, err := workload.runtime.StartContainer(ctx, &runtimev1.StartContainerRequest{ContainerId: created.ContainerId}); err != nil {
 		return nil, fmt.Errorf("start validation container: %w", err)
 	}
-	worker, err := awaitWorkerPIDFD(ctx, workload.tasks, created.ContainerId)
+	worker, err := workload.runtimeOffer.accept(ctx, workload.tasks, created.ContainerId)
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +440,53 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 	if len(workerCommand) == 0 {
 		return nil, errors.New("VELA_VALIDATION_WORKER_COMMAND is empty")
 	}
-	workerConfig := &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "stage-worker-agent", Attempt: 1}, Image: &runtimev1.ImageSpec{Image: workerImage}, Command: workerCommand, LogPath: "validation-worker.log", Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: int64(uidValue)}, RunAsGroup: &runtimev1.Int64Value{Value: int64(gidValue)}, ReadonlyRootfs: false, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}}}
+	workerRuntimeCommand := append([]string(nil), workerCommand...)
+	workerCommand = []string{"/vela-validation/pidfd-offer"}
+	workerArguments := append([]string{"--socket", workload.workerOffer.containerPath, "--"}, workerRuntimeCommand...)
+	workerJournalSocket := podContainerEnvValue(pod, "stage-worker-agent", "VELA_WORKER_JOURNAL_SOCKET")
+	if workerJournalSocket == "" || !filepath.IsAbs(workerJournalSocket) || filepath.Clean(workerJournalSocket) != workerJournalSocket {
+		return nil, errors.New("signed Worker Pod does not provide a canonical Worker journal socket")
+	}
+	workerJournalDirectory := filepath.Dir(workerJournalSocket)
+	if workerJournalDirectory == "/" || filepath.Dir(workerJournalDirectory) == "/" {
+		return nil, errors.New("Worker journal socket parent directory is too broad")
+	}
+	if err := os.MkdirAll(workerJournalDirectory, 0o755); err != nil {
+		return nil, fmt.Errorf("create Worker journal socket directory: %w", err)
+	}
+	if _, err := securefile.ResolveTrustedDirectory(workerJournalDirectory); err != nil {
+		return nil, fmt.Errorf("validate Worker journal socket directory: %w", err)
+	}
+	brokerSocket := getenvDefault("VELA_VALIDATION_PIDFD_BROKER_SOCKET", "/run/vela/pidfd-broker.sock")
+	if !filepath.IsAbs(brokerSocket) || filepath.Clean(brokerSocket) != brokerSocket || brokerSocket == "/" {
+		return nil, errors.New("VELA_VALIDATION_PIDFD_BROKER_SOCKET must be canonical")
+	}
+	if podContainerEnvValue(pod, "stage-worker-agent", "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET") != brokerSocket {
+		return nil, errors.New("signed Worker Pod does not bind the configured pidfd broker socket")
+	}
+	brokerDirectory := filepath.Dir(brokerSocket)
+	if brokerDirectory == "/" || filepath.Dir(brokerDirectory) == "/" {
+		return nil, errors.New("pidfd broker socket parent directory is too broad")
+	}
+	if _, err := securefile.ResolveTrustedDirectory(brokerDirectory); err != nil {
+		return nil, fmt.Errorf("validate pidfd broker socket directory: %w", err)
+	}
+	brokerInfo, err := os.Stat(brokerSocket)
+	if err != nil || brokerInfo.Mode()&os.ModeSocket == 0 {
+		return nil, errors.New("validation pidfd broker socket is not available")
+	}
+	workerMounts := []*runtimev1.Mount{
+		{ContainerPath: "/vela-validation/pidfd-offer", HostPath: launcherBinary, Readonly: true},
+		{ContainerPath: "/vela-validation/offer", HostPath: workload.workerOffer.directory, Readonly: true},
+		{ContainerPath: workerJournalDirectory, HostPath: workerJournalDirectory, Readonly: true},
+		{ContainerPath: brokerDirectory, HostPath: brokerDirectory, Readonly: true},
+	}
+	workerEnvs := []*runtimev1.KeyValue{
+		{Key: "VELA_VALIDATION_PIDFD_OFFER", Value: "1"},
+		{Key: "VELA_WORKER_JOURNAL_SOCKET", Value: workerJournalSocket},
+		{Key: "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET", Value: brokerSocket},
+	}
+	workerConfig := &runtimev1.ContainerConfig{Metadata: &runtimev1.ContainerMetadata{Name: "stage-worker-agent", Attempt: 1}, Image: &runtimev1.ImageSpec{Image: workerImage}, Command: workerCommand, Args: workerArguments, Envs: workerEnvs, Mounts: workerMounts, LogPath: "validation-worker.log", Linux: &runtimev1.LinuxContainerConfig{SecurityContext: &runtimev1.LinuxContainerSecurityContext{NamespaceOptions: namespaces, RunAsUser: &runtimev1.Int64Value{Value: int64(uidValue)}, RunAsGroup: &runtimev1.Int64Value{Value: int64(gidValue)}, ReadonlyRootfs: false, NoNewPrivs: true, Capabilities: &runtimev1.Capability{DropCapabilities: []string{"ALL"}}}}}
 	workerCreated, err := workload.runtime.CreateContainer(ctx, &runtimev1.CreateContainerRequest{PodSandboxId: sandbox.PodSandboxId, Config: workerConfig, SandboxConfig: sandboxConfig})
 	if err != nil {
 		return nil, fmt.Errorf("create validation Worker container: %w", err)
@@ -405,7 +498,7 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 	if _, err := workload.runtime.StartContainer(ctx, &runtimev1.StartContainerRequest{ContainerId: workerCreated.ContainerId}); err != nil {
 		return nil, fmt.Errorf("start validation Worker container: %w", err)
 	}
-	worker, err = awaitWorkerPIDFD(ctx, workload.tasks, workerCreated.ContainerId)
+	worker, err = workload.workerOffer.accept(ctx, workload.tasks, workerCreated.ContainerId)
 	if err != nil {
 		return nil, err
 	}
@@ -423,6 +516,23 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 	}
 	cleanup = false
 	return workload, nil
+}
+
+func podContainerEnvValue(pod *corev1.Pod, containerName, key string) string {
+	if pod == nil || containerName == "" || key == "" {
+		return ""
+	}
+	for _, container := range pod.Spec.Containers {
+		if container.Name != containerName {
+			continue
+		}
+		for _, env := range container.Env {
+			if env.Name == key && env.ValueFrom == nil {
+				return env.Value
+			}
+		}
+	}
+	return ""
 }
 
 func ensureImage(ctx context.Context, client runtimev1.ImageServiceClient, reference string) error {
@@ -451,37 +561,6 @@ func dialCRI(ctx context.Context, socket string) (*grpc.ClientConn, error) {
 	}
 	connection.Connect()
 	return connection, nil
-}
-
-func awaitWorkerPIDFD(ctx context.Context, tasks tasksapi.TasksClient, id string) (*os.File, error) {
-	// CRI/containerd exposes only the task PID through this validation API. The
-	// resulting pidfd_open is deliberately validation-only; the production
-	// launcher must receive the original pidfd from its privileged creation
-	// boundary and must never reconstruct one from a numeric PID.
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		header, _ := metadata.FromOutgoingContext(ctx)
-		header = header.Copy()
-		header.Set("containerd-namespace", "k8s.io")
-		status, err := tasks.Get(metadata.NewOutgoingContext(ctx, header), &tasksapi.GetRequest{ContainerID: id})
-		if err == nil && status.GetProcess().GetPid() > 0 && status.GetProcess().GetStatus().String() == "RUNNING" {
-			fd, err := unix.PidfdOpen(int(status.GetProcess().GetPid()), 0)
-			if err != nil {
-				return nil, fmt.Errorf("open validation worker pidfd: %w", err)
-			}
-			file := os.NewFile(uintptr(fd), "validation-worker-pidfd")
-			flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-			if err != nil || flags&unix.FD_CLOEXEC == 0 {
-				_ = file.Close()
-				return nil, errors.New("validation worker pidfd is not close-on-exec")
-			}
-			return file, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("validation container task did not become running: %w", err)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
 }
 
 func startObserver(uid, gid uint32) (*exec.Cmd, *os.File, *os.File, error) {
@@ -576,6 +655,9 @@ func (workload *validationWorkload) cleanup(ctx context.Context) error {
 	if workload.observerEnd != nil {
 		cleanupErr = errors.Join(cleanupErr, workload.observerEnd.Close())
 	}
+	for _, offer := range []*pidfdOfferListener{workload.runtimeOffer, workload.workerOffer} {
+		cleanupErr = errors.Join(cleanupErr, offer.Close())
+	}
 	if workload.connection != nil {
 		cleanupErr = errors.Join(cleanupErr, workload.connection.Close())
 	}
@@ -647,6 +729,9 @@ func containsEnv(values []*runtimev1.KeyValue, name string) bool {
 }
 
 func strictJSON(wire []byte, value any) error {
+	if err := strictjson.RejectDuplicateKeys(wire); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(wire))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(value); err != nil {
@@ -723,7 +808,7 @@ func writeValidationReceipt(workload *validationWorkload, runErr, cleanupErr err
 		return errors.New("validation receipt path is unavailable")
 	}
 	receipt := validationReceipt{Version: 1, ValidationOnly: true, Scenario: workload.scenario,
-		StartedAt: workload.startedAt, FinishedAt: time.Now().UTC(), Target: workload.target, WorkerTarget: workload.workerTarget, FDCount: 3,
+		StartedAt: workload.startedAt, FinishedAt: time.Now().UTC(), Target: workload.target, WorkerTarget: workload.workerTarget, FDCount: workload.handedOff,
 		Outcome: "completed"}
 	if runErr != nil {
 		receipt.Outcome = "failed"

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "marslab",
+  "kernel": "6.8.0-137-generic",
+  "result": "PASS",
+  "test": "TestRuntimeStartupCompositionDriver,TestRuntimeNamespaceOwnerFromPIDFDRejectsWrongCredentials",
+  "test_binary_sha256": "10a6672adfe4c5be39eae8d120214aba421ec4e4a350fe0da554018f52f3302b",
+  "scenarios": [
+    "success-and-replay",
+    "policy-response-loss",
+    "caller-replacement",
+    "observer-loss",
+    "wrong-pidfd-credentials"
+  ],
+  "assertions": [
+    "single operation-bound Fleet reservation",
+    "independent request and reservation digest binding",
+    "paired Worker journal pregrant rejection and post-Permit mutation",
+    "grant history retained after revoke",
+    "duplicate startup rejected",
+    "Node restart reads durable history without reissuing authority",
+    "policy, caller and observer failures fail closed",
+    "pidfd owner rejects credentials differing from effective /proc UID/GID"
+  ],
+  "scope": "internal validation composition only; no production services or workloads"
+}

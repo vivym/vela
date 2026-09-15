@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,31 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestRuntimeNamespaceOwnerFromPIDFDRejectsWrongCredentials(t *testing.T) {
+	connection, _, _ := runtimeCallerConnection(t, "hold-after-disconnect", "unixpacket", true)
+	caller, err := ReceiveRuntimeCaller(t.Context(), connection, RuntimeCallerCredentials{UID: 65532, GID: 65532})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = caller.Close() })
+	process, err := caller.Inspect(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cri, _, observer := runtimeCallerObserverFixture(t, process)
+	wrong := RuntimeCallerCredentials{UID: process.UID + 1, GID: process.GID}
+	fd, err := unix.FcntlInt(caller.pidfd.Fd(), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pidfd := os.NewFile(uintptr(fd), "wrong-credentials-pidfd")
+	defer pidfd.Close()
+	owner, err := observer.RetainNamespaceOwnerFromPIDFD(t.Context(), cri.target, pidfd, wrong)
+	if owner != nil || !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
+		t.Fatalf("pidfd owner accepted credentials that differ from /proc identity: owner=%v err=%v", owner != nil, err)
+	}
+}
 
 func TestRuntimeNamespaceOwnerIndependentLifetime(t *testing.T) {
 	connection, process, _ := runtimeCallerConnection(t, "hold-after-disconnect", "unixpacket", true)

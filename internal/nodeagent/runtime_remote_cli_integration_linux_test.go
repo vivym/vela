@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"testing"
@@ -370,7 +371,7 @@ func verifyRemoteCLIReservation(t *testing.T, fixture *containerdProcessFixture,
 				}
 				if successful {
 					history, err := recovered.InspectReservation(t.Context(), request.JournalID)
-					if err != nil || history != result {
+					if err != nil || !reflect.DeepEqual(history, result) {
 						t.Fatalf("lost recovered CLI receipt: %v", err)
 					}
 				}

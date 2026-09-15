@@ -1041,7 +1041,7 @@ detect fault
 
 ### 16.2 Kubernetes 与 driver
 
-首发使用三台非 GPU Control/Storage Node，统一运行 Ubuntu LTS、RKE2 和 containerd。每台节点都承载 RKE2 control plane / etcd、CloudNativePG replica、JetStream replica 和分布式 S3-compatible storage 的一个 failure-domain member；组件通过 pod anti-affinity、独立持久盘、I/O limit、priority class 和容量预留避免互相挤占。它们可以共享节点，但不能共享同一数据盘，也不能与不稳定 GPU Worker 共用生命周期。
+当前管理集群由两台 CPU 管理节点和一台同时承担 GPU Worker 的共享节点组成，统一运行 Ubuntu LTS、RKE2 和 containerd。三台节点都承载 RKE2 control plane / etcd、CloudNativePG replica、JetStream replica 和分布式 S3-compatible storage 的一个集群成员；GPU 节点上的 control-plane taint、GPU selector、pod anti-affinity、独立 Longhorn 数据路径、I/O limit、priority class 和容量预留用于避免互相挤占。由于当前没有第三台 CPU-only 主机，GPU/control-plane 共享是已接受的容量约束；它不构成独立 failure domain，三台主机仍应按同一故障域计算。
 
 对象存储只有在三节点磁盘拓扑、故障域和实测恢复能力满足 Production Gate 时才自托管；否则首发切换到已有的外部 S3-compatible store。无论哪种实现，接口都必须提供 private bucket、versioning、conditional create、固定 object version、checksum 和 off-cluster backup。
 
@@ -1209,8 +1209,8 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 | 集群 | Kubernetes + Vela StageScheduler | Kubernetes 管 WorkerMember Pod 生命周期，Vela 管 StageRun placement；裸金属 baseline 为 Ubuntu LTS + RKE2 / containerd |
 | GPU | NVIDIA Device Plugin / DRA + DCGM Exporter | H3 标准 WorkerInstance 独占一张 GPU，DeviceSet 与实际 claim 精确绑定；host driver / toolkit 版本锁定，不由 Operator 自动升级 |
 | Worker rollout | Fleet Controller + ResidencyPlanRevision | materialize WorkerBundle/WorkerInstance；planned drain / fence 后才删除受保护 Pod，无 WorkerPool CRD 或静态 DaemonSet |
-| Artifact | 三节点分布式 S3-compatible store | 运行在 Control/Storage Node 的独立数据盘；private bucket、versioning、conditional create、固定 object version、checksum 和 off-cluster backup；磁盘拓扑不足时切换到已有外部 S3 store |
-| 本地对象存储 | MinIO 或 local adapter | 只用于开发和 conformance test，不能把本地通过当作生产 durability / restore 证据 |
+| Artifact | 三节点分布式 S3-compatible store | 当前运行在三节点 Longhorn 数据路径上的 MinIO；private bucket、versioning、conditional create、固定 object version、checksum 和 off-cluster backup；复制仅覆盖集群内部，不能替代独立故障域，容量不足或需要站点恢复时切换到已有外部 S3 store |
+| 本地对象存储 | MinIO 或 local adapter | 三节点同一故障域时可用于受控验证和集群内服务；不能把集群内复制当作独立故障域 durability / restore 证据 |
 | Scratch | 本地 NVMe + XFS project quota | per-StageAttempt 目录、watermark 背压、明确终态后清理 |
 | 镜像与模型 | OCI registry + S3 | 镜像固定 digest；模型权重固定 checksum，Catalog 只保存 revision 和位置 metadata |
 | 媒体探测 | FFmpeg `ffprobe` | 固定版本和探测参数，输出解析为结构化 metadata 后再执行 output-spec validation |
@@ -1246,7 +1246,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 首发面向受邀 Customer Organization，但承载正式业务流量，必须交付以下完整闭环：
 
-- 单地域、单 RKE2 集群；三台 Control/Storage Node 承载 etcd、CloudNativePG、3-replica JetStream 和分布式 S3-compatible storage，GPU Worker 独立部署。
+- 单地域、单 RKE2 集群；两台 CPU 管理节点和一台 GPU/control-plane 共享节点承载 etcd、CloudNativePG、3-replica JetStream 和分布式 S3-compatible storage。Longhorn/MinIO 只提供同一故障域内的集群复制；其余 GPU Worker 独立部署。
 - MiniMax H3 Model / Workload、SGLang fork Inference Backend，以及 `quality`、`balanced`、`fast` 三个已认证 Generation Preset；首发 Service Class 为 `standard`。
 - 当前基线使用 Go 模块化 `vela-control`、Fleet Controller、`vela-stage-worker-agent`、`vela-model-runtime` 和 host Node Agent；一台 8-GPU 节点可承载 AUX 与七个 DiT 单卡 WorkerInstance，StageRun 可跨机器调度，未来多卡或多节点 LLM 封装为一个多成员 WorkerInstance。
 - Customer Organization、Project、企业 OIDC Human Principal、Project Service Principal、固定 RBAC、Organization Isolation、审计和 Break-glass Access。

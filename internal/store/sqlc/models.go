@@ -6124,6 +6124,26 @@ type RetryRuntimeState struct {
 	UpdatedAt                   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type RuntimeStartupAuthorization struct {
+	RequestID          uuid.UUID          `db:"request_id" json:"request_id"`
+	AuthorizationBytes []byte             `db:"authorization_bytes" json:"authorization_bytes"`
+	RecordedAt         pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
+type RuntimeStartupReservation struct {
+	RequestID              uuid.UUID          `db:"request_id" json:"request_id"`
+	BootstrapRequestID     uuid.UUID          `db:"bootstrap_request_id" json:"bootstrap_request_id"`
+	NodeIdentity           string             `db:"node_identity" json:"node_identity"`
+	ActorIdentity          string             `db:"actor_identity" json:"actor_identity"`
+	RuntimeJournalID       uuid.UUID          `db:"runtime_journal_id" json:"runtime_journal_id"`
+	RuntimeScope           []byte             `db:"runtime_scope" json:"runtime_scope"`
+	IncarnationID          uuid.UUID          `db:"incarnation_id" json:"incarnation_id"`
+	LaunchDigest           []byte             `db:"launch_digest" json:"launch_digest"`
+	OwnerObservationDigest []byte             `db:"owner_observation_digest" json:"owner_observation_digest"`
+	Epochs                 []byte             `db:"epochs" json:"epochs"`
+	ReservedAt             pgtype.Timestamptz `db:"reserved_at" json:"reserved_at"`
+}
+
 type ServiceClassRevision struct {
 	ID                                  uuid.UUID          `db:"id" json:"id"`
 	StableID                            string             `db:"stable_id" json:"stable_id"`

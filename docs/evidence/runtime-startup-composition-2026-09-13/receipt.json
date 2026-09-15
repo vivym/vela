@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "validation_only": true,
+  "host": "marslab",
+  "kernel": "6.8.0-137-generic",
+  "test": "TestRuntimeStartupAuthorityPrepareComposesReservationAndGrant; TestRuntimeStartupAuthorityCompositionFailsClosedOnPolicyOrFleetEvidence",
+  "command": "/tmp/vela-nodeagent-validation.test -test.run=TestRuntimeStartupAuthority(PrepareComposes|CompositionFails) -test.v -test.count=1",
+  "result": "PASS",
+  "elapsed": "1.75s",
+  "nodeagent_test_sha256": "eb183c04e7508aa26ac6b9e0aa8fa7cb07d5762178ec81c73ddd4cfb17a65fba",
+  "observer_fixture_source_sha256": "7d8227d1b12bad8fbf13eea39f359272ebd10c98703f43a830a58a838d3b48cb",
+  "assertions": [
+    "NewRuntimeStartupAuthority accepted complete sources",
+    "Prepare performed exactly one Fleet reservation",
+    "Fleet authorization bytes crossed the publisher boundary",
+    "authorization evidence was bound to operation, journal and reservation digest",
+    "Node startup grant was created through the real ledger path",
+    "invalid policy evidence failed closed",
+    "missing Fleet authorization failed closed"
+  ],
+  "scope": "Node authority/reservation/grant composition only; no production Fleet, ModelRuntime Permit or Launch Receipt"
+}

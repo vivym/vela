@@ -247,8 +247,11 @@ type RuntimeStartupReservation struct {
 	NodeIdentity  string                        `protobuf:"bytes,2,opt,name=node_identity,json=nodeIdentity,proto3" json:"node_identity,omitempty"`
 	ActorIdentity string                        `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
 	ReservedAt    *timestamppb.Timestamp        `protobuf:"bytes,4,opt,name=reserved_at,json=reservedAt,proto3" json:"reserved_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Fleet-signed, operation-bound authorization consumed by the Node-local
+	// policy issuer. It is evidence, never a Permit or a history lookup token.
+	PolicyAuthorization []byte `protobuf:"bytes,5,opt,name=policy_authorization,json=policyAuthorization,proto3" json:"policy_authorization,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *RuntimeStartupReservation) Reset() {
@@ -305,6 +308,13 @@ func (x *RuntimeStartupReservation) GetActorIdentity() string {
 func (x *RuntimeStartupReservation) GetReservedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ReservedAt
+	}
+	return nil
+}
+
+func (x *RuntimeStartupReservation) GetPolicyAuthorization() []byte {
+	if x != nil {
+		return x.PolicyAuthorization
 	}
 	return nil
 }
@@ -1738,13 +1748,14 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x0eincarnation_id\x18\x05 \x01(\tR\rincarnationId\x12#\n" +
 	"\rlaunch_digest\x18\x06 \x01(\fR\flaunchDigest\x128\n" +
 	"\x18owner_observation_digest\x18\a \x01(\fR\x16ownerObservationDigest\x124\n" +
-	"\x06epochs\x18\b \x03(\v2\x1c.vela.v1.RuntimeStartupEpochR\x06epochs\"\xe5\x01\n" +
+	"\x06epochs\x18\b \x03(\v2\x1c.vela.v1.RuntimeStartupEpochR\x06epochs\"\x98\x02\n" +
 	"\x19RuntimeStartupReservation\x12?\n" +
 	"\arequest\x18\x01 \x01(\v2%.vela.v1.ReserveRuntimeStartupRequestR\arequest\x12#\n" +
 	"\rnode_identity\x18\x02 \x01(\tR\fnodeIdentity\x12%\n" +
 	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12;\n" +
 	"\vreserved_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"reservedAt\"{\n" +
+	"reservedAt\x121\n" +
+	"\x14policy_authorization\x18\x05 \x01(\fR\x13policyAuthorization\"{\n" +
 	"\x1dReserveRuntimeStartupResponse\x12D\n" +
 	"\vreservation\x18\x01 \x01(\v2\".vela.v1.RuntimeStartupReservationR\vreservation\x12\x14\n" +
 	"\x05fresh\x18\x02 \x01(\bR\x05fresh\"<\n" +

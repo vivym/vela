@@ -10,6 +10,7 @@ import (
 // RuntimeStartupLauncher. All process handles must originate from the current
 // launch invocation. The Node owns the descriptors after successful assembly.
 type RuntimeStartupLaunch struct {
+	RuntimePIDFD     *os.File
 	WorkerOwnerPIDFD *os.File
 	ObserverPIDFD    *os.File
 	// LauncherPIDFD is the original pidfd of the root-owned helper process.

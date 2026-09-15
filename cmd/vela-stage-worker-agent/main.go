@@ -49,6 +49,8 @@ type config struct {
 	outputRoot                      string
 	materializationJournalRoot      string
 	materializationJournalLimit     int
+	workerJournalSocket             string
+	workerJournalPIDFDBrokerSocket  string
 	authorityKeyringFile            string
 	authorityActiveKeyID            string
 	connectorRevisionID             uuid.UUID
@@ -189,21 +191,47 @@ func loadConfig() (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	inputTransferJournalRoot, err := requiredPathUnder(
-		"VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT", scratchRoot,
-	)
-	if err != nil {
-		return config{}, err
+	workerJournalSocket := strings.TrimSpace(os.Getenv("VELA_WORKER_JOURNAL_SOCKET"))
+	if workerJournalSocket != "" {
+		workerJournalSocket, err = requiredAbsolutePath("VELA_WORKER_JOURNAL_SOCKET")
+		if err != nil {
+			return config{}, err
+		}
+	} else {
+		workerJournalSocket = ""
+	}
+	workerJournalPIDFDBrokerSocket := strings.TrimSpace(os.Getenv("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET"))
+	if workerJournalSocket != "" {
+		if workerJournalPIDFDBrokerSocket == "" {
+			return config{}, errors.New("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET is required with remote Worker journal")
+		}
+		workerJournalPIDFDBrokerSocket, err = requiredAbsolutePath("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET")
+		if err != nil {
+			return config{}, err
+		}
+	} else if workerJournalPIDFDBrokerSocket != "" {
+		workerJournalPIDFDBrokerSocket, err = requiredAbsolutePath("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET")
+		if err != nil {
+			return config{}, err
+		}
+	}
+	var inputTransferJournalRoot string
+	if workerJournalSocket == "" {
+		inputTransferJournalRoot, err = requiredPathUnder("VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT", scratchRoot)
+		if err != nil {
+			return config{}, err
+		}
 	}
 	outputRoot, err := requiredPathUnder("VELA_STAGE_WORKER_OUTPUT_ROOT", scratchRoot)
 	if err != nil {
 		return config{}, err
 	}
-	journalRoot, err := requiredPathUnder(
-		"VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT", scratchRoot,
-	)
-	if err != nil {
-		return config{}, err
+	var journalRoot string
+	if workerJournalSocket == "" {
+		journalRoot, err = requiredPathUnder("VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT", scratchRoot)
+		if err != nil {
+			return config{}, err
+		}
 	}
 	journalLimit64, err := requiredPositiveInt64("VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT")
 	if err != nil || journalLimit64 > 100_000 {
@@ -272,7 +300,8 @@ func loadConfig() (config, error) {
 		inputTransferJournalRoot: inputTransferJournalRoot,
 		outputRoot:               outputRoot, materializationJournalRoot: journalRoot,
 		materializationJournalLimit: int(journalLimit64),
-		authorityActiveKeyID:        authorityActiveKeyID, connectorRevisionID: connectorRevisionID,
+		workerJournalSocket:         workerJournalSocket, workerJournalPIDFDBrokerSocket: workerJournalPIDFDBrokerSocket,
+		authorityActiveKeyID: authorityActiveKeyID, connectorRevisionID: connectorRevisionID,
 		capacityTTL: capacityTTL, heartbeatInterval: heartbeatInterval,
 		retryMinimum: retryMinimum, retryMaximum: retryMaximum,
 		artifactS3Endpoint: artifactEndpoint, artifactS3PathStyle: pathStyle,
@@ -395,6 +424,9 @@ func loadConfig() (config, error) {
 func requireDistinctStageWorkerRoots(roots map[string]string) error {
 	seen := make(map[string]string, len(roots))
 	for name, path := range roots {
+		if path == "" {
+			continue
+		}
 		if existing, duplicate := seen[path]; duplicate {
 			return fmt.Errorf("stage worker %s root conflicts with %s root", name, existing)
 		}

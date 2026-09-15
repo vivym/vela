@@ -15,6 +15,13 @@ func TestSameLiveProcessReportsPidfdFilesystem(t *testing.T) {
 		t.Skipf("pidfd_open unavailable: %v", err)
 	}
 	defer unix.Close(fd)
+	class, err := ClassifyPIDFD(fd)
+	if err != nil {
+		t.Fatalf("classify pidfd: %v", err)
+	}
+	if class != PIDFDIdentityPIDFS && class != PIDFDIdentityLegacyVisible {
+		t.Fatalf("self pidfd was classified as invisible: %d", class)
+	}
 
 	var filesystem unix.Statfs_t
 	if err := unix.Fstatfs(fd, &filesystem); err != nil {

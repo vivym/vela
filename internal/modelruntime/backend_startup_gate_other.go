@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-func nodeBackendStartupGate(string) RuntimeBackendStartupGate {
+func nodeBackendStartupGate(string, string) RuntimeBackendStartupGate {
 	return func(context.Context, BackendStartupRequest) error {
 		return errors.New("backend startup Node authentication requires Linux")
 	}

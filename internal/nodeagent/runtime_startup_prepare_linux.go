@@ -22,11 +22,23 @@ type RemoteStartupOrchestrationConfig struct {
 	ObserverInterval    time.Duration
 	ObserverTimeout     time.Duration
 	ExchangeTimeout     time.Duration
+	JournalEndpoint     *JournalEndpoint
 }
 
 func validateRemoteStartupOrchestrationConfig(config RemoteStartupOrchestrationConfig) error {
 	if config.Reservation.Plan == nil || config.Reservation.Journal == nil || config.Reservation.Caller == nil || config.Reservation.Observer == nil || config.Reservation.Registry == nil || config.WorkerOwner == nil || config.Observer == nil || config.AuthorizationPolicy == nil {
 		return ErrRuntimeStartupLedger
+	}
+	if config.JournalEndpoint != nil {
+		if config.Reservation.RuntimeOwner == nil {
+			return ErrRuntimeStartupLedger
+		}
+		config.JournalEndpoint.mu.Lock()
+		bound := config.JournalEndpoint.owner == config.Reservation.Journal && config.JournalEndpoint.runtime != nil && config.JournalEndpoint.worker != nil && config.Reservation.RuntimeOwner.pidfd != nil && config.WorkerOwner.pidfd != nil && runtimechannel.SameLiveProcess(int(config.JournalEndpoint.runtime.Fd()), int(config.Reservation.RuntimeOwner.pidfd.Fd())) == nil && runtimechannel.SameLiveProcess(int(config.JournalEndpoint.worker.Fd()), int(config.WorkerOwner.pidfd.Fd())) == nil
+		config.JournalEndpoint.mu.Unlock()
+		if !bound {
+			return ErrRuntimeStartupLedger
+		}
 	}
 	if len(config.Credentials) == 0 || config.ExchangeTimeout <= 0 || config.ExchangeTimeout > runtimechannel.ExchangeTimeout || config.ObserverInterval <= 0 || config.ObserverInterval > time.Second || config.ObserverTimeout <= 0 || config.ObserverTimeout > 5*time.Second {
 		return ErrRuntimeStartupLedger
@@ -51,11 +63,11 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
 	if err := validateRemoteStartupOrchestrationConfig(config); err != nil {
 		return nil, RuntimeStartupReservationRecord{}, err
 	}
-	var endpoint *JournalEndpoint
+	endpoint := config.JournalEndpoint
 	transferred := false
 	defer func() {
 		if !transferred {
-			if endpoint != nil {
+			if endpoint != nil && config.JournalEndpoint == nil {
 				_ = endpoint.Close()
 			}
 			_ = config.Observer.Close()
@@ -80,9 +92,11 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
 	if runtimeOwner == nil {
 		return nil, record, ErrRuntimeNamespaceOwnerLost
 	}
-	endpoint, err = NewReadOnlyJournalEndpoint(ctx, config.Reservation.Journal, runtimeOwner, config.WorkerOwner)
-	if err != nil {
-		return nil, record, err
+	if endpoint == nil {
+		endpoint, err = NewReadOnlyJournalEndpoint(ctx, config.Reservation.Journal, runtimeOwner, config.WorkerOwner)
+		if err != nil {
+			return nil, record, err
+		}
 	}
 	grant, err := IssueReservedJournalWriteGrant(ctx, endpoint, runtimeOwner, config.WorkerOwner, record.OperationID, authorizationDigest, time.Minute)
 	if err != nil {

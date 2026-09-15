@@ -197,7 +197,7 @@ func sortRuntimeStartupEpochs(epochs []fleet.RuntimeStartupEpoch) {
 
 func encodeRuntimeStartupReservation(result fleet.RuntimeStartupReservation) *velav1.RuntimeStartupReservation {
 	return &velav1.RuntimeStartupReservation{Request: encodeRuntimeStartupRequest(result.RuntimeStartupRequest),
-		NodeIdentity: result.NodeIdentity, ActorIdentity: result.ActorIdentity, ReservedAt: timestamppb.New(result.ReservedAt)}
+		NodeIdentity: result.NodeIdentity, ActorIdentity: result.ActorIdentity, ReservedAt: timestamppb.New(result.ReservedAt), PolicyAuthorization: bytes.Clone(result.PolicyAuthorization)}
 }
 
 func decodeRuntimeStartupReservation(wire *velav1.RuntimeStartupReservation, principal nodeAgentPrincipal) (fleet.RuntimeStartupReservation, error) {
@@ -209,7 +209,7 @@ func decodeRuntimeStartupReservation(wire *velav1.RuntimeStartupReservation, pri
 	if err != nil {
 		return fleet.RuntimeStartupReservation{}, err
 	}
-	return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, ReservedAt: wire.GetReservedAt().AsTime()}, nil
+	return fleet.RuntimeStartupReservation{RuntimeStartupRequest: request, ReservedAt: wire.GetReservedAt().AsTime(), PolicyAuthorization: bytes.Clone(wire.GetPolicyAuthorization())}, nil
 }
 
 func sameRuntimeStartupRequest(a, b fleet.RuntimeStartupRequest) bool {

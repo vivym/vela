@@ -169,8 +169,9 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			*pod.Spec.TerminationGracePeriodSeconds != 150 {
 			t.Fatalf("WorkerInstance Pod %q termination grace = %v, want 150s", pod.Name, pod.Spec.TerminationGracePeriodSeconds)
 		}
-		if len(runtimeContainer.Command) != 0 || len(runtimeContainer.Args) != 0 {
-			t.Fatalf("WorkerInstance Pod %q overrides the ModelRuntime image entrypoint: %v %v", pod.Name, runtimeContainer.Command, runtimeContainer.Args)
+		if len(runtimeContainer.Command) != 1 || runtimeContainer.Command[0] != "/usr/local/bin/vela-model-runtime" ||
+			len(runtimeContainer.Args) != 3 || runtimeContainer.Args[0] != "serve-remote" || runtimeContainer.Args[1] != "--bootstrap-file" || runtimeContainer.Args[2] != "/run/vela-model-runtime-bootstrap/bootstrap.json" {
+			t.Fatalf("WorkerInstance Pod %q has unexpected ModelRuntime bootstrap argv: %v %v", pod.Name, runtimeContainer.Command, runtimeContainer.Args)
 		}
 		for name, value := range map[string]string{
 			"VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE":            "/etc/vela-model-runtime/private/launch.json",
