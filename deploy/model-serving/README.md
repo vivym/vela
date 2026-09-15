@@ -1,12 +1,11 @@
 # Qwen3 model worker
 
-This bundle runs `Qwen/Qwen3-Embedding-4B` and `Qwen/Qwen3-Reranker-4B` on one
-GPU. The Pod requests one `nvidia.com/gpu`; the image contains only vLLM and
+This bundle runs `Qwen/Qwen3-Embedding-4B` and `Qwen/Qwen3-Reranker-4B` in one
+worker Pod. The Pod requests one `nvidia.com/gpu`; the image contains vLLM and
 the lifecycle/protocol adapters, while the two model directories are read from
-a local PV. The embedding process uses vLLM's pooling API; the reranker uses a
-small adapter around the model card's one-token `yes`/`no` log-probability
-method, because Qwen3-Reranker is a causal LM rather than a native embedding
-pooling model.
+a local PV. Embedding uses vLLM's pooling API. Reranking uses a Transformers
+CPU adapter around the model card's one-token `yes`/`no` logit method, because
+two independent vLLM CUDA allocators cannot share this card's cache budget.
 Restarting the Pod therefore reuses the node cache and does not download model
 weights.
 
@@ -52,10 +51,9 @@ OpenAI embeddings at `/v1/embeddings`, reranker requests at `/rerank` (also
 and 8001 are kept ClusterIP-only for diagnosis. Port 9090 exports the
 embedding engine metrics to the existing `llm-models` PodMonitor.
 
-Initial memory settings use 36% GPU memory per engine and an 8,192 token limit.
-The two 4B BF16 weights are about 16.1 GB in total; the 64-GiB card leaves
-headroom for KV/cache and CUDA context. Increase utilization only after a
-concurrency test confirms that both engines remain healthy. A second Pod would
+The validated settings use 20% GPU memory for the embedding engine and a 4,096
+token limit; the CPU reranker has no GPU reservation. Increase the context only
+after a concurrency test confirms that the embedding engine remains healthy. A second Pod would
 consume a second physical GPU, so scale out by adding another labelled worker
 and another local PV rather than splitting one GPU across Pods.
 
