@@ -12,6 +12,7 @@ import datetime
 import hashlib
 import http.client
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -24,12 +25,12 @@ HOSTS={'10.1.201.70','10.1.201.71','10.1.201.66'}
 
 
 class Registry:
-    def __init__(self,host,context,auth=None):
+    def __init__(self,host,context,auth=None,timeout=30):
         if host not in HOSTS:raise ValueError('unapproved registry host')
-        self.host=host;self.context=context;self.auth=auth
+        self.host=host;self.context=context;self.auth=auth;self.timeout=timeout
 
     def connection(self):
-        return http.client.HTTPSConnection(self.host,5005,context=self.context,timeout=30)
+        return http.client.HTTPSConnection(self.host,5005,context=self.context,timeout=self.timeout)
 
     def headers(self,extra=None):
         headers={'Accept':', '.join(TYPES)}
@@ -67,7 +68,10 @@ def main():
     parser.add_argument('--credentials')
     parser.add_argument('--user',default='platform-publisher')
     parser.add_argument('--receipt',required=True)
+    parser.add_argument('--timeout',type=float,default=30,
+                        help='socket timeout in seconds, including server-side blob digest verification (max 900)')
     args=parser.parse_args()
+    if not math.isfinite(args.timeout) or not 0 < args.timeout <= 900:parser.error('timeout must be finite and between 0 and 900 seconds')
     if not re.fullmatch(r'[a-z0-9]+(?:[._/-][a-z0-9]+)*',args.repository):parser.error('invalid repository')
     if not re.fullmatch(r'sha256:[0-9a-f]{64}',args.digest):parser.error('invalid digest')
     if args.source in args.target:parser.error('source cannot be a target')
@@ -79,10 +83,10 @@ def main():
         if path.stat().st_mode & 0o077:parser.error('credential file must be private')
         password=json.loads(path.read_text())[args.user]
         auth='Basic '+base64.b64encode((args.user+':'+password).encode()).decode()
-    source=Registry(args.source,context,auth)
+    source=Registry(args.source,context,auth,args.timeout)
     prefix='/v2/'+args.repository
     receipt={'at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'source':args.source,
-             'repository':args.repository,'root_digest':args.digest,'targets':[]}
+             'repository':args.repository,'root_digest':args.digest,'socket_timeout_seconds':args.timeout,'targets':[]}
     cache={}
 
     def manifest(ref,expected_size=None):
@@ -99,7 +103,7 @@ def main():
 
     try:
         for host in args.target:
-            target=Registry(host,context,auth)
+            target=Registry(host,context,auth,args.timeout)
             outcome={'host':host,'manifests':[],'blobs':[]};receipt['targets'].append(outcome)
             seen=set();blobs=set()
             def copy_blob(descriptor):
