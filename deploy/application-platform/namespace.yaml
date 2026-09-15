@@ -126,8 +126,8 @@ spec:
     requests.ephemeral-storage: 64Gi
     limits.ephemeral-storage: 64Gi
     requests.nvidia.com/gpu: "8"
-    persistentvolumeclaims: "0"
-    requests.storage: "0"
+    persistentvolumeclaims: "4"
+    requests.storage: 160Gi
     services: "20"
     services.nodeports: "0"
     services.loadbalancers: "0"

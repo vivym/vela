@@ -35,9 +35,9 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values: [server-53]
-                  - key: vela.ai/model-memory
+                  - key: vela.ai/memory-tier
                     operator: In
-                    values: [256GiB]
+                    values: [256gb]
       tolerations:
         - key: node.kubernetes.io/not-ready
           operator: Exists

@@ -18,10 +18,10 @@ The first placement is deliberately pinned to `server-53`, the verified
 /home/user/models/Qwen/Qwen3-Reranker-4B
 ```
 
-Before applying, verify the node name and add the scheduling label:
+Before applying, verify the node name and its existing memory label:
 
 ```sh
-kubectl label node server-53 vela.ai/model-memory=256GiB --overwrite
+kubectl get node server-53 -o jsonpath='{.metadata.labels.vela\\.ai/memory-tier}{"\\n"}'
 ```
 
 Build and promote the image through the existing release registry. The

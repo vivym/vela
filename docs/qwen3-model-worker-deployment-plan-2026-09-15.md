@@ -12,7 +12,7 @@ KV/cache、CUDA context 和碎片空间；`max_model_len=8192`，必须通过并
 
 Pod 申请 8 CPU / 32 GiB，限制 16 CPU / 64 GiB，并要求
 `nvidia.com/gpu: 1`。调度选择 `vela.ai/node-role=gpu-worker`，首个已验证的
-256 GiB 节点为 `server-53`，另加 `vela.ai/model-memory=256GiB` 标签作为容量闸门。
+256 GiB 节点为 `server-53`，并要求现有 `vela.ai/memory-tier=256gb` 标签作为容量闸门。
 
 ## 本地模型缓存
 
