@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Run as root on the two RKE2 management nodes. Never log Secret contents.
+set -euo pipefail
+umask 077
+K=${KUBECTL:-/var/lib/rancher/rke2/bin/kubectl}
+export KUBECONFIG=${KUBECONFIG:-/etc/rancher/rke2/rke2.yaml}
+base=${RAGFLOW_CERT_ROOT:-/etc/nginx/ssl/ragflow.marslab.ic}
+nginx_bin=${NGINX:-/usr/sbin/nginx}
+systemctl_bin=${SYSTEMCTL:-/usr/bin/systemctl}
+
+install -d -m 700 "$base" "$base/versions"
+exec 9>"$base/sync.lock"
+flock -w 30 9
+tmp=$(mktemp -d "$base/versions/cert.XXXXXXXX")
+old=$(readlink "$base/current" || true)
+switched=false
+committed=false
+cleanup() {
+  rc=$?
+  trap - EXIT
+  if "$switched" && ! "$committed"; then
+    if [[ -n "$old" ]]; then
+      ln -s "$old" "$base/.rollback"
+      mv -Tf "$base/.rollback" "$base/current"
+      # Restore the prior running configuration even if reload partly failed.
+      if "$nginx_bin" -t; then
+        "$systemctl_bin" reload nginx || true
+      fi
+    else
+      rm -f "$base/current"
+    fi
+  fi
+  rm -f "$base/.current-next"
+  if ! "$committed"; then rm -rf "$tmp"; fi
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+
+# One API response contains the matching leaf, key and issuing CA generation.
+"$K" --request-timeout=30s -n apisix get secret vela-gateway-tls -o json >"$tmp/secret.json"
+python3 - "$tmp" <<'PY'
+import base64
+import json
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+data = json.loads((root / "secret.json").read_text())["data"]
+for name in ("tls.crt", "tls.key", "ca.crt"):
+    content = base64.b64decode(data[name], validate=True)
+    if not content:
+        raise ValueError("empty certificate field: " + name)
+    (root / name).write_bytes(content)
+PY
+rm "$tmp/secret.json"
+chmod 600 "$tmp"/*
+openssl pkey -in "$tmp/tls.key" -pubout -out "$tmp/key.pub" 2>/dev/null
+openssl x509 -in "$tmp/tls.crt" -pubkey -noout >"$tmp/cert.pub"
+cmp -s "$tmp/key.pub" "$tmp/cert.pub" || { echo 'Certificate/key mismatch' >&2; exit 1; }
+openssl x509 -in "$tmp/tls.crt" -checkend 300 -noout >/dev/null
+openssl verify -purpose sslserver -verify_hostname ragflow.marslab.ic \
+  -CAfile "$tmp/ca.crt" "$tmp/tls.crt" >/dev/null
+rm "$tmp/key.pub" "$tmp/cert.pub"
+
+if [[ -n "$old" ]] && cmp -s "$tmp/tls.crt" "$base/current/tls.crt" \
+    && cmp -s "$tmp/tls.key" "$base/current/tls.key" \
+    && cmp -s "$tmp/ca.crt" "$base/current/ca.crt"; then
+  echo 'RAGFlow certificate unchanged'
+  exit 0
+fi
+ln -s "versions/$(basename "$tmp")" "$base/.current-next"
+mv -Tf "$base/.current-next" "$base/current"
+switched=true
+"$nginx_bin" -t
+"$systemctl_bin" reload nginx
+committed=true
+# Previous generations are retained for operator rollback; never print key data.
+echo 'RAGFlow certificate validated, switched and Nginx reloaded'

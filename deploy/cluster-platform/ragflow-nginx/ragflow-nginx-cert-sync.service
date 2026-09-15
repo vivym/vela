@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync and validate RAGFlow gateway certificate from Kubernetes
+After=network-online.target rke2-server.service nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/local/sbin/sync-ragflow-nginx-cert
+TimeoutStartSec=90

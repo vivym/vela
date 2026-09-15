@@ -1,0 +1,40 @@
+{
+  "name": "ragflow-lab",
+  "hosts": ["ragflow.marslab.ic"],
+  "uri": "/*",
+  "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+  "plugins": {
+    "prometheus": {},
+    "request-id": {
+      "header_name": "X-Request-ID",
+      "include_in_response": true
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "rejected_code": 429,
+      "key": "remote_addr",
+      "policy": "local"
+    },
+    "client-control": {
+      "max_body_size": 134217728
+    },
+    "uri-blocker": {
+      "block_rules": ["^/api/v1/admin"],
+      "rejected_code": 403,
+      "rejected_msg": "forbidden"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "nodes": {
+      "ragflow-lab.ragflow-lab.svc.cluster.local:80": 1
+    },
+    "timeout": {
+      "connect": 5,
+      "send": 3600,
+      "read": 3600
+    }
+  }
+}

@@ -1,0 +1,56 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vela-gateway-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-gateway-ca
+spec:
+  isCA: true
+  commonName: Vela private gateway CA
+  secretName: vela-gateway-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never
+  issuerRef:
+    name: vela-gateway-bootstrap
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vela-gateway-ca
+spec:
+  ca:
+    secretName: vela-gateway-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-gateway
+spec:
+  secretName: vela-gateway-tls
+  duration: 2160h
+  renewBefore: 720h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  dnsNames:
+    - apisix-gateway
+    - apisix-gateway.apisix.svc
+    - apisix-gateway.apisix.svc.cluster.local
+    - ragflow.marslab.ic
+  ipAddresses:
+    - 10.1.201.70
+    - 10.1.201.71
+  issuerRef:
+    name: vela-gateway-ca
+    kind: Issuer
