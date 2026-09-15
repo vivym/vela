@@ -25,7 +25,8 @@ SELECT
     item.object_version_id,
     item.size_bytes,
     item.sha256,
-    item.content_type
+    item.content_type,
+    item.validation_receipt
 FROM jobs AS job
 JOIN artifact_sets AS artifact_set
   ON artifact_set.id = job.result_artifact_set_id
@@ -65,6 +66,7 @@ type ListReadableArtifactSetRow struct {
 	SizeBytes          int64              `db:"size_bytes" json:"size_bytes"`
 	Sha256             []byte             `db:"sha256" json:"sha256"`
 	ContentType        string             `db:"content_type" json:"content_type"`
+	ValidationReceipt  []byte             `db:"validation_receipt" json:"validation_receipt"`
 }
 
 func (q *Queries) ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error) {
@@ -94,6 +96,7 @@ func (q *Queries) ListReadableArtifactSet(ctx context.Context, arg ListReadableA
 			&i.SizeBytes,
 			&i.Sha256,
 			&i.ContentType,
+			&i.ValidationReceipt,
 		); err != nil {
 			return nil, err
 		}

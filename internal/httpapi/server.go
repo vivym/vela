@@ -4009,6 +4009,7 @@ func toAPIArtifactSet(artifactSet artifactaccess.ArtifactSet) api.ArtifactSet {
 			Ordinal:              artifact.Ordinal,
 			Sha256:               hex.EncodeToString(artifact.SHA256[:]),
 			SizeBytes:            artifact.SizeBytes,
+			Media:                toAPIArtifactMedia(artifact.Media),
 		}
 	}
 	return api.ArtifactSet{
@@ -4018,6 +4019,29 @@ func toAPIArtifactSet(artifactSet artifactaccess.ArtifactSet) api.ArtifactSet {
 		JobId:              artifactSet.JobID,
 		RetentionExpiresAt: artifactSet.RetentionExpiresAt,
 	}
+}
+
+func toAPIArtifactMedia(media *artifactaccess.MediaMetadata) *api.ArtifactMedia {
+	if media == nil {
+		return nil
+	}
+	result := &api.ArtifactMedia{
+		DurationMilliseconds: media.DurationMillis,
+		FrameCount:           media.FrameCount, FrameRateMilli: media.FrameRateMilli,
+	}
+	if media.RequestedDurationMillis > 0 {
+		result.RequestedDurationMilliseconds = &media.RequestedDurationMillis
+	}
+	if media.ContainerDurationMillis > 0 {
+		result.ContainerDurationMilliseconds = &media.ContainerDurationMillis
+	}
+	if media.Audio != nil {
+		result.Audio = &api.ArtifactAudio{
+			Codec: media.Audio.Codec, Channels: media.Audio.Channels,
+			SampleRate: media.Audio.SampleRate, DurationMilliseconds: media.Audio.DurationMillis,
+		}
+	}
+	return result
 }
 
 func toAPIServicePrincipal(principal identity.ServicePrincipal) api.ServicePrincipal {

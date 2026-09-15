@@ -224,6 +224,7 @@ SELECT
     output_spec.frame_rate_milli AS expected_frame_rate_milli,
     output_spec.codec AS expected_codec,
     output_spec.container AS expected_container,
+    output_spec.media_contract AS expected_media_contract,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
     completion.authority_stage_graph_finalization_claim_id AS

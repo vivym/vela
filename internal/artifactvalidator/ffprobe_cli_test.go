@@ -17,6 +17,9 @@ import (
 //go:embed testdata/h264_16x16_1fps.mp4.b64
 var h264MP4FixtureBase64 string
 
+//go:embed testdata/h264_aac_full_h3.mp4.b64
+var h3FullAVFixtureBase64 string
+
 const webPFixtureBase64 = "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AA/v3AgAA="
 
 func TestPinnedFFprobeCommandProducesParseableWebPInspection(t *testing.T) {
@@ -46,6 +49,23 @@ func probePinnedFFprobe(
 	fixture string,
 	kind stagefinalization.ArtifactKind,
 ) mediaFacts {
+	return probePinnedFFprobeContract(t, name, fixture, kind, stagefinalization.MediaContractExactVideo)
+}
+
+func TestPinnedFFprobePreservesFullH3VideoAndAudioFacts(t *testing.T) {
+	facts := probePinnedFFprobeContract(t, "full.mp4", h3FullAVFixtureBase64, stagefinalization.ArtifactKindVideo, stagefinalization.MediaContractH3NativeAV)
+	if facts.FrameCount != 124 || facts.DurationMillis != 5167 || facts.ContainerDurationMillis != 5175 ||
+		facts.Audio == nil || facts.Audio.DurationMillis != 5175 || facts.Audio.Codec != "aac" || facts.Audio.Channels != 2 || facts.Audio.SampleRate != 32000 {
+		t.Fatalf("full H3 output facts changed: %+v, audio=%+v", facts, facts.Audio)
+	}
+}
+
+func probePinnedFFprobeContract(
+	t *testing.T,
+	name, fixture string,
+	kind stagefinalization.ArtifactKind,
+	contract stagefinalization.MediaContract,
+) mediaFacts {
 	t.Helper()
 	ffprobePath, expectedVersion := pinnedFFprobe(t)
 	media, err := base64.StdEncoding.DecodeString(strings.TrimSpace(fixture))
@@ -63,7 +83,7 @@ func probePinnedFFprobe(
 	if err != nil {
 		t.Fatalf("run production ffprobe command: %v: %s", err, output)
 	}
-	facts, err := parseFFprobeOutput(output, kind, expectedVersion)
+	facts, err := parseFFprobeOutputForContract(output, kind, expectedVersion, contract)
 	if err != nil {
 		t.Fatalf("parse production ffprobe output: %v; output=%s", err, output)
 	}

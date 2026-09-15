@@ -156,7 +156,7 @@ func (inspector *Inspector) Inspect(
 	if len(output) == 0 || int64(len(output)) > inspector.maxProbeOutputBytes {
 		return stagefinalization.ArtifactInspection{}, errors.New("ffprobe output is absent or exceeds configured bounds")
 	}
-	media, err := parseFFprobeOutput(output, request.Kind, inspector.expectedFFprobeVersion)
+	media, err := parseFFprobeOutputForContract(output, request.Kind, inspector.expectedFFprobeVersion, request.MediaContract)
 	if err != nil {
 		return stagefinalization.ArtifactInspection{}, err
 	}
@@ -164,18 +164,20 @@ func (inspector *Inspector) Inspect(
 		return stagefinalization.ArtifactInspection{}, errors.New("ffprobe size does not match exact Artifact version")
 	}
 	return stagefinalization.ArtifactInspection{
-		ObjectVersionID:   request.ObjectVersionID,
-		SizeBytes:         written,
-		SHA256:            observedDigest,
-		ContentType:       exact.ContentType,
-		Width:             media.Width,
-		Height:            media.Height,
-		DurationMillis:    media.DurationMillis,
-		FrameRateMilli:    media.FrameRateMilli,
-		FrameCount:        media.FrameCount,
-		Codec:             media.Codec,
-		Container:         media.Container,
-		ValidatorRevision: inspector.validatorRevision,
+		ObjectVersionID:         request.ObjectVersionID,
+		SizeBytes:               written,
+		SHA256:                  observedDigest,
+		ContentType:             exact.ContentType,
+		Width:                   media.Width,
+		Height:                  media.Height,
+		DurationMillis:          media.DurationMillis,
+		FrameRateMilli:          media.FrameRateMilli,
+		FrameCount:              media.FrameCount,
+		Codec:                   media.Codec,
+		Container:               media.Container,
+		ValidatorRevision:       inspector.validatorRevision,
+		ContainerDurationMillis: media.ContainerDurationMillis,
+		Audio:                   media.Audio,
 	}, nil
 }
 
@@ -191,6 +193,9 @@ type ffprobeDocument struct {
 		FrameRate  string `json:"avg_frame_rate"`
 		FrameCount string `json:"nb_frames"`
 		Duration   string `json:"duration"`
+		SampleRate string `json:"sample_rate"`
+		Channels   int32  `json:"channels"`
+		StartTime  string `json:"start_time"`
 	} `json:"streams"`
 	Format struct {
 		FormatName string `json:"format_name"`
@@ -202,14 +207,16 @@ type ffprobeDocument struct {
 }
 
 type mediaFacts struct {
-	SizeBytes      int64
-	Width          int32
-	Height         int32
-	DurationMillis int32
-	FrameRateMilli int32
-	FrameCount     int32
-	Codec          string
-	Container      string
+	SizeBytes               int64
+	Width                   int32
+	Height                  int32
+	DurationMillis          int32
+	FrameRateMilli          int32
+	FrameCount              int32
+	Codec                   string
+	Container               string
+	ContainerDurationMillis int32
+	Audio                   *stagefinalization.AudioInspection
 }
 
 func parseFFprobeOutput(
@@ -217,6 +224,18 @@ func parseFFprobeOutput(
 	kind stagefinalization.ArtifactKind,
 	expectedVersion string,
 ) (mediaFacts, error) {
+	return parseFFprobeOutputForContract(output, kind, expectedVersion, stagefinalization.MediaContractExactVideo)
+}
+
+func parseFFprobeOutputForContract(
+	output []byte,
+	kind stagefinalization.ArtifactKind,
+	expectedVersion string,
+	contract stagefinalization.MediaContract,
+) (mediaFacts, error) {
+	if contract != "" && contract != stagefinalization.MediaContractExactVideo && contract != stagefinalization.MediaContractH3NativeAV {
+		return mediaFacts{}, errors.New("unsupported Artifact media contract")
+	}
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	decoder.DisallowUnknownFields()
 	var document ffprobeDocument
@@ -229,10 +248,35 @@ func parseFFprobeOutput(
 	if document.ProgramVersion.Version != expectedVersion {
 		return mediaFacts{}, errors.New("ffprobe version does not match configured revision")
 	}
-	if len(document.Streams) != 1 || document.Streams[0].CodecType != "video" {
-		return mediaFacts{}, errors.New("artifact must contain exactly one video stream")
+	fullAV := contract == stagefinalization.MediaContractH3NativeAV && kind == stagefinalization.ArtifactKindVideo
+	expectedStreams := 1
+	if fullAV {
+		expectedStreams = 2
 	}
-	stream := document.Streams[0]
+	if len(document.Streams) != expectedStreams {
+		return mediaFacts{}, errors.New("artifact stream count does not match media contract")
+	}
+	videoIndex, audioIndex := -1, -1
+	for index, candidate := range document.Streams {
+		switch candidate.CodecType {
+		case "video":
+			if videoIndex != -1 {
+				return mediaFacts{}, errors.New("artifact must contain exactly one video stream")
+			}
+			videoIndex = index
+		case "audio":
+			if !fullAV || audioIndex != -1 {
+				return mediaFacts{}, errors.New("artifact contains unexpected audio streams")
+			}
+			audioIndex = index
+		default:
+			return mediaFacts{}, errors.New("artifact contains unsupported media streams")
+		}
+	}
+	if videoIndex == -1 || fullAV && audioIndex == -1 {
+		return mediaFacts{}, errors.New("artifact is missing required audio/video streams")
+	}
+	stream := document.Streams[videoIndex]
 	if stream.Width <= 0 || stream.Height <= 0 || !validFixedText(stream.CodecName, 100) {
 		return mediaFacts{}, errors.New("ffprobe video stream identity is incomplete")
 	}
@@ -246,6 +290,8 @@ func parseFFprobeOutput(
 	var durationMillis int32
 	var frameRateMilli int32
 	var frameCount64 int64
+	var audio *stagefinalization.AudioInspection
+	var containerDurationMillis int32
 	if kind == stagefinalization.ArtifactKindThumbnail {
 		frameCount64 = 1
 		if stream.FrameCount != "" {
@@ -256,7 +302,7 @@ func parseFFprobeOutput(
 		}
 	} else {
 		durationMillis, err = parseDurationMillis(stream.Duration)
-		if err != nil {
+		if err != nil && !fullAV {
 			durationMillis, err = parseDurationMillis(document.Format.Duration)
 		}
 		if err != nil {
@@ -271,19 +317,37 @@ func parseFFprobeOutput(
 			return mediaFacts{}, errors.New("ffprobe frame count is invalid")
 		}
 	}
+	if fullAV {
+		track := document.Streams[audioIndex]
+		if stream.StartTime != "0.000000" || track.StartTime != "0.000000" ||
+			track.CodecName != "aac" || track.SampleRate != "32000" || track.Channels != 2 {
+			return mediaFacts{}, errors.New("H3 requires zero-origin video and stereo 32 kHz AAC audio")
+		}
+		audioDuration, err := parseDurationMillis(track.Duration)
+		if err != nil || audioDuration <= 0 {
+			return mediaFacts{}, errors.New("H3 audio duration is invalid")
+		}
+		containerDurationMillis, err = parseDurationMillis(document.Format.Duration)
+		if err != nil || containerDurationMillis <= 0 {
+			return mediaFacts{}, errors.New("H3 container duration is invalid")
+		}
+		audio = &stagefinalization.AudioInspection{Codec: track.CodecName, SampleRate: 32000, Channels: track.Channels, DurationMillis: audioDuration}
+	}
 	container, err := canonicalContainer(document.Format.FormatName, stream.CodecName, kind)
 	if err != nil {
 		return mediaFacts{}, err
 	}
 	return mediaFacts{
-		SizeBytes:      sizeBytes,
-		Width:          stream.Width,
-		Height:         stream.Height,
-		DurationMillis: durationMillis,
-		FrameRateMilli: frameRateMilli,
-		FrameCount:     int32(frameCount64),
-		Codec:          stream.CodecName,
-		Container:      container,
+		SizeBytes:               sizeBytes,
+		Width:                   stream.Width,
+		Height:                  stream.Height,
+		DurationMillis:          durationMillis,
+		FrameRateMilli:          frameRateMilli,
+		FrameCount:              int32(frameCount64),
+		Codec:                   stream.CodecName,
+		Container:               container,
+		ContainerDurationMillis: containerDurationMillis,
+		Audio:                   audio,
 	}, nil
 }
 

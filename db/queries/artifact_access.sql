@@ -24,7 +24,8 @@ SELECT
     item.object_version_id,
     item.size_bytes,
     item.sha256,
-    item.content_type
+    item.content_type,
+    item.validation_receipt
 FROM jobs AS job
 JOIN artifact_sets AS artifact_set
   ON artifact_set.id = job.result_artifact_set_id

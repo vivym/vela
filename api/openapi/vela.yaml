@@ -2377,6 +2377,55 @@ components:
         download_url_expires_at:
           type: string
           format: date-time
+        media:
+          $ref: '#/components/schemas/ArtifactMedia'
+    ArtifactMedia:
+      type: object
+      additionalProperties: false
+      description: Measured complete video and audio facts; duration_milliseconds is the video stream duration. Requested duration is separate and does not imply trimming.
+      required: [duration_milliseconds, frame_count, frame_rate_milli]
+      properties:
+        requested_duration_milliseconds:
+          type: integer
+          format: int32
+          minimum: 1
+        duration_milliseconds:
+          type: integer
+          format: int32
+          minimum: 1
+        container_duration_milliseconds:
+          type: integer
+          format: int32
+          minimum: 1
+        frame_count:
+          type: integer
+          format: int32
+          minimum: 1
+        frame_rate_milli:
+          type: integer
+          format: int32
+          minimum: 1
+        audio:
+          $ref: '#/components/schemas/ArtifactAudio'
+    ArtifactAudio:
+      type: object
+      additionalProperties: false
+      required: [codec, sample_rate, channels, duration_milliseconds]
+      properties:
+        codec:
+          type: string
+        sample_rate:
+          type: integer
+          format: int32
+          minimum: 1
+        channels:
+          type: integer
+          format: int32
+          minimum: 1
+        duration_milliseconds:
+          type: integer
+          format: int32
+          minimum: 1
     CreateHumanMemberRequest:
       type: object
       additionalProperties: false

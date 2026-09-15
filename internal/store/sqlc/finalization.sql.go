@@ -1265,6 +1265,7 @@ SELECT
     output_spec.frame_rate_milli AS expected_frame_rate_milli,
     output_spec.codec AS expected_codec,
     output_spec.container AS expected_container,
+    output_spec.media_contract AS expected_media_contract,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
     completion.authority_stage_graph_finalization_claim_id AS
@@ -1335,6 +1336,7 @@ type LockStageGraphFinalizationCompletionAuthorityRow struct {
 	ExpectedFrameRateMilli                           int32                            `db:"expected_frame_rate_milli" json:"expected_frame_rate_milli"`
 	ExpectedCodec                                    string                           `db:"expected_codec" json:"expected_codec"`
 	ExpectedContainer                                string                           `db:"expected_container" json:"expected_container"`
+	ExpectedMediaContract                            string                           `db:"expected_media_contract" json:"expected_media_contract"`
 	CompletionID                                     uuid.NullUUID                    `db:"completion_id" json:"completion_id"`
 	CompletionAuthorityLeaseID                       uuid.NullUUID                    `db:"completion_authority_lease_id" json:"completion_authority_lease_id"`
 	CompletionAuthorityStageGraphFinalizationClaimID uuid.NullUUID                    `db:"completion_authority_stage_graph_finalization_claim_id" json:"completion_authority_stage_graph_finalization_claim_id"`
@@ -1387,6 +1389,7 @@ func (q *Queries) LockStageGraphFinalizationCompletionAuthority(ctx context.Cont
 		&i.ExpectedFrameRateMilli,
 		&i.ExpectedCodec,
 		&i.ExpectedContainer,
+		&i.ExpectedMediaContract,
 		&i.CompletionID,
 		&i.CompletionAuthorityLeaseID,
 		&i.CompletionAuthorityStageGraphFinalizationClaimID,

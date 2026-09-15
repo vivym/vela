@@ -1,0 +1,4 @@
+ok  	github.com/vivym/vela/internal/artifactvalidator	2.485s
+ok  	github.com/vivym/vela/internal/artifactaccess	1.798s
+ok  	github.com/vivym/vela/internal/httpapi	2.278s
+ok  	github.com/vivym/vela/internal/stagefinalization	2.828s

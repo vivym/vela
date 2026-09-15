@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-15",
+  "scope": "H3 full audio/video output preservation and Vela media contract; not a live Vela Job or production launch receipt",
+  "runtime_source_commit": "0b23cb978d51",
+  "sglang_commit": "868143cc66",
+  "runtime_cropping_patch": "withdrawn before commit or image build",
+  "tests": [
+    {
+      "log": "h3-full-output-2026-09-15/vela-h3-full-av-go-test.log",
+      "sha256": "40adf7caed2e5f85c25df2c42e003595832e07c48dd1d395441bd05d75310590",
+      "result": "passed",
+      "command": "go test ./..."
+    },
+    {
+      "log": "h3-full-output-2026-09-15/vela-h3-full-av-focused-test.log",
+      "sha256": "603b5838e32b520b66bcd33b03b6bfb9f17cd7da2820f1ebde7f8e9798fe69e0",
+      "result": "passed",
+      "command": "VELA_REQUIRE_PINNED_FFPROBE=1 go test ./internal/artifactvalidator ./internal/artifactaccess ./internal/httpapi ./internal/stagefinalization -count=1"
+    },
+    {
+      "log": "h3-full-output-2026-09-15/vela-h3-media-migration-test.log",
+      "sha256": "2ddeed6ee95ba5b8f80691b3b41237f70e744cd4547ac6b999f7eea8c1b384cd",
+      "result": "passed",
+      "command": "go test -tags integration ./internal/integration -run '^TestH3NativeMediaContractMigrationPreservesExistingRevisions$' -count=1 -timeout=4m"
+    },
+    {
+      "command": "FAST_H3_NATIVE_TESTS=1 python -m pytest -q tests/test_vela_native_integration.py",
+      "host": "marslab@100.111.196.116",
+      "remote_log": "/data/vela-h3-integration-20260915/media-full-output-01/test-final.log",
+      "result": "8 passed",
+      "log": "h3-full-output-2026-09-15/native-media-test.log",
+      "sha256": "0ac685b80466c664e3dbec299172d0e77ee7e741b7981933276a7521a5999333"
+    },
+    {
+      "command": "VELA_REQUIRE_PINNED_FFPROBE=1 go test ./internal/artifactvalidator ./internal/artifactaccess ./internal/httpapi ./internal/stagefinalization -count=1",
+      "source": "isolated export of only the staged changes, excluding all pre-existing unstaged files",
+      "result": "passed",
+      "log": "h3-full-output-2026-09-15/vela-h3-full-av-staged-test.log",
+      "sha256": "3fd85fe437fdcdb7d1fbed0f5060943118a0eca2fc7e6195ca98a5753b413960"
+    },
+    {
+      "command": "go test -tags integration ./internal/integration -run '^TestH3NativeMediaContractMigrationPreservesExistingRevisions$' -count=1 -timeout=4m",
+      "source": "isolated export of only the staged changes, excluding all pre-existing unstaged files",
+      "result": "passed",
+      "log": "h3-full-output-2026-09-15/vela-h3-media-staged-migration-test.log",
+      "sha256": "5d517c0b1f438d8f1181990c5815fb4420d8811102ccb5f6432451b5c0b16e8a"
+    }
+  ],
+  "known_limits": [
+    "Audio duration comparison is rounded to milliseconds; AAC is lossy and this is not a sample-exact fidelity claim.",
+    "Native GPU canary predates this change; no new GPU inference performed for these media contract tests.",
+    "Database migration 99, new OutputSpec revision and updated Control image are not yet adopted in the live cluster."
+  ],
+  "go_packages_passed": 94,
+  "review": {
+    "spec": "no blocking findings",
+    "standards": "no blocking findings; audio duration verification has millisecond precision"
+  },
+  "native_test_commit": "cfa3d597f46639deb1d2571274ec8389c494ee60"
+}

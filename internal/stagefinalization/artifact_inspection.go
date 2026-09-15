@@ -14,43 +14,62 @@ import (
 
 type ArtifactKind string
 
+type MediaContract string
+
+const (
+	MediaContractExactVideo MediaContract = "exact-video-v1"
+	MediaContractH3NativeAV MediaContract = "h3-native-av-v1"
+)
+
+type AudioInspection struct {
+	Codec          string `json:"codec"`
+	SampleRate     int32  `json:"sample_rate"`
+	Channels       int32  `json:"channels"`
+	DurationMillis int32  `json:"duration_milliseconds"`
+}
+
 const (
 	ArtifactKindVideo     ArtifactKind = "VIDEO"
 	ArtifactKindThumbnail ArtifactKind = "THUMBNAIL"
 )
 
 type ArtifactInspectionRequest struct {
-	ArtifactID             uuid.UUID
-	UploadID               uuid.UUID
-	Kind                   ArtifactKind
-	Ordinal                int32
-	ObjectKey              string
-	ObjectVersionID        string
-	ExpectedSizeBytes      int64
-	ExpectedSHA256         [sha256.Size]byte
-	ExpectedContentType    string
-	ExpectedWidth          int32
-	ExpectedHeight         int32
-	ExpectedDurationMillis int32
-	ExpectedFrameRateMilli int32
-	ExpectedFrameCount     int32
-	ExpectedCodec          string
-	ExpectedContainer      string
+	ArtifactID                  uuid.UUID
+	UploadID                    uuid.UUID
+	Kind                        ArtifactKind
+	Ordinal                     int32
+	ObjectKey                   string
+	ObjectVersionID             string
+	ExpectedSizeBytes           int64
+	ExpectedSHA256              [sha256.Size]byte
+	ExpectedContentType         string
+	ExpectedWidth               int32
+	ExpectedHeight              int32
+	ExpectedDurationMillis      int32
+	ExpectedFrameRateMilli      int32
+	ExpectedFrameCount          int32
+	ExpectedCodec               string
+	ExpectedContainer           string
+	MediaContract               MediaContract
+	RequestedDurationMillis     int32
+	ExpectedAudioDurationMillis int32
 }
 
 type ArtifactInspection struct {
-	ObjectVersionID   string
-	SizeBytes         int64
-	SHA256            [sha256.Size]byte
-	ContentType       string
-	Width             int32
-	Height            int32
-	DurationMillis    int32
-	FrameRateMilli    int32
-	FrameCount        int32
-	Codec             string
-	Container         string
-	ValidatorRevision string
+	ObjectVersionID         string
+	SizeBytes               int64
+	SHA256                  [sha256.Size]byte
+	ContentType             string
+	Width                   int32
+	Height                  int32
+	DurationMillis          int32
+	FrameRateMilli          int32
+	FrameCount              int32
+	Codec                   string
+	Container               string
+	ValidatorRevision       string
+	ContainerDurationMillis int32
+	Audio                   *AudioInspection
 }
 
 type ArtifactInspector interface {
@@ -64,12 +83,20 @@ type artifactInspectionExpectations struct {
 	frameRateMilli       int32
 	codec                string
 	container            string
+	mediaContract        MediaContract
 }
 
 func applyArtifactInspectionExpectations(
 	request ArtifactInspectionRequest,
 	expected artifactInspectionExpectations,
 ) (ArtifactInspectionRequest, error) {
+	request.MediaContract = expected.mediaContract
+	if request.MediaContract == "" {
+		request.MediaContract = MediaContractExactVideo
+	}
+	if request.MediaContract != MediaContractExactVideo && request.MediaContract != MediaContractH3NativeAV {
+		return ArtifactInspectionRequest{}, errors.New("unsupported OutputSpec media contract")
+	}
 	switch request.Kind {
 	case ArtifactKindVideo:
 		frameProduct := int64(expected.durationMilliseconds) * int64(expected.frameRateMilli)
@@ -83,6 +110,20 @@ func applyArtifactInspectionExpectations(
 		request.ExpectedFrameCount = int32(frameProduct / 1_000_000)
 		request.ExpectedCodec = expected.codec
 		request.ExpectedContainer = expected.container
+		request.RequestedDurationMillis = expected.durationMilliseconds
+		if request.MediaContract == MediaContractH3NativeAV {
+			if expected.frameRateMilli != 24000 || expected.codec != "h264" || expected.container != "mp4" ||
+				expected.durationMilliseconds < 4000 || expected.durationMilliseconds > 15000 {
+				return ArtifactInspectionRequest{}, errors.New("unsupported H3 native OutputSpec")
+			}
+			// Pinned SGLang time_request.py: preserve the complete 17n+5 video
+			// sequence and round its duration at the 40 Hz audio latent boundary.
+			frames := request.ExpectedFrameCount
+			frames += (5 - frames%17 + 17) % 17
+			request.ExpectedFrameCount = frames
+			request.ExpectedDurationMillis = int32(math.Round(float64(frames) * 1000 / 24))
+			request.ExpectedAudioDurationMillis = int32(math.RoundToEven(float64(frames)*40/24)) * 25
+		}
 	case ArtifactKindThumbnail:
 		request.ExpectedWidth = 320
 		request.ExpectedHeight = 180
@@ -96,26 +137,33 @@ func applyArtifactInspectionExpectations(
 }
 
 type artifactValidationReceipt struct {
-	ArtifactID        string `json:"artifact_id"`
-	ObjectKey         string `json:"object_key"`
-	ObjectVersionID   string `json:"object_version_id"`
-	SizeBytes         int64  `json:"size_bytes"`
-	SHA256            string `json:"sha256"`
-	ContentType       string `json:"content_type"`
-	Width             int32  `json:"width"`
-	Height            int32  `json:"height"`
-	DurationMillis    int32  `json:"duration_milliseconds"`
-	FrameRateMilli    int32  `json:"frame_rate_milli"`
-	FrameCount        int32  `json:"frame_count"`
-	Codec             string `json:"codec"`
-	Container         string `json:"container"`
-	ValidatorRevision string `json:"validator_revision"`
+	ArtifactID              string           `json:"artifact_id"`
+	ObjectKey               string           `json:"object_key"`
+	ObjectVersionID         string           `json:"object_version_id"`
+	SizeBytes               int64            `json:"size_bytes"`
+	SHA256                  string           `json:"sha256"`
+	ContentType             string           `json:"content_type"`
+	Width                   int32            `json:"width"`
+	Height                  int32            `json:"height"`
+	DurationMillis          int32            `json:"duration_milliseconds"`
+	FrameRateMilli          int32            `json:"frame_rate_milli"`
+	FrameCount              int32            `json:"frame_count"`
+	Codec                   string           `json:"codec"`
+	Container               string           `json:"container"`
+	ValidatorRevision       string           `json:"validator_revision"`
+	MediaContract           MediaContract    `json:"media_contract,omitempty"`
+	RequestedDurationMillis int32            `json:"requested_duration_milliseconds,omitempty"`
+	ContainerDurationMillis int32            `json:"container_duration_milliseconds,omitempty"`
+	Audio                   *AudioInspection `json:"audio,omitempty"`
 }
 
 func validateArtifactInspection(
 	request ArtifactInspectionRequest,
 	inspection ArtifactInspection,
 ) ([]byte, [sha256.Size]byte, bool) {
+	if !validInspectedAudio(request, inspection) {
+		return nil, [sha256.Size]byte{}, false
+	}
 	if inspection.ObjectVersionID != request.ObjectVersionID ||
 		inspection.SizeBytes != request.ExpectedSizeBytes ||
 		inspection.SHA256 != request.ExpectedSHA256 ||
@@ -139,9 +187,30 @@ func validateArtifactInspection(
 		DurationMillis: inspection.DurationMillis, FrameRateMilli: inspection.FrameRateMilli,
 		FrameCount: inspection.FrameCount, Codec: inspection.Codec,
 		Container: inspection.Container, ValidatorRevision: inspection.ValidatorRevision,
+		MediaContract: request.MediaContract, RequestedDurationMillis: request.RequestedDurationMillis,
+		ContainerDurationMillis: inspection.ContainerDurationMillis, Audio: inspection.Audio,
 	})
 	if err != nil {
 		return nil, [sha256.Size]byte{}, false
 	}
 	return receipt, sha256.Sum256(receipt), true
+}
+
+func validInspectedAudio(request ArtifactInspectionRequest, inspection ArtifactInspection) bool {
+	if request.MediaContract == "" || request.MediaContract == MediaContractExactVideo || request.Kind == ArtifactKindThumbnail {
+		return inspection.Audio == nil
+	}
+	if request.MediaContract != MediaContractH3NativeAV || inspection.Audio == nil {
+		return false
+	}
+	audio := inspection.Audio
+	// AAC packets contain 1024 samples at 32 kHz. Permit only terminal
+	// encoding padding; never permit loss of the generated audio samples.
+	if audio.Codec != "aac" || audio.SampleRate != 32000 || audio.Channels != 2 ||
+		audio.DurationMillis < request.ExpectedAudioDurationMillis ||
+		int64(audio.DurationMillis) > int64(request.ExpectedAudioDurationMillis)+32 {
+		return false
+	}
+	longest := max(inspection.DurationMillis, audio.DurationMillis)
+	return inspection.ContainerDurationMillis >= longest && inspection.ContainerDurationMillis <= longest+1
 }

@@ -13,7 +13,7 @@ func ffprobeArgumentsWithProtocol(inputPath string, protocol string) []string {
 		"-analyzeduration", "10000000",
 		"-show_entries",
 		"program_version=version:" +
-			"stream=codec_name,codec_type,width,height,avg_frame_rate,nb_frames,duration:" +
+			"stream=codec_name,codec_type,width,height,avg_frame_rate,nb_frames,duration,sample_rate,channels,start_time:" +
 			"format=format_name,duration,size",
 		"-of", "json",
 		inputPath,

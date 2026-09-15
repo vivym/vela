@@ -3,6 +3,7 @@ package artifactaccess
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -63,6 +64,25 @@ type Artifact struct {
 	ContentType          string
 	DownloadURL          string
 	DownloadURLExpiresAt time.Time
+	Media                *MediaMetadata
+}
+
+// MediaMetadata contains measured facts from the committed validation receipt.
+// It does not substitute the requested duration for either stream's duration.
+type MediaMetadata struct {
+	RequestedDurationMillis int32          `json:"requested_duration_milliseconds,omitempty"`
+	DurationMillis          int32          `json:"duration_milliseconds"`
+	ContainerDurationMillis int32          `json:"container_duration_milliseconds,omitempty"`
+	FrameCount              int32          `json:"frame_count"`
+	FrameRateMilli          int32          `json:"frame_rate_milli"`
+	Audio                   *AudioMetadata `json:"audio,omitempty"`
+}
+
+type AudioMetadata struct {
+	Codec          string `json:"codec"`
+	SampleRate     int32  `json:"sample_rate"`
+	Channels       int32  `json:"channels"`
+	DurationMillis int32  `json:"duration_milliseconds"`
 }
 
 func NewService(
@@ -206,6 +226,14 @@ func artifactSetFromRows(
 		seen[row.ArtifactID] = struct{}{}
 		var digest [sha256.Size]byte
 		copy(digest[:], row.Sha256)
+		var media *MediaMetadata
+		if row.Kind == store.ArtifactKindVIDEO && len(row.ValidationReceipt) != 0 {
+			media = &MediaMetadata{}
+			if err := json.Unmarshal(row.ValidationReceipt, media); err != nil ||
+				media.DurationMillis <= 0 || media.FrameCount <= 0 || media.FrameRateMilli <= 0 {
+				return ArtifactSet{}, errors.New("committed Artifact media facts are invalid")
+			}
+		}
 		result.Artifacts = append(result.Artifacts, Artifact{
 			ID:              row.ArtifactID,
 			Kind:            string(row.Kind),
@@ -215,6 +243,7 @@ func artifactSetFromRows(
 			SizeBytes:       row.SizeBytes,
 			SHA256:          digest,
 			ContentType:     row.ContentType,
+			Media:           media,
 		})
 	}
 	return result, nil

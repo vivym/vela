@@ -385,6 +385,7 @@ func (s *Service) inspectStageGraphVisibleCompletionArtifacts(
 			durationMilliseconds: authority.ExpectedDurationMilliseconds,
 			frameRateMilli:       authority.ExpectedFrameRateMilli,
 			codec:                authority.ExpectedCodec, container: authority.ExpectedContainer,
+			mediaContract: MediaContract(authority.ExpectedMediaContract),
 		})
 		if err != nil {
 			return nil, err

@@ -5726,6 +5726,7 @@ type OutputSpec struct {
 	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	Container            string             `db:"container" json:"container"`
 	ThumbnailRequired    bool               `db:"thumbnail_required" json:"thumbnail_required"`
+	MediaContract        string             `db:"media_contract" json:"media_contract"`
 }
 
 type PlatformOperatorAuthSession struct {
