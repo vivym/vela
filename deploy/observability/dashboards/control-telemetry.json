@@ -1,0 +1,517 @@
+{
+  "uid": "vela-control-telemetry",
+  "title": "Vela · Control and Telemetry",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "vela",
+    "control-plane",
+    "observability"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "description": "Three control nodes and all registered workers. Missing data is unknown. A volume's configured replica count is separate from Longhorn healthy status; only disposable artifact-validation scratch claims are exempt from two-copy storage.",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ready nodes",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(kube_node_status_condition{condition=\"Ready\",status=\"true\"} == 1)",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Kubernetes nodes",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(kube_node_info)",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Healthy kube-proxy targets",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(up{job=\"kube-proxy\"})",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Etcd members with leader",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(etcd_server_has_leader{job=\"etcd\"})",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Control component metrics",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(job) (up{job=~\"kube-scheduler|kube-controller-manager|etcd\"})",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Node-local relay health",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"node-local-metrics\"}",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Etcd WAL fsync p99",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99,sum by(instance,le)(rate(etcd_disk_wal_fsync_duration_seconds_bucket{job=\"etcd\"}[5m])))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "Configured storage replicas",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kube_customresource_longhorn_volume_replicas",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "title": "Collector metrics endpoints",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(endpoint)(up{job=\"otel-collector\"})",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "title": "Spans sent",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(otelcol_exporter_sent_spans_total{job=\"otel-collector\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "title": "Span export failures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(otelcol_exporter_send_failed_spans_total{job=\"otel-collector\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 12,
+      "title": "Spans refused",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(otelcol_receiver_refused_spans_total{job=\"otel-collector\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "title": "Log collector metrics coverage",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(up{job=\"alloy\"})",
+          "instant": true,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "title": "Logs sent",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(loki_write_sent_entries_total{job=\"alloy\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 15,
+      "title": "Log delivery drops",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 50,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(loki_write_dropped_entries_total{job=\"alloy\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 16,
+      "title": "Log delivery retries",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 50,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(loki_write_batch_retries_total{job=\"alloy\"}[5m]))",
+          "instant": false,
+          "legendFormat": "{{job}} {{instance}} {{persistentvolumeclaim}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

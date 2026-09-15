@@ -2,10 +2,11 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: vela-control
-  namespace: vela-observability
+  namespace: monitoring
   labels:
     app.kubernetes.io/name: vela-control
     app.kubernetes.io/part-of: vela
+    release: monitoring
 spec:
   namespaceSelector:
     matchNames:

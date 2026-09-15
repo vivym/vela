@@ -1,0 +1,1080 @@
+{
+  "at": "2026-09-14T21:08:13.590914+00:00",
+  "queries": {
+    "sum(rate(loki_ingester_chunk_stored_bytes_total[6h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789420093.632,
+          "639.6851645804358"
+        ]
+      }
+    ],
+    "sum(rate(loki_distributor_bytes_received_total[6h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789420093.634,
+          "12032.167501159016"
+        ]
+      }
+    ],
+    "sum by(reason)(increase(loki_discarded_samples_total[6h]))": [
+      {
+        "metric": {
+          "reason": "too_far_behind"
+        },
+        "value": [
+          1789420093.636,
+          "0"
+        ]
+      }
+    ],
+    "sum(increase(loki_ingester_chunks_flush_failures_total[6h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789420093.638,
+          "0"
+        ]
+      }
+    ],
+    "time()-max(loki_compactor_apply_retention_last_successful_run_timestamp_seconds)": [
+      {
+        "metric": {},
+        "value": [
+          1789420093.64,
+          "776.6364386081696"
+        ]
+      }
+    ],
+    "sum by(status)(increase(loki_compactor_apply_retention_operation_total[6h]))": [
+      {
+        "metric": {
+          "status": "success"
+        },
+        "value": [
+          1789420093.641,
+          "24.033379694019473"
+        ]
+      }
+    ],
+    "sum(increase(tempo_ingester_failed_flushes_total[6h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789420093.643,
+          "0"
+        ]
+      }
+    ],
+    "sum by(reason)(increase(tempo_discarded_spans_total[6h]))": [
+      {
+        "metric": {
+          "reason": "live_traces_exceeded"
+        },
+        "value": [
+          1789420093.645,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "reason": "trace_too_large"
+        },
+        "value": [
+          1789420093.645,
+          "0"
+        ]
+      },
+      {
+        "metric": {
+          "reason": "unknown_error"
+        },
+        "value": [
+          1789420093.645,
+          "0"
+        ]
+      }
+    ],
+    "sum by(job)(scrape_samples_post_metric_relabeling)": [
+      {
+        "metric": {
+          "job": "coredns"
+        },
+        "value": [
+          1789420093.647,
+          "3717"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kubelet"
+        },
+        "value": [
+          1789420093.647,
+          "202412"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-exporter"
+        },
+        "value": [
+          1789420093.647,
+          "160715"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apiserver"
+        },
+        "value": [
+          1789420093.647,
+          "105010"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nvidia-smi"
+        },
+        "value": [
+          1789420093.647,
+          "3307"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-alertmanager"
+        },
+        "value": [
+          1789420093.647,
+          "812"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789420093.647,
+          "2791"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-operator"
+        },
+        "value": [
+          1789420093.647,
+          "611"
+        ]
+      },
+      {
+        "metric": {
+          "job": "longhorn-backend"
+        },
+        "value": [
+          1789420093.647,
+          "149453"
+        ]
+      },
+      {
+        "metric": {
+          "job": "tempo"
+        },
+        "value": [
+          1789420093.647,
+          "1221"
+        ]
+      },
+      {
+        "metric": {
+          "job": "loki"
+        },
+        "value": [
+          1789420093.647,
+          "2627"
+        ]
+      },
+      {
+        "metric": {
+          "job": "legacy-hardware-federation"
+        },
+        "value": [
+          1789420093.647,
+          "5975"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-state-metrics"
+        },
+        "value": [
+          1789420093.647,
+          "38057"
+        ]
+      },
+      {
+        "metric": {
+          "job": "otel-collector"
+        },
+        "value": [
+          1789420093.647,
+          "146"
+        ]
+      },
+      {
+        "metric": {
+          "job": "etcd"
+        },
+        "value": [
+          1789420093.647,
+          "4857"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-proxy"
+        },
+        "value": [
+          1789420093.647,
+          "44279"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-scheduler"
+        },
+        "value": [
+          1789420093.647,
+          "6684"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-local-metrics"
+        },
+        "value": [
+          1789420093.647,
+          "61121"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-controller-manager"
+        },
+        "value": [
+          1789420093.647,
+          "4929"
+        ]
+      },
+      {
+        "metric": {
+          "job": "alloy"
+        },
+        "value": [
+          1789420093.647,
+          "10758"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio"
+        },
+        "value": [
+          1789420093.647,
+          "3504"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio-quorum"
+        },
+        "value": [
+          1789420093.647,
+          "60"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/cnpg-postgres"
+        },
+        "value": [
+          1789420093.647,
+          "1477"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-grafana"
+        },
+        "value": [
+          1789420093.647,
+          "4260"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-cert-manager"
+        },
+        "value": [
+          1789420093.647,
+          "208"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apisix-metrics"
+        },
+        "value": [
+          1789420093.647,
+          "804"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-anonymous"
+        },
+        "value": [
+          1789420093.647,
+          "66"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-authenticated"
+        },
+        "value": [
+          1789420093.647,
+          "66"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-prober"
+        },
+        "value": [
+          1789420093.647,
+          "111"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-metrics"
+        },
+        "value": [
+          1789420093.647,
+          "611"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-repo-server"
+        },
+        "value": [
+          1789420093.647,
+          "176"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-server-metrics"
+        },
+        "value": [
+          1789420093.647,
+          "4898"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-control-manifest"
+        },
+        "value": [
+          1789420093.647,
+          "66"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/vela-control"
+        },
+        "value": [
+          1789420093.647,
+          "128"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nats-prometheus-exporter"
+        },
+        "value": [
+          1789420093.647,
+          "738"
+        ]
+      }
+    ],
+    "sum by(job)(up)": [
+      {
+        "metric": {
+          "job": "coredns"
+        },
+        "value": [
+          1789420093.655,
+          "14"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kubelet"
+        },
+        "value": [
+          1789420093.655,
+          "159"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-exporter"
+        },
+        "value": [
+          1789420093.655,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apiserver"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nvidia-smi"
+        },
+        "value": [
+          1789420093.655,
+          "51"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-alertmanager"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-operator"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "longhorn-backend"
+        },
+        "value": [
+          1789420093.655,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "tempo"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "loki"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "legacy-hardware-federation"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "ipmi-supermicro"
+        },
+        "value": [
+          1789420093.655,
+          "55"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-state-metrics"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "otel-collector"
+        },
+        "value": [
+          1789420093.655,
+          "4"
+        ]
+      },
+      {
+        "metric": {
+          "job": "etcd"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-proxy"
+        },
+        "value": [
+          1789420093.655,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-scheduler"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-local-metrics"
+        },
+        "value": [
+          1789420093.655,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-controller-manager"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "alloy"
+        },
+        "value": [
+          1789420093.655,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio"
+        },
+        "value": [
+          1789420093.655,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio-quorum"
+        },
+        "value": [
+          1789420093.655,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/cnpg-postgres"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-grafana"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-cert-manager"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apisix-metrics"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-anonymous"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-authenticated"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-prober"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-metrics"
+        },
+        "value": [
+          1789420093.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-repo-server"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-server-metrics"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-control-manifest"
+        },
+        "value": [
+          1789420093.655,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/vela-control"
+        },
+        "value": [
+          1789420093.655,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nats-prometheus-exporter"
+        },
+        "value": [
+          1789420093.655,
+          "6"
+        ]
+      }
+    ],
+    "count by(job)(up)": [
+      {
+        "metric": {
+          "job": "coredns"
+        },
+        "value": [
+          1789420093.663,
+          "14"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kubelet"
+        },
+        "value": [
+          1789420093.663,
+          "162"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-exporter"
+        },
+        "value": [
+          1789420093.663,
+          "54"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apiserver"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nvidia-smi"
+        },
+        "value": [
+          1789420093.663,
+          "52"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-alertmanager"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-kube-prometheus-operator"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "longhorn-backend"
+        },
+        "value": [
+          1789420093.663,
+          "54"
+        ]
+      },
+      {
+        "metric": {
+          "job": "tempo"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "loki"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "legacy-hardware-federation"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "ipmi-supermicro"
+        },
+        "value": [
+          1789420093.663,
+          "55"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-state-metrics"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "otel-collector"
+        },
+        "value": [
+          1789420093.663,
+          "4"
+        ]
+      },
+      {
+        "metric": {
+          "job": "etcd"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-proxy"
+        },
+        "value": [
+          1789420093.663,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-scheduler"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-local-metrics"
+        },
+        "value": [
+          1789420093.663,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-controller-manager"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "alloy"
+        },
+        "value": [
+          1789420093.663,
+          "54"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio"
+        },
+        "value": [
+          1789420093.663,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio-quorum"
+        },
+        "value": [
+          1789420093.663,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/cnpg-postgres"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring-grafana"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-cert-manager"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apisix-metrics"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-anonymous"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-authenticated"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-prober"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-metrics"
+        },
+        "value": [
+          1789420093.663,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-repo-server"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "argocd-server-metrics"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "vela-registry-control-manifest"
+        },
+        "value": [
+          1789420093.663,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/vela-control"
+        },
+        "value": [
+          1789420093.663,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nats-prometheus-exporter"
+        },
+        "value": [
+          1789420093.663,
+          "6"
+        ]
+      }
+    ]
+  },
+  "loki_oldest_query": {
+    "query": "{namespace=~\".+\"}",
+    "start_ns": 1788815293786133504,
+    "end_ns": 1789420093786133504,
+    "direction": "forward",
+    "limit": 1,
+    "status": "success",
+    "oldest_timestamp_ns": 1789366733131870447,
+    "returned_lines": 1
+  }
+}

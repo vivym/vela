@@ -1,0 +1,380 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-infrastructure-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: observability
+    release: monitoring
+spec:
+  groups:
+    - name: vela-infrastructure
+      interval: 30s
+      rules:
+        - record: vela:node_filesystem_avail_ratio
+          expr: |
+            node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}
+            /
+            node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"}
+        - record: vela:zfs_filesystem_avail_ratio
+          expr: |
+            node_filesystem_avail_bytes{fstype="zfs"}
+            /
+            node_filesystem_size_bytes{fstype="zfs"}
+        - alert: VelaNodeExporterTargetMissing
+          expr: up{job="node-exporter"} == 0 or absent(up{job="node-exporter"})
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Node exporter target is unavailable
+            description: One or more cluster nodes are no longer reporting host metrics.
+            runbook_url: docs/runbooks/observability-node-exporter.md
+        - alert: VelaGPUExporterTargetMissing
+          expr: up{job="nvidia-smi"} == 0 or absent(up{job="nvidia-smi"})
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: GPU exporter target is unavailable
+            description: A configured GPU host is not returning NVIDIA telemetry.
+            runbook_url: docs/runbooks/observability-gpu.md
+        - alert: VelaNodeFilesystemLow
+          expr: |
+            min by (instance, mountpoint) (
+              vela:node_filesystem_avail_ratio{mountpoint!~"/run.*|/var/lib/kubelet/pods.*"}
+            ) < 0.10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Node filesystem free space is below 10%
+            description: A node filesystem is nearing exhaustion; image pulls and workloads may fail.
+            runbook_url: docs/runbooks/observability-node-storage.md
+        - alert: VelaNodeRootFilesystemHeadroomLow
+          expr: |
+            min by (instance, mountpoint) (
+              vela:node_filesystem_avail_ratio{mountpoint="/"}
+            ) < 0.20
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Node root filesystem free space is below 20%
+            description: Restore capacity before the default 15% image filesystem eviction threshold is reached; root and container images may share a filesystem.
+            runbook_url: docs/runbooks/observability-node-storage.md
+        - alert: VelaZFSFilesystemLow
+          expr: |
+            min by (instance, mountpoint) (
+              vela:zfs_filesystem_avail_ratio
+            ) < 0.15
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: ZFS filesystem free space is below 15%
+            description: A ZFS dataset is approaching the operating floor; identify the dataset and reclaim only approved cache or temporary data.
+            runbook_url: docs/runbooks/observability-node-storage.md
+        - alert: VelaZFSFilesystemCritical
+          expr: |
+            min by (instance, mountpoint) (
+              vela:zfs_filesystem_avail_ratio
+            ) < 0.10
+          for: 5m
+          labels:
+            severity: page
+          annotations:
+            summary: ZFS filesystem free space is below 10%
+            description: ZFS capacity is critically low; stop new model or cache writes and recover pool headroom before stateful maintenance.
+            runbook_url: docs/runbooks/observability-node-storage.md
+        - alert: VelaNodeDiskPressure
+          expr: max by (node) (kube_node_status_condition{condition="DiskPressure",status="true"}) == 1
+          for: 1m
+          labels:
+            severity: page
+          annotations:
+            summary: Kubelet reports node disk pressure
+            description: Workloads may be evicted or remain Pending. Restore filesystem headroom and verify stateful members before continuing a rollout.
+            runbook_url: docs/runbooks/observability-node-storage.md
+        - alert: VelaLonghornMetricsMissing
+          expr: up{job="longhorn-backend"} == 0 or absent(up{job="longhorn-backend"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: Longhorn metrics are missing
+            description: Prometheus cannot observe Longhorn manager health or replica state.
+            runbook_url: docs/runbooks/observability-storage.md
+        - alert: VelaCNPGMetricsMissing
+          expr: up{job="monitoring/cnpg-postgres"} == 0 or absent(up{job="monitoring/cnpg-postgres"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: PostgreSQL metrics are missing
+            description: Prometheus cannot observe the CNPG PostgreSQL instances.
+            runbook_url: docs/runbooks/observability-database.md
+        - alert: VelaNATSMetricsMissing
+          expr: up{job="nats-prometheus-exporter"} == 0 or absent(up{job="nats-prometheus-exporter"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: NATS metrics are missing
+            description: Prometheus cannot observe NATS and JetStream health.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaMinIOMetricsMissing
+          expr: up{job="minio"} == 0 or absent(up{job="minio"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: MinIO metrics are missing
+            description: Prometheus cannot observe object-store health or capacity.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaMinIOWriteQuorumLost
+          expr: min by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_online_drives_count{job="minio-quorum"}) < max by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_write_quorum{job="minio-quorum"})
+          for: 1m
+          labels: {severity: page}
+          annotations:
+            summary: MinIO erasure set has lost write quorum
+            description: Restore unavailable members before any further maintenance. Healthy exporter HTTP responses do not establish write availability.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaMinIOReadQuorumLost
+          expr: min by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_online_drives_count{job="minio-quorum"}) < max by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_read_quorum{job="minio-quorum"})
+          for: 1m
+          labels: {severity: page}
+          annotations:
+            summary: MinIO erasure set has lost read quorum
+            description: Recover existing data members and inspect Longhorn before starting replacement or recovery operations.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaMinIOWriteQuorumAtLimit
+          expr: min by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_online_drives_count{job="minio-quorum"}) == max by (namespace, service, pool_id, set_id) (minio_cluster_erasure_set_write_quorum{job="minio-quorum"})
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: MinIO has no remaining write-quorum margin
+            description: One further member loss will stop writes. Do not start another member or host maintenance operation.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaMinIOQuorumMetricsMissing
+          expr: |
+            (up{job="minio-quorum"} == 1 unless on (namespace, service, instance) minio_cluster_erasure_set_online_drives_count{job="minio-quorum"})
+            or (up{job="minio-quorum"} == 1 unless on (namespace, service, instance) minio_cluster_erasure_set_write_quorum{job="minio-quorum"})
+            or (up{job="minio-quorum"} == 1 unless on (namespace, service, instance) minio_cluster_erasure_set_read_quorum{job="minio-quorum"})
+            or absent(minio_cluster_erasure_set_write_quorum{job="minio-quorum"})
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: MinIO quorum telemetry is incomplete
+            description: Verify the erasure-set metrics on every scrape target before treating the object store as available.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaMinIOQuorumEndpointUnavailable
+          expr: up{job="minio-quorum"} == 0 or absent(up{job="minio-quorum"})
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: MinIO storage-layer quorum endpoint is unavailable
+            description: Check the dedicated v3 erasure-set endpoint separately from the full cluster inventory endpoint.
+            runbook_url: docs/runbooks/observability-object-store.md
+        - alert: VelaGPUTemperatureHigh
+          expr: max by (instance, gpu) (nvidia_gpu_temperature_celsius) > 85
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: GPU temperature is high
+            description: A GPU has exceeded 85 degrees Celsius for 10 minutes.
+            runbook_url: docs/runbooks/observability-gpu.md
+        - alert: VelaAPISIXMetricsMissing
+          expr: up{job="apisix-metrics"} == 0 or absent(up{job="apisix-metrics"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: APISIX metrics are missing
+            description: The gateway is serving traffic without an observable metrics endpoint.
+            runbook_url: docs/runbooks/observability-gateway.md
+        - alert: VelaLogStoreUnavailable
+          expr: up{job="loki"} == 0 or absent(up{job="loki"})
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: Loki is unavailable
+            description: Platform logs cannot be queried from Grafana.
+            runbook_url: docs/runbooks/observability-logs.md
+        - alert: VelaTraceStoreUnavailable
+          expr: up{job="tempo"} == 0 or absent(up{job="tempo"})
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Tempo is unavailable
+            description: Distributed traces cannot be queried from Grafana.
+            runbook_url: docs/runbooks/observability-traces.md
+        - alert: VelaOTLPCollectorUnavailable
+          expr: (sum(up{job="otel-collector",endpoint="metrics"}) or vector(0)) < 2
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: OpenTelemetry collector redundancy is reduced
+            description: Fewer than two management-node collectors are reporting.
+            runbook_url: docs/runbooks/observability-traces.md
+        - alert: VelaNodeExporterCoverageIncomplete
+          expr: (count(up{job="node-exporter"}) or vector(0)) < count(kube_node_info)
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Some Kubernetes nodes have no node exporter target
+            description: Compare service discovery against the node inventory; a missing target has no up series.
+            runbook_url: docs/runbooks/observability-node-exporter.md
+        - alert: VelaAPISIXMetricsRedundancyReduced
+          expr: (sum(up{job="apisix-metrics"}) or vector(0)) < 2
+          for: 10m
+          labels: {severity: page}
+          annotations:
+            summary: Fewer than two APISIX metrics endpoints are healthy
+            description: Check both CPU management gateways, including targets removed from service discovery.
+            runbook_url: docs/runbooks/observability-gateway.md
+        - alert: VelaLonghornVolumeDegraded
+          expr: longhorn_volume_robustness{state=~"degraded|faulted"} == 1
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: Longhorn volume durability is reduced
+            description: Inspect the affected volume and its replica rebuild status before any node maintenance.
+            runbook_url: docs/runbooks/observability-storage.md
+        - alert: VelaLonghornReplicaPolicyViolated
+          expr: |
+            (kube_customresource_longhorn_volume_replicas < 2)
+            unless on (namespace, persistentvolumeclaim)
+            kube_persistentvolumeclaim_info{
+              namespace="vela-system", storageclass="longhorn-wffc",
+              persistentvolumeclaim=~"vela-control-.*-artifact-validation"
+            }
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: Persistent volume is configured with fewer than two copies
+            description: Restore the accepted replica policy; healthy volume status alone does not prove redundancy. Only disposable control artifact-validation claims are exempt.
+            runbook_url: docs/runbooks/observability-storage.md
+        - alert: VelaLonghornReplicaPolicyMetricsMissing
+          expr: |
+            absent(kube_customresource_longhorn_volume_replicas)
+            or
+            ((count(kube_customresource_longhorn_volume_replicas) or vector(0))
+              < count(count by (volume) (longhorn_volume_capacity_bytes)))
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Longhorn replica policy coverage is incomplete
+            description: Inspect the kube-state-metrics custom-resource collector and its read-only permissions.
+            runbook_url: docs/runbooks/observability-storage.md
+        - alert: VelaNodeLocalMetricsUnavailable
+          expr: up{job="node-local-metrics"} == 0 or absent(up{job="node-local-metrics"})
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Authenticated node metrics relay is unavailable
+            description: Inspect the collector, TLS certificate, and proxy authorization on the affected node.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaKubeProxyMetricsMissing
+          expr: |
+            (up{job="kube-proxy"} == 0)
+            or (kube_node_info unless on (node) up{job="kube-proxy"})
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: A node has no healthy kube-proxy metrics
+            description: Check node reachability and the loopback metrics collector; a missing relay must not silently remove coverage.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaSchedulerMetricsIncomplete
+          expr: (sum(up{job="kube-scheduler"}) or vector(0)) < 3
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Fewer than three scheduler metrics targets are healthy
+            description: All three accepted control nodes must report their local scheduler metrics.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaControllerManagerMetricsIncomplete
+          expr: (sum(up{job="kube-controller-manager"}) or vector(0)) < 3
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Fewer than three controller-manager metrics targets are healthy
+            description: All three accepted control nodes must report their local controller-manager metrics.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaEtcdMetricsIncomplete
+          expr: (sum(up{job="etcd"}) or vector(0)) < 3
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: Fewer than three etcd metrics targets are healthy
+            description: Check the control-node metrics relay and etcd member health before maintenance.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaEtcdLeaderMissing
+          expr: etcd_server_has_leader{job="etcd"} == 0
+          for: 1m
+          labels: {severity: page}
+          annotations:
+            summary: An etcd member cannot see a leader
+            description: Check member connectivity and quorum; do not restart additional control nodes.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaEtcdDiskLatencyHigh
+          expr: histogram_quantile(0.99, sum by (instance, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{job="etcd"}[5m]))) > 0.25
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Etcd WAL fsync latency exceeds 250 ms
+            description: Inspect control-node disk contention and storage latency before increasing workloads.
+            runbook_url: docs/runbooks/observability-control-plane.md
+        - alert: VelaOTLPInternalMetricsIncomplete
+          expr: (sum(up{job="otel-collector",endpoint="internal"}) or vector(0)) < 2
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Collector internal telemetry coverage is reduced
+            description: Check the internal metrics endpoint on both CPU-node collectors.
+            runbook_url: docs/runbooks/observability-traces.md
+        - alert: VelaOTLPSpanExportFailing
+          expr: increase(otelcol_exporter_send_failed_spans_total{job="otel-collector"}[5m]) > 0
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: OpenTelemetry span export is failing
+            description: Inspect Tempo reachability and exporter queues; an up metrics endpoint does not prove trace delivery.
+            runbook_url: docs/runbooks/observability-traces.md
+        - alert: VelaOTLPSpansRefused
+          expr: increase(otelcol_receiver_refused_spans_total{job="otel-collector"}[5m]) > 0
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: OpenTelemetry receiver is refusing spans
+            description: Check collector memory pressure and ingestion capacity; refused spans require upstream retry or are lost.
+            runbook_url: docs/runbooks/observability-traces.md
+        - alert: VelaLogCollectorMetricsMissing
+          expr: kube_node_info unless on (node) (up{job="alloy"} == 1)
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: A node has no healthy log collector metrics
+            description: Inspect the Alloy Pod and its authenticated metrics proxy on the affected node.
+            runbook_url: docs/runbooks/observability-logs.md
+        - alert: VelaLogEntriesDropped
+          expr: increase(loki_write_dropped_entries_total{job="alloy"}[5m]) > 0
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Alloy is dropping logs after delivery retries
+            description: Inspect Loki ingestion errors and node collector capacity; these entries were not retained by Loki.
+            runbook_url: docs/runbooks/observability-logs.md
+        - alert: VelaLogDeliveryRetrying
+          expr: increase(loki_write_batch_retries_total{job="alloy"}[5m]) > 0
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Alloy is repeatedly retrying log delivery
+            description: Check Loki readiness, ingestion limits, and network connectivity before data is dropped.
+            runbook_url: docs/runbooks/observability-logs.md

@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels: {app.kubernetes.io/part-of: vela}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: alloy}
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, nodes, namespaces]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: alloy}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: alloy}
+subjects: [{kind: ServiceAccount, name: alloy, namespace: monitoring}]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: alloy, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: alloy}}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # A cordoned or physically unreachable node must not block log collector
+      # updates on the rest of the fleet.
+      maxUnavailable: 10
+  template:
+    metadata: {labels: {app.kubernetes.io/name: alloy, app.kubernetes.io/part-of: vela}}
+    spec:
+      serviceAccountName: alloy
+      securityContext: {fsGroup: 65532}
+      tolerations: [{operator: Exists}]
+      containers:
+        - name: alloy
+          image: 10.1.201.70:5000/grafana/alloy:v1.10.2
+          args: [run, /etc/alloy/config.alloy, --storage.path=/var/lib/alloy]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef: {fieldPath: spec.nodeName}
+          securityContext: {runAsUser: 0}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          volumeMounts:
+            - {name: config, mountPath: /etc/alloy}
+            - {name: varlib, mountPath: /var/lib/alloy}
+        - name: auth-proxy
+          image: 10.1.201.70:5003/brancz/kube-rbac-proxy:v0.20.0
+          args:
+            - --secure-listen-address=0.0.0.0:19105
+            - --upstream=http://127.0.0.1:12345/
+            - --allow-paths=/metrics
+            - --tls-cert-file=/tls/tls.crt
+            - --tls-private-key-file=/tls/tls.key
+            - --tls-min-version=VersionTLS12
+          ports: [{name: https-metrics, containerPort: 19105}]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          volumeMounts: [{name: metrics-tls, mountPath: /tls, readOnly: true}]
+      volumes:
+        - {name: config, configMap: {name: alloy-config}}
+        - {name: varlib, hostPath: {path: /var/lib/alloy, type: DirectoryOrCreate}}
+        - name: metrics-tls
+          secret: {secretName: node-metrics-server-tls, defaultMode: 288}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: vela-alloy-metrics-auth}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: system:auth-delegator}
+subjects: [{kind: ServiceAccount, name: alloy, namespace: monitoring}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: alloy}}
+  scrapeClass: rke2-node-metrics
+  podMetricsEndpoints:
+    - port: https-metrics
+      scheme: https
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 15s
+      tlsConfig:
+        ca:
+          secret: {name: node-metrics-server-tls, key: ca.crt}
+        serverName: vela-node-metrics
+      relabelings:
+        - {targetLabel: job, replacement: alloy}
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node

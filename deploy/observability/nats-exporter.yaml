@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats-prometheus-exporter
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: nats-prometheus-exporter, app.kubernetes.io/part-of: vela, app.kubernetes.io/component: messaging-observability}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/name: nats-prometheus-exporter}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: nats-prometheus-exporter, app.kubernetes.io/part-of: vela}
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: {vela.ai/management: "true", vela.ai/control-plane-tier: cpu}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels: {app.kubernetes.io/name: nats-prometheus-exporter}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: nats-0
+          image: docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145
+          imagePullPolicy: IfNotPresent
+          args: [-varz, -connz, -routez, -jsz, all, -port, "7777", "http://nats-0.nats.vela-system.svc.cluster.local:8222"]
+          ports: [{name: nats-0, containerPort: 7777}]
+          readinessProbe: {tcpSocket: {port: nats-0}, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: nats-0}, periodSeconds: 30}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+        - name: nats-1
+          image: docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145
+          imagePullPolicy: IfNotPresent
+          args: [-varz, -connz, -routez, -jsz, all, -port, "7778", "http://nats-1.nats.vela-system.svc.cluster.local:8222"]
+          ports: [{name: nats-1, containerPort: 7778}]
+          readinessProbe: {tcpSocket: {port: nats-1}, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: nats-1}, periodSeconds: 30}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+        - name: nats-2
+          image: docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145
+          imagePullPolicy: IfNotPresent
+          args: [-varz, -connz, -routez, -jsz, all, -port, "7779", "http://nats-2.nats.vela-system.svc.cluster.local:8222"]
+          ports: [{name: nats-2, containerPort: 7779}]
+          readinessProbe: {tcpSocket: {port: nats-2}, periodSeconds: 10}
+          livenessProbe: {tcpSocket: {port: nats-2}, periodSeconds: 30}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-prometheus-exporter
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: nats-prometheus-exporter, app.kubernetes.io/part-of: vela, app.kubernetes.io/component: messaging-observability}
+spec:
+  selector: {app.kubernetes.io/name: nats-prometheus-exporter}
+  ports:
+    - {name: nats-0, port: 7777, targetPort: nats-0}
+    - {name: nats-1, port: 7778, targetPort: nats-1}
+    - {name: nats-2, port: 7779, targetPort: nats-2}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nats-prometheus-exporter
+  namespace: monitoring
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: messaging-observability, release: monitoring}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: nats-prometheus-exporter}
+  endpoints:
+    - port: nats-0
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        - targetLabel: nats_member
+          replacement: nats-0
+    - port: nats-1
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        - targetLabel: nats_member
+          replacement: nats-1
+    - port: nats-2
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      relabelings:
+        - targetLabel: nats_member
+          replacement: nats-2

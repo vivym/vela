@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: apisix
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: gateway-observability
+spec:
+  namespaceSelector:
+    matchNames: [apisix]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: apisix-metrics
+  endpoints:
+    - port: metrics
+      path: /apisix/prometheus/metrics
+      interval: 15s
+      scrapeTimeout: 5s

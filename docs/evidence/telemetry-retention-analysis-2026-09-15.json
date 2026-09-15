@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-14T21:08:13.590914+00:00",
+  "scope": "read-only retention/capacity observations; projections are not mature retention proof",
+  "prometheus": {
+    "flags": {
+      "storage.agent.retention.max-time": "4h",
+      "storage.agent.retention.min-time": "5m",
+      "storage.tsdb.path": "/prometheus",
+      "storage.tsdb.retention.size": "40GiB",
+      "storage.tsdb.retention.time": "15d"
+    },
+    "blocks": [
+      {
+        "id": "01M2E66S84BTCTAE5VBY75WQGY",
+        "hours": 0.8459305555555555,
+        "level": 1,
+        "allocated_bytes": 148316160,
+        "GiB_per_day": 3.9189085793710086,
+        "GiB_for_15_days": 58.78362869056513,
+        "days_under_40GiB": 10.206923481338283
+      },
+      {
+        "id": "01M2GDV0R86H4CR48VXSCJ09VB",
+        "hours": 17.999997222222223,
+        "level": 3,
+        "allocated_bytes": 2412548096,
+        "GiB_per_day": 2.9958144678509018,
+        "GiB_for_15_days": 44.93721701776353,
+        "days_under_40GiB": 13.35196168829997
+      },
+      {
+        "id": "01M2GVHHRFVZ6XZ4XFPQDE9VZE",
+        "hours": 6.0,
+        "level": 2,
+        "allocated_bytes": 967503872,
+        "GiB_per_day": 3.6042327880859375,
+        "GiB_for_15_days": 54.06349182128906,
+        "days_under_40GiB": 11.098062292819433
+      },
+      {
+        "id": "01M2GVGPJ92TNP9PC1995TTRSM",
+        "hours": 1.9999975,
+        "level": 1,
+        "allocated_bytes": 383418368,
+        "GiB_per_day": 4.28503953598692,
+        "GiB_for_15_days": 64.2755930398038,
+        "days_under_40GiB": 9.334803019684927
+      }
+    ],
+    "oldest_age_hours": 27.93707083331214,
+    "block_bytes": 3911667993.0,
+    "head_series": 791099.0,
+    "samples_per_second": 28536.84257703081,
+    "wal_allocated_bytes": 768651264,
+    "head_allocated_bytes": 166481920
+  },
+  "loki": {
+    "oldest_query_age_hours": 14.822403961960276,
+    "compressed_chunk_GiB_for_7_days_at_6h_rate": 0.36031155617744437
+  },
+  "limitations": [
+    "Prometheus block bytes vary with compaction, series churn and workload; head/WAL/additional growth excluded from projections",
+    "Loki compressed flush throughput excludes index/WAL and long-lived unflushed chunks; six-hour interval is not steady production",
+    "Tempo traffic is dominated by finite synthetic validation; no full 48-hour business retention evidence",
+    "No workload, claim, disk, retention or sampling configuration was changed"
+  ]
+}

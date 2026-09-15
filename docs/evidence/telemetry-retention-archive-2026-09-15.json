@@ -1,0 +1,79 @@
+{
+  "at": "2026-09-14T21:12:46.929579+00:00",
+  "remote_archive": "/opt/vela-cluster/telemetry-retention-20260915/audit/source.tar.gz",
+  "passed": true,
+  "files": [
+    {
+      "path": "workspace/docs/telemetry-retention-capacity-2026-09-15.md",
+      "sha256": "e93627e18dd79040461e7e007803cb7818d0b2de88104a423b7dfd74e9620767",
+      "bytes": 5053
+    },
+    {
+      "path": "workspace/docs/cluster-production-readiness-2026-09-14.md",
+      "sha256": "4ee44a6e569d1ba1f636299f1ab8258282e0eef025e4ee60dfb070e672a577ba",
+      "bytes": 19901
+    },
+    {
+      "path": "workspace/docs/evidence/cluster-readiness-after-nats-observability-2026-09-15.json",
+      "sha256": "b604b870f45b723bf419ae9c85730063be0ad2d93e9efc5db50e8e3e53eb1cf1",
+      "bytes": 22540
+    },
+    {
+      "path": "workspace/docs/runbooks/observability-logs.md",
+      "sha256": "c95745303d2c324ee04c078d34c8e512409694ee13fa8d2f7ff408a78c23e15e",
+      "bytes": 2542
+    },
+    {
+      "path": "workspace/docs/runbooks/observability-traces.md",
+      "sha256": "7a57215165ca3493b3f36342a505a6832a3f1e79505782ffd35c035cb70aa6f1",
+      "bytes": 4545
+    },
+    {
+      "path": "workspace/deploy/observability/README.md",
+      "sha256": "ad559da95d282efe92c99d399e670c1ab414e4d15ae459a9e33c2ae1219a4469",
+      "bytes": 7076
+    },
+    {
+      "path": "workspace/hack/collect-cluster-readiness.py",
+      "sha256": "af3c2972a1fd7481e08803f65dd14a243a1fff045f467cfce186aae14f3ae7cf",
+      "bytes": 7402
+    },
+    {
+      "path": "workspace/docs/evidence/telemetry-retention-analysis-2026-09-15.json",
+      "sha256": "f2dfc03b5da7a27d43dc988aae5430cef069171493ee0f0c8af8932b0c22ec6d",
+      "bytes": 2425
+    },
+    {
+      "path": "workspace/docs/evidence/telemetry-retention-metadata-2026-09-15.json",
+      "sha256": "e3be15031baf3ae9ae5e470431dcc014c319a14763514bd4a84c19b0ceaf2f01",
+      "bytes": 15263
+    },
+    {
+      "path": "workspace/docs/evidence/telemetry-retention-rates-2026-09-15.json",
+      "sha256": "a182c1e8d02679933b805a4271ff743317b6dcc36bc0701354a15337cd38e79a",
+      "bytes": 19087
+    },
+    {
+      "path": "workspace/docs/evidence/telemetry-retention-preflight-2026-09-15.json",
+      "sha256": "0444b484aacd5b701f5c24402b25973aabe2de8378fdcdca14faf851556b8ebd",
+      "bytes": 31398
+    },
+    {
+      "path": "executed/preflight.py",
+      "sha256": "34f1807aaa1106f4c97616f23a7152f69c4bf44cecdec1b337b0a8b2be775b5a",
+      "bytes": 2635
+    },
+    {
+      "path": "executed/metadata.py",
+      "sha256": "d870f3f24dbaf19defede696c3ddfd17a3d53007a82510412dba4a947f9faf49",
+      "bytes": 2972
+    },
+    {
+      "path": "executed/rates.py",
+      "sha256": "880882ea35cbfbadcfec0b63c7432fe7ede9960b80f2d65dda0fa90d8aca1470",
+      "bytes": 2246
+    }
+  ],
+  "sha256": "b0de5938faf0b76110ffd2bf73c2d2fcbb84a9033718d479755577361383e09d",
+  "bytes": 35187
+}

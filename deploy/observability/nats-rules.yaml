@@ -1,0 +1,77 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-nats-rules
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  groups:
+    - name: vela.nats
+      interval: 30s
+      rules:
+        - record: vela:nats_member_max_storage_bytes
+          expr: min by (nats_member) (jetstream_server_max_storage{job="nats-prometheus-exporter",nats_member=~"nats-[0-2]"})
+        - alert: VelaNATSMemberCoverageIncomplete
+          expr: (count(vela:nats_member_max_storage_bytes) or vector(0)) != 3
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: NATS telemetry does not cover all three members
+            description: Confirm the fixed per-member endpoints and JetStream responses. Exporter HTTP success alone is insufficient.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSExporterRedundancyReduced
+          expr: count by (nats_member) (up{job="nats-prometheus-exporter",nats_member=~"nats-[0-2]"} == 1) < 2
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: A NATS member has fewer than two working exporter targets
+            description: Restore the exporter on the unavailable CPU management node; check member coverage separately.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSFileQuotaBelowContract
+          expr: vela:nats_member_max_storage_bytes < 68719476736
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: A NATS server cannot reserve the 64GiB business event stream
+            description: Resolve PVC and physical capacity before bootstrap. Keep the release stream contract and existing data intact.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSEventStreamMissing
+          expr: absent(jetstream_stream_total_bytes{job="nats-prometheus-exporter",stream_name="VELA_EVENTS"})
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: The VELA_EVENTS business stream is absent or unobservable
+            description: Outbox publication requires the release-owned stream. Check member telemetry, capacity and the exact bootstrap contract.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSEventStreamReplicaCoverageIncomplete
+          expr: count(count by (nats_member) (jetstream_stream_total_bytes{job="nats-prometheus-exporter",stream_name="VELA_EVENTS",nats_member=~"nats-[0-2]"})) < 3
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: The business stream is not observed on all three NATS members
+            description: Inspect replica currency before further maintenance; two exporters of one member count as one replica.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSSchedulerConsumerMissing
+          expr: absent(jetstream_consumer_num_pending{job="nats-prometheus-exporter",stream_name="VELA_EVENTS",consumer_name="VELA_SCHEDULER"})
+          for: 5m
+          labels: {severity: page}
+          annotations:
+            summary: The VELA_SCHEDULER durable consumer is absent or unobservable
+            description: Check the release-owned consumer and Scheduler identity; a running Control Pod does not prove event wakeup delivery.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSMetadataLeaderDisagreement
+          expr: count(count by (meta_leader) (jetstream_server_total_streams{job="nats-prometheus-exporter",meta_leader!=""})) > 1
+          for: 2m
+          labels: {severity: page}
+          annotations:
+            summary: NATS members disagree on the metadata leader
+            description: Pause member maintenance and inspect routing, quorum and lag.
+            runbook_url: docs/runbooks/observability-messaging.md
+        - alert: VelaNATSSchedulerBacklog
+          expr: max by (stream_name,consumer_name) (jetstream_consumer_num_pending{job="nats-prometheus-exporter",stream_name="VELA_EVENTS",consumer_name="VELA_SCHEDULER"}) > 1000
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Scheduler event backlog remains above 1000 messages
+            description: Inspect Scheduler authorization, processing errors and acknowledgements; do not purge the stream to clear the alert.
+            runbook_url: docs/runbooks/observability-messaging.md

@@ -1,0 +1,418 @@
+{
+  "uid": "vela-nats",
+  "title": "Vela · NATS and Event Delivery",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "vela",
+    "nats"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "description": "Three fixed NATS members, observed independently from both CPU nodes. 64 GiB is the release event-stream contract. Missing business stream or consumer is not healthy; stream presence does not prove exact configuration or Outbox replay.",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Observed NATS members",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(vela:nats_member_max_storage_bytes) or vector(0)",
+          "instant": true,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Working exporters per member",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count by(nats_member)(up{job=\"nats-prometheus-exporter\"} == 1)",
+          "instant": true,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Server file quotas",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "vela:nats_member_max_storage_bytes",
+          "instant": true,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 68719476736
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Business stream presence",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by(nats_member)(jetstream_stream_total_bytes{job=\"nats-prometheus-exporter\",stream_name=\"VELA_EVENTS\"})) or vector(0)",
+          "instant": true,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Scheduler consumer presence",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by(consumer_name)(jetstream_consumer_num_pending{job=\"nats-prometheus-exporter\",stream_name=\"VELA_EVENTS\",consumer_name=\"VELA_SCHEDULER\"})) or vector(0)",
+          "instant": true,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Business event storage",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by(nats_member)(jetstream_stream_total_bytes{job=\"nats-prometheus-exporter\",stream_name=\"VELA_EVENTS\"})",
+          "instant": false,
+          "legendFormat": "{{nats_member}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Scheduler pending and acknowledgements",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by(nats_member)(jetstream_consumer_num_pending{job=\"nats-prometheus-exporter\",stream_name=\"VELA_EVENTS\",consumer_name=\"VELA_SCHEDULER\"})",
+          "instant": false,
+          "legendFormat": "{{nats_member}}"
+        },
+        {
+          "refId": "B",
+          "expr": "max by(nats_member)(jetstream_consumer_num_ack_pending{job=\"nats-prometheus-exporter\",stream_name=\"VELA_EVENTS\",consumer_name=\"VELA_SCHEDULER\"})",
+          "legendFormat": "{{nats_member}} ack pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "NATS active alerts",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "vela-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertstate=\"firing\",alertname=~\"VelaNATS.*\"}",
+          "instant": true,
+          "legendFormat": "{{nats_member}}",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

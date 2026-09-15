@@ -1,0 +1,8 @@
+{
+  "at": "2026-09-14T22:12:27.652954+00:00",
+  "passed": true,
+  "files_verified": 25,
+  "sha256": "6da5671be0948297f4a78d78bcfd4223bb06291d5f7eb6d0651a570ddc6de8eb",
+  "archive": "/opt/vela-cluster/disk-pressure-20260915/audit/source.tar.gz",
+  "scope": "Credential-free operational sources, rules, fixtures and evidence; pending data reclamation has not run"
+}

@@ -1,0 +1,24 @@
+# Additive metrics access alongside the Longhorn chart's manager, webhook,
+# recovery-backend, instance-manager and backing-image policies. This is not
+# a replacement for those policies; install the chart's networkPolicy first.
+# The live RKE2 Pod CIDR is 10.42.0.0/16.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: longhorn-allow-prometheus-metrics
+  namespace: longhorn-system
+  labels:
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: observability
+spec:
+  podSelector:
+    matchLabels:
+      app: longhorn-manager
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.42.0.0/16
+      ports:
+        - protocol: TCP
+          port: 9500

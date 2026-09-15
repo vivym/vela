@@ -1,0 +1,112 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: longhorn-manager
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: storage-observability
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [longhorn-system]
+  selector:
+    matchLabels:
+      app: longhorn-manager
+  endpoints:
+    - port: manager
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cnpg-postgres
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: database-observability
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [vela-system]
+  selector:
+    matchLabels:
+      cnpg.io/cluster: vela-postgres
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 5s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: vela
+    app.kubernetes.io/component: object-store-observability
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [object-store]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  endpoints:
+    - port: api
+      path: /minio/v2/metrics/cluster
+      params:
+        public: ["true"]
+      interval: 30s
+      scrapeTimeout: 5s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-quorum
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  namespaceSelector:
+    matchNames: [object-store]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: minio
+  endpoints:
+    # v2 cluster metrics include slow peer inventory RPCs. Keep quorum on the
+    # narrow storage-layer collector so a peer timeout cannot hide this signal.
+    - port: api
+      path: /minio/metrics/v3/cluster/erasure-set
+      interval: 15s
+      scrapeTimeout: 5s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_name]
+          regex: minio
+          action: keep
+        - targetLabel: job
+          replacement: minio-quorum
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: loki}}
+  endpoints: [{port: http, path: /metrics, interval: 30s}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tempo
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: tempo}}
+  endpoints: [{port: http, path: /metrics, interval: 30s}]

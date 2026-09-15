@@ -1,17 +1,78 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: vela-observability
+# Preserve explicit resource namespaces (including longhorn-system).
+# A global transformer silently relocates the Longhorn metrics policy.
 resources:
   - pod-monitor.yaml
+  - infrastructure-monitors.yaml
+  - infrastructure-network-policies.yaml
+  - nats-exporter.yaml
+  - nats-rules.yaml
+  - apisix-observability.yaml
+  - grafana-datasources.yaml
+  - loki.yaml
+  - tempo.yaml
+  - alloy.yaml
+  - otel-collector.yaml
+  - prometheus-rule.yaml
+  - infrastructure-rules.yaml
+  - legacy-hardware-federation.yaml
+  - node-local-metrics.yaml
+  - gateway-certificates.yaml
+  - registry-probes.yaml
 configMapGenerator:
+  - name: vela-nats-dashboard
+    namespace: monitoring
+    files:
+      - dashboards/nats.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+  - name: vela-registry-dashboard
+    namespace: monitoring
+    files:
+      - dashboards/registry.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+  - name: vela-control-telemetry-dashboard
+    namespace: monitoring
+    files:
+      - dashboards/control-telemetry.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+  - name: alloy-config
+    namespace: monitoring
+    files:
+      - config.alloy=alloy-config.alloy
+  - name: vela-marslab-gpu-dashboards
+    namespace: monitoring
+    files:
+      - dashboards/marslab-gpu-overview.json
+      - dashboards/marslab-gpu-detail.json
+      - dashboards/ipmi-hardware.json
+    options:
+      labels:
+        grafana_dashboard: "1"
   - name: vela-slo-alert-rules
+    namespace: monitoring
     files:
       - rules.yaml
       - rule-tests.yaml
   - name: vela-slo-dashboard
+    namespace: monitoring
     files:
       - dashboard.json
+  - name: vela-observability-dashboard
+    namespace: monitoring
+    files:
+      - observability-dashboard.json
+    options:
+      labels:
+        grafana_dashboard: "1"
   - name: vela-slo-contract
+    namespace: monitoring
     files:
       - observability-contract.json
 generatorOptions:

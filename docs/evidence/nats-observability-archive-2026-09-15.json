@@ -1,0 +1,129 @@
+{
+  "at": "2026-09-14T21:05:28.411234+00:00",
+  "remote_archive": "/opt/vela-cluster/nats-capacity-20260915/audit/source.tar.gz",
+  "passed": true,
+  "files": [
+    {
+      "path": "workspace/deploy/observability/nats-exporter.yaml",
+      "sha256": "18d0a3b8f9ed1cace9273055a7d7cb7a66c489df791968f24ea075ecb27c617a",
+      "bytes": 4839
+    },
+    {
+      "path": "workspace/deploy/observability/nats-rules.yaml",
+      "sha256": "5be164c9da0c9521d78b3841cfa5f956fb3d931d5ca53856950acabae1879f94",
+      "bytes": 4607
+    },
+    {
+      "path": "workspace/deploy/observability/dashboards/nats.json",
+      "sha256": "23e8372f5fc177e8a3620af057961d0423925f15ac082392f6d84e3ff8eee0ce",
+      "bytes": 9771
+    },
+    {
+      "path": "workspace/deploy/observability/kustomization.yaml",
+      "sha256": "12b5ffaf4f91b00d4ab9da09505208064270becaec8f62e8c2fa8853c34c0c23",
+      "bytes": 2143
+    },
+    {
+      "path": "workspace/deploy/observability/README.md",
+      "sha256": "70c309955d414e305c441561b06f9dd0318fc92ebbbd0cdcb87172508bb6c45f",
+      "bytes": 6674
+    },
+    {
+      "path": "workspace/hack/test-nats-rules.py",
+      "sha256": "ac10e86cbdc4250e43ba3a8e8563d31e8104b2247bfc8e92c0dec26d79a597c5",
+      "bytes": 4702
+    },
+    {
+      "path": "workspace/docs/nats-capacity-and-observability-2026-09-15.md",
+      "sha256": "7eacd0cbc16a0d095e57cab84d4cfaf44c476e63743028fcf63e684a230645db",
+      "bytes": 7295
+    },
+    {
+      "path": "workspace/docs/runbooks/observability-messaging.md",
+      "sha256": "4b9bbf2196d2b4d57bcca631a19cf213a62b3b2d4bc13c31cd2f59e37a7e3932",
+      "bytes": 3443
+    },
+    {
+      "path": "workspace/docs/cluster-production-readiness-2026-09-14.md",
+      "sha256": "94ed64d6a2645e039d8f20f5210b085cb8855ae197064effaac8e1672c78c1d3",
+      "bytes": 19263
+    },
+    {
+      "path": "workspace/docs/evidence/nats-observability-postcheck-2026-09-15.json",
+      "sha256": "f6c09102cdc5d9f0519b8e8f06c41bdc42d44d48fd82f14068edb266e531f6f4",
+      "bytes": 13769
+    },
+    {
+      "path": "workspace/docs/evidence/nats-observability-rule-tests-2026-09-15.json",
+      "sha256": "20bce3ff865778c9b6bc30a46af0f8b3ee6d98ec5b8ae62e7e10e78c60480001",
+      "bytes": 4339
+    },
+    {
+      "path": "workspace/docs/evidence/nats-capacity-replicas-2026-09-15.json",
+      "sha256": "3e6208df8c3a9127e0164067564a797fb94ae61344edabb2663057a3bfa0bc91",
+      "bytes": 21531
+    },
+    {
+      "path": "workspace/docs/evidence/nats-observability-legacy-repair-2026-09-15.json",
+      "sha256": "b8641343e81372cde0eff0dc9bd8556d1fb1ec2a701ae07282331d9f5691704a",
+      "bytes": 346
+    },
+    {
+      "path": "workspace/docs/evidence/nats-observability-prepare-2026-09-15.json",
+      "sha256": "98f88a24e3efe0abbf2bcf413cd8ea5442faf67303f899c4b2a7c75e2df68e27",
+      "bytes": 4600
+    },
+    {
+      "path": "workspace/docs/evidence/nats-observability-alerts-2026-09-15.json",
+      "sha256": "45374979cacbd9f71e1eb2ffa76fc0b61ed4ea30418ee8187a7c4c575f285785",
+      "bytes": 9064
+    },
+    {
+      "path": "workspace/docs/evidence/nats-capacity-host-filesystems-2026-09-15.json",
+      "sha256": "abf11fbeced0f34379917a78d9d2a1e264025c2778ff6c0bd66de24ae8584507",
+      "bytes": 29640
+    },
+    {
+      "path": "workspace/docs/evidence/nats-capacity-preflight-2026-09-15.json",
+      "sha256": "2ea8403de298fe029ccf29dd5076431282566dc47c171b2e5061c3fbe6aecb2d",
+      "bytes": 31158
+    },
+    {
+      "path": "executed/deploy-nats-observability.py",
+      "sha256": "4483f02d1ebcc1b95c9072dbbbcab393c2376445ba0c2379619a03d6c5702af9",
+      "bytes": 5944
+    },
+    {
+      "path": "executed/verify-nats-observability-final.py",
+      "sha256": "12a0704c17791165ee4b1b99ce023fa4436a5bfcb24ae44f7668376545ca9fbc",
+      "bytes": 7351
+    },
+    {
+      "path": "executed/run-nats-alert-tests.py",
+      "sha256": "210e12eb5e317c5de063635183a8a66abd1a603b67fa3091370a55634e48fd33",
+      "bytes": 3252
+    },
+    {
+      "path": "executed/run-nats-alert-tests-v2.py",
+      "sha256": "d009537b4483cc8ef8c91f683cdcccb53a9f547c5aff9885db0728b56f480a10",
+      "bytes": 3738
+    },
+    {
+      "path": "executed/run-nats-alert-tests-v3.py",
+      "sha256": "52b37ac78c4e8050ab3c7c1e8deef3b0bd9820aa2e6afcf05def758952ca861d",
+      "bytes": 4020
+    },
+    {
+      "path": "executed/generate-nats-observability.py",
+      "sha256": "35f06906067ef773614c1d8eecb85aa005264f9f0986a053b8054164e09c010b",
+      "bytes": 3180
+    },
+    {
+      "path": "executed/nats-exporter-jsz-v0.15.0.go",
+      "sha256": "95df235168da6566a09dac5bbcf143ff950d0b726bd09c480456377addcff385",
+      "bytes": 12853
+    }
+  ],
+  "sha256": "8a0581b3a914c40c22ed82354a87515dce38019ea42c5c43175db80dc2a49b11",
+  "bytes": 44735
+}

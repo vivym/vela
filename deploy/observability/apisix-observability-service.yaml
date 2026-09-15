@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apisix-metrics
+  namespace: apisix
+  labels:
+    app.kubernetes.io/name: apisix-metrics
+    app.kubernetes.io/part-of: vela
+spec:
+  selector:
+    app.kubernetes.io/instance: apisix
+    app.kubernetes.io/name: apisix
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091

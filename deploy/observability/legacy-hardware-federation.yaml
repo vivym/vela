@@ -1,0 +1,75 @@
+# Reuse existing, read-only hardware telemetry without extra BMC probes or
+# copying IPMI credentials. This temporary source depends on .70's Compose
+# Prometheus; do not retire that service until direct IPMI collection migrates.
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-hardware-federation
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: legacy-hardware-federation, app.kubernetes.io/part-of: vela}
+spec:
+  ports: [{name: http, port: 9090, targetPort: 9090}]
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: legacy-hardware-federation
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: vela
+# Endpoints is also mirrored to EndpointSlices by Kubernetes, supporting
+# either discovery role without changing the cluster-wide Prometheus setting.
+subsets:
+  - addresses: [{ip: 10.1.201.70}]
+    ports: [{name: http, protocol: TCP, port: 9090}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: legacy-hardware-federation
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: legacy-hardware-federation}}
+  endpoints:
+    - port: http
+      path: /federate
+      interval: 60s
+      scrapeTimeout: 15s
+      honorLabels: true
+      honorTimestamps: true
+      params:
+        match[]:
+          - '{job=~"ipmi(-.*)?",__name__=~"ipmi_.*|up"}'
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-hardware-federation-rules
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  groups:
+    - name: vela-hardware-federation
+      rules:
+        - alert: VelaHardwareFederationUnavailable
+          expr: up{job="legacy-hardware-federation"} == 0 or absent(up{job="legacy-hardware-federation"})
+          for: 5m
+          labels: {severity: warning}
+          annotations:
+            summary: Hardware telemetry federation is unavailable
+            description: Check the existing Compose Prometheus on 10.1.201.70 and its federation endpoint.
+        - alert: VelaIPMICollectionFailed
+          expr: ipmi_up{job=~"ipmi(-.*)?"} == 0 or up{job=~"ipmi(-.*)?"} == 0
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: A BMC telemetry collector is failing
+            description: Inspect the instance and collector labels; HTTP scrape success does not imply a successful BMC read.
+        - alert: VelaIPMITelemetryMissing
+          expr: absent(ipmi_up{job=~"ipmi(-.*)?"})
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: No BMC telemetry is reaching Prometheus
+            description: Check the upstream IPMI job and federation timestamps before relying on hardware dashboards.

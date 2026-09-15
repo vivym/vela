@@ -1,0 +1,614 @@
+{
+  "at": "2026-09-14T21:06:47.633041+00:00",
+  "prom_flags": {
+    "storage.agent.retention.max-time": "4h",
+    "storage.agent.retention.min-time": "5m",
+    "storage.tsdb.path": "/prometheus",
+    "storage.tsdb.retention.size": "40GiB",
+    "storage.tsdb.retention.time": "15d"
+  },
+  "prom_head": {
+    "numSeries": 792055,
+    "numLabelPairs": 23772,
+    "chunkCount": 1619111,
+    "minTime": 1789416000002,
+    "maxTime": 1789420007575
+  },
+  "series_by_metric": [
+    {
+      "name": "longhorn_rest_client_rate_limiter_latency_seconds_bucket",
+      "value": 43615
+    },
+    {
+      "name": "node_cpu_seconds_total",
+      "value": 28416
+    },
+    {
+      "name": "longhorn_rest_client_request_latency_seconds_bucket",
+      "value": 25289
+    },
+    {
+      "name": "kubernetes_feature_enabled",
+      "value": 25070
+    },
+    {
+      "name": "longhorn_workqueue_work_duration_seconds_bucket",
+      "value": 23320
+    },
+    {
+      "name": "longhorn_workqueue_queue_duration_seconds_bucket",
+      "value": 23320
+    },
+    {
+      "name": "node_cpu_scaling_governor",
+      "value": 20352
+    },
+    {
+      "name": "kubelet_runtime_operations_duration_seconds_bucket",
+      "value": 14430
+    },
+    {
+      "name": "apiserver_request_duration_seconds_bucket",
+      "value": 14390
+    },
+    {
+      "name": "apiserver_request_body_size_bytes_bucket",
+      "value": 13856
+    },
+    {
+      "name": "etcd_request_duration_seconds_bucket",
+      "value": 10710
+    },
+    {
+      "name": "prober_probe_duration_seconds_bucket",
+      "value": 9408
+    },
+    {
+      "name": "apiserver_request_sli_duration_seconds_bucket",
+      "value": 7608
+    },
+    {
+      "name": "apiserver_watch_list_duration_seconds_bucket",
+      "value": 7236
+    },
+    {
+      "name": "storage_operation_duration_seconds_bucket",
+      "value": 7162
+    }
+  ],
+  "scrape_intervals": [
+    {
+      "job": "alloy",
+      "interval": "30s",
+      "timeout": "15s",
+      "count": 54
+    },
+    {
+      "job": "apiserver",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 3
+    },
+    {
+      "job": "apisix-metrics",
+      "interval": "15s",
+      "timeout": "5s",
+      "count": 2
+    },
+    {
+      "job": "argocd-metrics",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 1
+    },
+    {
+      "job": "argocd-repo-server",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 2
+    },
+    {
+      "job": "argocd-server-metrics",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 2
+    },
+    {
+      "job": "coredns",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 14
+    },
+    {
+      "job": "kube-state-metrics",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 1
+    },
+    {
+      "job": "kubelet",
+      "interval": "10s",
+      "timeout": "10s",
+      "count": 54
+    },
+    {
+      "job": "kubelet",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 108
+    },
+    {
+      "job": "legacy-hardware-federation",
+      "interval": "1m",
+      "timeout": "15s",
+      "count": 1
+    },
+    {
+      "job": "loki",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 1
+    },
+    {
+      "job": "longhorn-backend",
+      "interval": "30s",
+      "timeout": "15s",
+      "count": 54
+    },
+    {
+      "job": "minio",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 6
+    },
+    {
+      "job": "minio-quorum",
+      "interval": "15s",
+      "timeout": "5s",
+      "count": 6
+    },
+    {
+      "job": "monitoring-grafana",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 1
+    },
+    {
+      "job": "monitoring-kube-prometheus-alertmanager",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 2
+    },
+    {
+      "job": "monitoring-kube-prometheus-operator",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 1
+    },
+    {
+      "job": "monitoring-kube-prometheus-prometheus",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 2
+    },
+    {
+      "job": "monitoring/cnpg-postgres",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 3
+    },
+    {
+      "job": "monitoring/vela-control",
+      "interval": "30s",
+      "timeout": "5s",
+      "count": 2
+    },
+    {
+      "job": "nats-prometheus-exporter",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 6
+    },
+    {
+      "job": "node-exporter",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 54
+    },
+    {
+      "job": "node-local-metrics",
+      "interval": "30s",
+      "timeout": "15s",
+      "count": 53
+    },
+    {
+      "job": "nvidia-smi",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 52
+    },
+    {
+      "job": "otel-collector",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 4
+    },
+    {
+      "job": "tempo",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 1
+    },
+    {
+      "job": "vela-cert-manager",
+      "interval": "30s",
+      "timeout": "10s",
+      "count": 2
+    },
+    {
+      "job": "vela-registry-anonymous",
+      "interval": "1m",
+      "timeout": "15s",
+      "count": 3
+    },
+    {
+      "job": "vela-registry-authenticated",
+      "interval": "1m",
+      "timeout": "15s",
+      "count": 3
+    },
+    {
+      "job": "vela-registry-control-manifest",
+      "interval": "1m",
+      "timeout": "15s",
+      "count": 3
+    },
+    {
+      "job": "vela-registry-prober",
+      "interval": "1m",
+      "timeout": "10s",
+      "count": 2
+    }
+  ],
+  "loki-config": {
+    "compactor": {
+      "working_directory": "/var/loki/compactor",
+      "retention_enabled": true,
+      "delete_request_store": "filesystem"
+    },
+    "limits_config": {
+      "retention_period": "168h",
+      "ingestion_rate_mb": 16,
+      "ingestion_burst_size_mb": 32,
+      "max_line_size": "256kb",
+      "max_line_size_truncate": true,
+      "max_query_length": "168h",
+      "max_query_parallelism": 8,
+      "reject_old_samples": true,
+      "reject_old_samples_max_age": "168h"
+    },
+    "ingester": {
+      "max_chunk_age": "24h"
+    },
+    "storage": null
+  },
+  "tempo-config": {
+    "compactor": {
+      "compaction": {
+        "block_retention": "48h"
+      }
+    },
+    "limits_config": null,
+    "ingester": {
+      "max_block_duration": "5m"
+    },
+    "storage": {
+      "trace": {
+        "backend": "local",
+        "wal": {
+          "path": "/var/tempo/wal"
+        },
+        "local": {
+          "path": "/var/tempo/blocks"
+        }
+      }
+    }
+  },
+  "storage_metadata": [
+    {
+      "app": "loki",
+      "pod": "loki-697bf5bb8c-jxrjw",
+      "uid": "3cc06bbb-5029-4505-9c36-b5b6e03d71bf",
+      "node": "llmpool01",
+      "started": "2026-09-14T05:00:10Z",
+      "image_id": "10.1.201.70:5000/grafana/loki@sha256:3165cecce301ce5b9b6e3530284b080934a05cd5cafac3d3d82edcb887b45ecd",
+      "directories": [
+        {
+          "name": "chunks",
+          "allocated_bytes": 406736896
+        },
+        {
+          "name": "compactor",
+          "allocated_bytes": 40960
+        },
+        {
+          "name": "lost+found",
+          "allocated_bytes": 16384
+        },
+        {
+          "name": "rules",
+          "allocated_bytes": 4096
+        },
+        {
+          "name": "tsdb-shipper-active",
+          "allocated_bytes": 102400
+        },
+        {
+          "name": "tsdb-shipper-cache",
+          "allocated_bytes": 614400
+        },
+        {
+          "name": "wal",
+          "allocated_bytes": 41091072
+        }
+      ],
+      "blocks": []
+    },
+    {
+      "app": "prometheus",
+      "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+      "uid": "45f261e5-f29d-4356-aa8f-c3e4dc0adc85",
+      "node": "llmpool01",
+      "started": "2026-09-13T23:23:31Z",
+      "image_id": "quay.io/prometheus/prometheus@sha256:50c707e96da5ade383cb1707790576480485e93de06aa60ad8802cb5f744bd0a",
+      "directories": [
+        {
+          "name": "01M2E66S84BTCTAE5VBY75WQGY",
+          "allocated_bytes": 148316160
+        },
+        {
+          "name": "01M2GDV0R86H4CR48VXSCJ09VB",
+          "allocated_bytes": 2412548096
+        },
+        {
+          "name": "01M2GVGPJ92TNP9PC1995TTRSM",
+          "allocated_bytes": 383418368
+        },
+        {
+          "name": "01M2GVHHRFVZ6XZ4XFPQDE9VZE",
+          "allocated_bytes": 967503872
+        },
+        {
+          "name": "chunks_head",
+          "allocated_bytes": 166481920
+        },
+        {
+          "name": "wal",
+          "allocated_bytes": 768651264
+        }
+      ],
+      "blocks": [
+        {
+          "ulid": "01M2GVGPJ92TNP9PC1995TTRSM",
+          "minTime": 1789408800009,
+          "maxTime": 1789416000000,
+          "stats": {
+            "numSamples": 206156958,
+            "numFloatSamples": 206156958,
+            "numSeries": 786572,
+            "numChunks": 1696448
+          },
+          "compaction": {
+            "level": 1,
+            "sources": [
+              "01M2GVGPJ92TNP9PC1995TTRSM"
+            ]
+          }
+        },
+        {
+          "ulid": "01M2GVHHRFVZ6XZ4XFPQDE9VZE",
+          "minTime": 1789387200000,
+          "maxTime": 1789408800000,
+          "stats": {
+            "numSamples": 608187641,
+            "numFloatSamples": 608187641,
+            "numSeries": 814802,
+            "numChunks": 5017932
+          },
+          "compaction": {
+            "level": 2,
+            "sources": [
+              "01M2G6XDT0RRFJ3QNKP05D2F28",
+              "01M2GDS51WHHE116TE5E4X1TZW",
+              "01M2GMMW9VJSTS3VJ5B6GNWXX6"
+            ],
+            "parents": [
+              {
+                "ulid": "01M2G6XDT0RRFJ3QNKP05D2F28",
+                "minTime": 1789387200000,
+                "maxTime": 1789394400000
+              },
+              {
+                "ulid": "01M2GDS51WHHE116TE5E4X1TZW",
+                "minTime": 1789394400006,
+                "maxTime": 1789401600000
+              },
+              {
+                "ulid": "01M2GMMW9VJSTS3VJ5B6GNWXX6",
+                "minTime": 1789401600006,
+                "maxTime": 1789408800000
+              }
+            ]
+          }
+        },
+        {
+          "ulid": "01M2E66S84BTCTAE5VBY75WQGY",
+          "minTime": 1789319354650,
+          "maxTime": 1789322400000,
+          "stats": {
+            "numSamples": 52142365,
+            "numFloatSamples": 52142365,
+            "numSeries": 479136,
+            "numChunks": 489605
+          },
+          "compaction": {
+            "level": 1,
+            "sources": [
+              "01M2E66S84BTCTAE5VBY75WQGY"
+            ]
+          }
+        },
+        {
+          "ulid": "01M2GDV0R86H4CR48VXSCJ09VB",
+          "minTime": 1789322400010,
+          "maxTime": 1789387200000,
+          "stats": {
+            "numSamples": 1421194493,
+            "numFloatSamples": 1421194493,
+            "numSeries": 1102943,
+            "numChunks": 12016843
+          },
+          "compaction": {
+            "level": 3,
+            "sources": [
+              "01M2E93Q942P9AJJZ65QY4K8XG",
+              "01M2EFZEX5EEMC58EZ64RTBKB4",
+              "01M2EPV659901Y98XEM5MRJVJ5",
+              "01M2EXPXD83WJB4PSEB3YFEF20",
+              "01M2F4K1BVCGM792BACNYB9MAW",
+              "01M2FBER73E7ZCYCQMS342XYHG",
+              "01M2FJAFF7QBGJ9RRWDPK6TQM0",
+              "01M2FS655TPVZ357ZYM200KSS5",
+              "01M2G01WG42837KQRPZ2X70DNB"
+            ],
+            "parents": [
+              {
+                "ulid": "01M2F4KQXBZ560QYE3DRD35Z8R",
+                "minTime": 1789322400010,
+                "maxTime": 1789344000000
+              },
+              {
+                "ulid": "01M2FS6ZYWPXZJD1FAMCT95KTY",
+                "minTime": 1789344000004,
+                "maxTime": 1789365600000
+              },
+              {
+                "ulid": "01M2GDSYZAKS58D78H01TVK5MY",
+                "minTime": 1789365600009,
+                "maxTime": 1789387200000
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "app": "tempo",
+      "pod": "tempo-67d44597fd-9c2qj",
+      "uid": "e955df8f-e439-462d-b966-b4c95b193323",
+      "node": "llmpool01",
+      "started": "2026-09-14T04:11:13Z",
+      "image_id": "10.1.201.70:5000/grafana/tempo@sha256:0ef775495967cd5d7a6b2e146b6ea695d624803c8db8349fb8ce4164f719f9b7",
+      "directories": [
+        {
+          "name": "blocks",
+          "allocated_bytes": 1949696
+        },
+        {
+          "name": "generator",
+          "allocated_bytes": 704512
+        },
+        {
+          "name": "lost+found",
+          "allocated_bytes": 16384
+        },
+        {
+          "name": "wal",
+          "allocated_bytes": 16384
+        }
+      ],
+      "blocks": [
+        {
+          "blockID": "6640110d-fd48-41ec-b49c-b22b9d60e639",
+          "startTime": "2026-09-14T17:53:57Z",
+          "endTime": "2026-09-14T17:58:48Z",
+          "totalObjects": 9,
+          "size": 29274,
+          "compactionLevel": 1
+        },
+        {
+          "blockID": "9d857bc4-21f6-46da-a909-db13865dbabc",
+          "startTime": "2026-09-14T20:27:06Z",
+          "endTime": "2026-09-14T20:28:30Z",
+          "totalObjects": 5,
+          "size": 28621,
+          "compactionLevel": 1
+        },
+        {
+          "blockID": "79e2b299-6b02-450c-bb1a-683967ec98cf",
+          "startTime": "2026-09-14T14:40:49Z",
+          "endTime": "2026-09-14T14:54:25Z",
+          "totalObjects": 3,
+          "size": 27452,
+          "compactionLevel": 1
+        },
+        {
+          "blockID": "91de96f3-3d80-497d-9d72-bb45ebf1ea1a",
+          "startTime": "2026-09-14T18:33:57Z",
+          "endTime": "2026-09-14T18:33:57Z",
+          "totalObjects": 3,
+          "size": 28326,
+          "compactionLevel": 0
+        },
+        {
+          "blockID": "6c5da849-82ae-4d71-b6f9-401c1696f292",
+          "startTime": "2026-09-14T17:35:11Z",
+          "endTime": "2026-09-14T17:50:02Z",
+          "totalObjects": 37,
+          "size": 35918,
+          "compactionLevel": 2
+        },
+        {
+          "blockID": "0a40310a-f26d-49e6-a3a6-1e689a66f545",
+          "startTime": "2026-09-14T06:55:11Z",
+          "endTime": "2026-09-14T06:55:11Z",
+          "totalObjects": 20,
+          "size": 30258,
+          "compactionLevel": 1
+        },
+        {
+          "blockID": "c1760ca5-e34d-4b54-84a1-71cb6dac5e86",
+          "startTime": "2026-09-14T12:12:29Z",
+          "endTime": "2026-09-14T12:41:00Z",
+          "totalObjects": 6,
+          "size": 28139,
+          "compactionLevel": 2
+        },
+        {
+          "blockID": "d3cf2508-ceb9-4cc3-9f92-1d9685485e8d",
+          "startTime": "2026-09-14T11:29:53Z",
+          "endTime": "2026-09-14T11:29:53Z",
+          "totalObjects": 1,
+          "size": 25690,
+          "compactionLevel": 0
+        },
+        {
+          "blockID": "dd9edf0e-9689-4f38-9c89-314f3845bf90",
+          "startTime": "2026-09-14T05:21:41Z",
+          "endTime": "2026-09-14T05:21:44Z",
+          "totalObjects": 100,
+          "size": 161461,
+          "compactionLevel": 0
+        },
+        {
+          "blockID": "ccf092cb-b29e-4c91-a356-446f0d2b7442",
+          "startTime": "2026-09-14T13:23:07Z",
+          "endTime": "2026-09-14T13:26:21Z",
+          "totalObjects": 34,
+          "size": 33477,
+          "compactionLevel": 1
+        }
+      ]
+    }
+  ]
+}

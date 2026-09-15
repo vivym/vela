@@ -1,0 +1,323 @@
+{
+  "at": "2026-09-14T20:58:49.572251+00:00",
+  "rules": [
+    {
+      "name": "vela:nats_member_max_storage_bytes",
+      "health": "ok",
+      "state": null,
+      "lastError": null,
+      "alerts": null
+    },
+    {
+      "name": "VelaNATSMemberCoverageIncomplete",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": null,
+      "alerts": []
+    },
+    {
+      "name": "VelaNATSExporterRedundancyReduced",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": null,
+      "alerts": []
+    },
+    {
+      "name": "VelaNATSFileQuotaBelowContract",
+      "health": "ok",
+      "state": "firing",
+      "lastError": null,
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "VelaNATSFileQuotaBelowContract",
+            "nats_member": "nats-1",
+            "severity": "page"
+          },
+          "annotations": {
+            "description": "Resolve PVC and physical capacity before bootstrap. Keep the release stream contract and existing data intact.",
+            "runbook_url": "docs/runbooks/observability-messaging.md",
+            "summary": "A NATS server cannot reserve the 64GiB business event stream"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T20:52:51.969108068Z",
+          "value": "3.9378487296e+10"
+        },
+        {
+          "labels": {
+            "alertname": "VelaNATSFileQuotaBelowContract",
+            "nats_member": "nats-2",
+            "severity": "page"
+          },
+          "annotations": {
+            "description": "Resolve PVC and physical capacity before bootstrap. Keep the release stream contract and existing data intact.",
+            "runbook_url": "docs/runbooks/observability-messaging.md",
+            "summary": "A NATS server cannot reserve the 64GiB business event stream"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T20:52:51.969108068Z",
+          "value": "3.9378487296e+10"
+        },
+        {
+          "labels": {
+            "alertname": "VelaNATSFileQuotaBelowContract",
+            "nats_member": "nats-0",
+            "severity": "page"
+          },
+          "annotations": {
+            "description": "Resolve PVC and physical capacity before bootstrap. Keep the release stream contract and existing data intact.",
+            "runbook_url": "docs/runbooks/observability-messaging.md",
+            "summary": "A NATS server cannot reserve the 64GiB business event stream"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T20:52:51.969108068Z",
+          "value": "3.9378487296e+10"
+        }
+      ]
+    },
+    {
+      "name": "VelaNATSEventStreamMissing",
+      "health": "ok",
+      "state": "firing",
+      "lastError": null,
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "VelaNATSEventStreamMissing",
+            "job": "nats-prometheus-exporter",
+            "severity": "page",
+            "stream_name": "VELA_EVENTS"
+          },
+          "annotations": {
+            "description": "Outbox publication requires the release-owned stream. Check member telemetry, capacity and the exact bootstrap contract.",
+            "runbook_url": "docs/runbooks/observability-messaging.md",
+            "summary": "The VELA_EVENTS business stream is absent or unobservable"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T20:52:51.969108068Z",
+          "value": "1e+00"
+        }
+      ]
+    },
+    {
+      "name": "VelaNATSEventStreamReplicaCoverageIncomplete",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": null,
+      "alerts": []
+    },
+    {
+      "name": "VelaNATSSchedulerConsumerMissing",
+      "health": "ok",
+      "state": "firing",
+      "lastError": null,
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "VelaNATSSchedulerConsumerMissing",
+            "consumer_name": "VELA_SCHEDULER",
+            "job": "nats-prometheus-exporter",
+            "severity": "page",
+            "stream_name": "VELA_EVENTS"
+          },
+          "annotations": {
+            "description": "Check the release-owned consumer and Scheduler identity; a running Control Pod does not prove event wakeup delivery.",
+            "runbook_url": "docs/runbooks/observability-messaging.md",
+            "summary": "The VELA_SCHEDULER durable consumer is absent or unobservable"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T20:52:51.969108068Z",
+          "value": "1e+00"
+        }
+      ]
+    },
+    {
+      "name": "VelaNATSMetadataLeaderDisagreement",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": null,
+      "alerts": []
+    },
+    {
+      "name": "VelaNATSSchedulerBacklog",
+      "health": "ok",
+      "state": "inactive",
+      "lastError": null,
+      "alerts": []
+    }
+  ],
+  "up": [
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.1.171:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.1.171:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.0.25:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.1.171:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.0.25:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.0.25:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419529.573,
+        "1"
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "metric": {
+        "__name__": "ALERTS",
+        "alertname": "VelaNATSFileQuotaBelowContract",
+        "alertstate": "firing",
+        "nats_member": "nats-1",
+        "severity": "page"
+      },
+      "value": [
+        1789419529.574,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "ALERTS",
+        "alertname": "VelaNATSFileQuotaBelowContract",
+        "alertstate": "firing",
+        "nats_member": "nats-2",
+        "severity": "page"
+      },
+      "value": [
+        1789419529.574,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "ALERTS",
+        "alertname": "VelaNATSFileQuotaBelowContract",
+        "alertstate": "firing",
+        "nats_member": "nats-0",
+        "severity": "page"
+      },
+      "value": [
+        1789419529.574,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "ALERTS",
+        "alertname": "VelaNATSEventStreamMissing",
+        "alertstate": "firing",
+        "job": "nats-prometheus-exporter",
+        "severity": "page",
+        "stream_name": "VELA_EVENTS"
+      },
+      "value": [
+        1789419529.574,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "ALERTS",
+        "alertname": "VelaNATSSchedulerConsumerMissing",
+        "alertstate": "firing",
+        "consumer_name": "VELA_SCHEDULER",
+        "job": "nats-prometheus-exporter",
+        "severity": "page",
+        "stream_name": "VELA_EVENTS"
+      },
+      "value": [
+        1789419529.574,
+        "1"
+      ]
+    }
+  ]
+}

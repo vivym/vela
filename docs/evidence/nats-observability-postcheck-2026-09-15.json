@@ -1,0 +1,483 @@
+{
+  "at": "2026-09-14T20:58:27.014720+00:00",
+  "scope": "NATS exporter coverage, business contract alerts and dashboard; no NATS workload/storage/data changes",
+  "checks": [
+    {
+      "name": "27 native Prometheus rule scenarios passed",
+      "passed": true
+    },
+    {
+      "name": "legacy container conflict repaired",
+      "passed": true
+    },
+    {
+      "name": "exactly three reviewed collector containers remain",
+      "passed": true
+    },
+    {
+      "name": "two exporter Pods on distinct CPU nodes",
+      "passed": true
+    },
+    {
+      "name": "six exporter containers Ready",
+      "passed": true
+    },
+    {
+      "name": "each fixed NATS member independently observed twice",
+      "passed": true
+    },
+    {
+      "name": "six current NATS targets discovered and healthy",
+      "passed": true
+    },
+    {
+      "name": "all six Prometheus targets up",
+      "passed": true
+    },
+    {
+      "name": "NATS Pod UIDs unchanged",
+      "passed": true
+    },
+    {
+      "name": "Longhorn node allocation policies unchanged",
+      "passed": true
+    },
+    {
+      "name": "NATS PVC requests unchanged",
+      "passed": true
+    },
+    {
+      "name": "all nine NATS rules healthy",
+      "passed": true
+    },
+    {
+      "name": "authenticated Grafana gateway serves eight-panel NATS dashboard",
+      "passed": true
+    }
+  ],
+  "exporter_pods": [
+    {
+      "name": "nats-prometheus-exporter-6799c9dd54-96qjs",
+      "uid": "dd574754-0f8e-4810-8df7-dc608312269c",
+      "node": "llmpool02",
+      "images": [
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145",
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145",
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145"
+      ]
+    },
+    {
+      "name": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+      "uid": "01e2db36-8c3e-4db2-ac7c-9b22b7fb11c9",
+      "node": "llmpool01",
+      "images": [
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145",
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145",
+        "docker.io/natsio/prometheus-nats-exporter@sha256:1f6787754b8b083f271adea4bb699b9c9e21279c89d903f1710f7647c604f145"
+      ]
+    }
+  ],
+  "member_metrics": [
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.1.171:7778",
+        "is_meta_leader": "false",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "server_id": "http://nats-1.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-1",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.1.171:7779",
+        "is_meta_leader": "true",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "server_id": "http://nats-2.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-2",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.0.25:7778",
+        "is_meta_leader": "false",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "server_id": "http://nats-1.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-1",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.1.171:7777",
+        "is_meta_leader": "false",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "server_id": "http://nats-0.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-0",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.0.25:7779",
+        "is_meta_leader": "true",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "server_id": "http://nats-2.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-2",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "jetstream_server_max_storage",
+        "cluster": "VELA",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.0.25:7777",
+        "is_meta_leader": "false",
+        "job": "nats-prometheus-exporter",
+        "meta_leader": "nats-2",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "server_id": "http://nats-0.nats.vela-system.svc.cluster.local:8222",
+        "server_name": "nats-0",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.922,
+        "39378487296"
+      ]
+    }
+  ],
+  "active_targets": [
+    {
+      "labels": {
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.0.25:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:00.928802963Z"
+    },
+    {
+      "labels": {
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.1.171:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:17.75468707Z"
+    },
+    {
+      "labels": {
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.0.25:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:06.247467565Z"
+    },
+    {
+      "labels": {
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.1.171:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:23.889625296Z"
+    },
+    {
+      "labels": {
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.0.25:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:26.630573125Z"
+    },
+    {
+      "labels": {
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.1.171:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "health": "up",
+      "lastError": "",
+      "lastScrape": "2026-09-14T20:58:26.822664039Z"
+    }
+  ],
+  "superseded_up_series": [],
+  "up": [
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.1.171:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.1.171:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-1",
+        "endpoint": "nats-1",
+        "instance": "10.42.0.25:7778",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-1",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.1.171:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-96qjs",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-2",
+        "endpoint": "nats-2",
+        "instance": "10.42.0.25:7779",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-2",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    },
+    {
+      "metric": {
+        "__name__": "up",
+        "container": "nats-0",
+        "endpoint": "nats-0",
+        "instance": "10.42.0.25:7777",
+        "job": "nats-prometheus-exporter",
+        "namespace": "monitoring",
+        "nats_member": "nats-0",
+        "pod": "nats-prometheus-exporter-6799c9dd54-pcjrd",
+        "service": "nats-prometheus-exporter"
+      },
+      "value": [
+        1789419507.924,
+        "1"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "name": "vela:nats_member_max_storage_bytes",
+      "health": "ok",
+      "type": "recording",
+      "state": null,
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSMemberCoverageIncomplete",
+      "health": "ok",
+      "type": "alerting",
+      "state": "inactive",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSExporterRedundancyReduced",
+      "health": "ok",
+      "type": "alerting",
+      "state": "inactive",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSFileQuotaBelowContract",
+      "health": "ok",
+      "type": "alerting",
+      "state": "firing",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSEventStreamMissing",
+      "health": "ok",
+      "type": "alerting",
+      "state": "firing",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSEventStreamReplicaCoverageIncomplete",
+      "health": "ok",
+      "type": "alerting",
+      "state": "inactive",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSSchedulerConsumerMissing",
+      "health": "ok",
+      "type": "alerting",
+      "state": "firing",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSMetadataLeaderDisagreement",
+      "health": "ok",
+      "type": "alerting",
+      "state": "inactive",
+      "lastError": null
+    },
+    {
+      "name": "VelaNATSSchedulerBacklog",
+      "health": "ok",
+      "type": "alerting",
+      "state": "inactive",
+      "lastError": null
+    }
+  ],
+  "dashboard": {
+    "uid": "vela-nats",
+    "url": "/grafana/d/vela-nats/vela-c2b7-nats-and-event-delivery",
+    "panels": 8
+  },
+  "passed": true,
+  "finished_at": "2026-09-14T20:58:29.296699+00:00"
+}

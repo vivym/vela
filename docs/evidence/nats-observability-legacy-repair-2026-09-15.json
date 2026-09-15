@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-14T20:55:44.743486+00:00",
+  "reason": "client-side apply retained unmanaged legacy container; port 7777 conflicts with nats-0 collector",
+  "deployment_uid": "33ad4311-cee7-4a91-a7c4-ecb2d9bdd614",
+  "removed_container": "exporter",
+  "remaining_containers": [
+    "nats-0",
+    "nats-1",
+    "nats-2"
+  ],
+  "passed": true
+}

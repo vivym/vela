@@ -1,0 +1,67 @@
+discovery.kubernetes "pods" {
+  role = "pod"
+  selectors {
+    role = "pod"
+    field = "spec.nodeName=" + sys.env("NODE_NAME")
+  }
+}
+discovery.relabel "pod_logs" {
+  targets = discovery.kubernetes.pods.targets
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label = "namespace"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label = "pod"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label = "container"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_node_name"]
+    target_label = "node"
+  }
+  rule {
+    target_label = "job"
+    replacement = "kubernetes-pods"
+  }
+}
+loki.source.kubernetes "pods" {
+  targets = discovery.relabel.pod_logs.output
+  forward_to = [loki.process.redact.receiver]
+}
+loki.process "redact" {
+  stage.drop {
+    older_than = "1h"
+    drop_counter_reason = "too_old"
+  }
+  // Replace captured values in the original line. No extracted "message"
+  // field exists unless an earlier parser explicitly creates it.
+  stage.replace {
+    expression = "(?i)(?:authorization[\"\\s:=]+)?(?:bearer|basic)\\s+([A-Za-z0-9._~+/=-]+)"
+    replace = "[REDACTED]"
+  }
+  stage.replace {
+    expression = "(?i)\"?(?:password|secret|token|api[_-]?key|access_token|refresh_token|client_secret)\"?\\s*[:=]\\s*\"((?:\\\\.|[^\"\\\\])*)\""
+    replace = "[REDACTED]"
+  }
+  stage.replace {
+    expression = "(?i)'?(?:password|secret|token|api[_-]?key|access_token|refresh_token|client_secret)'?\\s*[:=]\\s*'((?:\\\\.|[^'\\\\])*)'"
+    replace = "[REDACTED]"
+  }
+  stage.replace {
+    expression = "(?i)\"?(?:password|secret|token|api[_-]?key|access_token|refresh_token|client_secret)\"?\\s*[:=]\\s*([^\\s\"',;}&]+)"
+    replace = "[REDACTED]"
+  }
+  forward_to = [loki.write.default.receiver]
+}
+loki.write "default" {
+  endpoint { url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push" }
+  external_labels = {
+    cluster = "marslab",
+    collector = "alloy",
+    collector_node = sys.env("NODE_NAME"),
+  }
+}

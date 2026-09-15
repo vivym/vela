@@ -1,0 +1,147 @@
+{
+  "time": "2026-09-14T08:48:03.454492+00:00",
+  "queries": {
+    "prometheus_tsdb_storage_blocks_bytes": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_storage_blocks_bytes",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789375683.496,
+          "1822427683"
+        ]
+      }
+    ],
+    "prometheus_tsdb_head_series": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_head_series",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789375683.499,
+          "865751"
+        ]
+      }
+    ],
+    "rate(prometheus_tsdb_head_samples_appended_total[30m])": [
+      {
+        "metric": {
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus",
+          "type": "float"
+        },
+        "value": [
+          1789375683.501,
+          "27774.384745762713"
+        ]
+      },
+      {
+        "metric": {
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus",
+          "type": "histogram"
+        },
+        "value": [
+          1789375683.501,
+          "0"
+        ]
+      }
+    ],
+    "prometheus_tsdb_lowest_timestamp_seconds": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_lowest_timestamp_seconds",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789375683.502,
+          "1789319354"
+        ]
+      }
+    ],
+    "prometheus_tsdb_retention_limit_bytes": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_retention_limit_bytes",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789375683.504,
+          "42949672960"
+        ]
+      }
+    ],
+    "loki_ingester_memory_chunks": [
+      {
+        "metric": {
+          "__name__": "loki_ingester_memory_chunks",
+          "container": "loki",
+          "endpoint": "http",
+          "instance": "10.42.0.215:3100",
+          "job": "loki",
+          "namespace": "monitoring",
+          "pod": "loki-697bf5bb8c-jxrjw",
+          "service": "loki"
+        },
+        "value": [
+          1789375683.505,
+          "260"
+        ]
+      }
+    ],
+    "sum(rate(loki_distributor_bytes_received_total[30m]))": [
+      {
+        "metric": {},
+        "value": [
+          1789375683.507,
+          "14071.862711864407"
+        ]
+      }
+    ],
+    "sum(rate(tempo_distributor_bytes_received_total[30m]))": [
+      {
+        "metric": {},
+        "value": [
+          1789375683.508,
+          "0"
+        ]
+      }
+    ]
+  }
+}

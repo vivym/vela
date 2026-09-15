@@ -1,0 +1,496 @@
+# Node-local RKE2 metrics remain on loopback. Only the TLS/RBAC proxy listens
+# on the node IP. Enable vela.ai/node-metrics=enabled after the port preflight.
+# Roll out to one control node first, verify authorized and denied requests,
+# then enable the remaining in-scope Kubernetes nodes. No hostPath is mounted.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-local-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vela-node-local-metrics-auth
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: node-local-metrics
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vela-node-local-metrics-read
+rules:
+- nonResourceURLs:
+  - "/metrics"
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vela-node-local-metrics-read
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vela-node-local-metrics-read
+subjects:
+- kind: ServiceAccount
+  name: node-local-metrics
+  namespace: monitoring
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: node-metrics-ca
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+spec:
+  isCA: true
+  commonName: Vela Node Metrics CA
+  secretName: node-metrics-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: vela-identity-selfsigned-bootstrap
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: node-metrics-ca
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+spec:
+  ca:
+    secretName: node-metrics-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: node-metrics-server
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+spec:
+  secretName: node-metrics-server-tls
+  dnsNames:
+  - vela-node-metrics
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    kind: Issuer
+    name: node-metrics-ca
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-local-metrics-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+data:
+  worker.yaml: |
+    extensions:
+      health_check: {endpoint: "127.0.0.1:19107"}
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+              - job_name: kube-proxy
+                scrape_interval: 30s
+                scrape_timeout: 10s
+                static_configs:
+                  - targets: ["127.0.0.1:10249"]
+                    labels: {node: "${env:NODE_NAME}"}
+                relabel_configs:
+                  - target_label: instance
+                    replacement: "${env:NODE_NAME}"
+    processors:
+      memory_limiter: {check_interval: 1s, limit_mib: 384, spike_limit_mib: 64}
+      batch: {timeout: 5s, send_batch_size: 1024}
+    exporters:
+      prometheus:
+        endpoint: "127.0.0.1:19106"
+        add_metric_suffixes: false
+        resource_to_telemetry_conversion: {enabled: false}
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus: {host: "127.0.0.1", port: 19108}
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+  control.yaml: |
+    extensions:
+      health_check: {endpoint: "127.0.0.1:19107"}
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+              - job_name: kube-proxy
+                scrape_interval: 30s
+                scrape_timeout: 10s
+                static_configs:
+                  - targets: ["127.0.0.1:10249"]
+                    labels: {node: "${env:NODE_NAME}"}
+                relabel_configs:
+                  - target_label: instance
+                    replacement: "${env:NODE_NAME}"
+              - job_name: kube-scheduler
+                scrape_interval: 30s
+                scrape_timeout: 10s
+                scheme: https
+                authorization:
+                  credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                tls_config:
+                  ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                  server_name: localhost
+                static_configs:
+                  - targets: ["127.0.0.1:10259"]
+                    labels: {node: "${env:NODE_NAME}"}
+                relabel_configs:
+                  - target_label: instance
+                    replacement: "${env:NODE_NAME}"
+              - job_name: kube-controller-manager
+                scrape_interval: 30s
+                scrape_timeout: 10s
+                scheme: https
+                authorization:
+                  credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+                tls_config:
+                  ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                  server_name: localhost
+                static_configs:
+                  - targets: ["127.0.0.1:10257"]
+                    labels: {node: "${env:NODE_NAME}"}
+                relabel_configs:
+                  - target_label: instance
+                    replacement: "${env:NODE_NAME}"
+              - job_name: etcd
+                scrape_interval: 30s
+                scrape_timeout: 10s
+                static_configs:
+                  - targets: ["127.0.0.1:2381"]
+                    labels: {node: "${env:NODE_NAME}"}
+                relabel_configs:
+                  - target_label: instance
+                    replacement: "${env:NODE_NAME}"
+    processors:
+      memory_limiter: {check_interval: 1s, limit_mib: 384, spike_limit_mib: 64}
+      batch: {timeout: 5s, send_batch_size: 1024}
+    exporters:
+      prometheus:
+        endpoint: "127.0.0.1:19106"
+        add_metric_suffixes: false
+        resource_to_telemetry_conversion: {enabled: false}
+    service:
+      extensions: [health_check]
+      telemetry:
+        metrics:
+          readers:
+            - pull:
+                exporter:
+                  prometheus: {host: "127.0.0.1", port: 19108}
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [prometheus]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-local-metrics-control-storage
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+    vela.ai/metrics-role: control-storage
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-local-metrics
+      vela.ai/metrics-role: control-storage
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-local-metrics
+        app.kubernetes.io/part-of: vela
+        vela.ai/metrics-role: control-storage
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: node-local-metrics
+      nodeSelector:
+        vela.ai/node-role: control-storage
+        vela.ai/node-metrics: enabled
+      priorityClassName: system-node-critical
+      tolerations:
+      - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: collector
+        image: 10.1.201.70:5000/otel/opentelemetry-collector-contrib:0.136.0
+        args:
+        - "--config=/etc/otel/control.yaml"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: "/"
+            port: 19107
+            host: 127.0.0.1
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: config
+          mountPath: "/etc/otel"
+          readOnly: true
+      - name: auth-proxy
+        image: 10.1.201.70:5003/brancz/kube-rbac-proxy:v0.20.0
+        args:
+        - "--secure-listen-address=$(HOST_IP):19105"
+        - "--upstream=http://127.0.0.1:19106/"
+        - "--allow-paths=/metrics"
+        - "--tls-cert-file=/tls/tls.crt"
+        - "--tls-private-key-file=/tls/tls.key"
+        - "--tls-min-version=VersionTLS12"
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        ports:
+        - name: https-metrics
+          containerPort: 19105
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+        - name: tls
+          mountPath: "/tls"
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: node-local-metrics-config
+      - name: tls
+        secret:
+          secretName: node-metrics-server-tls
+          defaultMode: 288
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-local-metrics-gpu-worker
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+    vela.ai/metrics-role: gpu-worker
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-local-metrics
+      vela.ai/metrics-role: gpu-worker
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-local-metrics
+        app.kubernetes.io/part-of: vela
+        vela.ai/metrics-role: gpu-worker
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: node-local-metrics
+      nodeSelector:
+        vela.ai/node-role: gpu-worker
+        vela.ai/node-metrics: enabled
+      tolerations:
+      - operator: Exists
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: collector
+        image: 10.1.201.70:5000/otel/opentelemetry-collector-contrib:0.136.0
+        args:
+        - "--config=/etc/otel/worker.yaml"
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: "/"
+            port: 19107
+            host: 127.0.0.1
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: config
+          mountPath: "/etc/otel"
+          readOnly: true
+      - name: auth-proxy
+        image: 10.1.201.70:5003/brancz/kube-rbac-proxy:v0.20.0
+        args:
+        - "--secure-listen-address=$(HOST_IP):19105"
+        - "--upstream=http://127.0.0.1:19106/"
+        - "--allow-paths=/metrics"
+        - "--tls-cert-file=/tls/tls.crt"
+        - "--tls-private-key-file=/tls/tls.key"
+        - "--tls-min-version=VersionTLS12"
+        env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        ports:
+        - name: https-metrics
+          containerPort: 19105
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+        - name: tls
+          mountPath: "/tls"
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: node-local-metrics-config
+      - name: tls
+        secret:
+          secretName: node-metrics-server-tls
+          defaultMode: 288
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: node-local-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: node-local-metrics
+    app.kubernetes.io/part-of: vela
+    release: monitoring
+spec:
+  scrapeClass: rke2-node-metrics
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-local-metrics
+  podMetricsEndpoints:
+  - port: https-metrics
+    scheme: https
+    path: "/metrics"
+    interval: 30s
+    scrapeTimeout: 15s
+    honorLabels: true
+    tlsConfig:
+      ca:
+        secret:
+          name: node-metrics-server-tls
+          key: ca.crt
+      serverName: vela-node-metrics
+    relabelings:
+    - targetLabel: job
+      replacement: node-local-metrics
+    - sourceLabels:
+      - __meta_kubernetes_pod_node_name
+      targetLabel: node

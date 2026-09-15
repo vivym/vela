@@ -1,0 +1,161 @@
+{
+  "at": "2026-09-14T20:50:15.838645+00:00",
+  "image": "quay.io/prometheus/prometheus@sha256:50c707e96da5ade383cb1707790576480485e93de06aa60ad8802cb5f744bd0a",
+  "cases": 27,
+  "cleanup": {
+    "Job": true,
+    "NetworkPolicy": true,
+    "ConfigMap": true
+  },
+  "job": {
+    "completionTime": "2026-09-14T20:50:22Z",
+    "conditions": [
+      {
+        "lastProbeTime": "2026-09-14T20:50:22Z",
+        "lastTransitionTime": "2026-09-14T20:50:22Z",
+        "message": "Reached expected number of succeeded pods",
+        "reason": "CompletionsReached",
+        "status": "True",
+        "type": "SuccessCriteriaMet"
+      },
+      {
+        "lastProbeTime": "2026-09-14T20:50:22Z",
+        "lastTransitionTime": "2026-09-14T20:50:22Z",
+        "message": "Reached expected number of succeeded pods",
+        "reason": "CompletionsReached",
+        "status": "True",
+        "type": "Complete"
+      }
+    ],
+    "ready": 0,
+    "startTime": "2026-09-14T20:50:16Z",
+    "succeeded": 1,
+    "terminating": 0,
+    "uncountedTerminatedPods": {}
+  },
+  "promtool_passed": true,
+  "pod_status": [
+    {
+      "conditions": [
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-14T20:50:22Z",
+          "observedGeneration": 1,
+          "status": "False",
+          "type": "PodReadyToStartContainers"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-14T20:50:16Z",
+          "observedGeneration": 1,
+          "reason": "PodCompleted",
+          "status": "True",
+          "type": "Initialized"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-14T20:50:20Z",
+          "observedGeneration": 1,
+          "reason": "PodCompleted",
+          "status": "False",
+          "type": "Ready"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-14T20:50:20Z",
+          "observedGeneration": 1,
+          "reason": "PodCompleted",
+          "status": "False",
+          "type": "ContainersReady"
+        },
+        {
+          "lastProbeTime": null,
+          "lastTransitionTime": "2026-09-14T20:50:16Z",
+          "observedGeneration": 1,
+          "status": "True",
+          "type": "PodScheduled"
+        }
+      ],
+      "containerStatuses": [
+        {
+          "allocatedResources": {
+            "cpu": "50m",
+            "memory": "64Mi"
+          },
+          "containerID": "containerd://fd791cc3af4dae917fd86eb9197e9dacb55066e2e0ac5a22f537720563950118",
+          "image": "quay.io/prometheus/prometheus:v3.14.0-distroless",
+          "imageID": "quay.io/prometheus/prometheus@sha256:50c707e96da5ade383cb1707790576480485e93de06aa60ad8802cb5f744bd0a",
+          "lastState": {},
+          "name": "promtool",
+          "ready": false,
+          "resources": {
+            "limits": {
+              "cpu": "1",
+              "memory": "256Mi"
+            },
+            "requests": {
+              "cpu": "50m",
+              "memory": "64Mi"
+            }
+          },
+          "restartCount": 0,
+          "started": false,
+          "state": {
+            "terminated": {
+              "containerID": "containerd://fd791cc3af4dae917fd86eb9197e9dacb55066e2e0ac5a22f537720563950118",
+              "exitCode": 0,
+              "finishedAt": "2026-09-14T20:50:19Z",
+              "reason": "Completed",
+              "startedAt": "2026-09-14T20:50:17Z"
+            }
+          },
+          "user": {
+            "linux": {
+              "gid": 65534,
+              "supplementalGroups": [
+                65534
+              ],
+              "uid": 65534
+            }
+          },
+          "volumeMounts": [
+            {
+              "mountPath": "/tests",
+              "name": "tests",
+              "readOnly": true,
+              "recursiveReadOnly": "Disabled"
+            },
+            {
+              "mountPath": "/tmp",
+              "name": "scratch"
+            }
+          ]
+        }
+      ],
+      "hostIP": "10.1.201.70",
+      "hostIPs": [
+        {
+          "ip": "10.1.201.70"
+        }
+      ],
+      "observedGeneration": 1,
+      "phase": "Succeeded",
+      "podIP": "10.42.0.23",
+      "podIPs": [
+        {
+          "ip": "10.42.0.23"
+        }
+      ],
+      "qosClass": "Burstable",
+      "startTime": "2026-09-14T20:50:16Z"
+    }
+  ],
+  "server_dry_run": true,
+  "objects": [
+    "Deployment/nats-prometheus-exporter",
+    "Service/nats-prometheus-exporter",
+    "ServiceMonitor/nats-prometheus-exporter",
+    "PrometheusRule/vela-nats-rules",
+    "ConfigMap/vela-nats-dashboard-64bcfg7t9g"
+  ]
+}

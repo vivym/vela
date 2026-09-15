@@ -1,0 +1,86 @@
+{
+  "time": "2026-09-14T06:41:15.151433+00:00",
+  "dashboards": [
+    {
+      "uid": "vela-marslab-gpu-overview",
+      "panels": 14,
+      "queries": 17,
+      "empty_or_failed": []
+    },
+    {
+      "uid": "vela-marslab-gpu-detail",
+      "panels": 11,
+      "queries": 13,
+      "empty_or_failed": []
+    },
+    {
+      "uid": "vela-hardware-ipmi",
+      "panels": 8,
+      "queries": 8,
+      "empty_or_failed": []
+    }
+  ],
+  "grafana_alertmanager_proxy_status": "disabled",
+  "count(count by(instance) (ipmi_up))": [
+    {
+      "metric": {},
+      "value": [
+        1789368075.587,
+        "55"
+      ]
+    }
+  ],
+  "count(count by(instance) (ipmi_up==0))": [
+    {
+      "metric": {},
+      "value": [
+        1789368075.59,
+        "6"
+      ]
+    }
+  ],
+  "sum(up{job=\"legacy-hardware-federation\"})": [
+    {
+      "metric": {},
+      "value": [
+        1789368075.593,
+        "1"
+      ]
+    }
+  ],
+  "loki": {
+    "desired_replicas": 2,
+    "robustness": "healthy",
+    "replicas": [
+      {
+        "hostId": "llmpool01",
+        "mode": "RW",
+        "running": true
+      },
+      {
+        "hostId": "llmpool02",
+        "mode": "RW",
+        "running": true
+      }
+    ]
+  },
+  "nodes": {
+    "total": 54,
+    "ready": 53,
+    "allocatable_gpus": 407
+  },
+  "validation": {
+    "promtool_version": "3.14.0",
+    "rule_scenarios": 65,
+    "rule_tests": "PASS",
+    "grafana_alert_flow": {
+      "drill_id": "1daf02b2a1c7",
+      "fire": true,
+      "silence": true,
+      "unsilence": true,
+      "automatic_resolve": true,
+      "external_notifications": false,
+      "temporary_rule_removed": true
+    }
+  }
+}

@@ -1,0 +1,217 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-registry-prober
+  namespace: monitoring
+data:
+  blackbox.yaml: |
+    modules:
+      registry_anonymous:
+        prober: http
+        timeout: 10s
+        http:
+          valid_status_codes: [401]
+          method: GET
+          follow_redirects: false
+          preferred_ip_protocol: ip4
+          tls_config: {ca_file: /auth/ca.crt}
+      registry_authenticated:
+        prober: http
+        timeout: 10s
+        http:
+          valid_status_codes: [200]
+          method: GET
+          follow_redirects: false
+          preferred_ip_protocol: ip4
+          tls_config: {ca_file: /auth/ca.crt}
+          basic_auth: {username: node-pull, password_file: /auth/password}
+      registry_control_manifest:
+        prober: http
+        timeout: 10s
+        http:
+          valid_status_codes: [200]
+          method: HEAD
+          follow_redirects: false
+          preferred_ip_protocol: ip4
+          tls_config: {ca_file: /auth/ca.crt}
+          basic_auth: {username: node-pull, password_file: /auth/password}
+          headers:
+            Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-registry-prober
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: vela-registry-prober, app.kubernetes.io/part-of: vela}
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/name: vela-registry-prober}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: vela-registry-prober, app.kubernetes.io/part-of: vela}
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector: {vela.ai/management: "true", vela.ai/control-plane-tier: cpu}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app.kubernetes.io/name: vela-registry-prober}}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: prober
+          image: docker.io/prom/blackbox-exporter@sha256:a50c4c0eda297baa1678cd4dc4712a67fdea713b832d43ce7fcc5f9bea05094d
+          args: [--config.file=/etc/blackbox/blackbox.yaml, --web.listen-address=:9115]
+          ports: [{name: http, containerPort: 9115}]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+          readinessProbe: {httpGet: {path: /-/healthy, port: http}, initialDelaySeconds: 3}
+          livenessProbe: {httpGet: {path: /-/healthy, port: http}, initialDelaySeconds: 10}
+          volumeMounts:
+            - {name: config, mountPath: /etc/blackbox, readOnly: true}
+            - {name: auth, mountPath: /auth, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: vela-registry-prober}
+        - name: auth
+          secret: {secretName: vela-registry-prober, defaultMode: 288}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-registry-prober
+  namespace: monitoring
+  labels: {app.kubernetes.io/name: vela-registry-prober}
+spec:
+  selector: {app.kubernetes.io/name: vela-registry-prober}
+  ports: [{name: http, port: 9115, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-registry-prober
+  namespace: monitoring
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/name: vela-registry-prober}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
+      ports: [{protocol: TCP, port: 9115}]
+  egress:
+    - to:
+        - ipBlock: {cidr: 10.1.201.70/32}
+        - ipBlock: {cidr: 10.1.201.71/32}
+        - ipBlock: {cidr: 10.1.201.66/32}
+      ports: [{protocol: TCP, port: 5005}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vela-registry-prober
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: vela-registry-prober}}
+  endpoints: [{port: http, interval: 60s}]
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: vela-registry-anonymous
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  jobName: vela-registry-anonymous
+  interval: 60s
+  scrapeTimeout: 15s
+  module: registry_anonymous
+  prober: {url: vela-registry-prober.monitoring.svc.cluster.local:9115}
+  targets:
+    staticConfig:
+      static: [https://10.1.201.70:5005/v2/, https://10.1.201.71:5005/v2/, https://10.1.201.66:5005/v2/]
+      labels: {registry_check: anonymous_denied}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: vela-registry-authenticated
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  jobName: vela-registry-authenticated
+  interval: 60s
+  scrapeTimeout: 15s
+  module: registry_authenticated
+  prober: {url: vela-registry-prober.monitoring.svc.cluster.local:9115}
+  targets:
+    staticConfig:
+      static: [https://10.1.201.70:5005/v2/, https://10.1.201.71:5005/v2/, https://10.1.201.66:5005/v2/]
+      labels: {registry_check: authenticated}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: vela-registry-control-manifest
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  jobName: vela-registry-control-manifest
+  interval: 60s
+  scrapeTimeout: 15s
+  module: registry_control_manifest
+  prober: {url: vela-registry-prober.monitoring.svc.cluster.local:9115}
+  targets:
+    staticConfig:
+      static:
+        - https://10.1.201.70:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64
+        - https://10.1.201.71:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64
+        - https://10.1.201.66:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64
+      labels: {registry_check: control_manifest}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-registry
+  namespace: monitoring
+  labels: {release: monitoring, app.kubernetes.io/part-of: vela}
+spec:
+  groups:
+    - name: vela.registry
+      rules:
+        - alert: VelaRegistryProbeFailed
+          expr: probe_success{job=~"vela-registry-.*"} == 0
+          for: 5m
+          labels: {severity: critical}
+          annotations:
+            summary: Registry authentication, TLS or current Control manifest probe failed
+            description: Check the failing target and registry_check label. Anonymous probes require HTTP 401; authenticated and manifest probes require 200. Verify gateway containers and private credentials without printing secrets.
+        - alert: VelaRegistryProbeCoverageMissing
+          expr: count(probe_success{job=~"vela-registry-.*"}) < 9 or absent(probe_success{job=~"vela-registry-.*"})
+          for: 10m
+          labels: {severity: critical}
+          annotations:
+            summary: Registry probe coverage is incomplete
+            description: Expected three checks on each of three registry endpoints. Inspect both prober Pods, the three Probe objects and Prometheus target discovery.
+        - alert: VelaRegistryCertificateExpiring
+          expr: probe_ssl_earliest_cert_expiry{job="vela-registry-authenticated"} - time() < 30 * 86400
+          for: 10m
+          labels: {severity: warning}
+          annotations:
+            summary: Internal registry certificate expires within 30 days
+            description: Renew the registry certificate with SANs for all three internal IPs, preserve the trusted CA or stage CA rotation, and verify each authenticated endpoint after reloading its registry containers.

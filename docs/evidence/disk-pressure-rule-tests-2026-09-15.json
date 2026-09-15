@@ -1,0 +1,7 @@
+{
+  "generator": "hack/test-infrastructure-rules.py",
+  "rules": "deploy/observability/infrastructure-rules.yaml",
+  "cases": 145,
+  "native_promtool_exit": 0,
+  "result": "PASS"
+}

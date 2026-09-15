@@ -1,0 +1,24 @@
+{
+  "at": "2026-09-14T21:47:51.601549+00:00",
+  "passed": true,
+  "added_rules": [
+    "VelaNodeDiskPressure",
+    "VelaNodeRootFilesystemHeadroomLow"
+  ],
+  "unchanged_rules": 36,
+  "resource_version": "1637294",
+  "filesystems": {
+    "/": {
+      "total": 942860439552,
+      "available": 747802693632
+    },
+    "/data": {
+      "total": 942860439552,
+      "available": 747802693632
+    },
+    "/opt": {
+      "total": 942860439552,
+      "available": 747802693632
+    }
+  }
+}

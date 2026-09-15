@@ -1,0 +1,61 @@
+{
+  "at": "2026-09-14T21:57:27.503711+00:00",
+  "rules": [
+    {
+      "state": "inactive",
+      "name": "VelaNodeRootFilesystemHeadroomLow",
+      "query": "min by (instance, mountpoint) (vela:node_filesystem_avail_ratio{mountpoint=\"/\"}) < 0.2",
+      "duration": 300,
+      "keepFiringFor": 0,
+      "labels": {
+        "severity": "warning"
+      },
+      "annotations": {
+        "description": "Restore capacity before the default 15% image filesystem eviction threshold is reached; root and container images may share a filesystem.",
+        "runbook_url": "docs/runbooks/observability-node-storage.md",
+        "summary": "Node root filesystem free space is below 20%"
+      },
+      "alerts": [],
+      "health": "ok",
+      "evaluationTime": 0.000615275,
+      "lastEvaluation": "2026-09-14T21:57:16.428604388Z",
+      "type": "alerting"
+    },
+    {
+      "state": "firing",
+      "name": "VelaNodeDiskPressure",
+      "query": "max by (node) (kube_node_status_condition{condition=\"DiskPressure\",status=\"true\"}) == 1",
+      "duration": 60,
+      "keepFiringFor": 0,
+      "labels": {
+        "severity": "page"
+      },
+      "annotations": {
+        "description": "Workloads may be evicted or remain Pending. Restore filesystem headroom and verify stateful members before continuing a rollout.",
+        "runbook_url": "docs/runbooks/observability-node-storage.md",
+        "summary": "Kubelet reports node disk pressure"
+      },
+      "alerts": [
+        {
+          "labels": {
+            "alertname": "VelaNodeDiskPressure",
+            "node": "marslab-gpu-01",
+            "severity": "page"
+          },
+          "annotations": {
+            "description": "Workloads may be evicted or remain Pending. Restore filesystem headroom and verify stateful members before continuing a rollout.",
+            "runbook_url": "docs/runbooks/observability-node-storage.md",
+            "summary": "Kubelet reports node disk pressure"
+          },
+          "state": "firing",
+          "activeAt": "2026-09-14T21:48:46.414644984Z",
+          "value": "1e+00"
+        }
+      ],
+      "health": "ok",
+      "evaluationTime": 0.000909898,
+      "lastEvaluation": "2026-09-14T21:57:16.429227774Z",
+      "type": "alerting"
+    }
+  ]
+}

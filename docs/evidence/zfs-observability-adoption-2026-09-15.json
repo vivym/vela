@@ -1,0 +1,48 @@
+{
+  "at": "2026-09-15T01:59:10Z",
+  "scope": "ZFS filesystem observability adoption on the live cluster",
+  "host": "10.1.201.70",
+  "resource": "monitoring/vela-infrastructure-rules",
+  "actions": {
+    "server_side_dry_run": "accepted",
+    "apply": "configured",
+    "validation": "--validate=false (API server OpenAPI endpoint was not available through the unprivileged kubectl invocation)",
+    "node_exporter_priority_patch": "applied to monitoring-prometheus-node-exporter; .66 Pod became Ready without host restart",
+    "node_local_metrics_priority_patch": "applied to node-local-metrics-control-storage; 3/3 control-storage Pods Ready without host restart"
+  },
+  "live_rule_counts": {
+    "groups": 1,
+    "rules": 41,
+    "recording_rules": [
+      "vela:zfs_filesystem_avail_ratio"
+    ],
+    "alerts": [
+      "VelaZFSFilesystemLow",
+      "VelaZFSFilesystemCritical"
+    ],
+    "zfs_series": {
+      "instance": "10.42.2.102:9100",
+      "mountpoints": [
+        "/data",
+        "/srv/models"
+      ],
+      "srv_models_avail_ratio": 0.09593649675545263,
+      "zfs_low_state": "firing",
+      "zfs_critical_state": "firing"
+    },
+    "node_local_metrics_66": {
+      "target": "10.1.201.66:19105",
+      "up": 1,
+      "missing_alert_firing": false
+    }
+  },
+  "safety": {
+    "host_reboot": false,
+    "disk_mutation": false,
+    "workload_mutation": true,
+    "data_deletion": false,
+    "workload_mutation_scope": "observability DaemonSet Pod priority only"
+  },
+  "boundary": "The rule is present in the PrometheusRule object and the live firing check passed. The node-exporter priority is live and recorded in the source values; the Helm release still needs a future pinned-chart reconciliation to make that value authoritative. A pool-level zpool exporter remains open.",
+  "zfs_alert_verification_at": "2026-09-15T01:59:06Z"
+}

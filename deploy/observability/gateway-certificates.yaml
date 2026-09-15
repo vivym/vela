@@ -1,0 +1,58 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vela-cert-manager
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/part-of: vela
+spec:
+  namespaceSelector:
+    matchNames: [cert-manager]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cert-manager
+  endpoints:
+    - port: http-metrics
+      interval: 30s
+      honorLabels: true
+      relabelings:
+        - targetLabel: job
+          replacement: vela-cert-manager
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vela-gateway-certificates
+  namespace: monitoring
+  labels:
+    release: monitoring
+    app.kubernetes.io/part-of: vela
+spec:
+  groups:
+    - name: vela.gateway-certificates
+      rules:
+        - alert: VelaGatewayCertificateExpiring
+          expr: certmanager_certificate_expiration_timestamp_seconds{namespace="apisix",name="vela-gateway"} - time() < 14 * 86400
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: Private gateway certificate expires within 14 days
+            description: Check Certificate vela-gateway and its Issuer, then verify the certificate served by both APISIX gateway Pods.
+        - alert: VelaGatewayCertificateNotReady
+          expr: certmanager_certificate_ready_status{namespace="apisix",name="vela-gateway",condition="True"} != 1 or absent(certmanager_certificate_ready_status{namespace="apisix",name="vela-gateway",condition="True"})
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: Private gateway certificate is not Ready or its telemetry is missing
+            description: Check cert-manager targets and Certificate vela-gateway in namespace apisix.
+        - alert: VelaGatewayCertificateSyncStale
+          expr: time() - kube_cronjob_status_last_successful_time{namespace="apisix",cronjob="vela-gateway-tls-sync"} > 900 or absent(kube_cronjob_status_last_successful_time{namespace="apisix",cronjob="vela-gateway-tls-sync"})
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: APISIX certificate synchronization has not succeeded recently
+            description: Inspect CronJob vela-gateway-tls-sync and its Jobs. Never print its admin credential or SSL response body.

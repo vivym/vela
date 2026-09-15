@@ -1,0 +1,21 @@
+{
+  "id": null,
+  "uid": "vela-observability",
+  "title": "Vela Observability Overview",
+  "tags": ["vela", "platform"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "templating": {"list": []},
+  "panels": [
+    {"id": 1, "type": "stat", "title": "API gateway targets", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "targets": [{"expr": "sum(up{job=\"apisix-metrics\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "green", "value": 2}]}}, "overrides": []}},
+    {"id": 2, "type": "stat", "title": "Ready Kubernetes nodes", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "targets": [{"expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}},
+    {"id": 3, "type": "stat", "title": "Longhorn healthy managers", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "targets": [{"expr": "sum(up{job=\"longhorn-backend\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}},
+    {"id": 4, "type": "stat", "title": "PostgreSQL instances", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "targets": [{"expr": "sum(up{job=\"monitoring/cnpg-postgres\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}},
+    {"id": 5, "type": "timeseries", "title": "Gateway request rate", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}, "targets": [{"expr": "sum by (route, code) (rate(apisix_http_status[5m]))", "legendFormat": "{{route}} {{code}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}},
+    {"id": 6, "type": "timeseries", "title": "Node filesystem available", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}, "targets": [{"expr": "100 * min by (instance, mountpoint) (vela:node_filesystem_avail_ratio{mountpoint!~\"/run.*|/var/lib/kubelet/pods.*\"})", "legendFormat": "{{instance}} {{mountpoint}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []}},
+    {"id": 7, "type": "logs", "title": "Platform logs", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12}, "datasource": {"type": "loki", "uid": "vela-loki"}, "targets": [{"expr": "{namespace=\"vela-system\"} |= \"\"", "refId": "A"}], "options": {"showTime": true, "sortOrder": "Descending"}},
+    {"id": 8, "type": "traces", "title": "Recent traces", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12}, "datasource": {"type": "tempo", "uid": "vela-tempo"}, "targets": [{"queryType": "traceql", "query": "{ resource.service.name =~ \".*\" }", "refId": "A"}]}
+  ]
+}

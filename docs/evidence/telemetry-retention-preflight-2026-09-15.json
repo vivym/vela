@@ -1,0 +1,1015 @@
+{
+  "at": "2026-09-14T21:05:27.410456+00:00",
+  "metrics": {
+    "prometheus_tsdb_storage_blocks_bytes": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_storage_blocks_bytes",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.452,
+          "3911667993"
+        ]
+      }
+    ],
+    "prometheus_tsdb_head_series": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_head_series",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.454,
+          "791099"
+        ]
+      }
+    ],
+    "prometheus_tsdb_lowest_timestamp_seconds": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_lowest_timestamp_seconds",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.455,
+          "1789319354"
+        ]
+      }
+    ],
+    "prometheus_tsdb_retention_limit_bytes": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_retention_limit_bytes",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.456,
+          "42949672960"
+        ]
+      }
+    ],
+    "prometheus_tsdb_time_retentions_total": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_time_retentions_total",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.457,
+          "0"
+        ]
+      }
+    ],
+    "prometheus_tsdb_size_retentions_total": [
+      {
+        "metric": {
+          "__name__": "prometheus_tsdb_size_retentions_total",
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus"
+        },
+        "value": [
+          1789419927.458,
+          "0"
+        ]
+      }
+    ],
+    "rate(prometheus_tsdb_head_samples_appended_total[1h])": [
+      {
+        "metric": {
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus",
+          "type": "float"
+        },
+        "value": [
+          1789419927.459,
+          "28536.84257703081"
+        ]
+      },
+      {
+        "metric": {
+          "container": "prometheus",
+          "endpoint": "http-web",
+          "instance": "10.42.0.191:9090",
+          "job": "monitoring-kube-prometheus-prometheus",
+          "namespace": "monitoring",
+          "pod": "prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-prometheus",
+          "type": "histogram"
+        },
+        "value": [
+          1789419927.459,
+          "0"
+        ]
+      }
+    ],
+    "kubelet_volume_stats_used_bytes{namespace=\"monitoring\"}": [
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_used_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.461,
+          "4816338944"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_used_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.461,
+          "32768"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_used_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "monitoring-grafana",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.461,
+          "3788800"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_used_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "loki-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.461,
+          "465006592"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_used_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "tempo-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.461,
+          "2695168"
+        ]
+      }
+    ],
+    "kubelet_volume_stats_capacity_bytes{namespace=\"monitoring\"}": [
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_capacity_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.463,
+          "52521566208"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_capacity_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.463,
+          "10464022528"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_capacity_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "monitoring-grafana",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.463,
+          "20957446144"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_capacity_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "loki-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.463,
+          "105089261568"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_capacity_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "tempo-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.463,
+          "31526391808"
+        ]
+      }
+    ],
+    "kubelet_volume_stats_available_bytes{namespace=\"monitoring\"}": [
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_available_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.465,
+          "47688450048"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_available_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.465,
+          "10447212544"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_available_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.71:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool02",
+          "persistentvolumeclaim": "monitoring-grafana",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.465,
+          "20936880128"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_available_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "loki-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.465,
+          "104607477760"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "kubelet_volume_stats_available_bytes",
+          "endpoint": "https-metrics",
+          "instance": "10.1.201.70:10250",
+          "job": "kubelet",
+          "metrics_path": "/metrics",
+          "namespace": "monitoring",
+          "node": "llmpool01",
+          "persistentvolumeclaim": "tempo-data",
+          "service": "monitoring-kube-prometheus-kubelet"
+        },
+        "value": [
+          1789419927.465,
+          "31506919424"
+        ]
+      }
+    ],
+    "sum(rate(loki_distributor_bytes_received_total[1h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789419927.467,
+          "12777.27394957983"
+        ]
+      }
+    ],
+    "sum(increase(loki_distributor_bytes_received_total[24h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789419927.469,
+          "57806797742.935974"
+        ]
+      }
+    ],
+    "sum(rate(tempo_distributor_bytes_received_total[1h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789419927.471,
+          "0.8851540616246498"
+        ]
+      }
+    ],
+    "sum(increase(tempo_distributor_bytes_received_total[24h]))": [
+      {
+        "metric": {},
+        "value": [
+          1789419927.473,
+          "89641.13527932132"
+        ]
+      }
+    ]
+  },
+  "metric_names": [
+    "loki_boltdb_shipper_compact_tables_operation_duration_seconds",
+    "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds",
+    "loki_boltdb_shipper_compact_tables_operation_total",
+    "loki_boltdb_shipper_compactor_running",
+    "loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time",
+    "loki_boltdb_shipper_retention_sweeper_marker_files_current",
+    "loki_boltdb_shipper_retention_sweeper_marker_files_deleted_total",
+    "loki_compactor_apply_retention_last_successful_run_timestamp_seconds",
+    "loki_compactor_apply_retention_operation_duration_seconds",
+    "loki_compactor_apply_retention_operation_total",
+    "loki_compactor_grpc_request_duration_seconds_bucket",
+    "loki_compactor_grpc_request_duration_seconds_count",
+    "loki_compactor_grpc_request_duration_seconds_sum",
+    "loki_compactor_load_pending_requests_attempts_total",
+    "loki_compactor_locked_table_successive_compaction_skips",
+    "loki_compactor_oldest_pending_delete_request_age_seconds",
+    "loki_compactor_pending_delete_requests_count",
+    "loki_discarded_bytes_total",
+    "loki_discarded_samples_total",
+    "loki_distributor_bytes_received_total",
+    "loki_distributor_structured_metadata_bytes_received_total",
+    "loki_ingester_blocks_per_chunk_bucket",
+    "loki_ingester_blocks_per_chunk_count",
+    "loki_ingester_blocks_per_chunk_sum",
+    "loki_ingester_chunk_stored_bytes_total",
+    "loki_ingester_chunks_flush_failures_total",
+    "loki_ingester_chunks_flushed_total",
+    "loki_ingester_flush_queue_length",
+    "loki_ingester_wal_discarded_bytes_total",
+    "loki_ingester_wal_discarded_samples_total",
+    "loki_ingester_wal_replay_flushing",
+    "loki_log_flushes_bucket",
+    "loki_log_flushes_count",
+    "loki_log_flushes_sum",
+    "loki_write_failures_discarded_total",
+    "tempo_backend_scheduler_compaction_tenant_backoff_total",
+    "tempo_backend_scheduler_compaction_tenant_empty_job_total",
+    "tempo_block_builder_consume_cycle_duration_seconds_bucket",
+    "tempo_block_builder_consume_cycle_duration_seconds_count",
+    "tempo_block_builder_consume_cycle_duration_seconds_sum",
+    "tempo_discarded_spans_total",
+    "tempo_distributor_bytes_received_total",
+    "tempo_ingester_blocks_cleared_total",
+    "tempo_ingester_blocks_flushed_total",
+    "tempo_ingester_bytes_received_total",
+    "tempo_ingester_failed_flushes_total",
+    "tempo_ingester_flush_duration_seconds_bucket",
+    "tempo_ingester_flush_duration_seconds_count",
+    "tempo_ingester_flush_duration_seconds_sum",
+    "tempo_ingester_flush_failed_retries_total",
+    "tempo_ingester_flush_queue_length",
+    "tempo_ingester_flush_retries_total",
+    "tempo_ingester_flush_size_bytes_bucket",
+    "tempo_ingester_flush_size_bytes_count",
+    "tempo_ingester_flush_size_bytes_sum",
+    "tempo_metrics_generator_bytes_received_total",
+    "tempo_metrics_generator_processor_local_blocks_complete_queue_length",
+    "tempo_metrics_generator_processor_local_blocks_failed_flushes_total",
+    "tempo_metrics_generator_spans_discarded_total"
+  ],
+  "pvcs": [
+    {
+      "name": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "10Gi"
+          }
+        },
+        "storageClassName": "longhorn",
+        "volumeMode": "Filesystem",
+        "volumeName": "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59"
+      },
+      "status": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "capacity": {
+          "storage": "10Gi"
+        },
+        "phase": "Bound"
+      }
+    },
+    {
+      "name": "loki-data",
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "100Gi"
+          }
+        },
+        "storageClassName": "longhorn",
+        "volumeMode": "Filesystem",
+        "volumeName": "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd"
+      },
+      "status": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "capacity": {
+          "storage": "100Gi"
+        },
+        "phase": "Bound"
+      }
+    },
+    {
+      "name": "monitoring-grafana",
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "20Gi"
+          }
+        },
+        "storageClassName": "longhorn",
+        "volumeMode": "Filesystem",
+        "volumeName": "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df"
+      },
+      "status": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "capacity": {
+          "storage": "20Gi"
+        },
+        "phase": "Bound"
+      }
+    },
+    {
+      "name": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "50Gi"
+          }
+        },
+        "storageClassName": "longhorn",
+        "volumeMode": "Filesystem",
+        "volumeName": "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9"
+      },
+      "status": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "capacity": {
+          "storage": "50Gi"
+        },
+        "phase": "Bound"
+      }
+    },
+    {
+      "name": "tempo-data",
+      "spec": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "30Gi"
+          }
+        },
+        "storageClassName": "longhorn",
+        "volumeMode": "Filesystem",
+        "volumeName": "pvc-93c76276-ca39-4795-a3e9-81dff596643e"
+      },
+      "status": {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "capacity": {
+          "storage": "30Gi"
+        },
+        "phase": "Bound"
+      }
+    }
+  ],
+  "configs": [
+    {
+      "name": "loki-config",
+      "keys": [
+        "config.yaml"
+      ]
+    },
+    {
+      "name": "tempo-config",
+      "keys": [
+        "tempo.yaml"
+      ]
+    }
+  ],
+  "pods": [
+    {
+      "name": "loki-697bf5bb8c-jxrjw",
+      "node": "llmpool01",
+      "volumes": [
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "loki-config"
+          },
+          "name": "config"
+        },
+        {
+          "name": "data",
+          "persistentVolumeClaim": {
+            "claimName": "loki-data"
+          }
+        },
+        {
+          "name": "kube-api-access-dhlqh",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "started": "2026-09-14T05:00:10Z",
+      "containers": [
+        {
+          "name": "loki",
+          "args": [
+            "-config.file=/etc/loki/config.yaml"
+          ],
+          "mounts": [
+            {
+              "mountPath": "/etc/loki",
+              "name": "config"
+            },
+            {
+              "mountPath": "/var/loki",
+              "name": "data"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-dhlqh",
+              "readOnly": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prometheus-monitoring-kube-prometheus-prometheus-0",
+      "node": "llmpool01",
+      "volumes": [
+        {
+          "name": "prometheus-monitoring-kube-prometheus-prometheus-db",
+          "persistentVolumeClaim": {
+            "claimName": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0"
+          }
+        },
+        {
+          "name": "config",
+          "secret": {
+            "defaultMode": 420,
+            "secretName": "prometheus-monitoring-kube-prometheus-prometheus"
+          }
+        },
+        {
+          "name": "tls-assets",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "secret": {
+                  "name": "prometheus-monitoring-kube-prometheus-prometheus-tls-assets-0"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "emptyDir": {
+            "medium": "Memory"
+          },
+          "name": "config-out"
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0",
+            "optional": true
+          },
+          "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0"
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1",
+            "optional": true
+          },
+          "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1"
+        },
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2",
+            "optional": true
+          },
+          "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2"
+        },
+        {
+          "name": "web-config",
+          "secret": {
+            "defaultMode": 420,
+            "secretName": "prometheus-monitoring-kube-prometheus-prometheus-web-config"
+          }
+        },
+        {
+          "name": "kube-api-access-lnfdj",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "started": "2026-09-13T23:23:31Z",
+      "containers": [
+        {
+          "name": "prometheus",
+          "args": [
+            "--config.file=/etc/prometheus/config_out/prometheus.env.yaml",
+            "--web.enable-lifecycle",
+            "--web.external-url=http://monitoring-kube-prometheus-prometheus.monitoring:9090",
+            "--web.route-prefix=/",
+            "--storage.tsdb.path=/prometheus",
+            "--storage.tsdb.wal-compression",
+            "--web.config.file=/etc/prometheus/web_config/web-config.yaml"
+          ],
+          "mounts": [
+            {
+              "mountPath": "/etc/prometheus/config_out",
+              "name": "config-out",
+              "readOnly": true
+            },
+            {
+              "mountPath": "/etc/prometheus/certs",
+              "name": "tls-assets",
+              "readOnly": true
+            },
+            {
+              "mountPath": "/prometheus",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-db",
+              "subPath": "prometheus-db"
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0",
+              "readOnly": true
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1",
+              "readOnly": true
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2",
+              "readOnly": true
+            },
+            {
+              "mountPath": "/etc/prometheus/web_config/web-config.yaml",
+              "name": "web-config",
+              "readOnly": true,
+              "subPath": "web-config.yaml"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-lnfdj",
+              "readOnly": true
+            }
+          ]
+        },
+        {
+          "name": "config-reloader",
+          "args": [
+            "--listen-address=:8080",
+            "--reload-url=http://127.0.0.1:9090/-/reload",
+            "--config-file=/etc/prometheus/config/prometheus.yaml.gz",
+            "--config-envsubst-file=/etc/prometheus/config_out/prometheus.env.yaml",
+            "--watched-dir=/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0",
+            "--watched-dir=/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1",
+            "--watched-dir=/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2",
+            "--watched-dir=/etc/prometheus/config"
+          ],
+          "mounts": [
+            {
+              "mountPath": "/etc/prometheus/config",
+              "name": "config"
+            },
+            {
+              "mountPath": "/etc/prometheus/config_out",
+              "name": "config-out"
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-0"
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-1"
+            },
+            {
+              "mountPath": "/etc/prometheus/rules/prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2",
+              "name": "prometheus-monitoring-kube-prometheus-prometheus-rulefiles-2"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-lnfdj",
+              "readOnly": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tempo-67d44597fd-9c2qj",
+      "node": "llmpool01",
+      "volumes": [
+        {
+          "configMap": {
+            "defaultMode": 420,
+            "name": "tempo-config"
+          },
+          "name": "config"
+        },
+        {
+          "name": "data",
+          "persistentVolumeClaim": {
+            "claimName": "tempo-data"
+          }
+        },
+        {
+          "name": "kube-api-access-gqqt5",
+          "projected": {
+            "defaultMode": 420,
+            "sources": [
+              {
+                "serviceAccountToken": {
+                  "expirationSeconds": 3607,
+                  "path": "token"
+                }
+              },
+              {
+                "configMap": {
+                  "items": [
+                    {
+                      "key": "ca.crt",
+                      "path": "ca.crt"
+                    }
+                  ],
+                  "name": "kube-root-ca.crt"
+                }
+              },
+              {
+                "downwardAPI": {
+                  "items": [
+                    {
+                      "fieldRef": {
+                        "apiVersion": "v1",
+                        "fieldPath": "metadata.namespace"
+                      },
+                      "path": "namespace"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "started": "2026-09-14T04:11:13Z",
+      "containers": [
+        {
+          "name": "tempo",
+          "args": [
+            "-config.file=/etc/tempo/tempo.yaml"
+          ],
+          "mounts": [
+            {
+              "mountPath": "/etc/tempo",
+              "name": "config"
+            },
+            {
+              "mountPath": "/var/tempo",
+              "name": "data"
+            },
+            {
+              "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+              "name": "kube-api-access-gqqt5",
+              "readOnly": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
