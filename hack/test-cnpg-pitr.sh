@@ -61,6 +61,18 @@ barman_operator_identity=$(contract_value '.barman_cloud_plugin.operator_image')
 barman_sidecar_identity=$(contract_value '.barman_cloud_plugin.sidecar_image')
 barman_plugin_name=$(contract_value '.barman_cloud_plugin.name')
 minio_identity=$(contract_value '.local_conformance.minio_image')
+minio_source_identity=${VELA_CNPG_MINIO_SOURCE_IDENTITY:-$minio_identity}
+case "$minio_source_identity" in
+	*@sha256:*) ;;
+	*)
+		echo "VELA_CNPG_MINIO_SOURCE_IDENTITY must include an immutable digest" >&2
+		exit 1
+		;;
+esac
+if [ "${minio_source_identity##*@}" != "${minio_identity##*@}" ]; then
+	echo "VELA_CNPG_MINIO_SOURCE_IDENTITY digest differs from the contract" >&2
+	exit 1
+fi
 barman_install_kustomization="$repository_root/deploy/control-storage/$barman_install_kustomization"
 if [ ! -s "$barman_install_kustomization" ]; then
 	echo "Barman install kustomization is missing: $barman_install_kustomization" >&2
@@ -139,7 +151,11 @@ download_verified() {
 pull_image() {
 	identity=$1
 	archive_name=$2
+	target_tag=${3:-}
 	tag=$(image_tag "$identity")
+	if [ -z "$target_tag" ]; then
+		target_tag=$tag
+	fi
 	archive="$test_directory/$archive_name"
 	"$crane_binary" pull --platform "$image_platform" "$identity" "$archive"
 	load_output=$(docker load -i "$archive")
@@ -152,13 +168,13 @@ pull_image() {
 		echo "docker load did not report a loaded image for $identity" >&2
 		exit 1
 	fi
-	docker tag "$loaded_reference" "$tag"
-	if [ "$loaded_reference" != "$tag" ]; then
+	docker tag "$loaded_reference" "$target_tag"
+	if [ "$loaded_reference" != "$target_tag" ]; then
 		docker image rm "$loaded_reference" >/dev/null 2>&1 || true
 	fi
-	loaded_platform=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$tag")
+	loaded_platform=$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$target_tag")
 	if [ "$loaded_platform" != "$image_platform" ]; then
-		echo "loaded $tag for $loaded_platform, want $image_platform" >&2
+		echo "loaded $target_tag for $loaded_platform, want $image_platform" >&2
 		exit 1
 	fi
 }
@@ -213,7 +229,7 @@ pull_image "$cnpg_operator_identity" cnpg-operator.tar
 pull_image "$postgres_identity" postgres.tar
 pull_image "$barman_operator_identity" barman-cloud-operator.tar
 pull_image "$barman_sidecar_identity" barman-cloud-sidecar.tar
-pull_image "$minio_identity" minio.tar
+pull_image "$minio_source_identity" minio.tar "$minio_image"
 
 "$kind_binary" load docker-image --name "$cluster_name" \
 	"$cert_manager_cainjector_image" \
@@ -265,15 +281,25 @@ kubectl --kubeconfig "$kubeconfig" -n cert-manager rollout status \
 kubectl --kubeconfig "$kubeconfig" apply --server-side -f "$cnpg_manifest"
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system patch \
 	deployment cnpg-controller-manager --type=strategic \
-	-p '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/control-plane":""},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],"containers":[{"name":"manager","imagePullPolicy":"IfNotPresent"}]}}}}'
+	-p '{"spec":{"template":{"spec":{"nodeSelector":null,"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],"containers":[{"name":"manager","imagePullPolicy":"IfNotPresent"}]}}}}'
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system rollout status \
 	deployment/cnpg-controller-manager --timeout=5m
 
 kubectl kustomize "$barman_install_directory" | \
 	kubectl --kubeconfig "$kubeconfig" apply --server-side -f -
+# Kind has no registry mirror.  The images were preloaded by digest above, but
+# the upstream Barman deployment is rewritten to a digest reference by the
+# RBAC-hardening overlay.  Use the already loaded immutable tag for this
+# disposable cluster and keep the digest verification in the receipt.
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system patch \
 	deployment barman-cloud --type=strategic \
-	-p '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/control-plane":""},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],"containers":[{"name":"barman-cloud","imagePullPolicy":"IfNotPresent"}]}}}}'
+	-p '{"spec":{"template":{"spec":{"nodeSelector":null,"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],"containers":[{"name":"barman-cloud","imagePullPolicy":"IfNotPresent"}]}}}}'
+kubectl --kubeconfig "$kubeconfig" -n cnpg-system set image \
+	deployment/barman-cloud "barman-cloud=$barman_operator_image"
+sidecar_image_b64=$(printf '%s' "$barman_sidecar_image" | base64 | tr -d '\n')
+kubectl --kubeconfig "$kubeconfig" -n cnpg-system patch \
+	secret/plugin-barman-cloud-f998mh5292 --type=merge \
+	-p "{\"data\":{\"SIDECAR_IMAGE\":\"$sidecar_image_b64\"}}"
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system rollout status \
 	deployment/barman-cloud --timeout=5m
 

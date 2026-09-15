@@ -2,21 +2,25 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: vela-postgres
+  namespace: vela-system
   labels:
     app.kubernetes.io/part-of: vela
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe
+  imageName: ghcr.io/cloudnative-pg/postgresql@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe
   primaryUpdateStrategy: unsupervised
   storage:
-    size: 100Gi
-    storageClass: local-path
-  walStorage:
     size: 50Gi
-    storageClass: local-path
+    storageClass: longhorn
+  walStorage:
+    size: 20Gi
+    storageClass: longhorn
   affinity:
     enablePodAntiAffinity: true
+    podAntiAffinityType: required
     topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      vela.ai/node-role: control-storage
   resources:
     requests:
       cpu: "2"
@@ -26,6 +30,7 @@ spec:
       memory: 32Gi
   postgresql:
     parameters:
+      max_connections: "200"
       vela.require_synchronous_quorum: "on"
     synchronous:
       dataDurability: required

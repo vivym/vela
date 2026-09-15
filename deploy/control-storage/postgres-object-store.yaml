@@ -8,7 +8,7 @@ spec:
   retentionPolicy: "30d"
   configuration:
     destinationPath: s3://vela-postgres-backup/cluster
-    endpointURL: https://s3-backup.example.invalid
+    endpointURL: http://minio.object-store.svc.cluster.local:9000
     s3Credentials:
       accessKeyId:
         name: vela-backup-s3

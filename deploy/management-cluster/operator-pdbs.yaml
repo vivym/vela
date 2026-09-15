@@ -1,0 +1,57 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: cert-manager
+      app.kubernetes.io/name: cert-manager
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager-cainjector
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: cert-manager
+      app.kubernetes.io/name: cainjector
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cert-manager-webhook
+  namespace: cert-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: cert-manager
+      app.kubernetes.io/name: webhook
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloudnative-pg
+  namespace: cnpg-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudnative-pg
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: barman-cloud
+  namespace: cnpg-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: barman-cloud

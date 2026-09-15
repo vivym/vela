@@ -1,0 +1,370 @@
+{
+  "at": "2026-09-14T17:10:59.543364+00:00",
+  "metrics": {
+    "probe_success{job=~\"vela-registry-.*\"}": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.70:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.71:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.66:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.66:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.71:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_success",
+              "instance": "https://10.1.201.70:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.545,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    "probe_http_status_code{job=~\"vela-registry-.*\"}": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.70:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.71:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.66:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.548,
+              "401"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.66:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.71:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.548,
+              "401"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+              "job": "vela-registry-control-manifest",
+              "namespace": "monitoring",
+              "registry_check": "control_manifest"
+            },
+            "value": [
+              1789405859.548,
+              "200"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_http_status_code",
+              "instance": "https://10.1.201.70:5005/v2/",
+              "job": "vela-registry-anonymous",
+              "namespace": "monitoring",
+              "registry_check": "anonymous_denied"
+            },
+            "value": [
+              1789405859.548,
+              "401"
+            ]
+          }
+        ]
+      }
+    },
+    "probe_ssl_earliest_cert_expiry{job=\"vela-registry-authenticated\"}": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "__name__": "probe_ssl_earliest_cert_expiry",
+              "instance": "https://10.1.201.70:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.551,
+              "1860623784"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_ssl_earliest_cert_expiry",
+              "instance": "https://10.1.201.71:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.551,
+              "1860623784"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "probe_ssl_earliest_cert_expiry",
+              "instance": "https://10.1.201.66:5005/v2/",
+              "job": "vela-registry-authenticated",
+              "namespace": "monitoring",
+              "registry_check": "authenticated"
+            },
+            "value": [
+              1789405859.551,
+              "1860623784"
+            ]
+          }
+        ]
+      }
+    },
+    "up{service=\"vela-registry-prober\"}": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": [
+          {
+            "metric": {
+              "__name__": "up",
+              "container": "prober",
+              "endpoint": "http",
+              "instance": "10.42.0.9:9115",
+              "job": "vela-registry-prober",
+              "namespace": "monitoring",
+              "pod": "vela-registry-prober-6775cbd5f-6mt5q",
+              "service": "vela-registry-prober"
+            },
+            "value": [
+              1789405859.552,
+              "1"
+            ]
+          },
+          {
+            "metric": {
+              "__name__": "up",
+              "container": "prober",
+              "endpoint": "http",
+              "instance": "10.42.1.93:9115",
+              "job": "vela-registry-prober",
+              "namespace": "monitoring",
+              "pod": "vela-registry-prober-6775cbd5f-tdchq",
+              "service": "vela-registry-prober"
+            },
+            "value": [
+              1789405859.552,
+              "1"
+            ]
+          }
+        ]
+      }
+    },
+    "ALERTS{alertname=~\"VelaRegistry.*\"}": {
+      "status": "success",
+      "data": {
+        "resultType": "vector",
+        "result": []
+      }
+    }
+  },
+  "dashboard": {
+    "status": 200,
+    "uid": "vela-registry",
+    "title": "Vela \u00b7 Internal Registry",
+    "panels": 6,
+    "url": "/grafana/d/vela-registry/vela-c2b7-internal-registry"
+  },
+  "pods": [
+    {
+      "name": "vela-registry-prober-6775cbd5f-6mt5q",
+      "node": "llmpool01",
+      "ready": true,
+      "phase": "Running"
+    },
+    {
+      "name": "vela-registry-prober-6775cbd5f-tdchq",
+      "node": "llmpool02",
+      "ready": true,
+      "phase": "Running"
+    }
+  ]
+}

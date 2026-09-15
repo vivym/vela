@@ -1,0 +1,16 @@
+{
+  "observed_at": "2026-09-14T12:00:43Z",
+  "statefulset": {
+    "replicas": 3,
+    "ready_replicas": 3,
+    "storage_request": "50Gi",
+    "store_directory": "/data/jetstream",
+    "image_digest_pinned": true
+  },
+  "jetstream": {
+    "streams": 0,
+    "consumers": 0,
+    "account_storage_bytes": 0
+  },
+  "scope": "Live control-plane inspection. PVC-backed three-member NATS is healthy, but no business JetStream stream or durable consumer exists yet; this is not a message recovery receipt."
+}

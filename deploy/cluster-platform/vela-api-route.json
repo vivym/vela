@@ -1,0 +1,22 @@
+{
+  "name": "vela-api",
+  "uri": "/api/*",
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "vela-api.vela-system.svc.cluster.local:80": 1
+    }
+  },
+  "plugins": {
+    "proxy-rewrite": {
+      "regex_uri": ["^/api/?(.*)$", "/$1"]
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "rejected_code": 429,
+      "key": "remote_addr",
+      "policy": "local"
+    }
+  }
+}

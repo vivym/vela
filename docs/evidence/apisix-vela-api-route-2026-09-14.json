@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-09-14T12:00:43.377118+00:00",
+  "route_id": "vela-api",
+  "uri": "/api/*",
+  "upstream_service": "vela-api.vela-system.svc.cluster.local:80",
+  "network_policy_namespace_label": "vela.ai/network-role=api-ingress",
+  "network_policy_pod_label": "vela.ai/client-role=api-gateway",
+  "plugins": [
+    "proxy-rewrite",
+    "limit-count"
+  ],
+  "checks": [
+    {
+      "endpoint": "10.1.201.70:30080/api/health",
+      "status": 401,
+      "meaning": "backend bearer-token guard reached through APISIX"
+    },
+    {
+      "endpoint": "10.1.201.71:30080/api/health",
+      "status": 401,
+      "meaning": "backend bearer-token guard reached through APISIX"
+    }
+  ],
+  "scope": "internal validation; no public DNS or production PKI; authenticated business API SLO remains open"
+}

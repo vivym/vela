@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-14T20:15:01.447824+00:00",
+  "probe_uid": "e0aaec7b-0ab8-4ad0-867d-9cac3b243532",
+  "old_targets": [
+    "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+    "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+    "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51"
+  ],
+  "new_targets": [
+    "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+    "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+    "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+  ],
+  "patch_applied": true
+}

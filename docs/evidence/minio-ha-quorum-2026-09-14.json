@@ -1,0 +1,101 @@
+{
+  "postcheck_time": "2026-09-14T09:03:13.213283+00:00",
+  "result": "QUORUM_CASES_PASSED_CLEANUP_RECOVERED",
+  "case_evidence_source": "Verifier session 81982 stdout; all three case PASS lines observed before its final cleanup error",
+  "runner_exit_code": 1,
+  "runner_failure": "Initial final rb --force failed after all three cases passed; no elapsed timings or payload hashes were persisted by that runner revision",
+  "cleanup_recovery": {
+    "time": "2026-09-14T08:59:31.247503+00:00",
+    "bucket": "vela-ha-drill-51e8b6914ed7",
+    "retry_rc": 0,
+    "test_bucket_removed": true
+  },
+  "scope": "two staging MinIO Pods recreated under NetworkPolicy isolation per host; no physical host or Longhorn outage",
+  "quorum_telemetry": "/minio/metrics/v3/cluster/erasure-set",
+  "cases": [
+    {
+      "host": "llmpool01",
+      "isolated_members": [
+        "minio-ha-0",
+        "minio-ha-5"
+      ],
+      "online_drives": 4,
+      "read_quorum": 3,
+      "write_quorum": 4,
+      "writes_verified": 3,
+      "new_object_readbacks": 3,
+      "existing_object_readbacks": 3,
+      "result": "S3 READ_WRITE_PASS"
+    },
+    {
+      "host": "llmpool02",
+      "isolated_members": [
+        "minio-ha-1",
+        "minio-ha-3"
+      ],
+      "online_drives": 4,
+      "read_quorum": 3,
+      "write_quorum": 4,
+      "writes_verified": 3,
+      "new_object_readbacks": 3,
+      "existing_object_readbacks": 3,
+      "result": "S3 READ_WRITE_PASS"
+    },
+    {
+      "host": "marslab-gpu-01",
+      "isolated_members": [
+        "minio-ha-2",
+        "minio-ha-4"
+      ],
+      "online_drives": 4,
+      "read_quorum": 3,
+      "write_quorum": 4,
+      "writes_verified": 3,
+      "new_object_readbacks": 3,
+      "existing_object_readbacks": 3,
+      "result": "S3 READ_WRITE_PASS"
+    }
+  ],
+  "postconditions": {
+    "staging_ready": 6,
+    "original_service_selector": {
+      "app": "minio"
+    },
+    "temporary_network_policies_removed": true,
+    "rollback_timers_removed": true,
+    "test_buckets_removed": true,
+    "staging_volumes": [
+      {
+        "claim": "data-minio-ha-0",
+        "replicas": 2,
+        "robustness": "healthy"
+      },
+      {
+        "claim": "data-minio-ha-1",
+        "replicas": 2,
+        "robustness": "healthy"
+      },
+      {
+        "claim": "data-minio-ha-2",
+        "replicas": 2,
+        "robustness": "healthy"
+      },
+      {
+        "claim": "data-minio-ha-3",
+        "replicas": 2,
+        "robustness": "healthy"
+      },
+      {
+        "claim": "data-minio-ha-4",
+        "replicas": 2,
+        "robustness": "healthy"
+      },
+      {
+        "claim": "data-minio-ha-5",
+        "replicas": 2,
+        "robustness": "healthy"
+      }
+    ],
+    "data_migration_or_cutover_performed": false
+  }
+}

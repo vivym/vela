@@ -1,0 +1,33 @@
+{
+  "at": "2026-09-14T16:53:03.439332+00:00",
+  "nodes": 54,
+  "ready": 53,
+  "allocatable_gpu": 407,
+  "control": [
+    {
+      "name": "vela-control-67fbf94d7-jdqvl",
+      "node": "llmpool02",
+      "phase": "Running",
+      "imagePullSecrets": [
+        {
+          "name": "vela-release-pull-v1"
+        }
+      ],
+      "ready": true,
+      "restarts": 0
+    },
+    {
+      "name": "vela-control-67fbf94d7-svk6s",
+      "node": "llmpool01",
+      "phase": "Running",
+      "imagePullSecrets": [
+        {
+          "name": "vela-release-pull-v1"
+        }
+      ],
+      "ready": true,
+      "restarts": 0
+    }
+  ],
+  "leftover_registry_pods": []
+}

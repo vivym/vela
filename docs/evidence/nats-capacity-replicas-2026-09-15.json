@@ -1,0 +1,724 @@
+{
+  "at": "2026-09-14T20:37:11.232097+00:00",
+  "replicas": [
+    {
+      "name": "pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7-r-fe52ebe5",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-control-6bfc884b87-7bxq7-artifact-validation",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-1e238181-4774-415a-8c51-c5ea60720e7e-r-421393f0",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-control-6bfc884b87-554zb-artifact-validation",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df-r-bb7644e0",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "monitoring-grafana",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df-r-f550315d",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "monitoring-grafana",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-21bd1909-f74d-4212-8b6c-be738251de18-r-85b12f1f",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-4",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-21bd1909-f74d-4212-8b6c-be738251de18-r-c2fcea74",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-4",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e-r-73ae8907",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-1",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e-r-8a243e82",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-1",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc-r-0a242e80",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-0",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc-r-2d3dd5b0",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-0",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-3fe243a5-a0d2-4740-ab3e-44d76e30f478-r-102ed2a9",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-2",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-3fe243a5-a0d2-4740-ab3e-44d76e30f478-r-8e3ce3b1",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-2",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-40ff974f-dc41-4093-a086-c6062d6f579a-r-9e470dee",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-2",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-40ff974f-dc41-4093-a086-c6062d6f579a-r-9ec46e2f",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-2",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd-r-bbd2a5c4",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "107374182400",
+      "state": "running",
+      "failedAt": "",
+      "claim": "loki-data",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd-r-c43375cc",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "107374182400",
+      "state": "running",
+      "failedAt": "",
+      "claim": "loki-data",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23-r-49c1b8cf",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-1",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23-r-6babb395",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-1",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f-r-7a63200f",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-0",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f-r-edfd667c",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-0",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9-r-2b77c6d4",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9-r-9e24b054",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1-r-6dedf466",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-0",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1-r-7f14b40f",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-0",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5-r-2035f636",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-1",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5-r-b9bd7595",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-1",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c-r-3a261e6e",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-2-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c-r-d9fcd328",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-2-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191-r-056663e8",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-3-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191-r-6b4938f5",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-3-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-93c76276-ca39-4795-a3e9-81dff596643e-r-6d3655fc",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "32212254720",
+      "state": "running",
+      "failedAt": "",
+      "claim": "tempo-data",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-93c76276-ca39-4795-a3e9-81dff596643e-r-c373443e",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "32212254720",
+      "state": "running",
+      "failedAt": "",
+      "claim": "tempo-data",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6-r-0ef67d0d",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-1-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6-r-fb8cf659",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-1-wal",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447-r-5782e028",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-5",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447-r-a85dd9c2",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-5",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09-r-089e8985",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-3",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09-r-efa6c363",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "vela-postgres-3",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59-r-c0327888",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59-r-e8d089fb",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+      "namespace": "monitoring"
+    },
+    {
+      "name": "pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351-r-ce92f420",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-1",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351-r-d25052a8",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-1",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69-r-6d4952b9",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-1",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69-r-a3dc167b",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-1",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0-r-a818a65f",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-2",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0-r-d6163299",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-2",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-e6625907-a678-4a46-88b2-f6e554129a39-r-115d210c",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-0",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-e6625907-a678-4a46-88b2-f6e554129a39-r-2cb243b8",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "10737418240",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-apisix-etcd-0",
+      "namespace": "apisix"
+    },
+    {
+      "name": "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97-r-87563321",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-3",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97-r-a576cffe",
+      "node": "marslab-gpu-01",
+      "disk": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+      "size": "8589934592",
+      "state": "running",
+      "failedAt": "",
+      "claim": "data-minio-ha-3",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-f084c352-66f3-4202-b563-f8b561c74d2c-r-3422aa1b",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-2",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-f084c352-66f3-4202-b563-f8b561c74d2c-r-f3c2d394",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-2",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32-r-12b665d7",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-2",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32-r-5a1afd4b",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "53687091200",
+      "state": "running",
+      "failedAt": "",
+      "claim": "jetstream-nats-2",
+      "namespace": "vela-system"
+    },
+    {
+      "name": "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e-r-46132728",
+      "node": "llmpool01",
+      "disk": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-3",
+      "namespace": "object-store"
+    },
+    {
+      "name": "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e-r-ea886cd4",
+      "node": "llmpool02",
+      "disk": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+      "size": "21474836480",
+      "state": "stopped",
+      "failedAt": "",
+      "claim": "data-minio-3",
+      "namespace": "object-store"
+    }
+  ],
+  "nats": [
+    {
+      "name": "nats-0",
+      "uid": "441e0a67-6321-4395-be4b-027e43e63235",
+      "node": "llmpool02",
+      "version": "2.10.22",
+      "jetstream": {
+        "config": {
+          "max_memory": 2147483648,
+          "max_storage": 39378487296,
+          "store_dir": "/data/jetstream/jetstream",
+          "sync_interval": 120000000000
+        },
+        "stats": {
+          "memory": 0,
+          "storage": 0,
+          "reserved_memory": 0,
+          "reserved_storage": 0,
+          "accounts": 1,
+          "ha_assets": 1,
+          "api": {
+            "total": 0,
+            "errors": 0
+          }
+        },
+        "meta": {
+          "name": "VELA",
+          "leader": "nats-2",
+          "peer": "cnrtt3eg",
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "streams": 0,
+      "storage": 0,
+      "reserved_storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-2",
+        "peer": "cnrtt3eg",
+        "cluster_size": 3,
+        "pending": 0
+      }
+    },
+    {
+      "name": "nats-1",
+      "uid": "e62d7518-cd29-4cd8-8656-a9cb1d84c3a5",
+      "node": "marslab-gpu-01",
+      "version": "2.10.22",
+      "jetstream": {
+        "config": {
+          "max_memory": 2147483648,
+          "max_storage": 39378487296,
+          "store_dir": "/data/jetstream/jetstream",
+          "sync_interval": 120000000000
+        },
+        "stats": {
+          "memory": 0,
+          "storage": 0,
+          "reserved_memory": 0,
+          "reserved_storage": 0,
+          "accounts": 0,
+          "ha_assets": 1,
+          "api": {
+            "total": 0,
+            "errors": 0
+          }
+        },
+        "meta": {
+          "name": "VELA",
+          "leader": "nats-2",
+          "peer": "cnrtt3eg",
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "streams": 0,
+      "storage": 0,
+      "reserved_storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-2",
+        "peer": "cnrtt3eg",
+        "cluster_size": 3,
+        "pending": 0
+      }
+    },
+    {
+      "name": "nats-2",
+      "uid": "7ee3cc9b-b2bb-4c3a-8bdd-a848a8c5a304",
+      "node": "llmpool01",
+      "version": "2.10.22",
+      "jetstream": {
+        "config": {
+          "max_memory": 2147483648,
+          "max_storage": 39378487296,
+          "store_dir": "/data/jetstream/jetstream",
+          "sync_interval": 120000000000
+        },
+        "stats": {
+          "memory": 0,
+          "storage": 0,
+          "reserved_memory": 0,
+          "reserved_storage": 0,
+          "accounts": 1,
+          "ha_assets": 1,
+          "api": {
+            "total": 0,
+            "errors": 0
+          }
+        },
+        "meta": {
+          "name": "VELA",
+          "leader": "nats-2",
+          "peer": "cnrtt3eg",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 892944116,
+              "peer": "S1Nunr6R"
+            },
+            {
+              "name": "nats-1",
+              "current": true,
+              "active": 892800459,
+              "peer": "yrzKKRBu"
+            }
+          ],
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "streams": 0,
+      "storage": 0,
+      "reserved_storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-2",
+        "peer": "cnrtt3eg",
+        "replicas": [
+          {
+            "name": "nats-0",
+            "current": true,
+            "active": 893902681,
+            "peer": "S1Nunr6R"
+          },
+          {
+            "name": "nats-1",
+            "current": true,
+            "active": 893759024,
+            "peer": "yrzKKRBu"
+          }
+        ],
+        "cluster_size": 3,
+        "pending": 0
+      }
+    }
+  ]
+}

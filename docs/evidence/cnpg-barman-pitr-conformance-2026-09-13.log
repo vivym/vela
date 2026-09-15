@@ -1,0 +1,211 @@
+./hack/test-cnpg-pitr.sh
+No kind clusters found.
+Creating cluster "vela-cnpg-pitr" ...
+ • Ensuring node image (kindest/node:v1.36.1) 🖼  ...
+ ✓ Ensuring node image (kindest/node:v1.36.1) 🖼
+ • Preparing nodes 📦 📦 📦 📦   ...
+ ✓ Preparing nodes 📦 📦 📦 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Installing StorageClass 💾  ...
+ ✓ Installing StorageClass 💾
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+ • Waiting ≤ 5m0s for control-plane = Ready ⏳  ...
+ ✓ Waiting ≤ 5m0s for control-plane = Ready ⏳
+ • Ready after 10s 💚
+Set kubectl context to "kind-vela-cnpg-pitr"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-vela-cnpg-pitr --kubeconfig /var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/tmp.qAgFQTMpRn/kubeconfig
+
+Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂
+Image: "quay.io/jetstack/cert-manager-cainjector:v1.21.1" with ID "sha256:fa44dfa9ee03a1d4f1e5013de229c857a75d80223f5ce82862aef25510da4b51" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "quay.io/jetstack/cert-manager-cainjector:v1.21.1" with ID "sha256:fa44dfa9ee03a1d4f1e5013de229c857a75d80223f5ce82862aef25510da4b51" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "quay.io/jetstack/cert-manager-cainjector:v1.21.1" with ID "sha256:fa44dfa9ee03a1d4f1e5013de229c857a75d80223f5ce82862aef25510da4b51" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "quay.io/jetstack/cert-manager-cainjector:v1.21.1" with ID "sha256:fa44dfa9ee03a1d4f1e5013de229c857a75d80223f5ce82862aef25510da4b51" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "quay.io/jetstack/cert-manager-controller:v1.21.1" with ID "sha256:c48f358f05e7e2bbdf5dec1e0919f128272ed80fa7168f19b784d15132c18440" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "quay.io/jetstack/cert-manager-controller:v1.21.1" with ID "sha256:c48f358f05e7e2bbdf5dec1e0919f128272ed80fa7168f19b784d15132c18440" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "quay.io/jetstack/cert-manager-controller:v1.21.1" with ID "sha256:c48f358f05e7e2bbdf5dec1e0919f128272ed80fa7168f19b784d15132c18440" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "quay.io/jetstack/cert-manager-controller:v1.21.1" with ID "sha256:c48f358f05e7e2bbdf5dec1e0919f128272ed80fa7168f19b784d15132c18440" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "quay.io/jetstack/cert-manager-webhook:v1.21.1" with ID "sha256:7e36cc5b41523a11cffacf980ce8bb9db2527db84f2af1659eb03f8db5221eee" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "quay.io/jetstack/cert-manager-webhook:v1.21.1" with ID "sha256:7e36cc5b41523a11cffacf980ce8bb9db2527db84f2af1659eb03f8db5221eee" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "quay.io/jetstack/cert-manager-webhook:v1.21.1" with ID "sha256:7e36cc5b41523a11cffacf980ce8bb9db2527db84f2af1659eb03f8db5221eee" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "quay.io/jetstack/cert-manager-webhook:v1.21.1" with ID "sha256:7e36cc5b41523a11cffacf980ce8bb9db2527db84f2af1659eb03f8db5221eee" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0" with ID "sha256:00d22c7bc507fffb9bcc7925e3eb8525d14aa2ef9b0b7055d784a70de0fb28a6" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0" with ID "sha256:00d22c7bc507fffb9bcc7925e3eb8525d14aa2ef9b0b7055d784a70de0fb28a6" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0" with ID "sha256:00d22c7bc507fffb9bcc7925e3eb8525d14aa2ef9b0b7055d784a70de0fb28a6" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0" with ID "sha256:00d22c7bc507fffb9bcc7925e3eb8525d14aa2ef9b0b7055d784a70de0fb28a6" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "ghcr.io/cloudnative-pg/postgresql:16.4" with ID "sha256:fc795dea69e49a274e3d981b787e78d15d4f351280a059bf068b6709ddfdc8db" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "ghcr.io/cloudnative-pg/postgresql:16.4" with ID "sha256:fc795dea69e49a274e3d981b787e78d15d4f351280a059bf068b6709ddfdc8db" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "ghcr.io/cloudnative-pg/postgresql:16.4" with ID "sha256:fc795dea69e49a274e3d981b787e78d15d4f351280a059bf068b6709ddfdc8db" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "ghcr.io/cloudnative-pg/postgresql:16.4" with ID "sha256:fc795dea69e49a274e3d981b787e78d15d4f351280a059bf068b6709ddfdc8db" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0" with ID "sha256:92655b0558df055f1fc84d6bcbe3815944bd08c9e679e604de64ef9bfae33d67" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0" with ID "sha256:92655b0558df055f1fc84d6bcbe3815944bd08c9e679e604de64ef9bfae33d67" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0" with ID "sha256:92655b0558df055f1fc84d6bcbe3815944bd08c9e679e604de64ef9bfae33d67" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0" with ID "sha256:92655b0558df055f1fc84d6bcbe3815944bd08c9e679e604de64ef9bfae33d67" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0" with ID "sha256:7f9344a065c6affcb4b8e81ef1741290ac0b197a8d71bfea501fda6c980c5224" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0" with ID "sha256:7f9344a065c6affcb4b8e81ef1741290ac0b197a8d71bfea501fda6c980c5224" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0" with ID "sha256:7f9344a065c6affcb4b8e81ef1741290ac0b197a8d71bfea501fda6c980c5224" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0" with ID "sha256:7f9344a065c6affcb4b8e81ef1741290ac0b197a8d71bfea501fda6c980c5224" not yet present on node "vela-cnpg-pitr-worker2", loading...
+Image: "minio/minio:RELEASE.2025-04-22T22-12-26Z" with ID "sha256:0b1f0305b90bf745a50c45dac2041b2820820b07523db2d656327dc78c70c24c" not yet present on node "vela-cnpg-pitr-worker3", loading...
+Image: "minio/minio:RELEASE.2025-04-22T22-12-26Z" with ID "sha256:0b1f0305b90bf745a50c45dac2041b2820820b07523db2d656327dc78c70c24c" not yet present on node "vela-cnpg-pitr-worker", loading...
+Image: "minio/minio:RELEASE.2025-04-22T22-12-26Z" with ID "sha256:0b1f0305b90bf745a50c45dac2041b2820820b07523db2d656327dc78c70c24c" not yet present on node "vela-cnpg-pitr-control-plane", loading...
+Image: "minio/minio:RELEASE.2025-04-22T22-12-26Z" with ID "sha256:0b1f0305b90bf745a50c45dac2041b2820820b07523db2d656327dc78c70c24c" not yet present on node "vela-cnpg-pitr-worker2", loading...
+/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/tmp.qAgFQTMpRn/cert-manager.yaml: OK
+/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/tmp.qAgFQTMpRn/cnpg.yaml: OK
+/var/folders/bz/b7rm7lss3nb0dll7sf_y1_8r0000gn/T/tmp.qAgFQTMpRn/barman-cloud.yaml: OK
+namespace/cert-manager serverside-applied
+customresourcedefinition.apiextensions.k8s.io/challenges.acme.cert-manager.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/orders.acme.cert-manager.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/certificaterequests.cert-manager.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/certificates.cert-manager.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/clusterissuers.cert-manager.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/issuers.cert-manager.io serverside-applied
+serviceaccount/cert-manager-cainjector serverside-applied
+serviceaccount/cert-manager serverside-applied
+serviceaccount/cert-manager-webhook serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-cainjector serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-issuers serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-clusterissuers serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-certificates serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-orders serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-challenges serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-ingress-shim serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-cluster-view serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-view serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-edit serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-approve:cert-manager-io serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-controller-certificatesigningrequests serverside-applied
+clusterrole.rbac.authorization.k8s.io/cert-manager-webhook:subjectaccessreviews serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-cainjector serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-issuers serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-clusterissuers serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-certificates serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-orders serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-challenges serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-ingress-shim serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-approve:cert-manager-io serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-controller-certificatesigningrequests serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-webhook:subjectaccessreviews serverside-applied
+role.rbac.authorization.k8s.io/cert-manager-cainjector:leaderelection serverside-applied
+role.rbac.authorization.k8s.io/cert-manager:leaderelection serverside-applied
+role.rbac.authorization.k8s.io/cert-manager-webhook:dynamic-serving serverside-applied
+rolebinding.rbac.authorization.k8s.io/cert-manager-cainjector:leaderelection serverside-applied
+rolebinding.rbac.authorization.k8s.io/cert-manager:leaderelection serverside-applied
+rolebinding.rbac.authorization.k8s.io/cert-manager-webhook:dynamic-serving serverside-applied
+service/cert-manager-cainjector serverside-applied
+service/cert-manager serverside-applied
+service/cert-manager-webhook serverside-applied
+deployment.apps/cert-manager-cainjector serverside-applied
+deployment.apps/cert-manager serverside-applied
+deployment.apps/cert-manager-webhook serverside-applied
+mutatingwebhookconfiguration.admissionregistration.k8s.io/cert-manager-webhook serverside-applied
+validatingwebhookconfiguration.admissionregistration.k8s.io/cert-manager-webhook serverside-applied
+Waiting for deployment "cert-manager" rollout to finish: 0 of 1 updated replicas are available...
+deployment "cert-manager" successfully rolled out
+deployment "cert-manager-cainjector" successfully rolled out
+Waiting for deployment "cert-manager-webhook" rollout to finish: 0 of 1 updated replicas are available...
+deployment "cert-manager-webhook" successfully rolled out
+namespace/cnpg-system serverside-applied
+customresourcedefinition.apiextensions.k8s.io/backups.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/clusterimagecatalogs.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/clusters.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/databaseroles.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/databases.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/failoverquorums.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/imagecatalogs.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/poolers.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/publications.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/scheduledbackups.postgresql.cnpg.io serverside-applied
+customresourcedefinition.apiextensions.k8s.io/subscriptions.postgresql.cnpg.io serverside-applied
+serviceaccount/cnpg-manager serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-database-editor-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-database-viewer-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-manager serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-publication-editor-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-publication-viewer-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-subscription-editor-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/cnpg-subscription-viewer-role serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/cnpg-manager-rolebinding serverside-applied
+configmap/cnpg-default-monitoring serverside-applied
+service/cnpg-webhook-service serverside-applied
+deployment.apps/cnpg-controller-manager serverside-applied
+mutatingwebhookconfiguration.admissionregistration.k8s.io/cnpg-mutating-webhook-configuration serverside-applied
+validatingwebhookconfiguration.admissionregistration.k8s.io/cnpg-validating-webhook-configuration serverside-applied
+deployment.apps/cnpg-controller-manager patched
+Waiting for deployment "cnpg-controller-manager" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "cnpg-controller-manager" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "cnpg-controller-manager" rollout to finish: 1 old replicas are pending termination...
+deployment "cnpg-controller-manager" successfully rolled out
+customresourcedefinition.apiextensions.k8s.io/objectstores.barmancloud.cnpg.io serverside-applied
+serviceaccount/plugin-barman-cloud serverside-applied
+role.rbac.authorization.k8s.io/barman-plugin-leader-election-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/barman-plugin-metrics-auth-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/barman-plugin-metrics-reader serverside-applied
+clusterrole.rbac.authorization.k8s.io/barman-plugin-objectstore-editor-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/barman-plugin-objectstore-viewer-role serverside-applied
+clusterrole.rbac.authorization.k8s.io/plugin-barman-cloud serverside-applied
+rolebinding.rbac.authorization.k8s.io/barman-plugin-leader-election-rolebinding serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/barman-plugin-metrics-auth-rolebinding serverside-applied
+clusterrolebinding.rbac.authorization.k8s.io/plugin-barman-cloud-binding serverside-applied
+secret/plugin-barman-cloud-f998mh5292 serverside-applied
+service/barman-cloud serverside-applied
+deployment.apps/barman-cloud serverside-applied
+certificate.cert-manager.io/barman-cloud-client serverside-applied
+certificate.cert-manager.io/barman-cloud-server serverside-applied
+issuer.cert-manager.io/selfsigned-issuer serverside-applied
+deployment.apps/barman-cloud patched
+deployment.apps/barman-cloud image updated
+secret/plugin-barman-cloud-f998mh5292 patched
+Waiting for deployment "barman-cloud" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "barman-cloud" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "barman-cloud" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "barman-cloud" rollout to finish: 0 out of 2 new replicas have been updated...
+Waiting for deployment "barman-cloud" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "barman-cloud" rollout to finish: 1 of 2 updated replicas are available...
+deployment "barman-cloud" successfully rolled out
+storageclass.storage.k8s.io/local-path created
+namespace/vela-system created
+deployment.apps/vela-pitr-minio created
+service/vela-pitr-minio created
+Waiting for deployment "vela-pitr-minio" rollout to finish: 0 of 1 updated replicas are available...
+deployment "vela-pitr-minio" successfully rolled out
+Added `local` successfully.
+Bucket created successfully `local/vela-postgres-backup`.
+local/vela-postgres-backup versioning is enabled
+secret/vela-backup-s3 created
+objectstore.barmancloud.cnpg.io/vela-postgres-backup created
+objectstore.barmancloud.cnpg.io/vela-postgres-backup patched
+cluster.postgresql.cnpg.io/vela-postgres created
+cluster.postgresql.cnpg.io/vela-postgres patched
+scheduledbackup.postgresql.cnpg.io/vela-postgres-daily created
+cluster.postgresql.cnpg.io/vela-postgres condition met
+backup.postgresql.cnpg.io/vela-pitr-base-backup created
+
+cluster.postgresql.cnpg.io/vela-postgres-restored created
+cluster.postgresql.cnpg.io/vela-postgres-restored condition met
+[VERIFIED] Barman Cloud Plugin PITR conformance
+- platform: linux/arm64
+- CloudNativePG manifest: https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.0/cnpg-1.30.0.yaml sha256:f8bede43fe4ee0d478c2355b204a36876b2ae4faac60f2a9452280b293da3b88
+- cert-manager manifest: https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml sha256:5f6a499b8c1857d57f560f536e0dcc830914b45c420899fe7ad0692c8624e408
+- Barman Cloud manifest: https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.14.0/manifest.yaml sha256:8d4f1719cc54891ddffd7633279ec93b5d2cc547df8684c3b84f3b156a615e7c
+- CloudNativePG operator: ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0@sha256:a2701eb97cdd2a34b1fdb2cb51987f544b706e40bec72ae7146cd8580efefebb
+- PostgreSQL: ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe
+- cert-manager cainjector: quay.io/jetstack/cert-manager-cainjector:v1.21.1@sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98
+- cert-manager controller: quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a
+- cert-manager webhook: quay.io/jetstack/cert-manager-webhook:v1.21.1@sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42
+- Barman Cloud operator: ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0@sha256:823a8893690980ba5830bbbb11196a35f695b0488db7d846abc33baebf32417c
+- Barman Cloud sidecar: ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0@sha256:9880817c285c7afa4d195da2145064d21907405489ed6ec39abe59b1feb558a4
+- MinIO: minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+- credential isolation: operator list=no vela-backup-s3=yes Artifact secrets=no; PostgreSQL vela-backup-s3=yes Artifact secrets=no
+- source cluster: vela-postgres
+- restore cluster: vela-postgres-restored
+- backup: vela-pitr-base-backup (completed)
+- recovery target: 2026-09-13T12:40:40.967681Z
+- archived WAL: 000000010000000000000008
+- restored markers: before=1 after=0

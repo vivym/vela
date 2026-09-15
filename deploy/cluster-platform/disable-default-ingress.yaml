@@ -1,0 +1,30 @@
+# RKE2's packaged chart remains managed by helm-controller, but has no running
+# controller, host ports, default class or admission webhook. This is applied
+# live through HelmChartConfig and does not require an RKE2/host restart.
+# Preconditions: no existing Ingress depends on this controller; APISIX is up.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-ingress-nginx
+  namespace: kube-system
+spec:
+  valuesContent: |
+    controller:
+      kind: Deployment
+      replicaCount: 0
+      nodeSelector:
+        kubernetes.io/os: linux
+        vela.ai/management: "true"
+      hostNetwork: false
+      hostPort:
+        enabled: false
+      service:
+        enabled: false
+      ingressClassResource:
+        enabled: false
+        default: false
+      watchIngressWithoutClass: false
+      admissionWebhooks:
+        enabled: false
+    defaultBackend:
+      enabled: false

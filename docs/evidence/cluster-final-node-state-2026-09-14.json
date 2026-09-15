@@ -1,0 +1,58 @@
+{
+  "at": "2026-09-14T13:49:03.712627+00:00",
+  "registered": 54,
+  "ready": 53,
+  "allocatable_gpus": 407,
+  "node19": {
+    "conditions": [
+      {
+        "lastHeartbeatTime": "2026-09-14T13:01:58Z",
+        "lastTransitionTime": "2026-09-14T13:01:58Z",
+        "message": "Flannel is running on this node",
+        "reason": "FlannelIsUp",
+        "status": "False",
+        "type": "NetworkUnavailable"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:44:04Z",
+        "lastTransitionTime": "2026-09-14T13:47:32Z",
+        "message": "Kubelet stopped posting node status.",
+        "reason": "NodeStatusUnknown",
+        "status": "Unknown",
+        "type": "MemoryPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:44:04Z",
+        "lastTransitionTime": "2026-09-14T13:47:32Z",
+        "message": "Kubelet stopped posting node status.",
+        "reason": "NodeStatusUnknown",
+        "status": "Unknown",
+        "type": "DiskPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:44:04Z",
+        "lastTransitionTime": "2026-09-14T13:47:32Z",
+        "message": "Kubelet stopped posting node status.",
+        "reason": "NodeStatusUnknown",
+        "status": "Unknown",
+        "type": "PIDPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:44:04Z",
+        "lastTransitionTime": "2026-09-14T13:47:32Z",
+        "message": "Kubelet stopped posting node status.",
+        "reason": "NodeStatusUnknown",
+        "status": "Unknown",
+        "type": "Ready"
+      }
+    ],
+    "cordoned": true
+  },
+  "ssh19": "[Errno 113] No route to host",
+  "ongoing_drills": {
+    "2750819": null,
+    "2719700": null,
+    "2782884": null,
+    "2823660": null
+  }
+}

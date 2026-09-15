@@ -1,0 +1,600 @@
+{
+  "vm": {
+    "phase": "complete",
+    "started_at": "2026-09-14T14:21:52.775396+00:00",
+    "node": "vela-bootstrap-drill-c8b6bf7bc6",
+    "unit": "vela-bootstrap-drill-c8b6bf7bc6.service",
+    "host_boot_id": "d8bca6a6-2a44-41af-ab33-5933b8b714db",
+    "source_image_sha256": "612b2c0cc1bc413a6cb8c38fd611794caf0f2b436c50013d8b3794db12ad7354",
+    "resources": {
+      "memory_mib": 4096,
+      "cpus": 2,
+      "root_disk_gib": 12
+    },
+    "scope": "Fresh RKE2 worker registration with primary 6443/9345 blocked inside a tainted KVM guest; not production cross-node CNI qualification",
+    "updated_at": "2026-09-14T14:26:44.120817+00:00",
+    "longhorn_disk_opt_in_verified": true,
+    "ssh_port": 36913,
+    "vm_pid": 2982583,
+    "started_vm_pid": 2982583,
+    "vm_state": "active",
+    "guest": {
+      "fresh": {
+        "agent_directory_absent": true,
+        "load_balancer_cache_absent": true
+      },
+      "selection": {
+        "selected": "https://10.1.201.71:9345",
+        "attempts": [
+          {
+            "endpoint": "https://10.1.201.70:9345",
+            "available": false,
+            "error": "URLError",
+            "seconds": 0.002
+          },
+          {
+            "endpoint": "https://10.1.201.71:9345",
+            "available": true,
+            "seconds": 0.022
+          }
+        ],
+        "changed": false
+      },
+      "override": "server: \"https://10.1.201.71:9345\"\n",
+      "blocked": true,
+      "enabled": "enabled"
+    },
+    "node_uid": "5661b0b9-f56d-4a4c-95e9-eb9cbb1bd8a5",
+    "registered_at": "2026-09-14T14:22:38Z",
+    "node_ready": true,
+    "result": "FRESH_BOOTSTRAP_PRIMARY_LOSS_PASS",
+    "management_api_fallback": {
+      "result": "MANAGEMENT_API_PRIMARY_LOSS_PASS",
+      "selected": "https://10.1.201.71:6443",
+      "gitVersion": "v1.35.7+rke2r1",
+      "credential": "guest kubeproxy certificate",
+      "primary_blocked": true
+    },
+    "cleanup_verified": true,
+    "host_rebooted": false
+  },
+  "disk_policy": {
+    "result": "LONGHORN_DISK_OPT_IN_PASS",
+    "approved_nodes": [
+      "llmpool01",
+      "llmpool02",
+      "marslab-gpu-01"
+    ],
+    "existing_node_specs_unchanged": 54,
+    "previous_setting": "false",
+    "setting": "true"
+  },
+  "canary": {
+    "phase": "complete",
+    "mode": "canary",
+    "pid": 3005933,
+    "started_at": "2026-09-14T14:29:02.430462+00:00",
+    "returncode": 0,
+    "hosts": {
+      "10.1.201.11": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      }
+    },
+    "updated_at": "2026-09-14T14:29:12.077217+00:00"
+  },
+  "workers": {
+    "phase": "complete",
+    "mode": "workers",
+    "pid": 3010361,
+    "started_at": "2026-09-14T14:30:24.697033+00:00",
+    "returncode": 0,
+    "hosts": {
+      "10.1.201.12": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.13": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.14": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.15": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.16": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.17": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.18": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.20": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.21": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.22": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.23": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.24": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.25": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.26": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.27": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.28": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.29": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.30": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.31": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.32": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.33": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.34": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.35": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.36": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.37": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.38": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.39": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.40": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.41": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.42": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.43": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.45": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.46": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.47": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.48": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.49": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.50": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.51": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.52": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.53": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.54": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.55": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.58": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.59": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.60": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.62": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.63": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.64": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.65": {
+        "ok": 13,
+        "changed": 5,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      }
+    },
+    "updated_at": "2026-09-14T14:31:50.477956+00:00"
+  },
+  "management": {
+    "phase": "complete",
+    "mode": "management",
+    "pid": 3047058,
+    "started_at": "2026-09-14T14:37:00.430299+00:00",
+    "returncode": 0,
+    "hosts": {
+      "10.1.201.70": {
+        "ok": 4,
+        "changed": 2,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      },
+      "10.1.201.71": {
+        "ok": 4,
+        "changed": 2,
+        "unreachable": 0,
+        "failed": 0,
+        "skipped": 0,
+        "rescued": 0,
+        "ignored": 0
+      }
+    },
+    "updated_at": "2026-09-14T14:37:06.567517+00:00"
+  },
+  "cleanup_postcheck": {
+    "at": "2026-09-14T14:37:50.680619+00:00",
+    "vm_main_pid": 0,
+    "unit": "MainPID=0\nLoadState=not-found\nActiveState=inactive",
+    "node_absent": true,
+    "longhorn_node_absent": true,
+    "longhorn_replicas": 0,
+    "pods": 0,
+    "password_secret_absent": true,
+    "guest_disk_media_credentials_absent": true,
+    "temporary_ansible_credentials_absent": true
+  },
+  "cluster": {
+    "registered": 54,
+    "ready": 53,
+    "allocatable_gpus": 407
+  },
+  "scope": {
+    "no_host_reboots": true,
+    "no_agent_restarts_during_rollout": true,
+    "protected_hosts_excluded": [
+      "10.1.201.44",
+      "10.1.201.56",
+      "10.1.201.57",
+      "10.1.201.66"
+    ],
+    "offline_worker_deferred": "10.1.201.19",
+    "physical_gpu_data_disks_untouched": true,
+    "vm_not_cross_node_cni_qualification": true
+  }
+}

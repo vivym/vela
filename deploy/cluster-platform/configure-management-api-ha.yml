@@ -1,0 +1,30 @@
+- name: Install a ready API selector for management commands
+  hosts: management_api_clients
+  become: true
+  gather_facts: false
+  serial: 1
+  vars:
+    bootstrap_source_directory: /opt/vela-cluster/bootstrap-ha-20260914/source
+  pre_tasks:
+    - name: Restrict this installation to the two CPU management hosts
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname in ['10.1.201.70', '10.1.201.71']
+  tasks:
+    - name: Install management API endpoint inventory
+      ansible.builtin.copy:
+        src: "{{ bootstrap_source_directory }}/vela-api-endpoints.json"
+        dest: /etc/rancher/rke2/vela-api-endpoints.json
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Install management command
+      ansible.builtin.copy:
+        src: "{{ bootstrap_source_directory }}/vela-kubectl.py"
+        dest: /usr/local/bin/vela-kubectl
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Verify authenticated management API access
+      ansible.builtin.command: /usr/local/bin/vela-kubectl get --raw=/readyz
+      changed_when: false

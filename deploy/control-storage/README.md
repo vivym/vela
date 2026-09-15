@@ -145,6 +145,12 @@ NO_PROXY=localhost,127.0.0.1,::1 \
   make test-cnpg-pitr
 ```
 
+When Docker Hub cannot serve the pinned MinIO digest, the same immutable image
+may be fetched from a trusted mirror without changing the contract digest. Set
+`VELA_CNPG_MINIO_SOURCE_IDENTITY` to the mirror-qualified image identity, for
+example the matching `quay.io/minio/minio:RELEASE...@sha256:...` reference. The
+script rejects a source whose digest differs from the contract.
+
 The drill creates a fresh four-node kind cluster, verifies every manifest
 digest, applies the RBAC-hardened plugin render, proves operator/sidecar Secret
 isolation, preloads exact-platform images, runs MinIO with bucket versioning,
@@ -185,6 +191,27 @@ provide:
 VELA_NATS_SCHEDULER_CREDENTIALS_FILE=/run/secrets/nats/scheduler.creds
 VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS=<current[,overlap] Scheduler user NKey public keys>
 ```
+
+The live NATS StatefulSet consumes two operator-managed Secrets that are
+deliberately outside this repository: `vela-nats-auth` (the rendered
+`nats.conf`, operator/account JWT resolver data, and separate Outbox,
+Scheduler, and bootstrap `.creds` files) and `nats-server-tls` (the server
+certificate, key, and CA). The server certificate must contain the three
+headless Pod DNS names and have both `serverAuth` and `clientAuth` usage. Client
+workloads use the separately scoped `nats-client-tls` Secret together with
+their NKey credential. Replacing either Secret requires a coordinated
+StatefulSet rollout so all route peers switch protocol together.
+
+For the current 8Gi NATS Pod limit, `nats-resource-limits.json` caps each
+server's JetStream memory store at 2GiB. Apply this bound when materializing
+`nats.conf`; do not use the server's host-memory default in a container.
+`hack/configure-nats-memory-limit.py` validates the changed configuration with
+the running NATS binary and creates an immutable server Secret with unchanged
+credentials. Client Secret references stay intact. It lowers a StatefulSet
+partition one ordinal at a time while checking all three members and the
+leader's replica-currency report. NATS 2.10.22 cannot hot-reload a dynamic memory
+limit. PVC capacity and the 64GiB stream contract remain unchanged; the current
+50Gi PVC capacity gap remains open.
 
 The Outbox credential may publish only `vela.events.>` and the exact
 `$JS.API.STREAM.INFO.VELA_EVENTS` request needed to reject contract drift; it may

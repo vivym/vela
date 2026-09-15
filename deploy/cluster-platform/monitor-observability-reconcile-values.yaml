@@ -1,0 +1,40 @@
+# Add to the existing release with --reuse-values. This adds native
+# kube-state-metrics coverage of Longhorn replica configuration without
+# introducing an exporter with write access to the storage API.
+prometheus:
+  prometheusSpec:
+    scrapeClasses:
+      - name: rke2-node-metrics
+        authorization:
+          type: Bearer
+          credentialsFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+prometheus-node-exporter:
+  # Preserve host filesystem telemetry while kubelet reports DiskPressure.
+  priorityClassName: system-node-critical
+kube-state-metrics:
+  customResourceState:
+    enabled: true
+    config:
+      kind: CustomResourceStateMetrics
+      spec:
+        resources:
+          - groupVersionKind:
+              group: longhorn.io
+              version: v1beta2
+              kind: Volume
+            labelsFromPath:
+              volume: [metadata, name]
+              namespace: [status, kubernetesStatus, namespace]
+              persistentvolumeclaim: [status, kubernetesStatus, pvcName]
+            metrics:
+              - name: longhorn_volume_replicas
+                help: Configured Longhorn replica count; compare to the accepted storage policy.
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [spec, numberOfReplicas]
+  rbac:
+    extraRules:
+      - apiGroups: [longhorn.io]
+        resources: [volumes]
+        verbs: [list, watch]

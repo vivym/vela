@@ -1,0 +1,186 @@
+{
+  "phase": "complete",
+  "started_at": "2026-09-14T14:52:24.727910+00:00",
+  "before": [
+    {
+      "pod": "nats-0",
+      "uid": "a4747229-4058-4e64-9a5d-491436f2de61",
+      "node": "llmpool02",
+      "ready": true,
+      "claims": [
+        "jetstream-nats-0"
+      ],
+      "version": "2.10.22",
+      "max_memory": 50332197888,
+      "max_storage": 39378379776,
+      "memory": 0,
+      "reserved_memory": 0,
+      "streams": 0,
+      "storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-0",
+        "peer": "S1Nunr6R",
+        "replicas": [
+          {
+            "name": "nats-1",
+            "current": true,
+            "active": 83295363,
+            "peer": "yrzKKRBu"
+          },
+          {
+            "name": "nats-2",
+            "current": true,
+            "active": 83259302,
+            "peer": "cnrtt3eg"
+          }
+        ],
+        "cluster_size": 3,
+        "pending": 0
+      }
+    },
+    {
+      "pod": "nats-1",
+      "uid": "5bc4d0b1-2427-4489-a3fb-af5013da28e6",
+      "node": "marslab-gpu-01",
+      "ready": true,
+      "claims": [
+        "jetstream-nats-1"
+      ],
+      "version": "2.10.22",
+      "max_memory": 405620880384,
+      "max_storage": 39378379776,
+      "memory": 0,
+      "reserved_memory": 0,
+      "streams": 0,
+      "storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-0",
+        "peer": "S1Nunr6R",
+        "cluster_size": 3,
+        "pending": 0
+      }
+    },
+    {
+      "pod": "nats-2",
+      "uid": "90dfd82b-db46-4a58-b47e-2495ab2f2ed8",
+      "node": "llmpool01",
+      "ready": true,
+      "claims": [
+        "jetstream-nats-2"
+      ],
+      "version": "2.10.22",
+      "max_memory": 50321866752,
+      "max_storage": 39378379776,
+      "memory": 0,
+      "reserved_memory": 0,
+      "streams": 0,
+      "storage": 0,
+      "meta_cluster": {
+        "name": "VELA",
+        "leader": "nats-0",
+        "peer": "S1Nunr6R",
+        "cluster_size": 3,
+        "pending": 0
+      }
+    }
+  ],
+  "target_max_memory": 2147483648,
+  "pod_memory_limit": "8Gi",
+  "replacements": [
+    {
+      "before_uid": "90dfd82b-db46-4a58-b47e-2495ab2f2ed8",
+      "after": {
+        "pod": "nats-2",
+        "uid": "34a64e2a-52d3-47dd-a101-b78bfc984a5e",
+        "node": "llmpool01",
+        "ready": true,
+        "claims": [
+          "jetstream-nats-2"
+        ],
+        "version": "2.10.22",
+        "max_memory": 2147483648,
+        "max_storage": 39378481152,
+        "memory": 0,
+        "reserved_memory": 0,
+        "streams": 0,
+        "storage": 0,
+        "meta_cluster": {
+          "name": "VELA",
+          "leader": "nats-0",
+          "peer": "S1Nunr6R",
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "seconds": 13.18
+    },
+    {
+      "before_uid": "5bc4d0b1-2427-4489-a3fb-af5013da28e6",
+      "after": {
+        "pod": "nats-1",
+        "uid": "842167d1-15c0-48de-b32f-687a29b07e41",
+        "node": "marslab-gpu-01",
+        "ready": true,
+        "claims": [
+          "jetstream-nats-1"
+        ],
+        "version": "2.10.22",
+        "max_memory": 2147483648,
+        "max_storage": 39378487296,
+        "memory": 0,
+        "reserved_memory": 0,
+        "streams": 0,
+        "storage": 0,
+        "meta_cluster": {
+          "name": "VELA",
+          "leader": "nats-0",
+          "peer": "S1Nunr6R",
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "seconds": 6.94
+    },
+    {
+      "before_uid": "a4747229-4058-4e64-9a5d-491436f2de61",
+      "after": {
+        "pod": "nats-0",
+        "uid": "266dc74f-0018-4e0c-8358-7f5e50d58a43",
+        "node": "llmpool02",
+        "ready": true,
+        "claims": [
+          "jetstream-nats-0"
+        ],
+        "version": "2.10.22",
+        "max_memory": 2147483648,
+        "max_storage": 39378481152,
+        "memory": 0,
+        "reserved_memory": 0,
+        "streams": 0,
+        "storage": 0,
+        "meta_cluster": {
+          "name": "VELA",
+          "leader": "nats-2",
+          "peer": "cnrtt3eg",
+          "cluster_size": 3,
+          "pending": 0
+        }
+      },
+      "seconds": 6.97
+    }
+  ],
+  "source_secret_uid": "e7fef724-42cd-48d3-8cfd-ff90644dda8a",
+  "server_secret_name": "vela-nats-auth-memory-d74221ecd013",
+  "statefulset_uid": "13a28ce5-449c-4701-8754-a31541f143f5",
+  "updated_at": "2026-09-14T14:52:53.810175+00:00",
+  "config_sha256": "d74221ecd01331bf5a48a87820921e593521fe79b02a4a358d86f50163f52ab3",
+  "credentials_unchanged": true,
+  "source_secret_unchanged": true,
+  "server_secret_uid": "ac045232-cadb-443b-93cc-8f5637aefa31",
+  "result": "NATS_MEMORY_LIMIT_PASS",
+  "volume_capacity_changed": false,
+  "stream_contract_changed": false,
+  "host_services_restarted": false
+}

@@ -1,0 +1,383 @@
+{
+  "at": "2026-09-14T16:10:39.753841+00:00",
+  "image": "nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+  "scope": "Candidate proxy only; production port 5005 remains unchanged",
+  "config_sha256": "38191316cfeef41f67beaa610d442d8324ff839bd43830714481921060731e58",
+  "checks": [
+    {
+      "name": "anonymous handshake denied",
+      "identity": "anonymous",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "anonymous write denied",
+      "identity": "anonymous",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "platform-publisher",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "node-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "llm-api-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "authenticated handshake",
+      "identity": "llm-models-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "catalog restricted",
+      "identity": "node-pull",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "platform publication restricted",
+      "identity": "node-pull",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "catalog restricted",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "platform publication restricted",
+      "identity": "llm-api-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "catalog restricted",
+      "identity": "llm-api-pull",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "platform publication restricted",
+      "identity": "llm-api-pull",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "catalog restricted",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "platform publication restricted",
+      "identity": "llm-models-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "catalog restricted",
+      "identity": "llm-models-pull",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "platform publication restricted",
+      "identity": "llm-models-pull",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "node can pull existing control manifest",
+      "identity": "node-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot read platform images",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot publish other tenant",
+      "identity": "llm-api-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "cross-repository blob mount cannot borrow platform data",
+      "identity": "llm-api-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-api-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "pull identity cannot upload",
+      "identity": "llm-api-pull",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "publisher begins blob upload",
+      "identity": "llm-api-publisher",
+      "method": "POST",
+      "status": 202,
+      "expected": 202,
+      "passed": true
+    },
+    {
+      "name": "publisher commits blob",
+      "identity": "llm-api-publisher",
+      "method": "PUT",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "publisher publishes exact manifest",
+      "identity": "llm-api-publisher",
+      "method": "PUT",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "reader fetches exact manifest",
+      "identity": "llm-api-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "reader fetches exact blob",
+      "identity": "llm-api-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot delete published digest",
+      "identity": "llm-api-publisher",
+      "method": "DELETE",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot read platform images",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot publish other tenant",
+      "identity": "llm-models-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "cross-repository blob mount cannot borrow platform data",
+      "identity": "llm-models-publisher",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "ambiguous path denied",
+      "identity": "llm-models-publisher",
+      "method": "GET",
+      "status": 400,
+      "expected": 400,
+      "passed": true
+    },
+    {
+      "name": "pull identity cannot upload",
+      "identity": "llm-models-pull",
+      "method": "POST",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "name": "publisher begins blob upload",
+      "identity": "llm-models-publisher",
+      "method": "POST",
+      "status": 202,
+      "expected": 202,
+      "passed": true
+    },
+    {
+      "name": "publisher commits blob",
+      "identity": "llm-models-publisher",
+      "method": "PUT",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "publisher publishes exact manifest",
+      "identity": "llm-models-publisher",
+      "method": "PUT",
+      "status": 201,
+      "expected": 201,
+      "passed": true
+    },
+    {
+      "name": "reader fetches exact manifest",
+      "identity": "llm-models-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "reader fetches exact blob",
+      "identity": "llm-models-pull",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "passed": true
+    },
+    {
+      "name": "tenant cannot delete published digest",
+      "identity": "llm-models-publisher",
+      "method": "DELETE",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    }
+  ],
+  "cleanup": [
+    {
+      "repo": "llm-api/access-validation-a0b097cd6275",
+      "manifest_deleted": true,
+      "subsequent_get": 404
+    },
+    {
+      "repo": "llm-models/access-validation-0bfec3e8d383",
+      "manifest_deleted": true,
+      "subsequent_get": 404
+    }
+  ],
+  "result": "REGISTRY_ACCESS_CANDIDATE_PASS",
+  "candidate_removed": true,
+  "unreferenced_test_blob_may_remain": true
+}

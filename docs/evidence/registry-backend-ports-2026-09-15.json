@@ -1,0 +1,23 @@
+{
+  "at": "2026-09-14T17:12:47.265511+00:00",
+  "checks": [
+    {
+      "host": "10.1.201.70",
+      "backend_port": 5007,
+      "externally_unreachable": true,
+      "connect_errno": 111
+    },
+    {
+      "host": "10.1.201.71",
+      "backend_port": 5007,
+      "externally_unreachable": true,
+      "connect_errno": 111
+    },
+    {
+      "host": "10.1.201.66",
+      "backend_port": 5007,
+      "externally_unreachable": true,
+      "connect_errno": 111
+    }
+  ]
+}

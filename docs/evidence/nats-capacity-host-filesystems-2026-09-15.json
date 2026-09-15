@@ -1,0 +1,739 @@
+{
+  "llmpool01": {
+    "fs": {
+      "total": 942860439552,
+      "available": 748457283584,
+      "free": 796427431936
+    },
+    "mounts": {
+      "filesystems": [
+        {
+          "target": "/",
+          "source": "/dev/sda2",
+          "fstype": "ext4",
+          "size": "878.1G",
+          "avail": "697.1G",
+          "children": [
+            {
+              "target": "/run/user/1000/doc",
+              "source": "portal",
+              "fstype": "fuse.portal",
+              "size": "0",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/bare/5",
+              "source": "/dev/loop0",
+              "fstype": "squashfs",
+              "size": "128K",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core22/2437",
+              "source": "/dev/loop1",
+              "fstype": "squashfs",
+              "size": "74M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firefox/8803",
+              "source": "/dev/loop2",
+              "fstype": "squashfs",
+              "size": "261.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core24/1643",
+              "source": "/dev/loop3",
+              "fstype": "squashfs",
+              "size": "66.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firefox/8863",
+              "source": "/dev/loop4",
+              "fstype": "squashfs",
+              "size": "260.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core22/2955",
+              "source": "/dev/loop5",
+              "fstype": "squashfs",
+              "size": "74M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-42-2204/263",
+              "source": "/dev/loop6",
+              "fstype": "squashfs",
+              "size": "531.5M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-46-2404/153",
+              "source": "/dev/loop7",
+              "fstype": "squashfs",
+              "size": "606.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firmware-updater/226",
+              "source": "/dev/loop9",
+              "fstype": "squashfs",
+              "size": "16.5M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firmware-updater/210",
+              "source": "/dev/loop8",
+              "fstype": "squashfs",
+              "size": "18.5M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-42-2204/247",
+              "source": "/dev/loop10",
+              "fstype": "squashfs",
+              "size": "531.4M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/mesa-2404/1165",
+              "source": "/dev/loop11",
+              "fstype": "squashfs",
+              "size": "395M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-46-2404/164",
+              "source": "/dev/loop12",
+              "fstype": "squashfs",
+              "size": "614.6M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gtk-common-themes/1535",
+              "source": "/dev/loop13",
+              "fstype": "squashfs",
+              "size": "91.8M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/mesa-2404/1839",
+              "source": "/dev/loop14",
+              "fstype": "squashfs",
+              "size": "402M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snap-store/1367",
+              "source": "/dev/loop15",
+              "fstype": "squashfs",
+              "size": "15.8M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snap-store/1390",
+              "source": "/dev/loop16",
+              "fstype": "squashfs",
+              "size": "11.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd-desktop-integration/387",
+              "source": "/dev/loop18",
+              "fstype": "squashfs",
+              "size": "896K",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd/27738",
+              "source": "/dev/loop17",
+              "fstype": "squashfs",
+              "size": "50.4M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd/27710",
+              "source": "/dev/loop19",
+              "fstype": "squashfs",
+              "size": "50.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd-desktop-integration/391",
+              "source": "/dev/loop20",
+              "fstype": "squashfs",
+              "size": "896K",
+              "avail": "0"
+            },
+            {
+              "target": "/boot/efi",
+              "source": "/dev/sda1",
+              "fstype": "vfat",
+              "size": "1G",
+              "avail": "1G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/fc4f3d050bcf506acef9c2aa8d2368a66e4cffcaa61673c0b3db8538bd356bed/globalmount",
+              "source": "/dev/longhorn/pvc-65614759-736f-468d-9cac-71d7a6ddc2b9",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "43.3G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/45f261e5-f29d-4356-aa8f-c3e4dc0adc85/volumes/kubernetes.io~csi/pvc-65614759-736f-468d-9cac-71d7a6ddc2b9/mount",
+              "source": "/dev/longhorn/pvc-65614759-736f-468d-9cac-71d7a6ddc2b9",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "43.3G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/17b58defc1992b4496bce2ede9ab06d90d4cbe7466a29c32d358391f4fa42eb3/globalmount",
+              "source": "/dev/longhorn/pvc-1e238181-4774-415a-8c51-c5ea60720e7e",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/c0c4c0ee-13fb-4c0e-b36d-c66e44c65710/volume-subpaths/apisix-config/apisix/0",
+              "source": "/dev/sda2[/var/lib/kubelet/pods/c0c4c0ee-13fb-4c0e-b36d-c66e44c65710/volumes/kubernetes.io~configmap/apisix-config/..2026_09_14_14_37_39.3231664564/config.yaml]",
+              "fstype": "ext4",
+              "size": "878.1G",
+              "avail": "697.1G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/dbfc32e5-1c05-4b5f-afb3-75f26dd720b2/volumes/kubernetes.io~csi/pvc-1e238181-4774-415a-8c51-c5ea60720e7e/mount",
+              "source": "/dev/longhorn/pvc-1e238181-4774-415a-8c51-c5ea60720e7e",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/e955df8f-e439-462d-b966-b4c95b193323/volumes/kubernetes.io~csi/pvc-93c76276-ca39-4795-a3e9-81dff596643e/mount",
+              "source": "/dev/longhorn/pvc-93c76276-ca39-4795-a3e9-81dff596643e",
+              "fstype": "ext4",
+              "size": "29.4G",
+              "avail": "29.3G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/2be4a772a0fcb8b337a209f6bc26966ccf149cd16643705338a7e4881c273cb2/globalmount",
+              "source": "/dev/longhorn/pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/7ee3cc9b-b2bb-4c3a-8bdd-a848a8c5a304/volumes/kubernetes.io~csi/pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32/mount",
+              "source": "/dev/longhorn/pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/1281e8c8d44af0ff59f4cf274374db1ec95f690515224214750710bac632a3a4/globalmount",
+              "source": "/dev/longhorn/pvc-40ff974f-dc41-4093-a086-c6062d6f579a",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.8G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/3c524508c7449398eed183052626261fed1fe4b7a287a67c42ea5c4bc9849449/globalmount",
+              "source": "/dev/longhorn/pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/1cab9ef3-0c22-48a1-9321-d0e131dbceb1/volumes/kubernetes.io~csi/pvc-e6625907-a678-4a46-88b2-f6e554129a39/mount",
+              "source": "/dev/longhorn/pvc-e6625907-a678-4a46-88b2-f6e554129a39",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/43377beae99bf7198304aa469fe856dd6690fcd09b74266c3c6c1d1607f04380/globalmount",
+              "source": "/dev/longhorn/pvc-e6625907-a678-4a46-88b2-f6e554129a39",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/45f261e5-f29d-4356-aa8f-c3e4dc0adc85/volume-subpaths/pvc-65614759-736f-468d-9cac-71d7a6ddc2b9/prometheus/2",
+              "source": "/dev/longhorn/pvc-65614759-736f-468d-9cac-71d7a6ddc2b9[/prometheus-db]",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "43.3G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/0922d53c-209a-41ba-89c0-e1edc32a6c7d/volumes/kubernetes.io~csi/pvc-40ff974f-dc41-4093-a086-c6062d6f579a/mount",
+              "source": "/dev/longhorn/pvc-40ff974f-dc41-4093-a086-c6062d6f579a",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.8G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/0922d53c-209a-41ba-89c0-e1edc32a6c7d/volumes/kubernetes.io~csi/pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c/mount",
+              "source": "/dev/longhorn/pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/1cab9ef3-0c22-48a1-9321-d0e131dbceb1/volume-subpaths/empty-dir/etcd/0",
+              "source": "/dev/sda2[/var/lib/kubelet/pods/1cab9ef3-0c22-48a1-9321-d0e131dbceb1/volumes/kubernetes.io~empty-dir/empty-dir/app-conf-dir]",
+              "fstype": "ext4",
+              "size": "878.1G",
+              "avail": "697.1G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/1cab9ef3-0c22-48a1-9321-d0e131dbceb1/volume-subpaths/empty-dir/etcd/1",
+              "source": "/dev/sda2[/var/lib/kubelet/pods/1cab9ef3-0c22-48a1-9321-d0e131dbceb1/volumes/kubernetes.io~empty-dir/empty-dir/tmp-dir]",
+              "fstype": "ext4",
+              "size": "878.1G",
+              "avail": "697.1G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/ef4176dd8719759ab3ac87087fc5724ccd30ea874042815427c2e4d3b5444e5e/globalmount",
+              "source": "/dev/longhorn/pvc-93c76276-ca39-4795-a3e9-81dff596643e",
+              "fstype": "ext4",
+              "size": "29.4G",
+              "avail": "29.3G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/44c6a4069a21eb2b43ca584857a56619d0c645052dd9b8f5bb1af037db2fc42e/globalmount",
+              "source": "/dev/longhorn/pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd",
+              "fstype": "ext4",
+              "size": "97.9G",
+              "avail": "97.4G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/3cc06bbb-5029-4505-9c36-b5b6e03d71bf/volumes/kubernetes.io~csi/pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd/mount",
+              "source": "/dev/longhorn/pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd",
+              "fstype": "ext4",
+              "size": "97.9G",
+              "avail": "97.4G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/ad6957cfd2a7e6803a2cef7075f48b95f3992b3727a9cf244ff4ac9928a3e75f/globalmount",
+              "source": "/dev/longhorn/pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/a01b2e69d594fad2936545f0b76b540c899087b989db7ac8ddb6c73e6811009c/globalmount",
+              "source": "/dev/longhorn/pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/267caff3-0d28-4465-a7b9-54d2b3f6047b/volumes/kubernetes.io~csi/pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447/mount",
+              "source": "/dev/longhorn/pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/995e9336-e604-433d-a099-b9db76bc84fa/volumes/kubernetes.io~csi/pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1/mount",
+              "source": "/dev/longhorn/pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            }
+          ]
+        }
+      ]
+    },
+    "du_bytes": 53105643520,
+    "non_longhorn_used_bytes": 93327364096
+  },
+  "llmpool02": {
+    "fs": {
+      "total": 982818799616,
+      "available": 693676199936,
+      "free": 743676182528
+    },
+    "mounts": {
+      "filesystems": [
+        {
+          "target": "/",
+          "source": "/dev/sda3",
+          "fstype": "ext4",
+          "size": "915.3G",
+          "avail": "646G",
+          "children": [
+            {
+              "target": "/run/user/128/doc",
+              "source": "portal",
+              "fstype": "fuse.portal",
+              "size": "0",
+              "avail": "0"
+            },
+            {
+              "target": "/run/user/1001/doc",
+              "source": "portal",
+              "fstype": "fuse.portal",
+              "size": "0",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/bare/5",
+              "source": "/dev/loop0",
+              "fstype": "squashfs",
+              "size": "128K",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core20/2866",
+              "source": "/dev/loop1",
+              "fstype": "squashfs",
+              "size": "63.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core20/2922",
+              "source": "/dev/loop2",
+              "fstype": "squashfs",
+              "size": "63.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core22/2437",
+              "source": "/dev/loop3",
+              "fstype": "squashfs",
+              "size": "74M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core22/2955",
+              "source": "/dev/loop4",
+              "fstype": "squashfs",
+              "size": "74M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core24/1643",
+              "source": "/dev/loop5",
+              "fstype": "squashfs",
+              "size": "66.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/core24/2124",
+              "source": "/dev/loop6",
+              "fstype": "squashfs",
+              "size": "66.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firefox/8803",
+              "source": "/dev/loop7",
+              "fstype": "squashfs",
+              "size": "261.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-3-38-2004/143",
+              "source": "/dev/loop8",
+              "fstype": "squashfs",
+              "size": "349.8M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/firefox/8863",
+              "source": "/dev/loop9",
+              "fstype": "squashfs",
+              "size": "260.9M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-42-2204/263",
+              "source": "/dev/loop10",
+              "fstype": "squashfs",
+              "size": "531.5M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-42-2204/247",
+              "source": "/dev/loop11",
+              "fstype": "squashfs",
+              "size": "531.4M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gpu-burn/17",
+              "source": "/dev/loop13",
+              "fstype": "squashfs",
+              "size": "425.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-46-2404/164",
+              "source": "/dev/loop14",
+              "fstype": "squashfs",
+              "size": "614.6M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gnome-46-2404/153",
+              "source": "/dev/loop12",
+              "fstype": "squashfs",
+              "size": "606.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/gtk-common-themes/1535",
+              "source": "/dev/loop15",
+              "fstype": "squashfs",
+              "size": "91.8M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snap-store/1216",
+              "source": "/dev/loop17",
+              "fstype": "squashfs",
+              "size": "12.3M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snap-store/959",
+              "source": "/dev/loop18",
+              "fstype": "squashfs",
+              "size": "12.4M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/mesa-2404/1781",
+              "source": "/dev/loop16",
+              "fstype": "squashfs",
+              "size": "402M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/mesa-2404/1839",
+              "source": "/dev/loop19",
+              "fstype": "squashfs",
+              "size": "402M",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd/27710",
+              "source": "/dev/loop20",
+              "fstype": "squashfs",
+              "size": "50.1M",
+              "avail": "0"
+            },
+            {
+              "target": "/var/snap/firefox/common/host-hunspell",
+              "source": "/dev/sda3[/usr/share/hunspell]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            },
+            {
+              "target": "/snap/snapd-desktop-integration/391",
+              "source": "/dev/loop22",
+              "fstype": "squashfs",
+              "size": "896K",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd-desktop-integration/387",
+              "source": "/dev/loop23",
+              "fstype": "squashfs",
+              "size": "896K",
+              "avail": "0"
+            },
+            {
+              "target": "/snap/snapd/27738",
+              "source": "/dev/loop21",
+              "fstype": "squashfs",
+              "size": "50.4M",
+              "avail": "0"
+            },
+            {
+              "target": "/boot/efi",
+              "source": "/dev/sda2",
+              "fstype": "vfat",
+              "size": "512M",
+              "avail": "505.9M"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/059fe22d937af8e5b2a0bb5619fad56db76721759c789946584b9c6329aaebed/globalmount",
+              "source": "/dev/longhorn/pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/5b103558-ad97-41a7-9046-51f2f927a65b/volumes/kubernetes.io~csi/pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351/mount",
+              "source": "/dev/longhorn/pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/8e9811c6-a75e-4a15-a6d7-46ce914e9210/volumes/kubernetes.io~csi/pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df/mount",
+              "source": "/dev/longhorn/pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/850b108a-b77e-4a76-9cda-b59b89d6c8a4/volume-subpaths/apisix-config/apisix/0",
+              "source": "/dev/sda3[/var/lib/kubelet/pods/850b108a-b77e-4a76-9cda-b59b89d6c8a4/volumes/kubernetes.io~configmap/apisix-config/..2026_09_14_14_36_54.2028087932/config.yaml]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/1be8b687b439b3d59b84dcf528b0882cfd8a4e66b19c50a75cdff6221b940505/globalmount",
+              "source": "/dev/longhorn/pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/602339eb3726b5a79ef08aaaf8a5cd0eb87871d7e1eb1bf53e68353573f0e663/globalmount",
+              "source": "/dev/longhorn/pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/441e0a67-6321-4395-be4b-027e43e63235/volumes/kubernetes.io~csi/pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f/mount",
+              "source": "/dev/longhorn/pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/3ef09319015a2688b94d12a08ef9628500cc8e6aaa25f0837e764592872fe86d/globalmount",
+              "source": "/dev/longhorn/pvc-b61f4c88-7992-4c85-abae-479fb9006ea6",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "18.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/c177779014ad7829bd3d8eedd88c33b11f2962aba0c3ae55ff897d43e8dad73c/globalmount",
+              "source": "/dev/longhorn/pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.8G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/c0031616-6f35-4a49-a654-5b7bbce4e71c/volumes/kubernetes.io~csi/pvc-b61f4c88-7992-4c85-abae-479fb9006ea6/mount",
+              "source": "/dev/longhorn/pvc-b61f4c88-7992-4c85-abae-479fb9006ea6",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "18.9G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/c0031616-6f35-4a49-a654-5b7bbce4e71c/volumes/kubernetes.io~csi/pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5/mount",
+              "source": "/dev/longhorn/pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5",
+              "fstype": "ext4",
+              "size": "48.9G",
+              "avail": "48.8G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/fad6a870a7496427baedac43a41cf3068fbb4955c62cb920ff3590d699baf6f3/globalmount",
+              "source": "/dev/longhorn/pvc-df8bcac3-9223-4780-a676-96c76e8fcc69",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/481fecaa494c93cc38f05fcc024c92a805c0d9f11535f415bf2b3dc7cb64837e/globalmount",
+              "source": "/dev/longhorn/pvc-eb059c4f-68bf-49ed-b432-7127632c7f97",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/d916e01d-ed43-4c20-83b1-4dd158f8a068/volumes/kubernetes.io~csi/pvc-df8bcac3-9223-4780-a676-96c76e8fcc69/mount",
+              "source": "/dev/longhorn/pvc-df8bcac3-9223-4780-a676-96c76e8fcc69",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/1baa7382-0545-44e7-88ef-26b00d22513d/volumes/kubernetes.io~csi/pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7/mount",
+              "source": "/dev/longhorn/pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/5b103558-ad97-41a7-9046-51f2f927a65b/volume-subpaths/empty-dir/etcd/0",
+              "source": "/dev/sda3[/var/lib/kubelet/pods/5b103558-ad97-41a7-9046-51f2f927a65b/volumes/kubernetes.io~empty-dir/empty-dir/app-conf-dir]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/5b103558-ad97-41a7-9046-51f2f927a65b/volume-subpaths/empty-dir/etcd/1",
+              "source": "/dev/sda3[/var/lib/kubelet/pods/5b103558-ad97-41a7-9046-51f2f927a65b/volumes/kubernetes.io~empty-dir/empty-dir/tmp-dir]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/bc9d7952-410c-4ce8-a46c-bdb26351670e/volumes/kubernetes.io~csi/pvc-eb059c4f-68bf-49ed-b432-7127632c7f97/mount",
+              "source": "/dev/longhorn/pvc-eb059c4f-68bf-49ed-b432-7127632c7f97",
+              "fstype": "ext4",
+              "size": "7.8G",
+              "avail": "7.6G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/4cba70b0f9ee6cecda6ede2e21f2bacf67acb750a795e6fc6a32048b0b48661a/globalmount",
+              "source": "/dev/longhorn/pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df",
+              "fstype": "ext4",
+              "size": "19.5G",
+              "avail": "19.5G"
+            },
+            {
+              "target": "/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/7ba0a97d317388b555656274ea33c5e9c22fd51cffa2ec3e6c26ad20ec235d01/globalmount",
+              "source": "/dev/longhorn/pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.7G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/17f3a09d-cab8-4845-951d-f8634865009f/volumes/kubernetes.io~csi/pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59/mount",
+              "source": "/dev/longhorn/pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.7G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/17f3a09d-cab8-4845-951d-f8634865009f/volume-subpaths/pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59/alertmanager/3",
+              "source": "/dev/longhorn/pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59[/alertmanager-db]",
+              "fstype": "ext4",
+              "size": "9.7G",
+              "avail": "9.7G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/8e9811c6-a75e-4a15-a6d7-46ce914e9210/volume-subpaths/config/grafana/1",
+              "source": "/dev/sda3[/var/lib/kubelet/pods/8e9811c6-a75e-4a15-a6d7-46ce914e9210/volumes/kubernetes.io~configmap/config/..2026_09_14_13_21_40.2018951805/grafana.ini]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            },
+            {
+              "target": "/var/lib/kubelet/pods/8e9811c6-a75e-4a15-a6d7-46ce914e9210/volume-subpaths/sc-dashboard-provider/grafana/5",
+              "source": "/dev/sda3[/var/lib/kubelet/pods/8e9811c6-a75e-4a15-a6d7-46ce914e9210/volumes/kubernetes.io~configmap/sc-dashboard-provider/..2026_09_14_13_21_40.698241836/provider.yaml]",
+              "fstype": "ext4",
+              "size": "915.3G",
+              "avail": "646G"
+            }
+          ]
+        }
+      ]
+    },
+    "du_bytes": 52391555072,
+    "non_longhorn_used_bytes": 186751062016
+  }
+}

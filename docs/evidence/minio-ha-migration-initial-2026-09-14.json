@@ -1,0 +1,265 @@
+{
+  "inventory.json": {
+    "time": "20260914T091919Z",
+    "mode": "inventory",
+    "directory": "/opt/vela-cluster/minio-migration/20260914T091919Z",
+    "exports": {
+      "buckets.zip": [
+        {
+          "entry": "longhorn-backups/notification.xml",
+          "bytes": 103
+        },
+        {
+          "entry": "longhorn-backups/quota.json",
+          "bytes": 42,
+          "type": "dict",
+          "entries": 4
+        },
+        {
+          "entry": "longhorn-backups/bucket-targets.json",
+          "bytes": 31,
+          "json_summary": "not a collection"
+        },
+        {
+          "entry": "vela-artifacts/notification.xml",
+          "bytes": 103
+        },
+        {
+          "entry": "vela-artifacts/quota.json",
+          "bytes": 42,
+          "type": "dict",
+          "entries": 4
+        },
+        {
+          "entry": "vela-artifacts/versioning.xml",
+          "bytes": 75
+        },
+        {
+          "entry": "vela-artifacts/bucket-targets.json",
+          "bytes": 31,
+          "json_summary": "not a collection"
+        },
+        {
+          "entry": "vela-artifacts-backup/notification.xml",
+          "bytes": 103
+        },
+        {
+          "entry": "vela-artifacts-backup/quota.json",
+          "bytes": 42,
+          "type": "dict",
+          "entries": 4
+        },
+        {
+          "entry": "vela-artifacts-backup/versioning.xml",
+          "bytes": 75
+        },
+        {
+          "entry": "vela-artifacts-backup/bucket-targets.json",
+          "bytes": 31,
+          "json_summary": "not a collection"
+        },
+        {
+          "entry": "vela-postgres-backup/notification.xml",
+          "bytes": 103
+        },
+        {
+          "entry": "vela-postgres-backup/quota.json",
+          "bytes": 42,
+          "type": "dict",
+          "entries": 4
+        },
+        {
+          "entry": "vela-postgres-backup/bucket-targets.json",
+          "bytes": 31,
+          "json_summary": "not a collection"
+        },
+        {
+          "entry": "vela-smoke/notification.xml",
+          "bytes": 103
+        },
+        {
+          "entry": "vela-smoke/quota.json",
+          "bytes": 42,
+          "type": "dict",
+          "entries": 4
+        },
+        {
+          "entry": "vela-smoke/bucket-targets.json",
+          "bytes": 31,
+          "json_summary": "not a collection"
+        }
+      ],
+      "iam.zip": [
+        {
+          "entry": "iam-assets/policies.json",
+          "bytes": 862,
+          "type": "dict",
+          "entries": 5
+        },
+        {
+          "entry": "iam-assets/users.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        },
+        {
+          "entry": "iam-assets/groups.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        },
+        {
+          "entry": "iam-assets/svcaccts.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        },
+        {
+          "entry": "iam-assets/user_mappings.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        },
+        {
+          "entry": "iam-assets/group_mappings.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        },
+        {
+          "entry": "iam-assets/stsuser_mappings.json",
+          "bytes": 2,
+          "type": "dict",
+          "entries": 0
+        }
+      ]
+    },
+    "buckets": [
+      {
+        "name": "longhorn-backups",
+        "entries": 4,
+        "bytes": 2861,
+        "versioning": {
+          "status": "",
+          "MFADelete": ""
+        },
+        "entry_fields": [
+          "etag",
+          "key",
+          "lastModified",
+          "size",
+          "status",
+          "storageClass",
+          "type",
+          "url",
+          "versionId",
+          "versionOrdinal"
+        ],
+        "non_null_version_ids": 0,
+        "delete_markers": 0
+      },
+      {
+        "name": "vela-artifacts",
+        "entries": 0,
+        "bytes": 0,
+        "versioning": {
+          "status": "Enabled",
+          "MFADelete": ""
+        },
+        "entry_fields": [],
+        "non_null_version_ids": 0,
+        "delete_markers": 0
+      },
+      {
+        "name": "vela-artifacts-backup",
+        "entries": 0,
+        "bytes": 0,
+        "versioning": {
+          "status": "Enabled",
+          "MFADelete": ""
+        },
+        "entry_fields": [],
+        "non_null_version_ids": 0,
+        "delete_markers": 0
+      },
+      {
+        "name": "vela-postgres-backup",
+        "entries": 249,
+        "bytes": 137687045,
+        "versioning": {
+          "status": "",
+          "MFADelete": ""
+        },
+        "entry_fields": [
+          "etag",
+          "key",
+          "lastModified",
+          "size",
+          "status",
+          "storageClass",
+          "type",
+          "url",
+          "versionId",
+          "versionOrdinal"
+        ],
+        "non_null_version_ids": 0,
+        "delete_markers": 0
+      },
+      {
+        "name": "vela-smoke",
+        "entries": 2,
+        "bytes": 59,
+        "versioning": {
+          "status": "",
+          "MFADelete": ""
+        },
+        "entry_fields": [
+          "etag",
+          "key",
+          "lastModified",
+          "size",
+          "status",
+          "storageClass",
+          "type",
+          "url",
+          "versionId",
+          "versionOrdinal"
+        ],
+        "non_null_version_ids": 0,
+        "delete_markers": 0
+      }
+    ],
+    "destination_buckets": []
+  },
+  "initial-sync-receipt.json": {
+    "time": "2026-09-14T09:22:37.239276+00:00",
+    "mode": "sync",
+    "native_metadata_and_iam_imported": true,
+    "snapshot_objects": 255,
+    "snapshot_bytes": 137689965,
+    "source_entries_after_sync": 255,
+    "cutover_performed": false,
+    "content_verification_pending": true
+  },
+  "initial-verify-receipt.json": {
+    "time": "2026-09-14T09:32:29.209005+00:00",
+    "mode": "verify",
+    "result": "SYNCHRONIZED_SNAPSHOT_VERIFIED",
+    "objects": 255,
+    "bytes": 137689965,
+    "hash_algorithm": "SHA256",
+    "object_metadata_equal": true,
+    "object_tags_equal": true,
+    "native_metadata_equal_entries": {
+      "buckets.zip": 17,
+      "iam.zip": 7
+    },
+    "source_additions_since_sync": 2,
+    "cutover_performed": false,
+    "manifest_sha256": "83cf90222491971023db6f7ca4b310745d2465c00fbc7582e72a9b5d21d9ab52",
+    "limits": [
+      "lastModified and multipart ETag are not preserved by ordinary S3 copy",
+      "writer coordination and a final delta are required before cutover"
+    ]
+  }
+}

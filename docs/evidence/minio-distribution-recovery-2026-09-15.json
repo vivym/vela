@@ -1,0 +1,30 @@
+{
+  "at": "2026-09-15T08:30:30.574810+00:00",
+  "moves": [
+    {
+      "pod": "minio-ha-2",
+      "old_uid": "82e7ca18-932d-4a15-91bc-f4850e637348",
+      "source": "llmpool01",
+      "deleted_at": "2026-09-15T08:30:31.096742+00:00",
+      "new_uid": "6aff8734-6b25-4ba0-ab1b-a152c564852c",
+      "destination": "marslab-gpu-01",
+      "ready_at": "2026-09-15T08:31:15.449816+00:00"
+    },
+    {
+      "pod": "minio-ha-4",
+      "old_uid": "cbc18043-46c3-46b2-9e9a-565edbe02d33",
+      "source": "llmpool02",
+      "deleted_at": "2026-09-15T08:31:15.935534+00:00",
+      "new_uid": "d77eb1c6-e925-45cf-8b67-1b60a32d5650",
+      "destination": "marslab-gpu-01",
+      "ready_at": "2026-09-15T08:31:57.133171+00:00"
+    }
+  ],
+  "passed": true,
+  "distribution": {
+    "llmpool01": 2,
+    "llmpool02": 2,
+    "marslab-gpu-01": 2
+  },
+  "finished_at": "2026-09-15T08:31:57.283388+00:00"
+}

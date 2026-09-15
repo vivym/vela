@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    # Keep other nodes' allocation plugins running during the DRA pilot.
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      runtimeClassName: nvidia
+      priorityClassName: system-node-critical
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/gpu-runtime: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: vela.ai/gpu-allocator
+                    operator: NotIn
+                    values: [nvidia-dra]
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: 10.1.201.70:5001/nvidia/k8s-device-plugin@sha256:630596340f8e83aa10b0bc13a46db76772e31b7dccfc34d3a4e41ab7e0aa6117
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: FAIL_ON_INIT_ERROR
+              value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+      volumes:
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+            type: Directory

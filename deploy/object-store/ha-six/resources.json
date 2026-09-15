@@ -1,0 +1,273 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "minio-ha",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "minio-ha",
+        "namespace": "object-store"
+      },
+      "spec": {
+        "ports": [
+          {
+            "name": "api",
+            "port": 9000,
+            "targetPort": "api"
+          },
+          {
+            "name": "console",
+            "port": 9001,
+            "targetPort": "console"
+          }
+        ],
+        "selector": {
+          "app": "minio-ha"
+        }
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Service",
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "minio-ha",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "minio-ha-headless",
+        "namespace": "object-store"
+      },
+      "spec": {
+        "clusterIP": "None",
+        "ports": [
+          {
+            "name": "api",
+            "port": 9000,
+            "targetPort": "api"
+          },
+          {
+            "name": "console",
+            "port": 9001,
+            "targetPort": "console"
+          }
+        ],
+        "publishNotReadyAddresses": true,
+        "selector": {
+          "app": "minio-ha"
+        }
+      }
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "StatefulSet",
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "minio-ha",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "minio-ha",
+        "namespace": "object-store"
+      },
+      "spec": {
+        "persistentVolumeClaimRetentionPolicy": {
+          "whenDeleted": "Retain",
+          "whenScaled": "Retain"
+        },
+        "podManagementPolicy": "Parallel",
+        "replicas": 6,
+        "selector": {
+          "matchLabels": {
+            "app": "minio-ha"
+          }
+        },
+        "serviceName": "minio-ha-headless",
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "minio-ha",
+              "vela.ai/service": "object-store"
+            }
+          },
+          "spec": {
+            "affinity": {
+              "podAntiAffinity": {
+                "preferredDuringSchedulingIgnoredDuringExecution": [
+                  {
+                    "podAffinityTerm": {
+                      "labelSelector": {
+                        "matchLabels": {
+                          "app": "minio-ha"
+                        }
+                      },
+                      "topologyKey": "kubernetes.io/hostname"
+                    },
+                    "weight": 100
+                  }
+                ]
+              }
+            },
+            "automountServiceAccountToken": false,
+            "containers": [
+              {
+                "args": [
+                  "server",
+                  "--address",
+                  ":9000",
+                  "--console-address",
+                  ":9001",
+                  "http://minio-ha-{0...5}.minio-ha-headless.object-store.svc.cluster.local/data"
+                ],
+                "env": [
+                  {
+                    "name": "MINIO_ROOT_USER",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "key": "rootUser",
+                        "name": "minio-root"
+                      }
+                    }
+                  },
+                  {
+                    "name": "MINIO_ROOT_PASSWORD",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "key": "rootPassword",
+                        "name": "minio-root"
+                      }
+                    }
+                  },
+                  {
+                    "name": "MINIO_PROMETHEUS_AUTH_TYPE",
+                    "value": "public"
+                  },
+                  {
+                    "name": "MINIO_STORAGE_CLASS_STANDARD",
+                    "value": "EC:3"
+                  },
+                  {
+                    "name": "MINIO_STORAGE_CLASS_RRS",
+                    "value": "EC:3"
+                  }
+                ],
+                "image": "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
+                "imagePullPolicy": "IfNotPresent",
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/minio/health/live",
+                    "port": "api"
+                  },
+                  "initialDelaySeconds": 30,
+                  "periodSeconds": 20,
+                  "timeoutSeconds": 5
+                },
+                "name": "minio",
+                "ports": [
+                  {
+                    "containerPort": 9000,
+                    "name": "api"
+                  },
+                  {
+                    "containerPort": 9001,
+                    "name": "console"
+                  }
+                ],
+                "readinessProbe": {
+                  "failureThreshold": 3,
+                  "httpGet": {
+                    "path": "/minio/health/cluster",
+                    "port": "api"
+                  },
+                  "initialDelaySeconds": 15,
+                  "periodSeconds": 10,
+                  "timeoutSeconds": 5
+                },
+                "resources": {
+                  "limits": {
+                    "cpu": "2",
+                    "memory": "2Gi"
+                  },
+                  "requests": {
+                    "cpu": "250m",
+                    "memory": "512Mi"
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "mountPath": "/data",
+                    "name": "data"
+                  }
+                ]
+              }
+            ],
+            "nodeSelector": {
+              "vela.ai/node-role": "control-storage"
+            },
+            "terminationGracePeriodSeconds": 30,
+            "tolerations": [
+              {
+                "key": "node-role.kubernetes.io/control-plane",
+                "operator": "Exists"
+              }
+            ],
+            "topologySpreadConstraints": [
+              {
+                "labelSelector": {
+                  "matchLabels": {
+                    "app": "minio-ha"
+                  }
+                },
+                "maxSkew": 1,
+                "nodeTaintsPolicy": "Honor",
+                "topologyKey": "kubernetes.io/hostname",
+                "whenUnsatisfiable": "DoNotSchedule"
+              }
+            ]
+          }
+        },
+        "volumeClaimTemplates": [
+          {
+            "metadata": {
+              "name": "data"
+            },
+            "spec": {
+              "accessModes": [
+                "ReadWriteOnce"
+              ],
+              "resources": {
+                "requests": {
+                  "storage": "16Gi"
+                }
+              },
+              "storageClassName": "longhorn"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "policy/v1",
+      "kind": "PodDisruptionBudget",
+      "metadata": {
+        "labels": {
+          "app.kubernetes.io/name": "minio-ha",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "minio-ha",
+        "namespace": "object-store"
+      },
+      "spec": {
+        "minAvailable": 4,
+        "selector": {
+          "matchLabels": {
+            "app": "minio-ha"
+          }
+        }
+      }
+    }
+  ]
+}

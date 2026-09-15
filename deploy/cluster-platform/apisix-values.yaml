@@ -1,0 +1,192 @@
+replicaCount: 2
+# Chart 2.17.0 does not render podLabels. The marslab API ingress policy
+# matches its native name=apisix and instance=apisix Pod labels instead.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
+nodeSelector:
+  vela.ai/management: "true"
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - topologyKey: kubernetes.io/hostname
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: apisix
+service:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 9080
+    nodePort: 30080
+  tls:
+    servicePort: 443
+    nodePort: 30443
+apisix:
+  # Keep the APISIX 3.18 default plugin set and explicitly enable
+  # OpenTelemetry. The Helm chart treats a non-empty list as the complete
+  # plugin list, so the defaults are repeated here to avoid silently removing
+  # gateway capabilities during the upgrade.
+  plugins:
+    - real-ip
+    - ai
+    - client-control
+    - proxy-buffering
+    - proxy-control
+    - request-id
+    - zipkin
+    - ext-plugin-pre-req
+    - fault-injection
+    - mocking
+    - serverless-pre-function
+    - cors
+    - ip-restriction
+    - ua-restriction
+    - referer-restriction
+    - csrf
+    - uri-blocker
+    - request-validation
+    - chaitin-waf
+    - multi-auth
+    - openid-connect
+    - saml-auth
+    - cas-auth
+    - authz-casbin
+    - authz-casdoor
+    - wolf-rbac
+    - ldap-auth-advanced
+    - ldap-auth
+    - hmac-auth
+    - basic-auth
+    - jwt-auth
+    - jwe-decrypt
+    - key-auth
+    - dingtalk-auth
+    - feishu-auth
+    - acl
+    - consumer-restriction
+    - attach-consumer-label
+    - forward-auth
+    - opa
+    - authz-keycloak
+    - data-mask
+    - proxy-cache
+    - body-transformer
+    - ai-prompt-template
+    - ai-prompt-decorator
+    - ai-prompt-guard
+    - ai-rag
+    - ai-rate-limiting
+    - ai-proxy-multi
+    - ai-proxy
+    - ai-cache
+    - ai-aws-content-moderation
+    - ai-aliyun-content-moderation
+    - ai-lakera-guard
+    - proxy-mirror
+    - graphql-proxy-cache
+    - proxy-rewrite
+    - workflow
+    - api-breaker
+    - graphql-limit-count
+    - limit-conn
+    - limit-count
+    - limit-req
+    - gzip
+    - traffic-label
+    - traffic-split
+    - redirect
+    - response-rewrite
+    - oas-validator
+    - mcp-bridge
+    - degraphql
+    - kafka-proxy
+    - grpc-transcode
+    - grpc-web
+    - http-dubbo
+    - public-api
+    - prometheus
+    - opentelemetry
+    - datadog
+    - lago
+    - loki-logger
+    - elasticsearch-logger
+    - echo
+    - loggly
+    - http-logger
+    - splunk-hec-logging
+    - skywalking-logger
+    - google-cloud-logging
+    - sls-logger
+    - tcp-logger
+    - kafka-logger
+    - rocketmq-logger
+    - syslog
+    - udp-logger
+    - file-logger
+    - clickhouse-logger
+    - tencent-cloud-cls
+    - inspect
+    - example-plugin
+    - aws-lambda
+    - azure-functions
+    - openwhisk
+    - openfunction
+    - serverless-post-function
+    - ext-plugin-post-req
+    - ext-plugin-post-resp
+    - ai-request-rewrite
+  prometheus:
+    enabled: true
+    path: /apisix/prometheus/metrics
+    metricPrefix: apisix_
+    containerPort: 9091
+  pluginAttrs:
+    prometheus:
+      export_addr:
+        ip: 0.0.0.0
+        port: 9091
+      export_uri: /apisix/prometheus/metrics
+  ssl:
+    enabled: true
+    # IP clients omit SNI; the managed certificate includes both CPU node IPs.
+    fallbackSNI: apisix-gateway
+  admin:
+    enabled: true
+    enable_admin_ui: false
+    type: ClusterIP
+    allow:
+      ipList:
+        - 10.1.201.70/32
+        - 10.1.201.71/32
+        - 127.0.0.1/32
+        - 10.42.0.0/16
+        - 10.0.0.0/8
+    credentials:
+      secretName: apisix-admin-credentials
+      secretAdminKey: admin
+      secretViewerKey: viewer
+etcd:
+  enabled: true
+  replicaCount: 3
+  nodeSelector:
+    vela.ai/node-role: control-storage
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: etcd
+  persistence:
+    enabled: true
+    storageClass: longhorn
+    size: 10Gi
+  auth:
+    rbac:
+      create: true
+      rootPassword: "REPLACE_AT_DEPLOY"

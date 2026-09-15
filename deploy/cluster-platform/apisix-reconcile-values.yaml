@@ -1,0 +1,28 @@
+# Reconciliation input for the existing APISIX 3.18 release. Do not apply this
+# alone with --reuse-values: Helm can retain the old etcd management selector.
+# Export computed values to a root-only file (umask 077), overlay these values,
+# REPLACE the entire etcd.nodeSelector map, then upgrade with --reset-values and
+# the complete merged file. Preserve the current plugins and secret references.
+# This file contains no credentials or etcd root password.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
+
+apisix:
+  prometheus:
+    enabled: true
+    path: /apisix/prometheus/metrics
+    metricPrefix: apisix_
+    containerPort: 9091
+  pluginAttrs:
+    prometheus:
+      export_addr:
+        ip: 0.0.0.0
+        port: 9091
+      export_uri: /apisix/prometheus/metrics
+
+etcd:
+  nodeSelector:
+    vela.ai/node-role: control-storage

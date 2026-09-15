@@ -1,0 +1,145 @@
+{
+  "at": "2026-09-14T16:19:06.829308+00:00",
+  "source": "10.1.201.70",
+  "repository": "vela-control",
+  "root_digest": "sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+  "targets": [
+    {
+      "host": "10.1.201.71",
+      "manifests": [
+        {
+          "digest": "sha256:cb1ed0500e9dd97d8bee49818aeaa55cd7ad511eae83a9e775c030ffda3b6090",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 1057,
+          "verified": true
+        },
+        {
+          "digest": "sha256:b48eb95f82b035553ee1e59f5e1e4e64a590e10fe51ad5247b632a1c6cd1ad15",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 566,
+          "verified": true
+        },
+        {
+          "digest": "sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "media_type": "application/vnd.oci.image.index.v1+json",
+          "size": 856,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:092499349be7152132c276852ee75f426e68e853996e3d01fcf922191b2d3f03",
+          "size": 2199,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+          "size": 124284,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+          "size": 19118756,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+          "size": 4573237,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+          "size": 1278515,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:863dbbe34272e4be6a239e5e706d8c579055621e529f481cb961a5ef5b92fd6e",
+          "size": 167,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:987422869c33d2a6e7931ae178d5dff8c6e6a1e2500de73cc09aaa4e6d94a31e",
+          "size": 2334,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    },
+    {
+      "host": "10.1.201.66",
+      "manifests": [
+        {
+          "digest": "sha256:cb1ed0500e9dd97d8bee49818aeaa55cd7ad511eae83a9e775c030ffda3b6090",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 1057,
+          "verified": true
+        },
+        {
+          "digest": "sha256:b48eb95f82b035553ee1e59f5e1e4e64a590e10fe51ad5247b632a1c6cd1ad15",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 566,
+          "verified": true
+        },
+        {
+          "digest": "sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "media_type": "application/vnd.oci.image.index.v1+json",
+          "size": 856,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:092499349be7152132c276852ee75f426e68e853996e3d01fcf922191b2d3f03",
+          "size": 2199,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+          "size": 124284,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+          "size": 19118756,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+          "size": 4573237,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+          "size": 1278515,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:863dbbe34272e4be6a239e5e706d8c579055621e529f481cb961a5ef5b92fd6e",
+          "size": 167,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:987422869c33d2a6e7931ae178d5dff8c6e6a1e2500de73cc09aaa4e6d94a31e",
+          "size": 2334,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    }
+  ],
+  "result": "EXACT_IMAGE_REPLICATION_PASS"
+}

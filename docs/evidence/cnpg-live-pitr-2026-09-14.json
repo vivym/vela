@@ -1,0 +1,62 @@
+{
+  "run_id": "pitr-2c04e3159c18",
+  "started_at": "2026-09-14T13:03:05.694502+00:00",
+  "source_cluster": "vela-postgres",
+  "source_uid": "5a39aea5-b0da-4a22-8e84-8dc6a62caa81",
+  "source_primary": "vela-postgres-1",
+  "source_database_bytes": 61557147,
+  "schema": "vela_pitr_2c04e3159c184d0e81406a4cee6a324f",
+  "schema_created": true,
+  "created_resources": [
+    {
+      "kind": "Backup",
+      "name": "vela-pitr-2c04e3159c18",
+      "uid": "85661285-286e-4608-a4a1-7fa9bcc49f5b"
+    },
+    {
+      "kind": "NetworkPolicy",
+      "name": "vela-pitr-2c04e3159c18-restore",
+      "uid": "3c7e6a5f-80a4-4dfc-acc9-45f26ae62442"
+    },
+    {
+      "kind": "Cluster",
+      "name": "vela-pitr-2c04e3159c18-restore",
+      "uid": "4c6791ba-7aac-41ec-aff5-66d4b019b283"
+    }
+  ],
+  "image": "ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe",
+  "scope": "Live base backup and WAL timestamp restore on CPU management node; not site loss or application replay",
+  "phase": "complete",
+  "updated_at": "2026-09-14T13:06:08.643451+00:00",
+  "backup": {
+    "backupId": "20260914T130306",
+    "backupName": "backup-20260914130306",
+    "beginWal": "000000050000000100000019",
+    "endWal": "000000050000000100000019",
+    "startedAt": "2026-09-14T13:03:06Z",
+    "stoppedAt": "2026-09-14T13:03:20Z",
+    "phase": "completed"
+  },
+  "recovery_target": "2026-09-14T13:03:26.066672Z",
+  "required_wal": "00000005000000010000001B",
+  "archive": {
+    "wal": "00000005000000010000001B",
+    "at": "2026-09-14T13:03:27.883345+00:00",
+    "failed_count": 4
+  },
+  "restore_cluster": "vela-pitr-2c04e3159c18-restore",
+  "restore_started_at": "2026-09-14T13:03:31.521863+00:00",
+  "restore_primary": "vela-pitr-2c04e3159c18-restore-1",
+  "marker_result": {
+    "base": 1,
+    "before_target": 1,
+    "after_target": 0,
+    "in_recovery": false
+  },
+  "restore_seconds": 145.8,
+  "total_seconds": 172.11,
+  "cleanup_verified": true,
+  "source_ready_instances": 3,
+  "backup_objects_note": "drill Backup CR removed; backup/WAL objects retained under existing retention policy",
+  "result": "LIVE_PITR_PASS"
+}

@@ -1,0 +1,87 @@
+{
+  "at": "2026-09-14T16:48:33Z",
+  "hosts": [
+    {
+      "host": "10.1.201.70",
+      "phase": "active",
+      "input_sha256": "3e12312f3a4f8da1ee2a5988076c95e2fb625a2331bb092d51299327e46c8b77",
+      "original_id": "70823f28711ee491482db8685b4abe471bbc3b3604d9496fbae3dd02d9186375",
+      "boot_id": "d8bca6a6-2a44-41af-ab33-5933b8b714db",
+      "rke2_invocation": "0d278fe79f694b0dbd9256df3f5ffbff",
+      "config_sha256": "1b6a96a72004320232977b39e55dcac3be5fef241e2f11296a229e9f7ac3c9ef",
+      "nginx_image_id": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "source_oci_digest": "nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "updated_at": "2026-09-14T16:48:35Z",
+      "backup_name": "vela-registry-release-before-access-70823f28711e",
+      "new_backend_id": "3527a32c7f16e33d1fcf8854c577edc321c27e4d099c5cb9685f0bcac7058668",
+      "gateway_id": "bb42a8aef87b48ff323764995cb9de2d573c3f09edf4b7211e46d5379120c441",
+      "checks": {
+        "anonymous": 401,
+        "authenticated": 200,
+        "control_digest_head": 200,
+        "pull_write_denied": 401,
+        "backend_loopback": 200,
+        "backend_id": "3527a32c7f16e33d1fcf8854c577edc321c27e4d099c5cb9685f0bcac7058668",
+        "gateway_id": "bb42a8aef87b48ff323764995cb9de2d573c3f09edf4b7211e46d5379120c441",
+        "restart_policy": "always",
+        "boot_id_unchanged": true,
+        "rke2_invocation_unchanged": true
+      }
+    },
+    {
+      "host": "10.1.201.71",
+      "phase": "active",
+      "input_sha256": "b3643e84e4d0f3fd5f60d741b880960c42bc90c898f02c29272ab2684e8266e8",
+      "original_id": "ccc8575a7bee6b5b690499efbd3bcd3453d580f62dce6a056ad236842039591c",
+      "boot_id": "676751e3-c639-4ff5-8f69-d0b9d4d7a635",
+      "rke2_invocation": "2813aad5f74e4f5b8cdcba379f7b457d",
+      "config_sha256": "ea3ea9124ae580d179078dc8a741b5aeb9de5f1059dbedc59677175018797b96",
+      "nginx_image_id": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "source_oci_digest": "nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "updated_at": "2026-09-14T16:48:37Z",
+      "backup_name": "vela-registry-release-before-access-ccc8575a7bee",
+      "new_backend_id": "b9b54ecc5afc624f5251c981a423911dbfdaa49017c4e194a972444d916e9eb9",
+      "gateway_id": "85cd134cd0c1f06de133601114e3dc274369be96cdc5b7052651c63e0478936e",
+      "checks": {
+        "anonymous": 401,
+        "authenticated": 200,
+        "control_digest_head": 200,
+        "pull_write_denied": 401,
+        "backend_loopback": 200,
+        "backend_id": "b9b54ecc5afc624f5251c981a423911dbfdaa49017c4e194a972444d916e9eb9",
+        "gateway_id": "85cd134cd0c1f06de133601114e3dc274369be96cdc5b7052651c63e0478936e",
+        "restart_policy": "always",
+        "boot_id_unchanged": true,
+        "rke2_invocation_unchanged": true
+      }
+    },
+    {
+      "host": "10.1.201.66",
+      "phase": "active",
+      "input_sha256": "6fdbb292d6e426d59569ea51d6c398d1b826243a71b0f839b5f0e693389d919a",
+      "original_id": "c1b32bb59e357018a9f95735a53a60fb533d1a7e40823d0d442f44295cc8b529",
+      "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+      "rke2_invocation": "9e1c27b1329c4045bbb03f3f5935d293",
+      "config_sha256": "415a44c88765c4ef8bb1d602d5bff3af0adb7b7faa3513b73fe144494341053c",
+      "nginx_image_id": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "source_oci_digest": "nginx@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+      "updated_at": "2026-09-14T16:48:39Z",
+      "backup_name": "vela-registry-release-before-access-c1b32bb59e35",
+      "new_backend_id": "0e259d3228796ec2e416033501e9d449a2e77f458a7ca4a24b759242a003074e",
+      "gateway_id": "9c4fc874a041a01ee8ba88ab086238c776f493e9b6886a5503ccd2974c347d4a",
+      "checks": {
+        "anonymous": 401,
+        "authenticated": 200,
+        "control_digest_head": 200,
+        "pull_write_denied": 401,
+        "backend_loopback": 200,
+        "backend_id": "0e259d3228796ec2e416033501e9d449a2e77f458a7ca4a24b759242a003074e",
+        "gateway_id": "9c4fc874a041a01ee8ba88ab086238c776f493e9b6886a5503ccd2974c347d4a",
+        "restart_policy": "always",
+        "boot_id_unchanged": true,
+        "rke2_invocation_unchanged": true
+      }
+    }
+  ],
+  "result": "THREE_REGISTRY_AUTH_CUTOVERS_PASS"
+}

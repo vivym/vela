@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: minio
+  namespace: object-store
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: vela
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: minio

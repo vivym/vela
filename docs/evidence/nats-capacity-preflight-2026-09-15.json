@@ -1,0 +1,968 @@
+{
+  "at": "2026-09-14T20:35:43.681679+00:00",
+  "nodes": [
+    {
+      "name": "llmpool01",
+      "allowScheduling": true,
+      "disks": {
+        "default-disk-f88f75ffdb6ab959": {
+          "allowScheduling": true,
+          "diskDriver": "",
+          "diskType": "filesystem",
+          "evictionRequested": false,
+          "path": "/var/lib/longhorn/",
+          "storageReserved": 188572087910,
+          "tags": []
+        }
+      },
+      "diskStatus": {
+        "default-disk-f88f75ffdb6ab959": {
+          "conditions": [
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-14T00:04:25Z",
+              "message": "Disk default-disk-f88f75ffdb6ab959(/var/lib/longhorn/) on node llmpool01 is ready",
+              "reason": "",
+              "status": "True",
+              "type": "Ready"
+            },
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-14T00:04:25Z",
+              "message": "Disk default-disk-f88f75ffdb6ab959(/var/lib/longhorn/) on node llmpool01 is schedulable",
+              "reason": "",
+              "status": "True",
+              "type": "Schedulable"
+            }
+          ],
+          "diskDriver": "",
+          "diskName": "default-disk-f88f75ffdb6ab959",
+          "diskPath": "/var/lib/longhorn/",
+          "diskType": "filesystem",
+          "diskUUID": "9d9726ff-77ff-4ef3-a7c4-f9bf009da172",
+          "filesystemType": "ext2/ext3",
+          "healthData": {
+            "default-disk-f88f75ffdb6ab959": {
+              "attributes": [
+                {
+                  "id": 5,
+                  "name": "Reallocated_Sector_Ct",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 9,
+                  "name": "Power_On_Hours",
+                  "rawString": "22939",
+                  "rawValue": 22939,
+                  "value": 95,
+                  "worst": 95
+                },
+                {
+                  "id": 12,
+                  "name": "Power_Cycle_Count",
+                  "rawString": "33",
+                  "rawValue": 33,
+                  "value": 99,
+                  "worst": 99
+                },
+                {
+                  "id": 177,
+                  "name": "Wear_Leveling_Count",
+                  "rawString": "263",
+                  "rawValue": 263,
+                  "threshold": 5,
+                  "value": 96,
+                  "worst": 96
+                },
+                {
+                  "id": 179,
+                  "name": "Used_Rsvd_Blk_Cnt_Tot",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 180,
+                  "name": "Unused_Rsvd_Blk_Cnt_Tot",
+                  "rawString": "2873",
+                  "rawValue": 2873,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 181,
+                  "name": "Program_Fail_Cnt_Total",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 182,
+                  "name": "Erase_Fail_Count_Total",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 183,
+                  "name": "Runtime_Bad_Block",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 184,
+                  "name": "End-to-End_Error",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 97,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 187,
+                  "name": "Uncorrectable_Error_Cnt",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 190,
+                  "name": "Airflow_Temperature_Cel",
+                  "rawString": "25",
+                  "rawValue": 25,
+                  "value": 75,
+                  "worst": 49
+                },
+                {
+                  "id": 194,
+                  "name": "Temperature_Celsius",
+                  "rawString": "25 (Min/Max 11/51)",
+                  "rawValue": 25,
+                  "value": 75,
+                  "worst": 49
+                },
+                {
+                  "id": 195,
+                  "name": "ECC_Error_Rate",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 200,
+                  "worst": 200
+                },
+                {
+                  "id": 197,
+                  "name": "Current_Pending_Sector",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 199,
+                  "name": "CRC_Error_Count",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 202,
+                  "name": "Exception_Mode_Status",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 235,
+                  "name": "POR_Recovery_Count",
+                  "rawString": "21",
+                  "rawValue": 21,
+                  "value": 99,
+                  "worst": 99
+                },
+                {
+                  "id": 241,
+                  "name": "Total_LBAs_Written",
+                  "rawString": "326214288525",
+                  "rawValue": 326214288525,
+                  "value": 99,
+                  "worst": 99
+                },
+                {
+                  "id": 242,
+                  "name": "Total_LBAs_Read",
+                  "rawString": "442598627376",
+                  "rawValue": 442598627376,
+                  "value": 99,
+                  "worst": 99
+                },
+                {
+                  "id": 243,
+                  "name": "SATA_Downshift_Ct",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 244,
+                  "name": "Thermal_Throttle_St",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 245,
+                  "name": "Timed_Workld_Media_Wear",
+                  "rawString": "65535",
+                  "rawValue": 65535,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 246,
+                  "name": "Timed_Workld_RdWr_Ratio",
+                  "rawString": "65535",
+                  "rawValue": 65535,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 247,
+                  "name": "Timed_Workld_Timer",
+                  "rawString": "65535",
+                  "rawValue": 65535,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 251,
+                  "name": "NAND_Writes",
+                  "rawString": "513578035584",
+                  "rawValue": 513578035584,
+                  "value": 100,
+                  "worst": 100
+                }
+              ],
+              "capacity": 960197124096,
+              "diskName": "/dev/sda",
+              "diskType": "sat",
+              "firmwareVersion": "HXT7904Q",
+              "healthStatus": "PASSED",
+              "modelName": "SAMSUNG MZ7LH960HAJR-00005",
+              "serialNumber": "S45NNA0R358672",
+              "source": "SMART",
+              "temperature": 25
+            }
+          },
+          "healthDataLastCollectedAt": "2026-09-14T20:33:33Z",
+          "instanceManagerName": "instance-manager-3be156165b7b2fc770733b7f192991f4",
+          "scheduledBackingImage": {},
+          "scheduledReplica": {
+            "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df-r-bb7644e0": 21474836480,
+            "pvc-21bd1909-f74d-4212-8b6c-be738251de18-r-c2fcea74": 8589934592,
+            "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e-r-73ae8907": 53687091200,
+            "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc-r-2d3dd5b0": 21474836480,
+            "pvc-3fe243a5-a0d2-4740-ab3e-44d76e30f478-r-102ed2a9": 10737418240,
+            "pvc-40ff974f-dc41-4093-a086-c6062d6f579a-r-9ec46e2f": 53687091200,
+            "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd-r-bbd2a5c4": 107374182400,
+            "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23-r-6babb395": 21474836480,
+            "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f-r-7a63200f": 53687091200,
+            "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9-r-9e24b054": 53687091200,
+            "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1-r-7f14b40f": 8589934592,
+            "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5-r-2035f636": 53687091200,
+            "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c-r-3a261e6e": 21474836480,
+            "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191-r-6b4938f5": 21474836480,
+            "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6-r-fb8cf659": 21474836480,
+            "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447-r-5782e028": 8589934592,
+            "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09-r-efa6c363": 53687091200,
+            "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59-r-c0327888": 10737418240,
+            "pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351-r-ce92f420": 10737418240,
+            "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0-r-d6163299": 8589934592,
+            "pvc-e6625907-a678-4a46-88b2-f6e554129a39-r-2cb243b8": 10737418240,
+            "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97-r-87563321": 8589934592,
+            "pvc-f084c352-66f3-4202-b563-f8b561c74d2c-r-3422aa1b": 21474836480,
+            "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32-r-12b665d7": 53687091200,
+            "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e-r-46132728": 21474836480
+          },
+          "storageAvailable": 796393472000,
+          "storageMaximum": 942860439552,
+          "storageScheduled": 740881858560
+        }
+      }
+    },
+    {
+      "name": "llmpool02",
+      "allowScheduling": true,
+      "disks": {
+        "default-disk-2cb5af6ac0b46856": {
+          "allowScheduling": true,
+          "diskDriver": "",
+          "diskType": "filesystem",
+          "evictionRequested": false,
+          "path": "/var/lib/longhorn/",
+          "storageReserved": 196563759923,
+          "tags": []
+        }
+      },
+      "diskStatus": {
+        "default-disk-2cb5af6ac0b46856": {
+          "conditions": [
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-13T22:27:21Z",
+              "message": "Disk default-disk-2cb5af6ac0b46856(/var/lib/longhorn/) on node llmpool02 is ready",
+              "reason": "",
+              "status": "True",
+              "type": "Ready"
+            },
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-13T22:27:21Z",
+              "message": "Disk default-disk-2cb5af6ac0b46856(/var/lib/longhorn/) on node llmpool02 is schedulable",
+              "reason": "",
+              "status": "True",
+              "type": "Schedulable"
+            }
+          ],
+          "diskDriver": "",
+          "diskName": "default-disk-2cb5af6ac0b46856",
+          "diskPath": "/var/lib/longhorn/",
+          "diskType": "filesystem",
+          "diskUUID": "f8aa7db2-6322-4427-95d0-023cc5392ea3",
+          "filesystemType": "ext2/ext3",
+          "healthData": {
+            "default-disk-2cb5af6ac0b46856": {
+              "attributes": [
+                {
+                  "id": 5,
+                  "name": "Reallocated_Sector_Ct",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 9,
+                  "name": "Power_On_Hours",
+                  "rawString": "21281",
+                  "rawValue": 21281,
+                  "value": 95,
+                  "worst": 95
+                },
+                {
+                  "id": 12,
+                  "name": "Power_Cycle_Count",
+                  "rawString": "1756",
+                  "rawValue": 1756,
+                  "value": 98,
+                  "worst": 98
+                },
+                {
+                  "id": 177,
+                  "name": "Wear_Leveling_Count",
+                  "rawString": "45",
+                  "rawValue": 45,
+                  "value": 95,
+                  "worst": 95
+                },
+                {
+                  "id": 179,
+                  "name": "Used_Rsvd_Blk_Cnt_Tot",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 181,
+                  "name": "Program_Fail_Cnt_Total",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 182,
+                  "name": "Erase_Fail_Count_Total",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 183,
+                  "name": "Runtime_Bad_Block",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "threshold": 10,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 187,
+                  "name": "Uncorrectable_Error_Cnt",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 190,
+                  "name": "Airflow_Temperature_Cel",
+                  "rawString": "29",
+                  "rawValue": 29,
+                  "value": 71,
+                  "worst": 43
+                },
+                {
+                  "id": 195,
+                  "name": "ECC_Error_Rate",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 200,
+                  "worst": 200
+                },
+                {
+                  "id": 199,
+                  "name": "CRC_Error_Count",
+                  "rawString": "0",
+                  "rawValue": 0,
+                  "value": 100,
+                  "worst": 100
+                },
+                {
+                  "id": 235,
+                  "name": "POR_Recovery_Count",
+                  "rawString": "1742",
+                  "rawValue": 1742,
+                  "value": 99,
+                  "worst": 99
+                },
+                {
+                  "id": 241,
+                  "name": "Total_LBAs_Written",
+                  "rawString": "59420187607",
+                  "rawValue": 59420187607,
+                  "value": 99,
+                  "worst": 99
+                }
+              ],
+              "capacity": 1000204886016,
+              "diskName": "/dev/sda",
+              "diskType": "sat",
+              "firmwareVersion": "SVQ02B6Q",
+              "healthStatus": "PASSED",
+              "modelName": "Samsung SSD 870 QVO 1TB",
+              "serialNumber": "S6R8NJ0RB35230Y",
+              "source": "SMART",
+              "temperature": 29
+            }
+          },
+          "healthDataLastCollectedAt": "2026-09-14T20:31:38Z",
+          "instanceManagerName": "instance-manager-380847866b094c7ebab829a17b1fa5e8",
+          "scheduledBackingImage": {},
+          "scheduledReplica": {
+            "pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7-r-fe52ebe5": 21474836480,
+            "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df-r-f550315d": 21474836480,
+            "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e-r-8a243e82": 53687091200,
+            "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc-r-0a242e80": 21474836480,
+            "pvc-3fe243a5-a0d2-4740-ab3e-44d76e30f478-r-8e3ce3b1": 10737418240,
+            "pvc-40ff974f-dc41-4093-a086-c6062d6f579a-r-9e470dee": 53687091200,
+            "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd-r-c43375cc": 107374182400,
+            "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23-r-49c1b8cf": 21474836480,
+            "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f-r-edfd667c": 53687091200,
+            "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9-r-2b77c6d4": 53687091200,
+            "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5-r-b9bd7595": 53687091200,
+            "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c-r-d9fcd328": 21474836480,
+            "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191-r-056663e8": 21474836480,
+            "pvc-93c76276-ca39-4795-a3e9-81dff596643e-r-c373443e": 32212254720,
+            "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6-r-0ef67d0d": 21474836480,
+            "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09-r-089e8985": 53687091200,
+            "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59-r-e8d089fb": 10737418240,
+            "pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351-r-d25052a8": 10737418240,
+            "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69-r-6d4952b9": 8589934592,
+            "pvc-e6625907-a678-4a46-88b2-f6e554129a39-r-115d210c": 10737418240,
+            "pvc-f084c352-66f3-4202-b563-f8b561c74d2c-r-f3c2d394": 21474836480,
+            "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32-r-5a1afd4b": 53687091200,
+            "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e-r-ea886cd4": 21474836480
+          },
+          "storageAvailable": 743650099200,
+          "storageMaximum": 982818799616,
+          "storageScheduled": 760209211392
+        }
+      }
+    },
+    {
+      "name": "marslab-gpu-01",
+      "allowScheduling": true,
+      "disks": {
+        "default-disk-47898ac5945791fc": {
+          "allowScheduling": true,
+          "diskDriver": "",
+          "diskType": "filesystem",
+          "evictionRequested": false,
+          "path": "/var/lib/longhorn/",
+          "storageReserved": 282718905139,
+          "tags": []
+        }
+      },
+      "diskStatus": {
+        "default-disk-47898ac5945791fc": {
+          "conditions": [
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-14T06:40:33Z",
+              "message": "Disk default-disk-47898ac5945791fc(/var/lib/longhorn/) on node marslab-gpu-01 is ready",
+              "reason": "",
+              "status": "True",
+              "type": "Ready"
+            },
+            {
+              "lastProbeTime": "",
+              "lastTransitionTime": "2026-09-14T06:40:33Z",
+              "message": "Disk default-disk-47898ac5945791fc(/var/lib/longhorn/) on node marslab-gpu-01 is schedulable",
+              "reason": "",
+              "status": "True",
+              "type": "Schedulable"
+            }
+          ],
+          "diskDriver": "",
+          "diskName": "default-disk-47898ac5945791fc",
+          "diskPath": "/var/lib/longhorn/",
+          "diskType": "filesystem",
+          "diskUUID": "c7f6204b-62b3-4f82-8c35-e4e7aff03fde",
+          "filesystemType": "ext2/ext3",
+          "healthDataLastCollectedAt": "2026-09-14T20:34:03Z",
+          "instanceManagerName": "instance-manager-ebe34f1d5b6efa2bca25b1d78c35a617",
+          "scheduledBackingImage": {},
+          "scheduledReplica": {
+            "pvc-1e238181-4774-415a-8c51-c5ea60720e7e-r-421393f0": 21474836480,
+            "pvc-21bd1909-f74d-4212-8b6c-be738251de18-r-85b12f1f": 8589934592,
+            "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1-r-6dedf466": 8589934592,
+            "pvc-93c76276-ca39-4795-a3e9-81dff596643e-r-6d3655fc": 32212254720,
+            "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447-r-a85dd9c2": 8589934592,
+            "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69-r-a3dc167b": 8589934592,
+            "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0-r-a818a65f": 8589934592,
+            "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97-r-a576cffe": 8589934592
+          },
+          "storageAvailable": 188533964800,
+          "storageMaximum": 942396350464,
+          "storageScheduled": 105226698752
+        }
+      }
+    }
+  ],
+  "claims": [
+    {
+      "namespace": "monitoring",
+      "name": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0",
+      "request": {
+        "storage": "10Gi"
+      },
+      "capacity": {
+        "storage": "10Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59"
+    },
+    {
+      "namespace": "monitoring",
+      "name": "loki-data",
+      "request": {
+        "storage": "100Gi"
+      },
+      "capacity": {
+        "storage": "100Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd"
+    },
+    {
+      "namespace": "monitoring",
+      "name": "monitoring-grafana",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df"
+    },
+    {
+      "namespace": "monitoring",
+      "name": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9"
+    },
+    {
+      "namespace": "monitoring",
+      "name": "tempo-data",
+      "request": {
+        "storage": "30Gi"
+      },
+      "capacity": {
+        "storage": "30Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-93c76276-ca39-4795-a3e9-81dff596643e"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-0",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-1",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-2",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-f084c352-66f3-4202-b563-f8b561c74d2c"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-3",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-0",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-1",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-2",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-3",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-4",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-21bd1909-f74d-4212-8b6c-be738251de18"
+    },
+    {
+      "namespace": "object-store",
+      "name": "data-minio-ha-5",
+      "request": {
+        "storage": "8Gi"
+      },
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "jetstream-nats-0",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "jetstream-nats-1",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "jetstream-nats-2",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-control-6bfc884b87-554zb-artifact-validation",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn-wffc",
+      "volumeName": "pvc-1e238181-4774-415a-8c51-c5ea60720e7e"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-control-6bfc884b87-7bxq7-artifact-validation",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn-wffc",
+      "volumeName": "pvc-07a35bcb-22a8-4bf3-a8d9-b696eaf5e1d7"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-1",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-1-wal",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-2",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-40ff974f-dc41-4093-a086-c6062d6f579a"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-2-wal",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-3",
+      "request": {
+        "storage": "50Gi"
+      },
+      "capacity": {
+        "storage": "50Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09"
+    },
+    {
+      "namespace": "vela-system",
+      "name": "vela-postgres-3-wal",
+      "request": {
+        "storage": "20Gi"
+      },
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound",
+      "storageClass": "longhorn",
+      "volumeName": "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191"
+    }
+  ],
+  "settings": {
+    "default-replica-count": "{\"v1\":\"2\",\"v2\":\"2\"}",
+    "storage-minimal-available-percentage": "10",
+    "storage-over-provisioning-percentage": "100",
+    "storage-reserved-percentage-for-default-disk": "30"
+  },
+  "storage_classes": [
+    {
+      "name": "local-path",
+      "allowVolumeExpansion": null,
+      "parameters": null
+    },
+    {
+      "name": "longhorn",
+      "allowVolumeExpansion": true,
+      "parameters": {
+        "backupTargetName": "default",
+        "dataEngine": "v1",
+        "dataLocality": "disabled",
+        "disableRevisionCounter": "true",
+        "fromBackup": "",
+        "fsType": "ext4",
+        "numberOfReplicas": "2",
+        "staleReplicaTimeout": "30",
+        "unmapMarkSnapChainRemoved": "ignored"
+      }
+    },
+    {
+      "name": "longhorn-static",
+      "allowVolumeExpansion": true,
+      "parameters": {
+        "staleReplicaTimeout": "30"
+      }
+    },
+    {
+      "name": "longhorn-wffc",
+      "allowVolumeExpansion": true,
+      "parameters": {
+        "backupTargetName": "default",
+        "dataEngine": "v1",
+        "dataLocality": "disabled",
+        "disableRevisionCounter": "true",
+        "fromBackup": "",
+        "fsType": "ext4",
+        "numberOfReplicas": "1",
+        "staleReplicaTimeout": "30",
+        "unmapMarkSnapChainRemoved": "ignored"
+      }
+    }
+  ]
+}

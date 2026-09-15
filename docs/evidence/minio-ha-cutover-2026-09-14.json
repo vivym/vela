@@ -1,0 +1,190 @@
+{
+  "time": "2026-09-14T10:11:53.626644+00:00",
+  "cutover": {
+    "started": "2026-09-14T09:38:06.142781+00:00",
+    "service_switched": true,
+    "original_pvcs_retained": true,
+    "writers": [
+      {
+        "namespace": "vela-system",
+        "name": "vela-control",
+        "uid": "ae2e68c9-7e26-4cfa-9d3b-a5d9e1e6d145",
+        "replicas": 2,
+        "selector": "app.kubernetes.io/name=vela-control"
+      },
+      {
+        "namespace": "identity",
+        "name": "keycloak",
+        "uid": "e6c2a7ff-621b-482d-9cfe-5c84d45f4a21",
+        "replicas": 2,
+        "selector": "app.kubernetes.io/name=keycloak"
+      }
+    ],
+    "scheduled_backup_suspend": null,
+    "timer": "vela-minio-cutover-resume-20260914t091919z",
+    "writers_paused": "2026-09-14T09:38:20.351645+00:00",
+    "switched_at": "2026-09-14T09:39:47.669842+00:00",
+    "verified_snapshot": {
+      "time": "2026-09-14T09:39:42.785844+00:00",
+      "mode": "verify",
+      "result": "SYNCHRONIZED_SNAPSHOT_VERIFIED",
+      "objects": 259,
+      "bytes": 137877660,
+      "hash_algorithm": "SHA256",
+      "object_metadata_equal": true,
+      "object_tags_equal": true,
+      "native_metadata_equal_entries": {
+        "buckets.zip": 17,
+        "iam.zip": 7
+      },
+      "source_additions_since_sync": 0,
+      "cutover_performed": false,
+      "manifest_sha256": "360805a91fd488357c607a87ac1730e428d8571cc1799f2ac6750e1de749ceab",
+      "limits": [
+        "lastModified and multipart ETag are not preserved by ordinary S3 copy",
+        "writer coordination and a final delta are required before cutover"
+      ]
+    },
+    "original_scaled_to_zero": true,
+    "finished": "2026-09-14T09:40:55.840202+00:00",
+    "elapsed_seconds": 169.33,
+    "result": "CUTOVER_AND_WRITER_RECOVERY_PASSED"
+  },
+  "postcutover_backup": {
+    "name": "vela-postgres-minio-ha-20260914094212",
+    "phase": "completed",
+    "startedAt": "2026-09-14T09:42:13Z",
+    "stoppedAt": "2026-09-14T09:42:22Z",
+    "backupId": "20260914T094213"
+  },
+  "wal_archiver": {
+    "last_archived_wal": "0000000500000000000000F3",
+    "last_archived_time": "2026-09-14T10:07:14.295332+00:00",
+    "failed_count": 4,
+    "last_failed_time": "2026-09-13T23:23:54.541213+00:00"
+  },
+  "capacity": {
+    "started": "2026-09-14T09:46:49.290653+00:00",
+    "result": "DEFERRED_BY_USER",
+    "moves": [
+      {
+        "pvc": "vela-control-64b769db8c-t6wfd-artifact-validation",
+        "source": "marslab-gpu-01",
+        "target": "llmpool02",
+        "replacement_verified": "RW before removing surplus old replica",
+        "original_desired_copies": 1,
+        "time": "2026-09-14T09:54:30.598986+00:00"
+      }
+    ],
+    "capacity_plan": [
+      {
+        "node": "llmpool01",
+        "disk": "default-disk-f88f75ffdb6ab959",
+        "previous_reserved": 188572087910,
+        "new_reserved": 116079235072,
+        "scheduled_after_gib": 760.0,
+        "ceiling_gib": 770,
+        "projected_free_at_ceiling_gib": 103.41,
+        "physical_minimum_gib": 87.81
+      },
+      {
+        "node": "llmpool02",
+        "disk": "default-disk-2cb5af6ac0b46856",
+        "previous_reserved": 196563759923,
+        "new_reserved": 201134751744,
+        "scheduled_after_gib": 716.0,
+        "ceiling_gib": 728,
+        "projected_free_at_ceiling_gib": 99.26,
+        "physical_minimum_gib": 91.53
+      },
+      {
+        "node": "marslab-gpu-01",
+        "disk": "default-disk-47898ac5945791fc",
+        "previous_reserved": 282718905139,
+        "new_reserved": 815694815232,
+        "scheduled_after_gib": 116.0,
+        "ceiling_gib": 118,
+        "projected_free_at_ceiling_gib": 95.5,
+        "physical_minimum_gib": 87.77
+      }
+    ],
+    "original_frozen_pvcs_retained": true,
+    "expanded_claims": [],
+    "note": "User deferred disks on 2026-09-14. Resume preflight rejected current free-space projection before any reservation/PVC change; no formatting and no PVC expansion. One earlier scratch relocation is complete and healthy."
+  },
+  "current_service_selector": {
+    "app": "minio-ha"
+  },
+  "current_pvcs": [
+    {
+      "name": "data-minio-0",
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-1",
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-2",
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-3",
+      "capacity": {
+        "storage": "20Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-0",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-1",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-2",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-3",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-4",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    },
+    {
+      "name": "data-minio-ha-5",
+      "capacity": {
+        "storage": "8Gi"
+      },
+      "phase": "Bound"
+    }
+  ]
+}

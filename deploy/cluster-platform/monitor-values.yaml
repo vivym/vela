@@ -1,0 +1,158 @@
+grafana:
+  enabled: true
+  # Grafana uses a single Longhorn ReadWriteOnce PVC; keep one replica unless
+  # the storage class is changed to RWX.
+  replicas: 1
+  deploymentStrategy:
+    type: Recreate
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  grafana.ini:
+    server:
+      # APISIX removes /grafana before forwarding. Advertise the external
+      # path for assets and redirects, but keep backend endpoints at /.
+      root_url: /grafana/
+      serve_from_sub_path: false
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 20Gi
+  nodeSelector:
+    vela.ai/management: "true"
+  tolerations: []
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+  service:
+    type: ClusterIP
+defaultRules:
+  # The chart's direct kube-proxy scraper cannot reach RKE2 loopback metrics.
+  # node-local-metrics.yaml supplies authenticated collection with the original
+  # job labels. infrastructure-rules.yaml covers per-node failure/disappearance
+  # instead of the chart's cluster-wide KubeProxyDown absence check.
+  rules:
+    kubeProxy: false
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 40GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    nodeSelector:
+      vela.ai/management: "true"
+    tolerations: []
+    additionalScrapeConfigs:
+      - job_name: nvidia-smi
+        scrape_interval: 30s
+        scrape_timeout: 10s
+        static_configs:
+          - targets:
+              - "10.1.201.11:9835"
+              - "10.1.201.12:9835"
+              - "10.1.201.13:9835"
+              - "10.1.201.14:9835"
+              - "10.1.201.15:9835"
+              - "10.1.201.16:9835"
+              - "10.1.201.17:9835"
+              - "10.1.201.18:9835"
+              - "10.1.201.19:9835"
+              - "10.1.201.20:9835"
+              - "10.1.201.21:9835"
+              - "10.1.201.22:9835"
+              - "10.1.201.23:9835"
+              - "10.1.201.24:9835"
+              - "10.1.201.25:9835"
+              - "10.1.201.26:9835"
+              - "10.1.201.27:9835"
+              - "10.1.201.28:9835"
+              - "10.1.201.29:9835"
+              - "10.1.201.30:9835"
+              - "10.1.201.31:9835"
+              - "10.1.201.32:9835"
+              - "10.1.201.33:9835"
+              - "10.1.201.34:9835"
+              - "10.1.201.35:9835"
+              - "10.1.201.36:9835"
+              - "10.1.201.37:9835"
+              - "10.1.201.38:9835"
+              - "10.1.201.39:9835"
+              - "10.1.201.40:9835"
+              - "10.1.201.41:9835"
+              - "10.1.201.42:9835"
+              - "10.1.201.43:9835"
+              - "10.1.201.45:9835"
+              - "10.1.201.46:9835"
+              - "10.1.201.47:9835"
+              - "10.1.201.48:9835"
+              - "10.1.201.49:9835"
+              - "10.1.201.50:9835"
+              - "10.1.201.51:9835"
+              - "10.1.201.52:9835"
+              - "10.1.201.53:9835"
+              - "10.1.201.54:9835"
+              - "10.1.201.55:9835"
+              - "10.1.201.58:9835"
+              - "10.1.201.59:9835"
+              - "10.1.201.60:9835"
+              - "10.1.201.62:9835"
+              - "10.1.201.63:9835"
+              - "10.1.201.64:9835"
+              - "10.1.201.65:9835"
+              - "10.1.201.66:9835"
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    nodeSelector:
+      vela.ai/management: "true"
+    tolerations: []
+nodeExporter:
+  enabled: true
+prometheusOperator:
+  nodeSelector:
+    vela.ai/management: "true"
+  tolerations: []
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+prometheus-node-exporter:
+  hostNetwork: false
+  hostPID: true
+  # Keep host telemetry alive during DiskPressure so the pressure source
+  # remains observable. This does not grant the exporter write access.
+  priorityClassName: system-node-critical
+  service:
+    port: 9100
+    targetPort: 9100
+kubeStateMetrics:
+  enabled: true
+kube-state-metrics:
+  image:
+    registry: 10.1.201.70:5004
+    repository: kube-state-metrics/kube-state-metrics
+    tag: v2.20.0
+  nodeSelector:
+    vela.ai/management: "true"

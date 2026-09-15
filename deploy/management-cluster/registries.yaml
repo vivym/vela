@@ -1,0 +1,57 @@
+mirrors:
+  docker.io:
+    endpoint:
+      - "https://10.1.201.70:5000"
+      - "https://10.1.201.71:5000"
+      - "https://10.1.201.66:5000"
+      - "https://docker.1ms.run"
+      - "https://docker.m.daocloud.io"
+      - "https://docker.nju.edu.cn"
+  nvcr.io:
+    endpoint:
+      - "https://10.1.201.70:5001"
+      - "https://10.1.201.71:5001"
+      - "https://10.1.201.66:5001"
+      - "https://nvcr.io"
+  ghcr.io:
+    endpoint:
+      - "https://10.1.201.70:5002"
+      - "https://10.1.201.71:5002"
+      - "https://10.1.201.66:5002"
+      - "https://ghcr.io"
+  quay.io:
+    endpoint:
+      - "https://10.1.201.70:5003"
+      - "https://10.1.201.71:5003"
+      - "https://10.1.201.66:5003"
+      - "https://quay.io"
+  registry.k8s.io:
+    endpoint:
+      - "https://10.1.201.70:5004"
+      - "https://10.1.201.71:5004"
+      - "https://10.1.201.66:5004"
+      - "https://registry.k8s.io"
+  "10.1.201.70:5005":
+    endpoint:
+      - "https://10.1.201.70:5005"
+      - "https://10.1.201.71:5005"
+      - "https://10.1.201.66:5005"
+configs:
+  "10.1.201.70:5000": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5000": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5000": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.70:5001": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5001": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5001": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.70:5002": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5002": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5002": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.70:5003": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5003": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5003": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.70:5004": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5004": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5004": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.70:5005": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.71:5005": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}
+  "10.1.201.66:5005": {tls: {ca_file: /etc/rancher/rke2/registry-ca.crt}}

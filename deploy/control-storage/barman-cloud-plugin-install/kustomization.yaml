@@ -2,6 +2,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - manifest.yaml
+images:
+  - name: ghcr.io/cloudnative-pg/plugin-barman-cloud
+    digest: sha256:823a8893690980ba5830bbbb11196a35f695b0488db7d846abc33baebf32417c
 patches:
   - target:
       group: rbac.authorization.k8s.io
@@ -21,3 +24,54 @@ patches:
       - op: add
         path: /rules/0/resourceNames
         value: [vela-backup-s3]
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      labelSelector: app=barman-cloud
+    patch: |-
+      - op: add
+        path: /spec/replicas
+        value: 2
+      - op: add
+        path: /spec/strategy
+        value:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 0
+            maxUnavailable: 1
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          vela.ai/control-plane-tier: cpu
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: node-role.kubernetes.io/control-plane
+            operator: Exists
+            effect: NoSchedule
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          podAntiAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              - topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: barman-cloud
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+  - target:
+      version: v1
+      kind: Secret
+      name: plugin-barman-cloud-f998mh5292
+    patch: |-
+      - op: replace
+        path: /data/SIDECAR_IMAGE
+        value: Z2hjci5pby9jbG91ZG5hdGl2ZS1wZy9wbHVnaW4tYmFybWFuLWNsb3VkLXNpZGVjYXJAc2hhMjU2Ojk4ODA4MTdjMjg1YzdhZmE0ZDE5NWRhMjE0NTA2NGQyMTkwNzQwNTQ4OWVkNmVjMzlhYmU1OWIxZmViNTU4YTQ=

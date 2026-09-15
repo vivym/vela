@@ -21,31 +21,6 @@ spec:
       port: 8222
       targetPort: monitor
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nats-config
-  labels:
-    app.kubernetes.io/name: nats
-    app.kubernetes.io/part-of: vela
-data:
-  nats.conf: |
-    server_name: $SERVER_NAME
-    port: 4222
-    http: 8222
-    jetstream {
-      store_dir: /data/jetstream
-    }
-    cluster {
-      name: VELA
-      listen: 0.0.0.0:6222
-      routes = [
-        nats://nats-0.nats.vela-system.svc.cluster.local:6222,
-        nats://nats-1.nats.vela-system.svc.cluster.local:6222,
-        nats://nats-2.nats.vela-system.svc.cluster.local:6222
-      ]
-    }
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -69,6 +44,8 @@ spec:
         app.kubernetes.io/part-of: vela
     spec:
       terminationGracePeriodSeconds: 120
+      nodeSelector:
+        vela.ai/node-role: control-storage
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -127,16 +104,29 @@ spec:
             - name: config
               mountPath: /etc/nats-config
               readOnly: true
+            - name: tls
+              mountPath: /etc/nats-tls
+              readOnly: true
       volumes:
         - name: config
-          configMap:
-            name: nats-config
+          secret:
+            secretName: vela-nats-auth
+            items:
+              - key: nats.conf
+                path: nats.conf
+        - name: tls
+          secret:
+            secretName: nats-server-tls
+            items:
+              - {key: ca.crt, path: ca.crt}
+              - {key: tls.crt, path: tls.crt}
+              - {key: tls.key, path: tls.key}
   volumeClaimTemplates:
     - metadata:
         name: jetstream
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: local-path
+        storageClassName: longhorn
         resources:
           requests:
-            storage: 100Gi
+            storage: 50Gi

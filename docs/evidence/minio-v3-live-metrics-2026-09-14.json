@@ -1,0 +1,294 @@
+{
+  "time": "2026-09-14T09:07:03.614958+00:00",
+  "queries": {
+    "up{job=\"minio-quorum\"}": [
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.1.240:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-0",
+          "service": "minio"
+        },
+        "value": [
+          1789376823.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.0.198:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-3",
+          "service": "minio"
+        },
+        "value": [
+          1789376823.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.88:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-1",
+          "service": "minio"
+        },
+        "value": [
+          1789376823.655,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "up",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.86:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-2",
+          "service": "minio"
+        },
+        "value": [
+          1789376823.655,
+          "1"
+        ]
+      }
+    ],
+    "minio_cluster_erasure_set_online_drives_count{job=\"minio-quorum\"}": [
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_online_drives_count",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.1.240:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-0",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.656,
+          "4"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_online_drives_count",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.0.198:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-3",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.656,
+          "4"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_online_drives_count",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.88:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-1",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.656,
+          "4"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_online_drives_count",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.86:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-2",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.656,
+          "4"
+        ]
+      }
+    ],
+    "minio_cluster_erasure_set_write_quorum{job=\"minio-quorum\"}": [
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_write_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.1.240:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-0",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.658,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_write_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.0.198:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-3",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.658,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_write_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.88:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-1",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.658,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_write_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.86:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-2",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.658,
+          "3"
+        ]
+      }
+    ],
+    "minio_cluster_erasure_set_read_quorum{job=\"minio-quorum\"}": [
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_read_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.1.240:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-0",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.659,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_read_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.0.198:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-3",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.659,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_read_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.88:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-1",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.659,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "minio_cluster_erasure_set_read_quorum",
+          "container": "minio",
+          "endpoint": "api",
+          "instance": "10.42.2.86:9000",
+          "job": "minio-quorum",
+          "namespace": "object-store",
+          "pod": "minio-2",
+          "pool_id": "0",
+          "service": "minio",
+          "set_id": "0"
+        },
+        "value": [
+          1789376823.659,
+          "2"
+        ]
+      }
+    ]
+  },
+  "prometheus_reload_successful": true
+}

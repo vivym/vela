@@ -1,0 +1,445 @@
+{
+  "at": "2026-09-14T13:41:29.970249+00:00",
+  "node19": {
+    "conditions": [
+      {
+        "lastHeartbeatTime": "2026-09-14T13:01:58Z",
+        "lastTransitionTime": "2026-09-14T13:01:58Z",
+        "message": "Flannel is running on this node",
+        "reason": "FlannelIsUp",
+        "status": "False",
+        "type": "NetworkUnavailable"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:38:57Z",
+        "lastTransitionTime": "2026-09-14T13:01:53Z",
+        "message": "kubelet has sufficient memory available",
+        "reason": "KubeletHasSufficientMemory",
+        "status": "False",
+        "type": "MemoryPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:38:57Z",
+        "lastTransitionTime": "2026-09-14T13:01:53Z",
+        "message": "kubelet has no disk pressure",
+        "reason": "KubeletHasNoDiskPressure",
+        "status": "False",
+        "type": "DiskPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:38:57Z",
+        "lastTransitionTime": "2026-09-14T13:01:53Z",
+        "message": "kubelet has sufficient PID available",
+        "reason": "KubeletHasSufficientPID",
+        "status": "False",
+        "type": "PIDPressure"
+      },
+      {
+        "lastHeartbeatTime": "2026-09-14T13:38:57Z",
+        "lastTransitionTime": "2026-09-14T13:02:33Z",
+        "message": "kubelet is posting ready status",
+        "reason": "KubeletReady",
+        "status": "True",
+        "type": "Ready"
+      }
+    ],
+    "info": {
+      "architecture": "amd64",
+      "bootID": "1dd1be52-6504-45d1-adcb-fefd2929ec09",
+      "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+      "kernelVersion": "6.8.0-139-generic",
+      "kubeProxyVersion": "",
+      "kubeletVersion": "v1.35.7+rke2r1",
+      "machineID": "d605f3f1f2844544bf5d9daa83926625",
+      "operatingSystem": "linux",
+      "osImage": "Ubuntu 24.04.4 LTS",
+      "swap": {
+        "capacity": 8589930496
+      },
+      "systemUUID": "d9085800-e610-11eb-8000-3cecef66c15a"
+    },
+    "allocatable": {
+      "cpu": "64",
+      "ephemeral-storage": "893707316343",
+      "hugepages-1Gi": "0",
+      "hugepages-2Mi": "0",
+      "memory": "263957444Ki",
+      "nvidia.com/gpu": "0",
+      "pods": "110"
+    },
+    "labels": {
+      "beta.kubernetes.io/arch": "amd64",
+      "beta.kubernetes.io/instance-type": "rke2",
+      "beta.kubernetes.io/os": "linux",
+      "kubernetes.io/arch": "amd64",
+      "kubernetes.io/hostname": "server-36",
+      "kubernetes.io/os": "linux",
+      "node.kubernetes.io/instance-type": "rke2",
+      "vela.ai/gpu-runtime": "true",
+      "vela.ai/node-role": "gpu-worker"
+    },
+    "created": "2026-09-13T16:51:38Z",
+    "pods": [
+      {
+        "namespace": "kube-system",
+        "name": "kube-proxy-server-36",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "kube-proxy",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:53Z"
+              }
+            },
+            "lastState": {},
+            "restarts": 0
+          }
+        ]
+      },
+      {
+        "namespace": "kube-system",
+        "name": "nvidia-device-plugin-daemonset-mws7b",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "nvidia-device-plugin-ctr",
+            "state": {
+              "waiting": {
+                "message": "back-off 5m0s restarting failed container=nvidia-device-plugin-ctr pod=nvidia-device-plugin-daemonset-mws7b_kube-system(65254148-00cc-436d-80e9-78caef1ff2e8)",
+                "reason": "CrashLoopBackOff"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://708f20cd75507d347b0a57d297dd4d5c5c916049b8df6ac387f02fc9d928c60d",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:38:11Z",
+                "reason": "Error",
+                "startedAt": "2026-09-14T13:38:11Z"
+              }
+            },
+            "restarts": 24
+          }
+        ]
+      },
+      {
+        "namespace": "kube-system",
+        "name": "rke2-canal-rznz9",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "calico-node",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:56Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://f62b47d8cd5152c3493a742dfa9f6fd313cf0f174bc818adebf3bac4ab90b9cb",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:58:51Z"
+              }
+            },
+            "restarts": 4
+          },
+          {
+            "name": "kube-flannel",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:57Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://1fbde6023e936f010f5481a6c126c02d46f8d2dc4414350aa0629ec7b53791a7",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:58:51Z"
+              }
+            },
+            "restarts": 4
+          }
+        ]
+      },
+      {
+        "namespace": "longhorn-system",
+        "name": "engine-image-ei-493e04e7-8lrg2",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "engine-image-ei-493e04e7",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:02:24Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://3ce579d0a439bae430963a180b3ca1b6d30e002c09bddd9dee98024b7d8ed835",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          }
+        ]
+      },
+      {
+        "namespace": "longhorn-system",
+        "name": "longhorn-csi-plugin-c8sx9",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "longhorn-csi-plugin",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://484c48909afd0350b477331881497dc0574383af9e0c43c6b9d336ce16a61c0f",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          },
+          {
+            "name": "longhorn-liveness-probe",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://961588cea7b74fde0bc112605f78f6163825c4883038e805e6c99715f5439f8e",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          },
+          {
+            "name": "node-driver-registrar",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://c36b0e23b4d079fe1ea3d335f6dcb92212b06a103a8c1b3137d5bbb848e5edcd",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          }
+        ]
+      },
+      {
+        "namespace": "longhorn-system",
+        "name": "longhorn-manager-kmhx2",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "longhorn-manager",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:02:24Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://cb3d40f80d7662484c2bc3186be5e4420383c2a08db0d039161e4615adaab76e",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          },
+          {
+            "name": "pre-pull-share-manager-image",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:02:24Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://a8a653efffb40e0fd8e43909dfff40669ff51ede0de32e5f713587d87229d36b",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:19Z"
+              }
+            },
+            "restarts": 4
+          }
+        ]
+      },
+      {
+        "namespace": "monitoring",
+        "name": "alloy-jx29h",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "alloy",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://0ef1ba83b291870cd7f5fd5c41bf8a5f32aec4c24b505c0b3fa2a304276d791d",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:23Z"
+              }
+            },
+            "restarts": 1
+          },
+          {
+            "name": "auth-proxy",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://b34f8d2a861e21586c10f1e78d3c3aad30cb08b6907f5a08ea647ac21961d822",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:59:26Z"
+              }
+            },
+            "restarts": 1
+          }
+        ]
+      },
+      {
+        "namespace": "monitoring",
+        "name": "monitoring-prometheus-node-exporter-87psl",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "node-exporter",
+            "state": {
+              "running": {
+                "startedAt": "2026-09-14T13:01:54Z"
+              }
+            },
+            "lastState": {
+              "terminated": {
+                "containerID": "containerd://66325a44fc54e20f57b0b69387d609260dbaa703c52d8a71e32b020451e32063",
+                "exitCode": 255,
+                "finishedAt": "2026-09-14T13:01:51Z",
+                "reason": "Unknown",
+                "startedAt": "2026-09-14T09:58:49Z"
+              }
+            },
+            "restarts": 3
+          }
+        ]
+      }
+    ]
+  },
+  "control": [
+    {
+      "pod": "vela-control-64b769db8c-9n4bw",
+      "statuses": [
+        {
+          "name": "vela-control",
+          "restartCount": 1,
+          "state": {
+            "running": {
+              "startedAt": "2026-09-14T09:40:14Z"
+            }
+          },
+          "lastState": {
+            "terminated": {
+              "containerID": "containerd://31a74957f883a80b335ebe924b338fc262437728927fcd21f1c71ff495c47d47",
+              "exitCode": 1,
+              "finishedAt": "2026-09-14T09:40:13Z",
+              "reason": "Error",
+              "startedAt": "2026-09-14T09:40:13Z"
+            }
+          }
+        }
+      ],
+      "previous_tail": ""
+    },
+    {
+      "pod": "vela-control-64b769db8c-t6wfd",
+      "statuses": [
+        {
+          "name": "vela-control",
+          "restartCount": 2,
+          "state": {
+            "running": {
+              "startedAt": "2026-09-14T09:40:25Z"
+            }
+          },
+          "lastState": {
+            "terminated": {
+              "containerID": "containerd://aebf84cb3213a4ceff5ccb418e2943cf67c2e4e8b27cbbf9712b5257aa7391aa",
+              "exitCode": 1,
+              "finishedAt": "2026-09-14T09:40:13Z",
+              "reason": "Error",
+              "startedAt": "2026-09-14T09:40:12Z"
+            }
+          }
+        }
+      ],
+      "previous_tail": ""
+    }
+  ],
+  "detached_volumes": [
+    {
+      "name": "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc",
+      "state": "detached",
+      "robustness": "unknown",
+      "claim": "data-minio-0"
+    },
+    {
+      "name": "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23",
+      "state": "detached",
+      "robustness": "unknown",
+      "claim": "data-minio-1"
+    },
+    {
+      "name": "pvc-f084c352-66f3-4202-b563-f8b561c74d2c",
+      "state": "detached",
+      "robustness": "unknown",
+      "claim": "data-minio-2"
+    },
+    {
+      "name": "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e",
+      "state": "detached",
+      "robustness": "unknown",
+      "claim": "data-minio-3"
+    }
+  ],
+  "ssh19": true
+}

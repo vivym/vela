@@ -1,0 +1,285 @@
+{
+  "time": "2026-09-14T08:40:01.832875+00:00",
+  "buckets": [
+    {
+      "bucket": "longhorn-backups",
+      "version_entries": 4,
+      "bytes": 2861,
+      "non_null_version_ids": 0,
+      "delete_markers": 0,
+      "version info": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "versioning": [
+        {
+          "versioning": {
+            "status": "",
+            "MFADelete": ""
+          }
+        }
+      ],
+      "retention info": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "replicate ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "ilm rule ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "anonymous get": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "anonymous_policy": [
+        null
+      ]
+    },
+    {
+      "bucket": "vela-artifacts",
+      "version_entries": 0,
+      "bytes": 0,
+      "non_null_version_ids": 0,
+      "delete_markers": 0,
+      "version info": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "versioning": [
+        {
+          "versioning": {
+            "status": "Enabled",
+            "MFADelete": ""
+          }
+        }
+      ],
+      "retention info": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "replicate ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "ilm rule ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "anonymous get": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "anonymous_policy": [
+        null
+      ]
+    },
+    {
+      "bucket": "vela-artifacts-backup",
+      "version_entries": 0,
+      "bytes": 0,
+      "non_null_version_ids": 0,
+      "delete_markers": 0,
+      "version info": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "versioning": [
+        {
+          "versioning": {
+            "status": "Enabled",
+            "MFADelete": ""
+          }
+        }
+      ],
+      "retention info": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "replicate ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "ilm rule ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "anonymous get": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "anonymous_policy": [
+        null
+      ]
+    },
+    {
+      "bucket": "vela-postgres-backup",
+      "version_entries": 241,
+      "bytes": 137312868,
+      "non_null_version_ids": 0,
+      "delete_markers": 0,
+      "version info": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "versioning": [
+        {
+          "versioning": {
+            "status": "",
+            "MFADelete": ""
+          }
+        }
+      ],
+      "retention info": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "replicate ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "ilm rule ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "anonymous get": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "anonymous_policy": [
+        null
+      ]
+    },
+    {
+      "bucket": "vela-smoke",
+      "version_entries": 2,
+      "bytes": 59,
+      "non_null_version_ids": 0,
+      "delete_markers": 0,
+      "version info": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "versioning": [
+        {
+          "versioning": {
+            "status": "",
+            "MFADelete": ""
+          }
+        }
+      ],
+      "retention info": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "replicate ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "ilm rule ls": {
+        "rc": 1,
+        "count": 1,
+        "statuses": [
+          "error"
+        ]
+      },
+      "anonymous get": {
+        "rc": 0,
+        "count": 1,
+        "statuses": [
+          "success"
+        ]
+      },
+      "anonymous_policy": [
+        null
+      ]
+    }
+  ],
+  "user": {
+    "rc": 0,
+    "entries": 0,
+    "fields": []
+  },
+  "policy": {
+    "rc": 0,
+    "entries": 5,
+    "fields": [
+      "isGroup",
+      "policy",
+      "policyInfo",
+      "status"
+    ]
+  }
+}

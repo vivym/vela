@@ -1,0 +1,154 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-headless
+  namespace: object-store
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: vela
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    app: minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: object-store
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: vela
+spec:
+  ports:
+    - name: api
+      port: 9000
+      targetPort: api
+    - name: console
+      port: 9001
+      targetPort: console
+  selector:
+    app: minio
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: object-store
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: vela
+spec:
+  serviceName: minio-headless
+  podManagementPolicy: Parallel
+  replicas: 4
+  selector:
+    matchLabels:
+      app: minio
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  template:
+    metadata:
+      labels:
+        app: minio
+        vela.ai/service: object-store
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: minio
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app: minio
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+            - --address
+            - :9000
+            - --console-address
+            - :9001
+            - http://minio-{0...3}.minio-headless.object-store.svc.cluster.local/data
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root
+                  key: rootUser
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-root
+                  key: rootPassword
+            # Prometheus scrapes the unauthenticated metrics endpoint. This
+            # endpoint exposes only aggregate operational metrics; object data
+            # and the authenticated admin API remain protected.
+            - name: MINIO_PROMETHEUS_AUTH_TYPE
+              value: public
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 20Gi

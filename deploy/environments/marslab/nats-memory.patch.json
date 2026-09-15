@@ -1,0 +1,48 @@
+{
+  "spec": {
+    "updateStrategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "partition": 0
+      }
+    },
+    "template": {
+      "spec": {
+        "volumes": [
+          {
+            "name": "config",
+            "secret": {
+              "secretName": "vela-nats-auth-memory-d74221ecd013-r-b378edfb15b7",
+              "items": [
+                {
+                  "key": "nats.conf",
+                  "path": "nats.conf"
+                }
+              ]
+            }
+          },
+          {
+            "name": "tls",
+            "secret": {
+              "secretName": "nats-server-tls-r-541fc9387f9e",
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                },
+                {
+                  "key": "tls.crt",
+                  "path": "tls.crt"
+                },
+                {
+                  "key": "tls.key",
+                  "path": "tls.key"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

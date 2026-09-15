@@ -1,0 +1,389 @@
+{
+  "at": "2026-09-14T16:51:34.820359+00:00",
+  "run": "registry-pull-a6d3a32080",
+  "checks": [
+    {
+      "name": "anonymous production access denied",
+      "passed": true,
+      "host": "10.1.201.70",
+      "status": 401
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "platform-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "node-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "llm-api-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "llm-api-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "llm-models-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.70",
+      "identity": "llm-models-pull",
+      "status": 200
+    },
+    {
+      "name": "node identity cannot read catalog",
+      "passed": true,
+      "host": "10.1.201.70",
+      "status": 401
+    },
+    {
+      "name": "anonymous production access denied",
+      "passed": true,
+      "host": "10.1.201.71",
+      "status": 401
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "platform-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "node-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "llm-api-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "llm-api-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "llm-models-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.71",
+      "identity": "llm-models-pull",
+      "status": 200
+    },
+    {
+      "name": "node identity cannot read catalog",
+      "passed": true,
+      "host": "10.1.201.71",
+      "status": 401
+    },
+    {
+      "name": "anonymous production access denied",
+      "passed": true,
+      "host": "10.1.201.66",
+      "status": 401
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "platform-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "node-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "llm-api-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "llm-api-pull",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "llm-models-publisher",
+      "status": 200
+    },
+    {
+      "name": "production identity accepted",
+      "passed": true,
+      "host": "10.1.201.66",
+      "identity": "llm-models-pull",
+      "status": 200
+    },
+    {
+      "name": "node identity cannot read catalog",
+      "passed": true,
+      "host": "10.1.201.66",
+      "status": 401
+    },
+    {
+      "name": "pinned base manifest verified",
+      "passed": true
+    },
+    {
+      "name": "base config verified",
+      "passed": true
+    },
+    {
+      "name": "base layer verified",
+      "passed": true
+    },
+    {
+      "name": "worker preflight",
+      "passed": true
+    },
+    {
+      "name": "tenant publishes its repository",
+      "passed": true,
+      "host": "10.1.201.71",
+      "namespace": "llm-api",
+      "digest": "sha256:9cec5d7c531644c09a724e353863b41beaecd11d905094a6bf0017f6dfadf255"
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.70",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.71",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.66",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "name": "other tenant cannot pull",
+      "passed": true,
+      "namespace": "llm-api",
+      "status": 401
+    },
+    {
+      "name": "runtime credential cannot publish",
+      "passed": true,
+      "namespace": "llm-api",
+      "status": 401
+    },
+    {
+      "name": "Kubernetes rejects incorrect registry credentials",
+      "passed": true,
+      "namespace": "llm-api",
+      "node": "llmpool01",
+      "reason": "ErrImagePull"
+    },
+    {
+      "name": "Kubernetes authenticates and falls back to unique mirror",
+      "passed": true,
+      "namespace": "llm-api",
+      "source": "10.1.201.70",
+      "only_available_at": "10.1.201.71",
+      "node": "llmpool01",
+      "image": "10.1.201.70:5005/llm-api/registry-pull-a6d3a32080@sha256:9cec5d7c531644c09a724e353863b41beaecd11d905094a6bf0017f6dfadf255"
+    },
+    {
+      "name": "tenant publishes its repository",
+      "passed": true,
+      "host": "10.1.201.66",
+      "namespace": "llm-models",
+      "digest": "sha256:b07a6895c102ff2bc41b2aefda98b09ed7468f96c0542fcb6999ce475e5be53e"
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.70",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.71",
+      "expected": 404,
+      "status": 404
+    },
+    {
+      "name": "image exists on exactly one fallback endpoint",
+      "passed": true,
+      "host": "10.1.201.66",
+      "expected": 200,
+      "status": 200
+    },
+    {
+      "name": "other tenant cannot pull",
+      "passed": true,
+      "namespace": "llm-models",
+      "status": 401
+    },
+    {
+      "name": "runtime credential cannot publish",
+      "passed": true,
+      "namespace": "llm-models",
+      "status": 401
+    },
+    {
+      "name": "Kubernetes rejects incorrect registry credentials",
+      "passed": true,
+      "namespace": "llm-models",
+      "node": "server-22",
+      "reason": "ImagePullBackOff"
+    },
+    {
+      "name": "Kubernetes authenticates and falls back to unique mirror",
+      "passed": true,
+      "namespace": "llm-models",
+      "source": "10.1.201.70",
+      "only_available_at": "10.1.201.66",
+      "node": "server-22",
+      "image": "10.1.201.70:5005/llm-models/registry-pull-a6d3a32080@sha256:b07a6895c102ff2bc41b2aefda98b09ed7468f96c0542fcb6999ce475e5be53e"
+    }
+  ],
+  "pods": [
+    {
+      "namespace": "llm-api",
+      "name": "registry-pull-a6d3a32080",
+      "node": "llmpool01",
+      "image": "10.1.201.70:5005/llm-api/registry-pull-a6d3a32080@sha256:9cec5d7c531644c09a724e353863b41beaecd11d905094a6bf0017f6dfadf255",
+      "image_id": "10.1.201.70:5005/llm-api/registry-pull-a6d3a32080@sha256:9cec5d7c531644c09a724e353863b41beaecd11d905094a6bf0017f6dfadf255",
+      "imagePullSecrets": [
+        {
+          "name": "vela-release-pull-v1"
+        }
+      ],
+      "log": "registry-pull-a6d3a32080-llm-api"
+    },
+    {
+      "namespace": "llm-models",
+      "name": "registry-pull-a6d3a32080",
+      "node": "server-22",
+      "image": "10.1.201.70:5005/llm-models/registry-pull-a6d3a32080@sha256:b07a6895c102ff2bc41b2aefda98b09ed7468f96c0542fcb6999ce475e5be53e",
+      "image_id": "10.1.201.70:5005/llm-models/registry-pull-a6d3a32080@sha256:b07a6895c102ff2bc41b2aefda98b09ed7468f96c0542fcb6999ce475e5be53e",
+      "imagePullSecrets": [
+        {
+          "name": "vela-release-pull-v1"
+        }
+      ],
+      "log": "registry-pull-a6d3a32080-llm-models"
+    }
+  ],
+  "images": [
+    {
+      "host": "10.1.201.71",
+      "repo": "llm-api/registry-pull-a6d3a32080",
+      "digest": "sha256:9cec5d7c531644c09a724e353863b41beaecd11d905094a6bf0017f6dfadf255"
+    },
+    {
+      "host": "10.1.201.66",
+      "repo": "llm-models/registry-pull-a6d3a32080",
+      "digest": "sha256:b07a6895c102ff2bc41b2aefda98b09ed7468f96c0542fcb6999ce475e5be53e"
+    }
+  ],
+  "cleanup": [
+    {
+      "namespace": "llm-models",
+      "kind": "pod",
+      "name": "registry-pull-a6d3a32080",
+      "absent": true
+    },
+    {
+      "namespace": "llm-models",
+      "kind": "pod",
+      "name": "registry-pull-a6d3a32080-wrong",
+      "absent": true
+    },
+    {
+      "namespace": "llm-models",
+      "kind": "secret",
+      "name": "registry-pull-a6d3a32080-wrong",
+      "absent": true
+    },
+    {
+      "namespace": "llm-api",
+      "kind": "pod",
+      "name": "registry-pull-a6d3a32080",
+      "absent": true
+    },
+    {
+      "namespace": "llm-api",
+      "kind": "pod",
+      "name": "registry-pull-a6d3a32080-wrong",
+      "absent": true
+    },
+    {
+      "namespace": "llm-api",
+      "kind": "secret",
+      "name": "registry-pull-a6d3a32080-wrong",
+      "absent": true
+    },
+    {
+      "host": "10.1.201.71",
+      "repository": "llm-api/registry-pull-a6d3a32080",
+      "manifest_deleted": true,
+      "subsequent_get": 404
+    },
+    {
+      "host": "10.1.201.66",
+      "repository": "llm-models/registry-pull-a6d3a32080",
+      "manifest_deleted": true,
+      "subsequent_get": 404
+    }
+  ],
+  "scope": "Real Kubernetes/containerd pulls; CPU probes only, no GPU allocation or host service restart",
+  "result": "LIVE_REGISTRY_AUTH_AND_KUBERNETES_FALLBACK_PASS",
+  "unreferenced_test_blobs_may_remain": true
+}

@@ -1,0 +1,107 @@
+- name: Configure verified supervisor selection before RKE2 agent startup
+  hosts: gpu_workers
+  gather_facts: false
+  serial: 5
+  become: true
+  vars:
+    bootstrap_source_directory: /opt/vela-cluster/bootstrap-ha-20260914/source
+    bootstrap_ca_source: /var/lib/rancher/rke2/server/tls/server-ca.crt
+  pre_tasks:
+    - name: Exclude protected shared and external nodes
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname not in groups.get('protected_no_reboot', [])
+        fail_msg: Protected hosts are outside the ordinary agent rollout.
+    - name: Check that the default config can control the supervisor URL
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import pathlib, re, subprocess
+        unit = subprocess.check_output(['systemctl', 'show', 'rke2-agent', '-p', 'ExecStart', '-p', 'Environment'], text=True)
+        argv = re.search(r'argv\[\]=(.*?);', unit)
+        assert argv and argv.group(1).strip() == '/usr/local/bin/rke2 agent', 'nonstandard agent command needs explicit review'
+        assert 'RKE2_URL=' not in unit and 'RKE2_CONFIG_FILE=' not in unit, 'unit overrides the default server/config'
+        for file in map(pathlib.Path, ['/etc/default/rke2-agent', '/etc/sysconfig/rke2-agent', '/usr/local/lib/systemd/system/rke2-agent.service.env']):
+            if file.exists():
+                assert not re.search(r'(?m)^\s*(?:export\s+)?RKE2_(?:URL|CONFIG_FILE)\s*=', file.read_text()), 'environment file overrides the default server/config'
+        own = '99-vela-bootstrap-ha.yaml'
+        for file in pathlib.Path('/etc/rancher/rke2/config.yaml.d').glob('*.yaml'):
+            assert not (file.name > own and re.search(r'(?m)^server\s*:', file.read_text())), 'later YAML fragment overrides selected server'
+        assert pathlib.Path('/var/lib/rancher/rke2/agent/server-ca.crt').is_file(), 'existing node CA missing'
+        print('DEFAULT_RKE2_CONFIG_PREFLIGHT_PASS')
+        PY
+      changed_when: false
+      no_log: true
+    - name: Record current boot and agent invocation
+      ansible.builtin.shell: |
+        cat /proc/sys/kernel/random/boot_id
+        systemctl show rke2-agent -p MainPID -p InvocationID -p ActiveEnterTimestampMonotonic
+      register: bootstrap_invocation_before
+      changed_when: false
+  tasks:
+    - name: Create selector and configuration directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop:
+        - /usr/local/libexec
+        - /etc/rancher/rke2/config.yaml.d
+        - /etc/systemd/system/rke2-agent.service.d
+    - name: Distribute the public supervisor CA
+      ansible.builtin.copy:
+        src: "{{ bootstrap_ca_source }}"
+        dest: /etc/rancher/rke2/bootstrap-server-ca.crt
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Verify distributed CA matches this enrolled worker
+      ansible.builtin.command:
+        argv:
+          - cmp
+          - --silent
+          - /etc/rancher/rke2/bootstrap-server-ca.crt
+          - /var/lib/rancher/rke2/agent/server-ca.crt
+      changed_when: false
+    - name: Install selector
+      ansible.builtin.copy:
+        src: "{{ bootstrap_source_directory }}/rke2-bootstrap-ha.py"
+        dest: /usr/local/libexec/vela-rke2-bootstrap-ha.py
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install ordered supervisor inventory
+      ansible.builtin.copy:
+        src: "{{ bootstrap_source_directory }}/rke2-bootstrap-endpoints.json"
+        dest: /etc/rancher/rke2/vela-bootstrap-endpoints.json
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Verify current supervisor reachability before enabling startup hook
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /usr/local/libexec/vela-rke2-bootstrap-ha.py, --check-only]
+      changed_when: false
+    - name: Add startup hook without restarting the running agent
+      ansible.builtin.copy:
+        src: "{{ bootstrap_source_directory }}/rke2-agent-bootstrap-ha.conf"
+        dest: /etc/systemd/system/rke2-agent.service.d/20-vela-bootstrap-ha.conf
+        owner: root
+        group: root
+        mode: '0644'
+      register: bootstrap_unit
+    - name: Reload unit definitions and preserve automatic startup
+      ansible.builtin.systemd:
+        name: rke2-agent
+        enabled: true
+        daemon_reload: "{{ bootstrap_unit.changed }}"
+    - name: Confirm the existing agent remains active
+      ansible.builtin.command: systemctl is-active rke2-agent
+      changed_when: false
+    - name: Verify host boot and running agent invocation did not change
+      ansible.builtin.shell: |
+        cat /proc/sys/kernel/random/boot_id
+        systemctl show rke2-agent -p MainPID -p InvocationID -p ActiveEnterTimestampMonotonic
+      register: bootstrap_invocation_after
+      changed_when: false
+      failed_when: bootstrap_invocation_after.stdout != bootstrap_invocation_before.stdout

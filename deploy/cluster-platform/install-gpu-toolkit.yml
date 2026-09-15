@@ -1,0 +1,60 @@
+- name: Install NVIDIA Container Toolkit on GPU workers
+  hosts: gpu_workers
+  serial: 5
+  become: true
+  pre_tasks:
+    - name: Refuse protected no-reboot hosts
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname not in (groups.get('protected_no_reboot', []))
+        fail_msg: >-
+          Refusing to modify {{ inventory_hostname }} because it is listed in
+          protected_no_reboot. This play must never restart or reboot a
+          protected host.
+  tasks:
+    - name: Create toolkit staging directory
+      ansible.builtin.file:
+        path: /opt/vela-cluster/toolkit
+        state: directory
+        mode: '0755'
+    - name: Copy toolkit packages
+      ansible.builtin.copy:
+        src: "/opt/vela-cluster/toolkit/{{ item }}"
+        dest: "/opt/vela-cluster/toolkit/{{ item }}"
+        mode: '0644'
+      loop:
+        - libnvidia-container-tools_1.19.1-1_amd64.deb
+        - libnvidia-container1_1.19.1-1_amd64.deb
+        - nvidia-container-toolkit-base_1.19.1-1_amd64.deb
+        - nvidia-container-toolkit_1.19.1-1_amd64.deb
+    - name: Install toolkit packages
+      ansible.builtin.apt:
+        deb: "{{ item }}"
+        state: present
+      loop:
+        - /opt/vela-cluster/toolkit/libnvidia-container1_1.19.1-1_amd64.deb
+        - /opt/vela-cluster/toolkit/libnvidia-container-tools_1.19.1-1_amd64.deb
+        - /opt/vela-cluster/toolkit/nvidia-container-toolkit-base_1.19.1-1_amd64.deb
+        - /opt/vela-cluster/toolkit/nvidia-container-toolkit_1.19.1-1_amd64.deb
+    - name: Create RKE2 containerd drop-in directory
+      ansible.builtin.file:
+        path: /var/lib/rancher/rke2/agent/etc/containerd/config-v3.toml.d
+        state: directory
+        mode: '0755'
+    - name: Configure NVIDIA runtime for RKE2 containerd
+      ansible.builtin.copy:
+        dest: /var/lib/rancher/rke2/agent/etc/containerd/config-v3.toml.d/99-nvidia.toml
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia']
+            runtime_type = "io.containerd.runc.v2"
+          [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'nvidia'.options]
+            BinaryName = "/usr/bin/nvidia-container-runtime"
+            SystemdCgroup = true
+    - name: Restart RKE2 agent to load NVIDIA runtime
+      ansible.builtin.systemd:
+        name: rke2-agent
+        state: restarted
+        daemon_reload: true

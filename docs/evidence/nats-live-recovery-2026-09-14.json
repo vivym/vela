@@ -1,0 +1,260 @@
+{
+  "started_at": "2026-09-14T13:11:16.490806+00:00",
+  "phase": "complete",
+  "replacements": [
+    {
+      "pod": "nats-0",
+      "node": "llmpool02",
+      "old_uid": "25f5e046-bb5e-43b3-a300-088cefb166be",
+      "pvc_names": [
+        "jetstream-nats-0"
+      ],
+      "started_at": "2026-09-14T13:11:17.273466+00:00",
+      "new_uid": "a4747229-4058-4e64-9a5d-491436f2de61",
+      "ready_and_verified_seconds": 13.14,
+      "evidence": {
+        "cluster": {
+          "name": "VELA",
+          "raft_group": "S-R3F-O4V9SSWm",
+          "leader": "nats-1",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 958798553
+            },
+            {
+              "name": "nats-2",
+              "current": true,
+              "active": 958760973
+            }
+          ]
+        },
+        "consumer_cluster": {
+          "name": "VELA",
+          "raft_group": "C-R3F-BZAwXPzr",
+          "leader": "nats-2",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 969094997
+            },
+            {
+              "name": "nats-1",
+              "current": true,
+              "active": 968960076
+            }
+          ]
+        },
+        "message_count": 1,
+        "message_sha256": "b0e04ceee61eb0187fb8a416896a53311deb2489b9beb01e9d995c676f8a97ce",
+        "observed_at": "2026-09-14T13:11:30.408430138Z",
+        "pending_unacked": 1,
+        "phase": "verify",
+        "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe"
+      }
+    },
+    {
+      "pod": "nats-1",
+      "node": "marslab-gpu-01",
+      "old_uid": "828e457c-65e1-4d22-83ec-96bfacba497c",
+      "pvc_names": [
+        "jetstream-nats-1"
+      ],
+      "started_at": "2026-09-14T13:11:30.624302+00:00",
+      "new_uid": "5bc4d0b1-2427-4489-a3fb-af5013da28e6",
+      "ready_and_verified_seconds": 6.88,
+      "evidence": {
+        "cluster": {
+          "name": "VELA",
+          "raft_group": "S-R3F-O4V9SSWm",
+          "leader": "nats-2",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 741648440
+            },
+            {
+              "name": "nats-1",
+              "current": true,
+              "active": 741745160
+            }
+          ]
+        },
+        "consumer_cluster": {
+          "name": "VELA",
+          "raft_group": "C-R3F-BZAwXPzr",
+          "leader": "nats-2",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 64489645
+            },
+            {
+              "name": "nats-1",
+              "current": true,
+              "active": 64715779
+            }
+          ]
+        },
+        "message_count": 1,
+        "message_sha256": "b0e04ceee61eb0187fb8a416896a53311deb2489b9beb01e9d995c676f8a97ce",
+        "observed_at": "2026-09-14T13:11:37.504563295Z",
+        "pending_unacked": 1,
+        "phase": "verify",
+        "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe"
+      }
+    },
+    {
+      "pod": "nats-2",
+      "node": "llmpool01",
+      "old_uid": "492bcac9-2460-41fd-a0de-aa4cd733962c",
+      "pvc_names": [
+        "jetstream-nats-2"
+      ],
+      "started_at": "2026-09-14T13:11:37.743804+00:00",
+      "new_uid": "90dfd82b-db46-4a58-b47e-2495ab2f2ed8",
+      "ready_and_verified_seconds": 13.18,
+      "evidence": {
+        "cluster": {
+          "name": "VELA",
+          "raft_group": "S-R3F-O4V9SSWm",
+          "leader": "nats-1",
+          "replicas": [
+            {
+              "name": "nats-0",
+              "current": true,
+              "active": 13376312
+            },
+            {
+              "name": "nats-2",
+              "current": true,
+              "active": 13303732
+            }
+          ]
+        },
+        "consumer_cluster": {
+          "name": "VELA",
+          "raft_group": "C-R3F-BZAwXPzr",
+          "leader": "nats-0",
+          "replicas": [
+            {
+              "name": "nats-1",
+              "current": true,
+              "active": 18819021
+            },
+            {
+              "name": "nats-2",
+              "current": true,
+              "active": 18747949
+            }
+          ]
+        },
+        "message_count": 1,
+        "message_sha256": "b0e04ceee61eb0187fb8a416896a53311deb2489b9beb01e9d995c676f8a97ce",
+        "observed_at": "2026-09-14T13:11:50.923440017Z",
+        "pending_unacked": 1,
+        "phase": "verify",
+        "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe"
+      }
+    }
+  ],
+  "scope": "Three sequential NATS Pod replacements; R3 file-backed message and durable consumer redelivery. No full-cluster outage or PostgreSQL Outbox replay.",
+  "updated_at": "2026-09-14T13:11:51.943017+00:00",
+  "baseline": {
+    "cluster": {
+      "name": "VELA",
+      "raft_group": "S-R3F-O4V9SSWm",
+      "leader": "nats-0",
+      "replicas": [
+        {
+          "name": "nats-1",
+          "current": true,
+          "active": 321914196
+        },
+        {
+          "name": "nats-2",
+          "current": true,
+          "active": 321976014
+        }
+      ]
+    },
+    "consumer_cluster": {
+      "name": "VELA",
+      "raft_group": "C-R3F-BZAwXPzr",
+      "leader": "nats-0",
+      "replicas": [
+        {
+          "name": "nats-1",
+          "current": true,
+          "active": 814053503
+        },
+        {
+          "name": "nats-2",
+          "current": true,
+          "active": 814015000
+        }
+      ]
+    },
+    "message_count": 1,
+    "message_sha256": "b0e04ceee61eb0187fb8a416896a53311deb2489b9beb01e9d995c676f8a97ce",
+    "observed_at": "2026-09-14T13:11:16.927881816Z",
+    "pending_unacked": 1,
+    "phase": "verify",
+    "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe"
+  },
+  "statefulset_uid": "13a28ce5-449c-4701-8754-a31541f143f5",
+  "redelivery": {
+    "cluster": {
+      "name": "VELA",
+      "raft_group": "S-R3F-O4V9SSWm",
+      "leader": "nats-1",
+      "replicas": [
+        {
+          "name": "nats-0",
+          "current": true,
+          "active": 445487034
+        },
+        {
+          "name": "nats-2",
+          "current": true,
+          "active": 445414454
+        }
+      ]
+    },
+    "consumer_cluster": {
+      "name": "VELA",
+      "raft_group": "C-R3F-BZAwXPzr",
+      "leader": "nats-0",
+      "replicas": [
+        {
+          "name": "nats-1",
+          "current": true,
+          "active": 450716600
+        },
+        {
+          "name": "nats-2",
+          "current": true,
+          "active": 450645528
+        }
+      ]
+    },
+    "delivery_count": 2,
+    "message_count": 1,
+    "message_sha256": "b0e04ceee61eb0187fb8a416896a53311deb2489b9beb01e9d995c676f8a97ce",
+    "observed_at": "2026-09-14T13:11:51.355474847Z",
+    "pending_unacked": 1,
+    "phase": "redelivery",
+    "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe",
+    "stream_sequence": 1
+  },
+  "cleanup": {
+    "phase": "cleaned",
+    "stream": "VELA_DRILL_8c5b3c5ee9fc0bbe"
+  },
+  "result": "NATS_ROLLING_PERSISTENCE_PASS",
+  "final_ready_replicas": 3
+}

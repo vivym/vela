@@ -1,0 +1,923 @@
+{
+  "time": "2026-09-14T12:40:59.221396+00:00",
+  "scope": "live infrastructure snapshot, not a production release receipt",
+  "nodes": {
+    "total": 54,
+    "ready": 53,
+    "allocatable_gpus": 407,
+    "exceptions": [
+      {
+        "node": "server-36",
+        "ready": false,
+        "cordoned": true
+      }
+    ]
+  },
+  "workloads": [
+    {
+      "namespace": "apisix",
+      "kind": "Deployment",
+      "name": "apisix",
+      "desired": 2,
+      "ready": 2,
+      "updated": 2
+    },
+    {
+      "namespace": "identity",
+      "kind": "Deployment",
+      "name": "keycloak",
+      "desired": 2,
+      "ready": 2,
+      "updated": 2
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "Deployment",
+      "name": "rke2-coredns-rke2-coredns",
+      "desired": 14,
+      "ready": 14,
+      "updated": 14
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "Deployment",
+      "name": "rke2-coredns-rke2-coredns-autoscaler",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "Deployment",
+      "name": "rke2-ingress-nginx-controller",
+      "desired": 0,
+      "ready": 0,
+      "updated": 0
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "Deployment",
+      "name": "rke2-metrics-server",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "Deployment",
+      "name": "rke2-snapshot-controller",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "loki",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "monitoring-grafana",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "monitoring-kube-prometheus-operator",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "monitoring-kube-state-metrics",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "nats-prometheus-exporter",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "otel-collector",
+      "desired": 2,
+      "ready": 2,
+      "updated": 2
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "Deployment",
+      "name": "tempo",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "vela-system",
+      "kind": "Deployment",
+      "name": "vela-control",
+      "desired": 2,
+      "ready": 2,
+      "updated": 2
+    },
+    {
+      "namespace": "apisix",
+      "kind": "StatefulSet",
+      "name": "apisix-etcd",
+      "desired": 3,
+      "ready": 3,
+      "updated": 3
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "StatefulSet",
+      "name": "alertmanager-monitoring-kube-prometheus-alertmanager",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "StatefulSet",
+      "name": "prometheus-monitoring-kube-prometheus-prometheus",
+      "desired": 1,
+      "ready": 1,
+      "updated": 1
+    },
+    {
+      "namespace": "object-store",
+      "kind": "StatefulSet",
+      "name": "minio",
+      "desired": 0,
+      "ready": 0,
+      "updated": 0
+    },
+    {
+      "namespace": "object-store",
+      "kind": "StatefulSet",
+      "name": "minio-ha",
+      "desired": 6,
+      "ready": 6,
+      "updated": 6
+    },
+    {
+      "namespace": "vela-system",
+      "kind": "StatefulSet",
+      "name": "nats",
+      "desired": 3,
+      "ready": 3,
+      "updated": 3
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "DaemonSet",
+      "name": "nvidia-device-plugin-daemonset",
+      "desired": 51,
+      "ready": 51,
+      "updated": 51
+    },
+    {
+      "namespace": "kube-system",
+      "kind": "DaemonSet",
+      "name": "rke2-canal",
+      "desired": 54,
+      "ready": 53,
+      "updated": 54
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "DaemonSet",
+      "name": "alloy",
+      "desired": 54,
+      "ready": 53,
+      "updated": 54
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "DaemonSet",
+      "name": "monitoring-prometheus-node-exporter",
+      "desired": 54,
+      "ready": 53,
+      "updated": 54
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "DaemonSet",
+      "name": "node-local-metrics-control-storage",
+      "desired": 3,
+      "ready": 3,
+      "updated": 3
+    },
+    {
+      "namespace": "monitoring",
+      "kind": "DaemonSet",
+      "name": "node-local-metrics-gpu-worker",
+      "desired": 50,
+      "ready": 50,
+      "updated": 50
+    }
+  ],
+  "vela_control": [
+    {
+      "pod": "vela-control-64b769db8c-9n4bw",
+      "node": "llmpool02",
+      "fsGroup": null,
+      "containers": [
+        {
+          "name": "vela-control",
+          "ready": true,
+          "restarts": 1,
+          "reported_image": "10.1.201.70:5005/vela-control:compat-vela-outbox",
+          "imageID": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "requested_image": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51"
+        }
+      ]
+    },
+    {
+      "pod": "vela-control-64b769db8c-t6wfd",
+      "node": "llmpool01",
+      "fsGroup": null,
+      "containers": [
+        {
+          "name": "vela-control",
+          "ready": true,
+          "restarts": 2,
+          "reported_image": "10.1.201.70:5005/vela-control:compat-vela-outbox",
+          "imageID": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "requested_image": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51"
+        }
+      ]
+    }
+  ],
+  "prometheus": {
+    "sum by(job) (up{job=~\"kube-proxy|kube-scheduler|kube-controller-manager|etcd|node-local-metrics|alloy|apisix-metrics|loki|tempo|longhorn-backend|monitoring/cnpg-postgres|nats-prometheus-exporter|minio|minio-quorum|nvidia-smi|legacy-hardware-federation\"})": [
+      {
+        "metric": {
+          "job": "nvidia-smi"
+        },
+        "value": [
+          1789389660.095,
+          "51"
+        ]
+      },
+      {
+        "metric": {
+          "job": "longhorn-backend"
+        },
+        "value": [
+          1789389660.095,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "nats-prometheus-exporter"
+        },
+        "value": [
+          1789389660.095,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "tempo"
+        },
+        "value": [
+          1789389660.095,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "loki"
+        },
+        "value": [
+          1789389660.095,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "legacy-hardware-federation"
+        },
+        "value": [
+          1789389660.095,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "job": "etcd"
+        },
+        "value": [
+          1789389660.095,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-proxy"
+        },
+        "value": [
+          1789389660.095,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-scheduler"
+        },
+        "value": [
+          1789389660.095,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "node-local-metrics"
+        },
+        "value": [
+          1789389660.095,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "kube-controller-manager"
+        },
+        "value": [
+          1789389660.095,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "alloy"
+        },
+        "value": [
+          1789389660.095,
+          "53"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio"
+        },
+        "value": [
+          1789389660.095,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "minio-quorum"
+        },
+        "value": [
+          1789389660.095,
+          "6"
+        ]
+      },
+      {
+        "metric": {
+          "job": "monitoring/cnpg-postgres"
+        },
+        "value": [
+          1789389660.095,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "job": "apisix-metrics"
+        },
+        "value": [
+          1789389660.095,
+          "2"
+        ]
+      }
+    ],
+    "sum by(endpoint) (up{job=\"otel-collector\"})": [
+      {
+        "metric": {
+          "endpoint": "metrics"
+        },
+        "value": [
+          1789389660.101,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "endpoint": "internal"
+        },
+        "value": [
+          1789389660.101,
+          "2"
+        ]
+      }
+    ],
+    "count(kube_customresource_longhorn_volume_replicas)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.102,
+          "29"
+        ]
+      }
+    ],
+    "sum(otelcol_exporter_sent_spans_total)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.104,
+          "26"
+        ]
+      }
+    ],
+    "sum(otelcol_exporter_send_failed_spans_total)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.105,
+          "0"
+        ]
+      }
+    ],
+    "sum(otelcol_receiver_refused_spans_total)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.106,
+          "0"
+        ]
+      }
+    ],
+    "sum(loki_write_dropped_entries_total)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.107,
+          "0"
+        ]
+      }
+    ],
+    "sum(loki_write_batch_retries_total)": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.11,
+          "0"
+        ]
+      }
+    ],
+    "count(count by(instance) (ipmi_up))": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.112,
+          "55"
+        ]
+      }
+    ],
+    "count(count by(instance) (ipmi_up==0))": [
+      {
+        "metric": {},
+        "value": [
+          1789389660.114,
+          "5"
+        ]
+      }
+    ],
+    "count by(alertname) (ALERTS{alertstate=\"firing\"})": [
+      {
+        "metric": {
+          "alertname": "Watchdog"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubeletInstanceUnreachable"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubePodNotReady"
+        },
+        "value": [
+          1789389660.116,
+          "8"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaStageModelResidencyCoverageMissing"
+        },
+        "value": [
+          1789389660.116,
+          "3"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaAPISLISeriesMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaSLOContractCoverageMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaNodeFilesystemLow"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaGPUExporterTargetMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaIPMICollectionFailed"
+        },
+        "value": [
+          1789389660.116,
+          "15"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubeNodeUnreachable"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubeDaemonSetRolloutStuck"
+        },
+        "value": [
+          1789389660.116,
+          "7"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubePdbNotEnoughHealthyPods"
+        },
+        "value": [
+          1789389660.116,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaKubeProxyMetricsMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaLogCollectorMetricsMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaNodeExporterTargetMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "VelaLonghornMetricsMissing"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "alertname": "KubeDaemonSetMisScheduled"
+        },
+        "value": [
+          1789389660.116,
+          "1"
+        ]
+      }
+    ]
+  },
+  "longhorn": [
+    {
+      "volume": "pvc-0a63af57-d06b-4ec1-921a-29bfd14fb55d",
+      "replicas": 1,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-control-64b769db8c-t6wfd-artifact-validation"
+    },
+    {
+      "volume": "pvc-213aa8ca-6b8b-4030-9c3b-eb4b1e43c2df",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "monitoring",
+      "claim": "monitoring-grafana"
+    },
+    {
+      "volume": "pvc-21bd1909-f74d-4212-8b6c-be738251de18",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-4"
+    },
+    {
+      "volume": "pvc-2a37dc1a-2f48-4552-b66f-028c15a3bb9e",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "jetstream-nats-1"
+    },
+    {
+      "volume": "pvc-2d464254-a03f-4ac2-8403-55d50093e3dc",
+      "replicas": 2,
+      "robustness": "unknown",
+      "state": "detached",
+      "namespace": "object-store",
+      "claim": "data-minio-0"
+    },
+    {
+      "volume": "pvc-3fe243a5-a0d2-4740-ab3e-44d76e30f478",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "apisix",
+      "claim": "data-apisix-etcd-2"
+    },
+    {
+      "volume": "pvc-40ff974f-dc41-4093-a086-c6062d6f579a",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-2"
+    },
+    {
+      "volume": "pvc-4126e5a7-45c9-458e-8af0-016d491a8ffd",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "monitoring",
+      "claim": "loki-data"
+    },
+    {
+      "volume": "pvc-4e49d519-9ab2-4edc-974c-46d7e2528f23",
+      "replicas": 2,
+      "robustness": "unknown",
+      "state": "detached",
+      "namespace": "object-store",
+      "claim": "data-minio-1"
+    },
+    {
+      "volume": "pvc-54ab3a32-4bf9-4423-b5e5-04201cbe5c0f",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "jetstream-nats-0"
+    },
+    {
+      "volume": "pvc-65614759-736f-468d-9cac-71d7a6ddc2b9",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "monitoring",
+      "claim": "prometheus-monitoring-kube-prometheus-prometheus-db-prometheus-monitoring-kube-prometheus-prometheus-0"
+    },
+    {
+      "volume": "pvc-7a2bc167-896f-441e-a011-2edf21a6b3b1",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-0"
+    },
+    {
+      "volume": "pvc-7dd63f05-caa1-4c08-962c-b5a77dc3eff5",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-1"
+    },
+    {
+      "volume": "pvc-8171c876-9b68-4759-a74e-2535f1c1eb7c",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-2-wal"
+    },
+    {
+      "volume": "pvc-868ff354-df0a-49d6-bdd5-ee4c4b26e191",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-3-wal"
+    },
+    {
+      "volume": "pvc-93c76276-ca39-4795-a3e9-81dff596643e",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "monitoring",
+      "claim": "tempo-data"
+    },
+    {
+      "volume": "pvc-b61f4c88-7992-4c85-abae-479fb9006ea6",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-1-wal"
+    },
+    {
+      "volume": "pvc-bd469bc8-2450-4768-a7fa-7c3f6d094447",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-5"
+    },
+    {
+      "volume": "pvc-c6d216fa-8c8e-46a1-93c9-a0f8c840ee09",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-postgres-3"
+    },
+    {
+      "volume": "pvc-cfa0e085-06a0-4218-b860-19b894e68a82",
+      "replicas": 1,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "vela-control-64b769db8c-9n4bw-artifact-validation"
+    },
+    {
+      "volume": "pvc-d4cb0f62-584f-488e-8291-cf2071fd5d59",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "monitoring",
+      "claim": "alertmanager-monitoring-kube-prometheus-alertmanager-db-alertmanager-monitoring-kube-prometheus-alertmanager-0"
+    },
+    {
+      "volume": "pvc-db73fbd6-2f9c-46ad-8bb9-f5d2469ec351",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "apisix",
+      "claim": "data-apisix-etcd-1"
+    },
+    {
+      "volume": "pvc-df8bcac3-9223-4780-a676-96c76e8fcc69",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-1"
+    },
+    {
+      "volume": "pvc-e2bce496-2ce9-4417-a3d3-d1cebb3389b0",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-2"
+    },
+    {
+      "volume": "pvc-e6625907-a678-4a46-88b2-f6e554129a39",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "apisix",
+      "claim": "data-apisix-etcd-0"
+    },
+    {
+      "volume": "pvc-eb059c4f-68bf-49ed-b432-7127632c7f97",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "object-store",
+      "claim": "data-minio-ha-3"
+    },
+    {
+      "volume": "pvc-f084c352-66f3-4202-b563-f8b561c74d2c",
+      "replicas": 2,
+      "robustness": "unknown",
+      "state": "detached",
+      "namespace": "object-store",
+      "claim": "data-minio-2"
+    },
+    {
+      "volume": "pvc-f6d16afe-3cb2-4378-8d49-2b2ffc111c32",
+      "replicas": 2,
+      "robustness": "healthy",
+      "state": "attached",
+      "namespace": "vela-system",
+      "claim": "jetstream-nats-2"
+    },
+    {
+      "volume": "pvc-fc7d8900-c4e5-4b9b-bd63-292ffeb7970e",
+      "replicas": 2,
+      "robustness": "unknown",
+      "state": "detached",
+      "namespace": "object-store",
+      "claim": "data-minio-3"
+    }
+  ],
+  "minio": {
+    "health": {
+      "write": {
+        "http_status": 200,
+        "quorum": "4"
+      },
+      "read": {
+        "http_status": 200,
+        "quorum": "3"
+      }
+    },
+    "client_selector": {
+      "app": "minio-ha"
+    },
+    "members_per_host": {
+      "llmpool01": 2,
+      "llmpool02": 2,
+      "marslab-gpu-01": 2
+    }
+  },
+  "longhorn_metrics_policy_namespaces": [
+    "longhorn-system"
+  ],
+  "gateway_http_status": {
+    "10.1.201.70": 200,
+    "10.1.201.71": 200
+  },
+  "remaining_test_namespaces": []
+}
