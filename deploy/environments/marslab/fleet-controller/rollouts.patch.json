@@ -1,0 +1,21 @@
+[
+  {
+    "op": "replace",
+    "path": "/metadata/name",
+    "value": "vela-fleet-rollouts-unassigned-v1-r-52f76b90b1e2"
+  },
+  {
+    "op": "add",
+    "path": "/metadata/annotations",
+    "value": {
+      "vela.ai/release-revision": "sha256:ea766226218418768828f4d687f74868ff8b1aa82da98ef62ce57377c0c84174"
+    }
+  },
+  {
+    "op": "replace",
+    "path": "/data",
+    "value": {
+      "rollouts.json": "{\"schema_version\":1,\"rollouts\":[]}\n"
+    }
+  }
+]

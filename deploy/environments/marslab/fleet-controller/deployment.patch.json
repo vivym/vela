@@ -1,0 +1,106 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "vela-fleet-controller",
+    "namespace": "vela-system",
+    "annotations": {
+      "vela.ai/deployment-profile": "management-ready-models-unassigned"
+    }
+  },
+  "spec": {
+    "strategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "maxSurge": 0,
+        "maxUnavailable": 1
+      }
+    },
+    "template": {
+      "metadata": {
+        "annotations": {
+          "vela.ai/source-sha256": "b51c1a871cb6ed0165122d82e827235f8e0a357115b51361214daefe7bbb276b"
+        }
+      },
+      "spec": {
+        "nodeSelector": {
+          "vela.ai/control-plane-tier": "cpu",
+          "vela.ai/management": "true"
+        },
+        "priorityClassName": "vela-control-critical",
+        "tolerations": [
+          {
+            "key": "node-role.kubernetes.io/control-plane",
+            "operator": "Exists"
+          }
+        ],
+        "affinity": {
+          "podAntiAffinity": {
+            "$patch": "replace",
+            "requiredDuringSchedulingIgnoredDuringExecution": [
+              {
+                "topologyKey": "kubernetes.io/hostname",
+                "labelSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "vela-fleet-controller"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "imagePullSecrets": [
+          {
+            "name": "vela-release-pull-v1-r-7c3b2ad47663"
+          }
+        ],
+        "containers": [
+          {
+            "name": "fleet-controller",
+            "image": "10.1.201.70:5005/vela-fleet-controller@sha256:cee95fbf27503c81d420c7dff8cd46e5c754dea69627f90aa53a43d435fe96ca",
+            "env": [
+              {
+                "name": "VELA_TRACING_ENABLED",
+                "value": "true"
+              },
+              {
+                "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "value": "http://otel-collector.monitoring.svc.cluster.local:4318"
+              },
+              {
+                "name": "OTEL_TRACES_SAMPLER_ARG",
+                "value": "0.1"
+              }
+            ]
+          }
+        ],
+        "volumes": [
+          {
+            "name": "residency-plan-rollouts",
+            "configMap": {
+              "name": "vela-fleet-rollouts-unassigned-v1-r-52f76b90b1e2"
+            }
+          },
+          {
+            "name": "control-tls",
+            "secret": {
+              "secretName": "vela-fleet-control-mtls-source-v1-r-ac8ad4b5f54d"
+            }
+          },
+          {
+            "name": "admission-tls",
+            "secret": {
+              "secretName": "vela-fleet-admission-server-current-r-121b047568c4"
+            }
+          },
+          {
+            "name": "admission-client-ca",
+            "secret": {
+              "secretName": "vela-kube-apiserver-webhook-ca-source-v1-r-0cf6535f1709"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

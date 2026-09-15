@@ -1,0 +1,20 @@
+[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/env/-",
+    "value": {"name": "VELA_TRACING_ENABLED", "value": "true"}
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/env/-",
+    "value": {
+      "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+      "value": "http://otel-collector.monitoring.svc.cluster.local:4318"
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/env/-",
+    "value": {"name": "OTEL_TRACES_SAMPLER_ARG", "value": "0.1"}
+  }
+]

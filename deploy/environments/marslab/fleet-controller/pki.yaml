@@ -1,0 +1,119 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-client-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-client-ca
+  isCA: true
+  commonName: vela-fleet-client-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [cert sign, crl sign]
+  issuerRef: {name: vela-identity-selfsigned-bootstrap, kind: ClusterIssuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vela-fleet-client-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  ca: {secretName: vela-fleet-client-ca}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-admission-server-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-admission-server-ca
+  isCA: true
+  commonName: vela-fleet-admission-server-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [cert sign, crl sign]
+  issuerRef: {name: vela-identity-selfsigned-bootstrap, kind: ClusterIssuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vela-fleet-admission-server-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  ca: {secretName: vela-fleet-admission-server-ca}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-admission-client-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-admission-client-ca
+  isCA: true
+  commonName: vela-fleet-admission-client-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [cert sign, crl sign]
+  issuerRef: {name: vela-identity-selfsigned-bootstrap, kind: ClusterIssuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: vela-fleet-admission-client-ca
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  ca: {secretName: vela-fleet-admission-client-ca}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-client
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-client-current
+  duration: 2160h
+  renewBefore: 720h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [client auth]
+  uris: [spiffe://vela.internal/fleet-controller/primary]
+  issuerRef: {name: vela-fleet-client-ca, kind: Issuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-admission-server
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-admission-server-current
+  duration: 2160h
+  renewBefore: 720h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [server auth]
+  dnsNames: [vela-fleet-admission.vela-system.svc, vela-fleet-admission.vela-system.svc.cluster.local]
+  issuerRef: {name: vela-fleet-admission-server-ca, kind: Issuer}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-fleet-apiserver-client
+  namespace: vela-system
+  labels: {app.kubernetes.io/part-of: vela, app.kubernetes.io/component: fleet-pki}
+spec:
+  secretName: vela-fleet-apiserver-client-current
+  duration: 2160h
+  renewBefore: 720h
+  privateKey: {algorithm: ECDSA, size: 256, rotationPolicy: Always}
+  usages: [client auth]
+  uris: [spiffe://vela.internal/kube-apiserver/admission]
+  issuerRef: {name: vela-fleet-admission-client-ca, kind: Issuer}

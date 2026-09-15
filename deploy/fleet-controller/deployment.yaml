@@ -38,10 +38,43 @@ spec:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
-        fsGroup: 10001
-        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: fleet-private-materialization
+          image: docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 077
+              mkdir -p /materialized/control-tls /materialized/admission-tls /materialized/admission-client-ca
+              cp /projected/control-tls/tls.crt /materialized/control-tls/tls.crt
+              cp /projected/control-tls/tls.key /materialized/control-tls/tls.key
+              cp /projected/control-tls/ca.crt /materialized/control-tls/ca.crt
+              cp /projected/admission-tls/tls.crt /materialized/admission-tls/tls.crt
+              cp /projected/admission-tls/tls.key /materialized/admission-tls/tls.key
+              cp /projected/admission-client-ca/ca.crt /materialized/admission-client-ca/ca.crt
+              chmod 0700 /materialized /materialized/control-tls /materialized/admission-tls /materialized/admission-client-ca
+              chmod 0400 /materialized/control-tls/tls.crt /materialized/control-tls/tls.key /materialized/control-tls/ca.crt /materialized/admission-tls/tls.crt /materialized/admission-tls/tls.key /materialized/admission-client-ca/ca.crt
+              chown -R 10001:10001 /materialized
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 32Mi}
+          volumeMounts:
+            - {name: materialized-tls, mountPath: /materialized}
+            - {name: control-tls, mountPath: /projected/control-tls, readOnly: true}
+            - {name: admission-tls, mountPath: /projected/admission-tls, readOnly: true}
+            - {name: admission-client-ca, mountPath: /projected/admission-client-ca, readOnly: true}
       containers:
         - name: fleet-controller
           image: ghcr.io/vivym/vela-fleet-controller@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -59,19 +92,19 @@ spec:
             - name: VELA_FLEET_MAINTENANCE_SERVER_NAME
               value: vela-control.vela-system.svc
             - name: VELA_FLEET_TLS_CERT_FILE
-              value: /etc/vela-fleet/control-tls/tls.crt
+              value: /etc/vela-fleet/materialized/control-tls/tls.crt
             - name: VELA_FLEET_TLS_KEY_FILE
-              value: /etc/vela-fleet/control-tls/tls.key
+              value: /etc/vela-fleet/materialized/control-tls/tls.key
             - name: VELA_FLEET_CA_FILE
-              value: /etc/vela-fleet/control-tls/ca.crt
+              value: /etc/vela-fleet/materialized/control-tls/ca.crt
             - name: VELA_FLEET_ADMISSION_ADDRESS
               value: :9443
             - name: VELA_FLEET_ADMISSION_TLS_CERT_FILE
-              value: /etc/vela-fleet/admission-tls/tls.crt
+              value: /etc/vela-fleet/materialized/admission-tls/tls.crt
             - name: VELA_FLEET_ADMISSION_TLS_KEY_FILE
-              value: /etc/vela-fleet/admission-tls/tls.key
+              value: /etc/vela-fleet/materialized/admission-tls/tls.key
             - name: VELA_FLEET_ADMISSION_CLIENT_CA_FILE
-              value: /etc/vela-fleet/admission-client-ca/ca.crt
+              value: /etc/vela-fleet/materialized/admission-client-ca/ca.crt
             - name: VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID
               value: spiffe://vela.internal/kube-apiserver/admission
             - name: VELA_FLEET_KUBERNETES_USERNAME
@@ -114,20 +147,19 @@ spec:
             - name: residency-plan-rollouts
               mountPath: /etc/vela-fleet/residency-plan-rollouts
               readOnly: true
-            - name: control-tls
-              mountPath: /etc/vela-fleet/control-tls
-              readOnly: true
-            - name: admission-tls
-              mountPath: /etc/vela-fleet/admission-tls
-              readOnly: true
-            - name: admission-client-ca
-              mountPath: /etc/vela-fleet/admission-client-ca
+            - name: materialized-tls
+              mountPath: /etc/vela-fleet/materialized
               readOnly: true
       volumes:
+        - name: materialized-tls
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Mi
         - name: residency-plan-rollouts
           configMap:
             name: vela-fleet-residency-plan-rollouts-placeholder
-            defaultMode: 0440
+            # Non-secret plans are read by UID 10001 without fsGroup.
+            defaultMode: 0444
             items:
               - key: rollouts.json
                 path: rollouts.json
@@ -135,10 +167,17 @@ spec:
           secret:
             secretName: vela-fleet-control-mtls
             defaultMode: 0400
+            items:
+              - {key: tls.crt, path: tls.crt}
+              - {key: tls.key, path: tls.key}
+              - {key: ca.crt, path: ca.crt}
         - name: admission-tls
           secret:
             secretName: vela-fleet-admission-tls
             defaultMode: 0400
+            items:
+              - {key: tls.crt, path: tls.crt}
+              - {key: tls.key, path: tls.key}
         - name: admission-client-ca
           secret:
             secretName: vela-kube-apiserver-webhook-client-ca

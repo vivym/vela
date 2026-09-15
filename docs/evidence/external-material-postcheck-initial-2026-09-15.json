@@ -1,0 +1,445 @@
+{
+  "at": "2026-09-14T20:16:35.139409+00:00",
+  "scope": "current Control/NATS frozen references, site ConfigMap bytes and consumed keys; current image probe targets",
+  "checks": [
+    {
+      "name": "all 16 immutable objects pass canonical live verification",
+      "passed": true
+    },
+    {
+      "name": "site renders two ConfigMaps",
+      "passed": true
+    },
+    {
+      "name": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6 exact live content",
+      "passed": true
+    },
+    {
+      "name": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6 canonical revision and immutable flag",
+      "passed": true
+    },
+    {
+      "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76 exact live content",
+      "passed": true
+    },
+    {
+      "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76 canonical revision and immutable flag",
+      "passed": true
+    },
+    {
+      "name": "Control still equals rollout candidate",
+      "passed": true
+    },
+    {
+      "name": "NATS still equals rollout candidate",
+      "passed": true
+    },
+    {
+      "name": "Control 2/2 and NATS 3/3 Ready",
+      "passed": true
+    },
+    {
+      "name": "rendered Control image equals live",
+      "passed": true
+    },
+    {
+      "name": "rendered Control env equals live",
+      "passed": true
+    },
+    {
+      "name": "rendered Control envFrom equals live",
+      "passed": true
+    },
+    {
+      "name": "rendered Secret volume names and key projections equal live",
+      "passed": true
+    },
+    {
+      "name": "rendered Pod and ServiceAccount pull refs equal live",
+      "passed": true
+    },
+    {
+      "name": "two current Control Pods on distinct CPU hosts",
+      "passed": true
+    },
+    {
+      "name": "all Control containers Ready with zero restarts since adoption",
+      "passed": true
+    },
+    {
+      "name": "nats-server-tls-r-541fc9387f9e/ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "nats-server-tls-r-541fc9387f9e/ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "nats-server-tls-r-541fc9387f9e/tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "nats-server-tls-r-541fc9387f9e/tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b/ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b/ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b/tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b/tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/compliance-client-ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/compliance-client-ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/compliance-tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/compliance-tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/finance-client-ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/finance-client-ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/finance-tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244/finance-tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3/ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3/ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3/tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3/tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/fleet-client-ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/fleet-client-ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/fleet-tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/fleet-tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/stage-worker-client-ca.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/stage-worker-client-ca.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/stage-worker-tls.crt certificate decodes",
+      "passed": true
+    },
+    {
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb/stage-worker-tls.crt valid for more than 30 days",
+      "passed": true
+    },
+    {
+      "name": "probe_success query succeeded",
+      "passed": true
+    },
+    {
+      "name": "probe_http_status_code query succeeded",
+      "passed": true
+    },
+    {
+      "name": "probe_success has exactly three new digest targets",
+      "passed": false
+    }
+  ],
+  "external_evidence": [],
+  "configmaps": [
+    {
+      "name": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6",
+      "uid": "b7ebf8a4-789d-456d-9856-fb894971ea21",
+      "revision": "sha256:910197ce9e14b7b651a73ca6c19c373748fe11ffe3c4851e2116d53e40faa412"
+    },
+    {
+      "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76",
+      "uid": "6212b265-3aa1-4506-a623-e8a4bd940105",
+      "revision": "sha256:418eccbcef389a93320ddb62ce73e3fbd0f472336529a909e965615b99a605f4"
+    }
+  ],
+  "control_pods": [
+    {
+      "name": "vela-control-665898cc6b-98d4t",
+      "uid": "ba879c42-ed63-4f8c-b8a3-fa256c4532c9",
+      "node": "llmpool01",
+      "containers": [
+        {
+          "name": "vela-control",
+          "ready": true,
+          "restartCount": 0,
+          "image": "sha256:183fcd1bfca3cd0c47ac272b003707170ddaf0321b0f6fe75318c1a57bb2ae0a",
+          "imageID": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+        }
+      ]
+    },
+    {
+      "name": "vela-control-665898cc6b-jpxtw",
+      "uid": "b0ebdf29-e75d-46d9-9978-4e3183ff1930",
+      "node": "llmpool02",
+      "containers": [
+        {
+          "name": "vela-control",
+          "ready": true,
+          "restartCount": 0,
+          "image": "sha256:183fcd1bfca3cd0c47ac272b003707170ddaf0321b0f6fe75318c1a57bb2ae0a",
+          "imageID": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+        }
+      ]
+    }
+  ],
+  "tls_certificates": [
+    {
+      "secret": "nats-server-tls-r-541fc9387f9e",
+      "key": "ca.crt",
+      "not_after": "2036-09-10T13:55:10+00:00"
+    },
+    {
+      "secret": "nats-server-tls-r-541fc9387f9e",
+      "key": "tls.crt",
+      "not_after": "2028-12-16T13:55:10+00:00"
+    },
+    {
+      "secret": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b",
+      "key": "ca.crt",
+      "not_after": "2036-09-10T13:55:10+00:00"
+    },
+    {
+      "secret": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b",
+      "key": "tls.crt",
+      "not_after": "2028-12-16T13:55:24+00:00"
+    },
+    {
+      "secret": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+      "key": "compliance-client-ca.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+      "key": "compliance-tls.crt",
+      "not_after": "2036-09-10T16:08:15+00:00"
+    },
+    {
+      "secret": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+      "key": "finance-client-ca.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+      "key": "finance-tls.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3",
+      "key": "ca.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3",
+      "key": "tls.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+      "key": "fleet-client-ca.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+      "key": "fleet-tls.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+      "key": "stage-worker-client-ca.crt",
+      "not_after": "2036-09-10T16:08:14+00:00"
+    },
+    {
+      "secret": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+      "key": "stage-worker-tls.crt",
+      "not_after": "2036-09-10T16:08:15+00:00"
+    }
+  ],
+  "registry_metrics": {
+    "probe_success": [
+      {
+        "metric": {
+          "__name__": "probe_success",
+          "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.62,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_success",
+          "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.62,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_success",
+          "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.62,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_success",
+          "instance": "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.62,
+          "1"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_success",
+          "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.62,
+          "1"
+        ]
+      }
+    ],
+    "probe_http_status_code": [
+      {
+        "metric": {
+          "__name__": "probe_http_status_code",
+          "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.623,
+          "200"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_http_status_code",
+          "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.623,
+          "200"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_http_status_code",
+          "instance": "https://10.1.201.70:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.623,
+          "200"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_http_status_code",
+          "instance": "https://10.1.201.71:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.623,
+          "200"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "probe_http_status_code",
+          "instance": "https://10.1.201.66:5005/v2/vela-control/manifests/sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "job": "vela-registry-control-manifest",
+          "namespace": "monitoring",
+          "registry_check": "control_manifest"
+        },
+        "value": [
+          1789417003.623,
+          "200"
+        ]
+      }
+    ]
+  }
+}

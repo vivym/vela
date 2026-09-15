@@ -1,0 +1,215 @@
+{
+  "at": "2026-09-14T21:27:14.800700474Z",
+  "applied": true,
+  "passed": true,
+  "resources": [
+    {
+      "source": {
+        "kind": "Secret",
+        "namespace": "vela-system",
+        "name": "vela-control-transport-tls-fleet-v1",
+        "uid": "795631b9-c138-4c69-803c-41825192865c",
+        "resource_version": "1621437",
+        "required_keys": [
+          "fleet-client-ca.crt",
+          "fleet-tls.crt",
+          "fleet-tls.key",
+          "runtime-policy-private.key",
+          "stage-worker-client-ca.crt",
+          "stage-worker-tls.crt",
+          "stage-worker-tls.key"
+        ],
+        "consumers": [
+          "vela-control"
+        ]
+      },
+      "source_revision": "sha256:1c7bbdf59dadd7858053d7518228cab4c8882aa8f429836b46e9645a27f08ab5",
+      "name": "vela-control-transport-tls-fleet-v1-r-1c7bbdf59dad",
+      "revision": "sha256:dae5ba93b37f4419696538cee01849b6208244fb165ccd282c094a6eda59423a"
+    },
+    {
+      "source": {
+        "kind": "Secret",
+        "namespace": "vela-system",
+        "name": "vela-fleet-control-mtls-source-v1",
+        "uid": "de25d8eb-a8a5-4ba4-b06b-fa135ba9b820",
+        "resource_version": "1621442",
+        "required_keys": [
+          "ca.crt",
+          "tls.crt",
+          "tls.key"
+        ],
+        "consumers": [
+          "fleet-controller"
+        ]
+      },
+      "source_revision": "sha256:ac8ad4b5f54dfa06d497466f5e5387caed95dcf6a57a2ed38b84f42c75750c6d",
+      "name": "vela-fleet-control-mtls-source-v1-r-ac8ad4b5f54d",
+      "revision": "sha256:9e926a84a49be2b1cac24af85552b7ab7853eed4475ff80f1cc8e006422e5f83"
+    },
+    {
+      "source": {
+        "kind": "Secret",
+        "namespace": "vela-system",
+        "name": "vela-kube-apiserver-webhook-ca-source-v1",
+        "uid": "63a66e17-e138-4b3c-a333-3be5438a3821",
+        "resource_version": "1621443",
+        "required_keys": [
+          "ca.crt"
+        ],
+        "consumers": [
+          "fleet-controller"
+        ]
+      },
+      "source_revision": "sha256:0cf6535f1709745765efa414b3a521efd627e0814745071913dee8bed45018df",
+      "name": "vela-kube-apiserver-webhook-ca-source-v1-r-0cf6535f1709",
+      "revision": "sha256:99da4a25222979308bfc6c2cade1a5de9b667766b000f3db98a1da7a98a0cdba"
+    },
+    {
+      "source": {
+        "kind": "ConfigMap",
+        "namespace": "vela-system",
+        "name": "vela-fleet-rollouts-unassigned-v1",
+        "uid": "10ee5a90-013e-4e64-95b6-a4082d6ab7df",
+        "resource_version": "1621444",
+        "consumers": [
+          "fleet-controller"
+        ]
+      },
+      "source_revision": "sha256:52f76b90b1e24d421535001db2b6350c1c24831c1d1f885f43d3056f7afacbb5",
+      "name": "vela-fleet-rollouts-unassigned-v1-r-52f76b90b1e2",
+      "revision": "sha256:ea766226218418768828f4d687f74868ff8b1aa82da98ef62ce57377c0c84174"
+    },
+    {
+      "source": {
+        "kind": "Secret",
+        "namespace": "vela-system",
+        "name": "vela-fleet-admission-server-current",
+        "uid": "81c98802-fa93-4307-94ed-2b0880ff0d75",
+        "resource_version": "1617350",
+        "required_keys": [
+          "ca.crt",
+          "tls.crt",
+          "tls.key"
+        ],
+        "consumers": [
+          "fleet-controller"
+        ]
+      },
+      "source_revision": "sha256:121b047568c4ae364b04c265aa9b9d564dc17c2b22cbee6ac7fcb425f0c3278e",
+      "name": "vela-fleet-admission-server-current-r-121b047568c4",
+      "revision": "sha256:9b0a2c60673709a2ad0c7470f9755a64a65d3d56481249965e30bdeaf3902888"
+    },
+    {
+      "source": {
+        "kind": "Secret",
+        "namespace": "vela-system",
+        "name": "vela-fleet-apiserver-client-current",
+        "uid": "a05d8b79-c70a-479c-ab5c-49fb13a8a233",
+        "resource_version": "1617367",
+        "required_keys": [
+          "ca.crt",
+          "tls.crt",
+          "tls.key"
+        ],
+        "consumers": [
+          "kube-apiserver"
+        ]
+      },
+      "source_revision": "sha256:01b6bb0487067177fda1bc2763355b7556b43c8a165e2d2a401380817f57caae",
+      "name": "vela-fleet-apiserver-client-current-r-01b6bb048706",
+      "revision": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510"
+    }
+  ],
+  "created": [
+    "Secret/vela-system/vela-control-transport-tls-fleet-v1-r-1c7bbdf59dad",
+    "Secret/vela-system/vela-fleet-control-mtls-source-v1-r-ac8ad4b5f54d",
+    "Secret/vela-system/vela-kube-apiserver-webhook-ca-source-v1-r-0cf6535f1709",
+    "ConfigMap/vela-system/vela-fleet-rollouts-unassigned-v1-r-52f76b90b1e2",
+    "Secret/vela-system/vela-fleet-admission-server-current-r-121b047568c4",
+    "Secret/vela-system/vela-fleet-apiserver-client-current-r-01b6bb048706"
+  ],
+  "evidence": [
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-transport-tls-fleet-v1-r-1c7bbdf59dad",
+      "revision": "sha256:dae5ba93b37f4419696538cee01849b6208244fb165ccd282c094a6eda59423a",
+      "required_keys": [
+        "fleet-client-ca.crt",
+        "fleet-tls.crt",
+        "fleet-tls.key",
+        "runtime-policy-private.key",
+        "stage-worker-client-ca.crt",
+        "stage-worker-tls.crt",
+        "stage-worker-tls.key"
+      ],
+      "uid": "a39d2b10-c54f-462e-b1e6-66b64b3f8bb7",
+      "resource_version": "1621538",
+      "content_digest": "sha256:dae5ba93b37f4419696538cee01849b6208244fb165ccd282c094a6eda59423a"
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-fleet-control-mtls-source-v1-r-ac8ad4b5f54d",
+      "revision": "sha256:9e926a84a49be2b1cac24af85552b7ab7853eed4475ff80f1cc8e006422e5f83",
+      "required_keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ],
+      "uid": "8333b894-8c00-445e-93cb-231a9ee55853",
+      "resource_version": "1621544",
+      "content_digest": "sha256:9e926a84a49be2b1cac24af85552b7ab7853eed4475ff80f1cc8e006422e5f83"
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-kube-apiserver-webhook-ca-source-v1-r-0cf6535f1709",
+      "revision": "sha256:99da4a25222979308bfc6c2cade1a5de9b667766b000f3db98a1da7a98a0cdba",
+      "required_keys": [
+        "ca.crt"
+      ],
+      "uid": "52e061aa-47ea-4150-993e-7bf50511f619",
+      "resource_version": "1621550",
+      "content_digest": "sha256:99da4a25222979308bfc6c2cade1a5de9b667766b000f3db98a1da7a98a0cdba"
+    },
+    {
+      "kind": "ConfigMap",
+      "namespace": "vela-system",
+      "name": "vela-fleet-rollouts-unassigned-v1-r-52f76b90b1e2",
+      "revision": "sha256:ea766226218418768828f4d687f74868ff8b1aa82da98ef62ce57377c0c84174",
+      "uid": "ca66ff72-962c-4dc0-b8b1-106e812f8351",
+      "resource_version": "1621552",
+      "content_digest": "sha256:ea766226218418768828f4d687f74868ff8b1aa82da98ef62ce57377c0c84174"
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-fleet-admission-server-current-r-121b047568c4",
+      "revision": "sha256:9b0a2c60673709a2ad0c7470f9755a64a65d3d56481249965e30bdeaf3902888",
+      "required_keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ],
+      "uid": "7184903f-342f-4295-8d64-14beb13b55e4",
+      "resource_version": "1621563",
+      "content_digest": "sha256:9b0a2c60673709a2ad0c7470f9755a64a65d3d56481249965e30bdeaf3902888"
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-fleet-apiserver-client-current-r-01b6bb048706",
+      "revision": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510",
+      "required_keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ],
+      "uid": "0ceeb45e-684a-4b13-9168-f81f461188cd",
+      "resource_version": "1621567",
+      "content_digest": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510"
+    }
+  ]
+}

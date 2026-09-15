@@ -1,0 +1,189 @@
+{
+  "at": "2026-09-14T19:49:35.437340+00:00",
+  "scope": "read-only postcheck after committed baseline adoption; original strict text comparison retained separately",
+  "checks": [
+    {
+      "name": "same 3004 schema identities",
+      "passed": true
+    },
+    {
+      "name": "differences confined to Goose column and ACL order",
+      "passed": true
+    },
+    {
+      "name": "all Goose column attributes equal despite physical order",
+      "passed": true
+    },
+    {
+      "name": "all Goose grants equal despite array order",
+      "passed": true
+    },
+    {
+      "name": "standard Goose ledger covers exactly 0 through 96",
+      "passed": true
+    },
+    {
+      "name": "all nine migration seed tables untouched",
+      "passed": true
+    },
+    {
+      "name": "213 business table row counts unchanged",
+      "passed": true
+    },
+    {
+      "name": "Fleet has both required EXECUTE grants",
+      "passed": true
+    },
+    {
+      "name": "two existing Control Pods Ready",
+      "passed": true
+    }
+  ],
+  "raw_schema_differences": [
+    "TABLE goose_db_version; Type: ACL; Schema: public; Owner: postgres",
+    "goose_db_version; Type: TABLE; Schema: public; Owner: postgres"
+  ],
+  "schema_sha256": "f5b27e303dfe1fe622f64deda015aa69f08de4af5b0b7ce522bd5db7c1c09775",
+  "ordering_diffs": {
+    "TABLE goose_db_version; Type: ACL; Schema: public; Owner: postgres": "--- reference\n\n+++ live\n\n@@ -1,2 +1,2 @@\n\n+GRANT SELECT ON TABLE public.goose_db_version TO vela_recovery_owner;\n GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.goose_db_version TO vela_internal;\n-GRANT SELECT ON TABLE public.goose_db_version TO vela_recovery_owner;",
+    "goose_db_version; Type: TABLE; Schema: public; Owner: postgres": "--- reference\n\n+++ live\n\n@@ -1,7 +1,7 @@\n\n CREATE TABLE public.goose_db_version (\n-    id integer NOT NULL,\n     version_id bigint NOT NULL,\n     is_applied boolean NOT NULL,\n+    id integer NOT NULL,\n     tstamp timestamp without time zone DEFAULT now() NOT NULL\n );\n "
+  },
+  "ledger": {
+    "rows": 97,
+    "versions": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96
+    ],
+    "all_applied": true,
+    "baseline_registered_at": "2026-09-14T19:47:06.169315"
+  },
+  "seed_hashes": {
+    "catalog_evidence_protocol_state": "251364ff317565a37b8728f2bf64044f406f6a99444f9c16956f6ad97436de4a",
+    "h3_exact_cache_hit_cursors": "4a1ee590e1ea869fcfcab76a76963629ea7d39e7a4b1c216cbae0d3d664a8858",
+    "legacy_h3_contraction_v52_function_restore": "4a7e20bd5d3c1665aaeea511a752abec3c302b29181e23b5e5720b5a2b1d3b8a",
+    "profile_circuit_protocol_state": "d32828cfa538f23943564f4fe1570fa0231e4d3adde402e7484a9593f719ae9f",
+    "recovery_admission_control": "762ec789eb4bd9fee659282b1b9c088030bdd42e89460440f68303133ac9b20e",
+    "retention_policy_revisions": "9cba61ddd4698c246dc00df6c6058a9e68084dd99d40e06c4cbcb04ffcff2f9a",
+    "slo_measurement_protocol_state": "2c737f094afd061ea446240535eb7b5f7cd30e9dd9498dc2950a44918705dcd8",
+    "stage_cutover_control": "a926856f2b670bdc2ab29c79fab2317d1df0cb1b9b1335003b64c8f3ff3b9342",
+    "stage_cutover_revisions": "8a94625ed48d1695e120855fdb88adaf0fc8a759d698ffcb8a60a082a660b96a"
+  },
+  "nonempty_business_tables": {
+    "stage_cutover_revisions": 1,
+    "finance_reconciliation_principals": 1,
+    "compliance_principals": 1,
+    "retention_policy_revisions": 3,
+    "finance_reconciliation_database_bindings": 1,
+    "compliance_database_bindings": 1,
+    "h3_exact_cache_hit_cursors": 1,
+    "legacy_h3_contraction_v52_function_restore": 2,
+    "profile_circuit_protocol_state": 1,
+    "recovery_admission_control": 1,
+    "slo_measurement_protocol_state": 1,
+    "catalog_evidence_protocol_state": 1,
+    "finance_reconciliation_cursors": 1,
+    "compliance_event_cursors": 1,
+    "stage_cutover_control": 1
+  },
+  "fleet_grants": "t|t",
+  "control_pod_uids": [
+    "c0bef53c-71d1-47a6-935f-7d7e7ddbc225",
+    "dd91c9ae-9445-4d17-9493-5ba8524bd492"
+  ],
+  "passed": true
+}

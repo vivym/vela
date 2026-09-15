@@ -13,8 +13,8 @@ data:
       "replace-with-node-identity": {
         "address": "replace-with-node-agent.vela-system.svc:9444",
         "server_name": "replace-with-node-agent.vela-system.svc",
-        "worker_id": "00000000-0000-0000-0000-000000000001",
-        "worker_epoch": 1,
-        "spiffe_identity": "spiffe://vela.internal/node-agent/replace-with-node-identity"
+        "agent_id": "00000000-0000-0000-0000-000000000001",
+        "agent_epoch": 1,
+        "spiffe_identity": "spiffe://vela.internal/node-agent/replace-with-node-identity/00000000-0000-0000-0000-000000000001"
       }
     }

@@ -1,0 +1,26 @@
+[
+  {
+    "op": "test",
+    "path": "/metadata/name",
+    "value": "vela-control-node-agents-r0-placeholder"
+  },
+  {
+    "op": "replace",
+    "path": "/metadata/name",
+    "value": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6"
+  },
+  {
+    "op": "replace",
+    "path": "/data",
+    "value": {
+      "node-agents.json": "{\n  \"gpu-node-01\": {\n    \"address\": \"10.1.201.66:9444\",\n    \"server_name\": \"10.1.201.66\",\n    \"agent_id\": \"10000000-0000-0000-0000-000000000066\",\n    \"agent_epoch\": 1,\n    \"spiffe_identity\": \"spiffe://vela.internal/node-agent/Z3B1LW5vZGUtMDE/10000000-0000-0000-0000-000000000066\"\n  }\n}\n"
+    }
+  },
+  {
+    "op": "add",
+    "path": "/metadata/annotations",
+    "value": {
+      "vela.ai/release-revision": "sha256:910197ce9e14b7b651a73ca6c19c373748fe11ffe3c4851e2116d53e40faa412"
+    }
+  }
+]

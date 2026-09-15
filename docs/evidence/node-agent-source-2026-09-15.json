@@ -1,0 +1,82 @@
+{
+  "at": "2026-09-14T19:10:24.977426+00:00",
+  "marker": "vela-node-source-fc1b14bf",
+  "checks": [
+    {
+      "name": "both CPU probes Ready",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-a baseline .66 TCP connected",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-a CNI source belongs to .66 host",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-b baseline .66 TCP connected",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-b CNI source belongs to .66 host",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-a other control host denied",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-a .66 remains permitted",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-b other control host denied",
+      "passed": true
+    },
+    {
+      "name": "vela-node-source-fc1b14bf-b .66 remains permitted",
+      "passed": true
+    }
+  ],
+  "connections": [
+    {
+      "pod": "vela-node-source-fc1b14bf-a",
+      "node": "llmpool01",
+      "pod_ip": "10.42.0.16",
+      "service_ip": "10.43.91.81",
+      "observed_sources": [
+        "10.42.2.0"
+      ],
+      "client_source": "10.1.201.66",
+      "socket_tables": {
+        "tcp": "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode                                                     \n",
+        "tcp6": "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0000000000000000FFFF000010002A0A:20FC 0000000000000000FFFF000000022A0A:8697 01 00000000:00000000 00:00000000 00000000 65532        0 20073837 1 0000000000000000 20 0 0 10 -1\n"
+      }
+    },
+    {
+      "pod": "vela-node-source-fc1b14bf-b",
+      "node": "llmpool02",
+      "pod_ip": "10.42.1.137",
+      "service_ip": "10.43.21.168",
+      "observed_sources": [
+        "10.42.2.0"
+      ],
+      "client_source": "10.1.201.66",
+      "socket_tables": {
+        "tcp": "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode                                                     \n",
+        "tcp6": "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n   0: 0000000000000000FFFF000089012A0A:20FC 0000000000000000FFFF000000022A0A:69E7 01 00000000:00000000 00:00000000 00000000 65532        0 24846092 1 0000000000000000 20 0 0 10 -1\n"
+      }
+    }
+  ],
+  "source_cidrs": [
+    "10.42.2.0/32"
+  ],
+  "passed": true,
+  "cleanup": {
+    "pods_removed": true,
+    "policies_removed": true,
+    "ssh_processes_exited": true,
+    "services_removed": true
+  }
+}

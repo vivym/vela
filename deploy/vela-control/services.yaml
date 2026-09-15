@@ -94,6 +94,6 @@ spec:
   ports:
     - name: https
       port: 8446
-      targetPort: compliance-https
+      targetPort: compliance
       protocol: TCP
       appProtocol: https

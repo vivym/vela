@@ -1,0 +1,10 @@
+[
+  {
+    "op": "replace",
+    "path": "/spec/ingress/0/from/0/podSelector/matchLabels",
+    "value": {
+      "app.kubernetes.io/name": "apisix",
+      "app.kubernetes.io/instance": "apisix"
+    }
+  }
+]

@@ -1,0 +1,449 @@
+{
+  "10.1.201.70": {
+    "host": "llmpool01",
+    "at": "2026-09-15T08:47:51.583507+00:00",
+    "passed": true,
+    "checks": [
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      },
+      {
+        "name": "webhook remains unregistered",
+        "passed": true
+      },
+      {
+        "name": "candidate path root owned",
+        "passed": true
+      },
+      {
+        "name": "candidate exact admission.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact kubeconfig",
+        "passed": true
+      },
+      {
+        "name": "candidate exact rke2-drop-in.candidate.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact material.json",
+        "passed": true
+      },
+      {
+        "name": "candidate exact client.pem",
+        "passed": true
+      },
+      {
+        "name": "old PodSecurity unchanged",
+        "passed": true
+      },
+      {
+        "name": "not already adopted",
+        "passed": true
+      },
+      {
+        "name": "API manifest adopted exact admission file",
+        "passed": true
+      },
+      {
+        "name": "host was not rebooted",
+        "passed": true
+      },
+      {
+        "name": "RKE2 service restarted once",
+        "passed": true
+      },
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      }
+    ],
+    "boot_before": "d8bca6a6-2a44-41af-ab33-5933b8b714db",
+    "service_before": "0d278fe79f694b0dbd9256df3f5ffbff",
+    "service_after": "5e29eea3bc3b405eb6d1a2ba6a83c524",
+    "activated": true,
+    "directory": "/opt/vela/fleet-admission-activation-20260915/084751Z",
+    "finished_at": "2026-09-15T08:47:59.958443+00:00"
+  },
+  "10.1.201.71": {
+    "host": "llmpool02",
+    "at": "2026-09-15T08:53:07.056930+00:00",
+    "passed": true,
+    "checks": [
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      },
+      {
+        "name": "webhook remains unregistered",
+        "passed": true
+      },
+      {
+        "name": "candidate path root owned",
+        "passed": true
+      },
+      {
+        "name": "candidate exact admission.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact kubeconfig",
+        "passed": true
+      },
+      {
+        "name": "candidate exact rke2-drop-in.candidate.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact material.json",
+        "passed": true
+      },
+      {
+        "name": "candidate exact client.pem",
+        "passed": true
+      },
+      {
+        "name": "old PodSecurity unchanged",
+        "passed": true
+      },
+      {
+        "name": "not already adopted",
+        "passed": true
+      },
+      {
+        "name": "API manifest adopted exact admission file",
+        "passed": true
+      },
+      {
+        "name": "host was not rebooted",
+        "passed": true
+      },
+      {
+        "name": "RKE2 service restarted once",
+        "passed": true
+      },
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      }
+    ],
+    "boot_before": "676751e3-c639-4ff5-8f69-d0b9d4d7a635",
+    "service_before": "2813aad5f74e4f5b8cdcba379f7b457d",
+    "service_after": "94e0be60213344c5bfd7bcae8d58112d",
+    "activated": true,
+    "directory": "/opt/vela/fleet-admission-activation-20260915/085307Z",
+    "finished_at": "2026-09-15T08:54:27.693624+00:00"
+  },
+  "10.1.201.66": {
+    "host": "marslab-server",
+    "at": "2026-09-15T08:56:15.766212+00:00",
+    "passed": true,
+    "checks": [
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      },
+      {
+        "name": "webhook remains unregistered",
+        "passed": true
+      },
+      {
+        "name": "candidate path root owned",
+        "passed": true
+      },
+      {
+        "name": "candidate exact admission.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact kubeconfig",
+        "passed": true
+      },
+      {
+        "name": "candidate exact rke2-drop-in.candidate.yaml",
+        "passed": true
+      },
+      {
+        "name": "candidate exact material.json",
+        "passed": true
+      },
+      {
+        "name": "candidate exact client.pem",
+        "passed": true
+      },
+      {
+        "name": "old PodSecurity unchanged",
+        "passed": true
+      },
+      {
+        "name": "not already adopted",
+        "passed": true
+      },
+      {
+        "name": "API manifest adopted exact admission file",
+        "passed": true
+      },
+      {
+        "name": "host was not rebooted",
+        "passed": true
+      },
+      {
+        "name": "RKE2 service restarted once",
+        "passed": true
+      },
+      {
+        "name": "three control nodes healthy",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.70",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.71",
+        "passed": true
+      },
+      {
+        "name": "API ready 10.1.201.66",
+        "passed": true
+      },
+      {
+        "name": "vela-control two Ready",
+        "passed": true
+      },
+      {
+        "name": "vela-fleet-controller two Ready",
+        "passed": true
+      },
+      {
+        "name": "NATS three Ready",
+        "passed": true
+      },
+      {
+        "name": "PostgreSQL three Ready",
+        "passed": true
+      },
+      {
+        "name": "APISIX etcd three Ready",
+        "passed": true
+      },
+      {
+        "name": "MinIO two Ready on each control host",
+        "passed": true
+      },
+      {
+        "name": "Longhorn active volumes healthy",
+        "passed": true
+      }
+    ],
+    "boot_before": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+    "service_before": "9e1c27b1329c4045bbb03f3f5935d293",
+    "service_after": "4c25baef04e5410ea6e39204a102afd4",
+    "activated": true,
+    "directory": "/opt/vela/fleet-admission-activation-20260915/085615Z",
+    "finished_at": "2026-09-15T08:57:36.421168+00:00"
+  }
+}

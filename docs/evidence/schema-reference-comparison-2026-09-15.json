@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-14T19:33:26.504859+00:00",
+  "pod": "vela-schema-reference-7d7bb3b1",
+  "scope": "isolated PostgreSQL on CPU node; production database reads only",
+  "checks": [
+    {
+      "name": "isolated CPU PostgreSQL Ready",
+      "passed": true
+    },
+    {
+      "name": "96 reference migrations exit successfully",
+      "passed": true
+    },
+    {
+      "name": "reference ledger reports 96",
+      "passed": true
+    },
+    {
+      "name": "production schema unchanged during reference generation",
+      "passed": true
+    }
+  ],
+  "production_primary": "vela-postgres-1",
+  "image": "ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe",
+  "reference_blocks": 3004,
+  "live_blocks": 3003,
+  "matching_blocks": 2998,
+  "differences": [
+    {
+      "identity": "FUNCTION vela_get_runtime_startup_authorization(p_request uuid); Type: ACL; Schema: public; Owner: vela_fleet_owner",
+      "category": "different",
+      "reference_sha256": "e7fdb9393bae311c0a813d555d8d7abe0d48291dd2a4118c82d87f7002fc1454",
+      "live_sha256": "a9bd709ca5b143aee3cbbb744f9f13044b86327bb9fa4f861039f9dc0ebd820b"
+    },
+    {
+      "identity": "FUNCTION vela_store_runtime_startup_authorization(p_request uuid, p_authorization bytea); Type: ACL; Schema: public; Owner: vela_fleet_owner",
+      "category": "different",
+      "reference_sha256": "44052d94da8c7599e7e29e84829ddca9b5b1e54caa6832e495990a612a54b559",
+      "live_sha256": "9aa826bef4b33da579e2d5f148e6e69412dff730cea123a4e0a8c533eaca8a1a"
+    },
+    {
+      "identity": "TABLE goose_db_version; Type: ACL; Schema: public; Owner: postgres",
+      "category": "different",
+      "reference_sha256": "d50e4d197172629c87e48148679d9558c5f3d298f2e5fa08a0f2af26230d3f8d",
+      "live_sha256": "1ca2a9fa5f44ad0047cbcd5793ffb2c84cc997d7e459153adb8617039adf1e5b"
+    },
+    {
+      "identity": "goose_db_version goose_db_version_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres",
+      "category": "different",
+      "reference_sha256": "4d00442dd941d88a37bdd1a4e4ecd5dfb7244fb4379a690d19d2d5b77cf189ab",
+      "live_sha256": "ab166d0c1ad7e07179ceafa9d353a264294dd7ae13bb87e154d0b3753a8b9db0"
+    },
+    {
+      "identity": "goose_db_version; Type: TABLE; Schema: public; Owner: postgres",
+      "category": "different",
+      "reference_sha256": "186f93ec31dae96d5cb223bdbd0ca1228ec8c133704472199934658e09c53c62",
+      "live_sha256": "b67283922ca44bc53013594286984d9f7e61a2ec79dc110dc2e97692643444f9"
+    },
+    {
+      "identity": "goose_db_version_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres",
+      "category": "reference-only",
+      "reference_sha256": "256d6e618497421d9904969dbfd039c06b3dd9d26f2e8ed7be91e1a26410b958",
+      "live_sha256": null
+    }
+  ],
+  "reference_sha256": "fc9eee1e61baa44619157c324dfa7f71fad85b4eb51a8a475f10fcec151e8bf7",
+  "live_sha256": "bcbf1ab4bf94c5036bf8c21d4f54726ace93b6661b689819baaeda6cd9370c8f",
+  "compared": true,
+  "cleanup": {
+    "pod_removed": true,
+    "policy_removed": true
+  }
+}

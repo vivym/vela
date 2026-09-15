@@ -1,0 +1,493 @@
+{
+  "at": "2026-09-14T19:31:42.091149+00:00",
+  "schema_version": 96,
+  "files": [
+    {
+      "path": "db/bootstrap/roles.sql",
+      "sha256": "e89fb6642204ab0ad6bb47bf0fec83ef213ba5cf857924aff800599e1b638dda",
+      "bytes": 15935
+    },
+    {
+      "path": "db/migrations/00001_foundation.sql",
+      "sha256": "900ff560da4f82da90b1508a00d561b6fe25b01e886f15a6c1a83fe335046576",
+      "bytes": 48424
+    },
+    {
+      "path": "db/migrations/00002_worker_assignment.sql",
+      "sha256": "3facdd21caf47dc64ce32988788d934aa73c633732c92c4d91b0f8e387b245fd",
+      "bytes": 11960
+    },
+    {
+      "path": "db/migrations/00003_worker_start.sql",
+      "sha256": "f7572e107d7f9e1c3be9966b4f9d95fe01eb249c0522998cf18e87045b06c0db",
+      "bytes": 3422
+    },
+    {
+      "path": "db/migrations/00004_worker_heartbeat.sql",
+      "sha256": "5142616c495d37848d3b050d96fdbf1615dea1463782752c0ce1917417dc7354",
+      "bytes": 15582
+    },
+    {
+      "path": "db/migrations/00005_execution_failure.sql",
+      "sha256": "6672f5e57571fdf3fb5a881ff528943b536662a5f935b595a191ac0680b9562a",
+      "bytes": 20299
+    },
+    {
+      "path": "db/migrations/00006_customer_cancellation.sql",
+      "sha256": "ca3af3bf0f88a1f4870bbe60229381a47137bda1d17b20c1cf1f84fa8e1a702b",
+      "bytes": 55237
+    },
+    {
+      "path": "db/migrations/00007_artifact_finalization.sql",
+      "sha256": "bb105ca011c88b5d9d8dac6a1f916e6975480805ba9c3b946017b553322fb7b9",
+      "bytes": 35886
+    },
+    {
+      "path": "db/migrations/00008_hierarchical_scheduler.sql",
+      "sha256": "af89adc712fa2512c8399bdeb0d31c39f1e285f443acf52ba93b4b3fab7d881a",
+      "bytes": 86571
+    },
+    {
+      "path": "db/migrations/00009_invoice_export.sql",
+      "sha256": "c0899d1093ab3f4b3c28fb6e5476567194d66f167e5b4127262e5b097e192204",
+      "bytes": 21437
+    },
+    {
+      "path": "db/migrations/00010_profile_certification_circuit.sql",
+      "sha256": "3de1503dc4fea7bdc72c416c2c09b7ad80fdbe954619f73416e8910b25333032",
+      "bytes": 35722
+    },
+    {
+      "path": "db/migrations/00011_project_webhooks.sql",
+      "sha256": "984e5860d6553db2b62456fe6498f651e4d9cb83a6940a5bc4aeabb61b3b01c2",
+      "bytes": 60636
+    },
+    {
+      "path": "db/migrations/00012_human_oidc_fixed_rbac.sql",
+      "sha256": "62ac776e95499c506b3c3c128844d245ed29a71677d9dc7c224c1e5707fe7d1d",
+      "bytes": 41394
+    },
+    {
+      "path": "db/migrations/00013_service_principal_administration.sql",
+      "sha256": "561fecbbc2b0965440e24a7fbeefea4387332fb88d249590bfb0e261f8c63c99",
+      "bytes": 33401
+    },
+    {
+      "path": "db/migrations/00014_human_membership_administration.sql",
+      "sha256": "5fcfba3d59421603f99db988bb0998643148443ea7fc5a6e6d54e1cc951769ae",
+      "bytes": 58118
+    },
+    {
+      "path": "db/migrations/00015_organization_reporting.sql",
+      "sha256": "25663826fd89a04d4c92efff60e4cc04c707fa8c92d81151719b85971c7c6495",
+      "bytes": 40122
+    },
+    {
+      "path": "db/migrations/00016_project_retention_content_deletion.sql",
+      "sha256": "ed3ad8df4e1cdecdd750e720f400591740c68a198811b3e4d5ee8df79c754fb8",
+      "bytes": 91017
+    },
+    {
+      "path": "db/migrations/00017_platform_operator_break_glass.sql",
+      "sha256": "47692569dafae1b0c45eee2f6e5a3eb4a0f1a97e9441b06c74864ae3bbf887c2",
+      "bytes": 65491
+    },
+    {
+      "path": "db/migrations/00018_finance_reconciliation.sql",
+      "sha256": "30782b7612f5d98fc4a3a34a8ee2a7bfd65dd4f146eee9df9f62816c87f29e67",
+      "bytes": 24855
+    },
+    {
+      "path": "db/migrations/00019_certified_remediation.sql",
+      "sha256": "64c3d46c9a85f43e696fefef817c83913ccc65497598fd505ab96f7561941ad8",
+      "bytes": 43786
+    },
+    {
+      "path": "db/migrations/00020_remediation_execution_claim.sql",
+      "sha256": "5423472f97e11a97454bc2fd3df066545eed5817331242ed244c3d91bf0b8406",
+      "bytes": 4125
+    },
+    {
+      "path": "db/migrations/00021_remediation_execution_dispatch.sql",
+      "sha256": "16abe8d633edbc41c854b569626d23ec9799738b59f69ac782590bc03285e8d1",
+      "bytes": 2218
+    },
+    {
+      "path": "db/migrations/00022_remediation_execution_claim_replay.sql",
+      "sha256": "6c594dfca87e1c060e97db8dd9083ceca16a9e9a4238a5ce0f570cc5884adb34",
+      "bytes": 6186
+    },
+    {
+      "path": "db/migrations/00023_fleet_controller_worker_readiness.sql",
+      "sha256": "d0125bafde09f43c7216c1bfe9f7c36b86475da929465ca71dfc0a0ed278db28",
+      "bytes": 139597
+    },
+    {
+      "path": "db/migrations/00024_staging_artifact_expiry.sql",
+      "sha256": "d0eb29dc5c05cd971ae02da30de54b6a761704c5b3a28f9d930c415b8050039b",
+      "bytes": 9692
+    },
+    {
+      "path": "db/migrations/00025_scheduler_inbox_receipt.sql",
+      "sha256": "43f7a28d13af91dd3ed96719cb3c8b217c6bda4236814b0f07ae4c62ef440750",
+      "bytes": 4294
+    },
+    {
+      "path": "db/migrations/00026_synchronous_quorum_guard.sql",
+      "sha256": "a1f4e4e5916893a340a7cfd3c5dbbc3f5e3ab93252583668af8ca3486315651d",
+      "bytes": 1794
+    },
+    {
+      "path": "db/migrations/00027_authorized_debug_dump_lifecycle.sql",
+      "sha256": "a8bd9260a332d820d1bfdbcf6bbbe91b0743e66c8d464bd1981b6a00d9308dda",
+      "bytes": 78093
+    },
+    {
+      "path": "db/migrations/00028_off_cluster_backup_retention.sql",
+      "sha256": "13b362b489d5d48c5fdec8a552a3da48b0488bc21fe43aecf127c3226e2db2c7",
+      "bytes": 24068
+    },
+    {
+      "path": "db/migrations/00029_artifact_backup_replication.sql",
+      "sha256": "b30e37dae7d2be4cc683149717a045200073714f7cc6ce4ac3bdd74a5dd87ac9",
+      "bytes": 18025
+    },
+    {
+      "path": "db/migrations/00030_non_content_legal_hold.sql",
+      "sha256": "ecf7120a515ab5dba994f5bc7cd41d8a43bef857df728b2e3bff4342bbfb46e2",
+      "bytes": 29136
+    },
+    {
+      "path": "db/migrations/00031_non_content_record_expiry.sql",
+      "sha256": "2cfbe8b10a836c19ffec226d8ed26a0fe7098e7424d6a96a628c3e350e11a446",
+      "bytes": 102740
+    },
+    {
+      "path": "db/migrations/00032_catalog_promotion_production_gates.sql",
+      "sha256": "05cdf0814df8b73f6dc219ae08cb2c2ed3a48449e4b011f38f5f2cf96ca10563",
+      "bytes": 61874
+    },
+    {
+      "path": "db/migrations/00033_statistical_slo_measurement.sql",
+      "sha256": "73e1b56969529ae759c045ee2f0fc943f8ee58b8ff101b8cdb29908174394d0a",
+      "bytes": 39644
+    },
+    {
+      "path": "db/migrations/00034_stage_execution_catalog.sql",
+      "sha256": "ea3701514869adbaca5244a661230b455ac1829a54835494c491737d3d884d8f",
+      "bytes": 76272
+    },
+    {
+      "path": "db/migrations/00035_worker_instance_residency.sql",
+      "sha256": "7a670a4e93744c163493db58b16e21c72324a34d0b27c6dd2bbcc6bb38e80c42",
+      "bytes": 91605
+    },
+    {
+      "path": "db/migrations/00036_stage_attempt_authority.sql",
+      "sha256": "2a3d5223600fbbb61d657581da36bb77cf435a126a3f7e28fdcb53f878b91c07",
+      "bytes": 173020
+    },
+    {
+      "path": "db/migrations/00037_stage_scheduler.sql",
+      "sha256": "2f13d287bb07a9c3aeef04d0fd5a611e048d3ca849ab3165473675edfe18bb15",
+      "bytes": 77295
+    },
+    {
+      "path": "db/migrations/00038_stage_artifact.sql",
+      "sha256": "9a60f5e48ce9ce497583cd643968424f7c12b160dd8d3cdea10391f731128eda",
+      "bytes": 66484
+    },
+    {
+      "path": "db/migrations/00039_stage_worker_control_authority.sql",
+      "sha256": "0605c99db190c52ef9d256336399b7b7120ef236436f12fe5d7cac0db3b7b02b",
+      "bytes": 4910
+    },
+    {
+      "path": "db/migrations/00040_stage_worker_execution.sql",
+      "sha256": "b7d8cf64c1eafc2a16d89275a201934fae55841b8fde049ba11b74294e6bf756",
+      "bytes": 42834
+    },
+    {
+      "path": "db/migrations/00041_stage_worker_operations.sql",
+      "sha256": "55a183299a8155aa31a4b2863d1da8355ce244b5e0918cc04e7d4ac72eb2f0da",
+      "bytes": 28765
+    },
+    {
+      "path": "db/migrations/00042_stage_worker_assignment.sql",
+      "sha256": "8d8788be46a450e8f0812d4037b8673833c1f4fc1cb62fa2176da15705dec8b9",
+      "bytes": 28470
+    },
+    {
+      "path": "db/migrations/00043_stage_graph_finalization.sql",
+      "sha256": "b5feee02dc86c5ffd2b3acae53c73875af53b0d807a8ba793ef1adc8d0d9b73f",
+      "bytes": 5065
+    },
+    {
+      "path": "db/migrations/00044_stage_cache.sql",
+      "sha256": "b6b5c83c8f9cff65f3f96da870a3003ef8b08dd1817ed5bd6a06858000f2d075",
+      "bytes": 49104
+    },
+    {
+      "path": "db/migrations/00045_stage_graph_finalization_outputs.sql",
+      "sha256": "160108468c1e6cc4c95e8fc5b90bae4127cae472a9e1e2ee255a421dd105480f",
+      "bytes": 3616
+    },
+    {
+      "path": "db/migrations/00046_stage_graph_visible_completion.sql",
+      "sha256": "b0eb6553c2fa789e203e3bc6fb84cf381c0f9254e829ba43901cee88893c67f3",
+      "bytes": 10213
+    },
+    {
+      "path": "db/migrations/00047_usage_cost_ledger.sql",
+      "sha256": "4db96ffdce6eb0c268b065adaa4ced2c5f52ab073f163358272a62b9027fdd20",
+      "bytes": 22113
+    },
+    {
+      "path": "db/migrations/00048_stage_run_output_binding.sql",
+      "sha256": "ee2f1052a94423711069d8b0b6312904eccab44f67804ff477223d79880e151e",
+      "bytes": 19583
+    },
+    {
+      "path": "db/migrations/00049_stage_cutover_control.sql",
+      "sha256": "576bf24cad73099dd324b4f86f1313421c80c1405b4fb8ce412f7e32a8bdf69b",
+      "bytes": 118352
+    },
+    {
+      "path": "db/migrations/00050_stage_graph_instantiation_dispatch.sql",
+      "sha256": "14533ef8d37cc07c65a80680f52f598527baa973d59011b1be8d1e151b4c3fc0",
+      "bytes": 29573
+    },
+    {
+      "path": "db/migrations/00051_atomic_stage_graph_admission.sql",
+      "sha256": "1b6e565fb2768213193817f3851b390b552b992c63e5fc9cb29830c5cd02f531",
+      "bytes": 20043
+    },
+    {
+      "path": "db/migrations/00052_stage_cutover_zero_backlog_seal.sql",
+      "sha256": "6eee2da6aebbd2985c649385984cdb0dd83b5a25347a8a1abe1c30cf2f79506c",
+      "bytes": 32100
+    },
+    {
+      "path": "db/migrations/00053_legacy_h3_guarded_contraction.sql",
+      "sha256": "74b3cd1ac1d99d08def3e813e77bae9ac507d2dda34d0371370bd89c951a4c9a",
+      "bytes": 24749
+    },
+    {
+      "path": "db/migrations/00054_stage_transfer_consume_destination.sql",
+      "sha256": "1a21430ed1ffaf9523dcac18ef837b64024cb609c99ba33548aacf84eacbac0d",
+      "bytes": 9860
+    },
+    {
+      "path": "db/migrations/00055_h3_campaign_evidence_reader.sql",
+      "sha256": "792f4ce954936546dca7784b0abbb51d91a68d511f0258b60074b96a3714d501",
+      "bytes": 4911
+    },
+    {
+      "path": "db/migrations/00056_stage_observability_reader.sql",
+      "sha256": "9358cfbac4bc9f165e415e74ecaf6ebbfd2874cc98ca1f4519c5d592804564ed",
+      "bytes": 272
+    },
+    {
+      "path": "db/migrations/00057_legacy_h3_release_contraction_gate.sql",
+      "sha256": "114884f1424069e31ceec3ddeec2f922726eeb36d49b9aad7fafc42eb53a40b0",
+      "bytes": 17505
+    },
+    {
+      "path": "db/migrations/00058_legacy_h3_schema_contraction.sql",
+      "sha256": "53dae4e2c5a7c8ed3c8d11085994715364e17ce05070a838ce1cd52af6be9af3",
+      "bytes": 107421
+    },
+    {
+      "path": "db/migrations/00059_model_runtime_epoch_registration.sql",
+      "sha256": "b115c4e5ab18e24b31ba02021b0883ab7e47e7c175b73b5abecce9d5e82c94a8",
+      "bytes": 29283
+    },
+    {
+      "path": "db/migrations/00060_model_runtime_gang_barrier.sql",
+      "sha256": "99e51f100bf4d5547ae82c00dd59a99bc134a74982a09c8113fa95cce75baa0c",
+      "bytes": 33264
+    },
+    {
+      "path": "db/migrations/00061_stage_worker_gang_authority.sql",
+      "sha256": "3e78f00866e67af56b778f9f4c50dec0c9104d374a26ecfc5dc892a7e4fbc3ff",
+      "bytes": 11335
+    },
+    {
+      "path": "db/migrations/00062_stage_authority_member_identity.sql",
+      "sha256": "46a957d027412ed59348d118524d46cbf4c8bacad5e57bc3af5c4bda40bf8528",
+      "bytes": 4894
+    },
+    {
+      "path": "db/migrations/00063_h3_execution_snapshot.sql",
+      "sha256": "31e780296c7a1dd9b52c7a2143c83ff0c9d8193ec1b3d75c7efed563d2abd497",
+      "bytes": 5901
+    },
+    {
+      "path": "db/migrations/00064_model_runtime_capacity_routes.sql",
+      "sha256": "37eeb913826c5fa779f5ac2237eb61a02842723a86cb6d5fcb017954b43715f7",
+      "bytes": 22400
+    },
+    {
+      "path": "db/migrations/00065_h3_exact_cache_reconciliation.sql",
+      "sha256": "21b5e9c77506ebb6636e00e7344ad01afaf5954cf2dd5033dae6265b74fe1680",
+      "bytes": 17670
+    },
+    {
+      "path": "db/migrations/00066_stage_worker_control_session_capacity.sql",
+      "sha256": "2b712d30fc0fbff02b6e80e92121c1099ecc6c6ca04ff65a68958a644329dc88",
+      "bytes": 66847
+    },
+    {
+      "path": "db/migrations/00067_stage_scheduler_project_capacity.sql",
+      "sha256": "b3c78f69bd28ab6874a236a6b7e45173d19fae9812ce3a15165a19157560ab8d",
+      "bytes": 3053
+    },
+    {
+      "path": "db/migrations/00068_stage_assignment_connector_states.sql",
+      "sha256": "b068b3e7fabe13a8521e260884d116bda2ae06943237c1ec8e484e995acf509f",
+      "bytes": 1601
+    },
+    {
+      "path": "db/migrations/00069_stage_transfer_server_clock.sql",
+      "sha256": "a8793a50a732726cbf9ae9f1220beb3056d22c11b504ea43c71482548549ff78",
+      "bytes": 15895
+    },
+    {
+      "path": "db/migrations/00070_stage_lease_expiry_recovery.sql",
+      "sha256": "86df7c33c749c99d736e41474b427eedf7eae63c56edc5942f5e82045c408447",
+      "bytes": 22369
+    },
+    {
+      "path": "db/migrations/00071_stage_artifact_lifecycle.sql",
+      "sha256": "633356c439767d08785a1c674bb178587eb9744c985c6557e42b9ccd39099def",
+      "bytes": 29064
+    },
+    {
+      "path": "db/migrations/00072_recovery_quiescence.sql",
+      "sha256": "8e725d4f00f8c553c7e18358b1cddbe074e6708e78d7196ab13848edfa6cfa0f",
+      "bytes": 13463
+    },
+    {
+      "path": "db/migrations/00073_stage_cache_downstream_bindings.sql",
+      "sha256": "eab78f89dc3adb6d02cadf2a6d83697a609087363828e6c5fbe7fec143032030",
+      "bytes": 7911
+    },
+    {
+      "path": "db/migrations/00074_job_owned_public_artifact_copies.sql",
+      "sha256": "da8995bd5ad6264e88cdba22508a10dcd866189f5900299327d73edd6a5c0ed4",
+      "bytes": 4282
+    },
+    {
+      "path": "db/migrations/00075_stage_graph_failure_terminalization.sql",
+      "sha256": "56d9b650b50746d19b03b16f2987b366d2fdfdc2b4ad25b056e03ccc961fc56e",
+      "bytes": 15567
+    },
+    {
+      "path": "db/migrations/00076_allocation_usage_unit.sql",
+      "sha256": "9c36b7f44f393481397903b4092bb974205659e8be54825aab5145cf7ff0aa18",
+      "bytes": 434
+    },
+    {
+      "path": "db/migrations/00077_runtime_usage_receipts.sql",
+      "sha256": "4a0d9922c1f78052513d551141426772b7f14bf20460d9c8be621e35116acec6",
+      "bytes": 6953
+    },
+    {
+      "path": "db/migrations/00078_idle_stage_worker_probe.sql",
+      "sha256": "c12b1a63b87d07332f64dd66a394094cc863b94fbff40be44fdb62a913eadebd",
+      "bytes": 9340
+    },
+    {
+      "path": "db/migrations/00079_stage_job_expiry.sql",
+      "sha256": "cc427f0db75882de0e0c66dba7ef677bb1a5c58e415e8767d447f854e799284b",
+      "bytes": 10161
+    },
+    {
+      "path": "db/migrations/00080_stage_scheduler_snapshot_lock_order.sql",
+      "sha256": "6f8b2e3cfd6bfd10d37245ede7bd1738f298a80f1ec5e22032558767ddc32fdd",
+      "bytes": 2776
+    },
+    {
+      "path": "db/migrations/00081_stage_assignment_quorum.sql",
+      "sha256": "b12c56e102b6f443d67d1cb29bc76f2e231d1a30279bc35f3d229c593931dba6",
+      "bytes": 1853
+    },
+    {
+      "path": "db/migrations/00082_stage_success_storage_completion.sql",
+      "sha256": "d7c460f751130bfdfa39c630ad41d204d4fb068ae043f3706a5180d77e881c8a",
+      "bytes": 4083
+    },
+    {
+      "path": "db/migrations/00083_capacity_observation_lifecycle.sql",
+      "sha256": "0566b52b5104a3af22ac529c815de56ddd8a23a1a034d11ff1f988a7e2fae35d",
+      "bytes": 4425
+    },
+    {
+      "path": "db/migrations/00084_blocked_stage_worker_probe.sql",
+      "sha256": "a02b3b1aed5e811bd14142c1310609ceab9deb2d38556b1b9a2862ba40ebcacf",
+      "bytes": 9581
+    },
+    {
+      "path": "db/migrations/00085_stage_materialization_terminal_replay.sql",
+      "sha256": "54b89ebdedc6a7f779a75215307c62b07d59ac2a4354e5274d992b007c6732b0",
+      "bytes": 4675
+    },
+    {
+      "path": "db/migrations/00086_stage_failure_terminal_replay.sql",
+      "sha256": "775b54664a228ce8d4420be5e58865e6f8b6bcc8e2fc711e8a8f5f7107ba540a",
+      "bytes": 5444
+    },
+    {
+      "path": "db/migrations/00087_stage_claim_finalization_lock_order.sql",
+      "sha256": "e0315b2daece1653c51a940802ba4587ceb974924afe3b686ffc639a8a42084c",
+      "bytes": 3474
+    },
+    {
+      "path": "db/migrations/00088_stage_allocation_execution_sequence.sql",
+      "sha256": "f97f0fa3f3b94fe0fdb3526e75786df21b74adfcb87b27c35fc105a0173b2c21",
+      "bytes": 7289
+    },
+    {
+      "path": "db/migrations/00089_stage_terminal_history.sql",
+      "sha256": "07152da131a8dffea52068232f46ac2cb7572b9a54e078e3a6122584298a0b39",
+      "bytes": 17441
+    },
+    {
+      "path": "db/migrations/00090_stage_assignment_content_lifecycle.sql",
+      "sha256": "99872d1d3e94dc55bf43e5af47b36ed0663f657181c4825935f6cc7ecd983a99",
+      "bytes": 30085
+    },
+    {
+      "path": "db/migrations/00091_worker_journal_bootstrap.sql",
+      "sha256": "9a051140a7e00b7c96b09bc1430e59de647750569d7d428a37639edb44211c1a",
+      "bytes": 17299
+    },
+    {
+      "path": "db/migrations/00092_worker_bootstrap_history.sql",
+      "sha256": "b823c927f5f3501dfc33c62e53d64a486c74019f6212fecbd5269205e4c022f0",
+      "bytes": 1799
+    },
+    {
+      "path": "db/migrations/00093_worker_bootstrap_nonzero_scopes.sql",
+      "sha256": "23551d31ed71d0a32cb28f489c1895d3c1e7ddda4996b288a69110d5f113d032",
+      "bytes": 666
+    },
+    {
+      "path": "db/migrations/00094_worker_bootstrap_abandonment.sql",
+      "sha256": "dbce108d07621cea235b239b16067041cba87e9af84a984973a7df7ff3225930",
+      "bytes": 9773
+    },
+    {
+      "path": "db/migrations/00095_runtime_startup_reservation.sql",
+      "sha256": "a303a5695dcf51b0f73805ba06b39e8711a5387c47e053f91082a3eb6678a3ed",
+      "bytes": 11024
+    },
+    {
+      "path": "db/migrations/00096_runtime_startup_authorization.sql",
+      "sha256": "a23fed068820266454eec13ca3a91c1d079276ab2e90f939d77ccd964f88c7d3",
+      "bytes": 3624
+    }
+  ],
+  "tool_sha256": "9c229067f9fd97a297f99e2dc5d909a318455aa51e99e8968a27d692c2a1a158",
+  "scope": "working-tree migration source; empty isolated reference database only"
+}

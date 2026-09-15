@@ -1,0 +1,20 @@
+test_anonymous_mtls_required_before_mutation (worker_control_network_test.CutoverTests.test_anonymous_mtls_required_before_mutation) ... ok
+test_concurrent_edit_is_not_overwritten (worker_control_network_test.CutoverTests.test_concurrent_edit_is_not_overwritten) ... ok
+test_connection_refused_does_not_prove_network_denial (worker_control_network_test.CutoverTests.test_connection_refused_does_not_prove_network_denial) ... ok
+test_failed_verification_restores_only_policy (worker_control_network_test.CutoverTests.test_failed_verification_restores_only_policy) ... ok
+test_lost_success_response_also_rolls_back (worker_control_network_test.CutoverTests.test_lost_success_response_also_rolls_back) ... ok
+test_alternative_lan_source_must_match_own_host (worker_control_network_test.SourceBindingTests.test_alternative_lan_source_must_match_own_host) ... ok
+test_another_workers_source_is_not_accepted (worker_control_network_test.SourceBindingTests.test_another_workers_source_is_not_accepted) ... ok
+test_each_node_identity_field_is_pinned (worker_control_network_test.SourceBindingTests.test_each_node_identity_field_is_pinned) ... ok
+test_exact_online_host_sources_only (worker_control_network_test.SourceBindingTests.test_exact_online_host_sources_only) ... ok
+test_host_restart_during_discovery_is_not_accepted (worker_control_network_test.SourceBindingTests.test_host_restart_during_discovery_is_not_accepted) ... ok
+test_inventory_must_cover_exact_authorized_hosts (worker_control_network_test.SourceBindingTests.test_inventory_must_cover_exact_authorized_hosts) ... ok
+test_missing_host_or_cpu_destination_is_not_accepted (worker_control_network_test.SourceBindingTests.test_missing_host_or_cpu_destination_is_not_accepted) ... ok
+test_no_cidr_pod_address_cpu_or_protected_host_rules (worker_control_network_test.SourceBindingTests.test_no_cidr_pod_address_cpu_or_protected_host_rules) ... ok
+test_offline_identity_is_also_pinned (worker_control_network_test.SourceBindingTests.test_offline_identity_is_also_pinned) ... ok
+test_stale_future_and_unfinished_discovery (worker_control_network_test.SourceBindingTests.test_stale_future_and_unfinished_discovery) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.014s
+
+OK

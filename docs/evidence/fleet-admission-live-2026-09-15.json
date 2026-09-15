@@ -1,0 +1,81 @@
+{
+  "at": "2026-09-15T08:59:12.760101+00:00",
+  "checks": [
+    {
+      "server": "10.1.201.70",
+      "case": "real AdmissionReview allow through temporary exact-service rule",
+      "passed": true,
+      "result": "pod/vela-fleet-admission-smoke created (server dry run)\n"
+    },
+    {
+      "server": "10.1.201.70",
+      "case": "deny unauthorized protected Pod",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.70",
+      "case": "deny unauthorized protected Service",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.70",
+      "case": "deny unauthorized protected Secret",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.71",
+      "case": "real AdmissionReview allow through temporary exact-service rule",
+      "passed": true,
+      "result": "pod/vela-fleet-admission-smoke created (server dry run)\n"
+    },
+    {
+      "server": "10.1.201.71",
+      "case": "deny unauthorized protected Pod",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.71",
+      "case": "deny unauthorized protected Service",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.71",
+      "case": "deny unauthorized protected Secret",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.66",
+      "case": "real AdmissionReview allow through temporary exact-service rule",
+      "passed": true,
+      "result": "pod/vela-fleet-admission-smoke created (server dry run)\n"
+    },
+    {
+      "server": "10.1.201.66",
+      "case": "deny unauthorized protected Pod",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.66",
+      "case": "deny unauthorized protected Service",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    },
+    {
+      "server": "10.1.201.66",
+      "case": "deny unauthorized protected Secret",
+      "passed": true,
+      "result": "Error from server: error when creating \"STDIN\": admission webhook \"fleet-protection.vela.ai\" denied the request: protected resources are owned by the Fleet Controller\n"
+    }
+  ],
+  "passed": true,
+  "directory": "/opt/vela-cluster/fleet-deployment-20260915/admission-live-085911Z",
+  "temporary_rule_deleted": true,
+  "finished_at": "2026-09-15T08:59:15.542431+00:00"
+}

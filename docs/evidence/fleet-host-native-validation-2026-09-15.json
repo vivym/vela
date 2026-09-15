@@ -1,0 +1,209 @@
+{
+  "at": "2026-09-14T22:37:47.280744+00:00",
+  "activated": false,
+  "binary_sha256": "95b486f8d20d881cfe321551ee374bc223e73ec0dfc0a99120b20c1682f83c73",
+  "hosts": {
+    "10.1.201.70": {
+      "at": "2026-09-14T22:37:47.454420436Z",
+      "passed": true,
+      "library": "k8s.io/apiserver v0.35.7",
+      "checks": [
+        {
+          "name": "native AdmissionConfiguration parser",
+          "passed": true
+        },
+        {
+          "name": "existing PodSecurity and mutating webhook preserved",
+          "passed": true
+        },
+        {
+          "name": "native WebhookAdmissionConfiguration loader",
+          "passed": true
+        },
+        {
+          "name": "single exact service auth entry without fallback context",
+          "passed": true
+        },
+        {
+          "name": "exact service and port",
+          "passed": true
+        },
+        {
+          "name": "exact hostname and port",
+          "passed": true
+        },
+        {
+          "name": "different service",
+          "passed": true
+        },
+        {
+          "name": "different namespace",
+          "passed": true
+        },
+        {
+          "name": "different port",
+          "passed": true
+        },
+        {
+          "name": "hostname without explicit port",
+          "passed": true
+        },
+        {
+          "name": "unrelated webhook URL",
+          "passed": true
+        },
+        {
+          "name": "hostname suffix impersonation",
+          "passed": true
+        },
+        {
+          "name": "direct management IP",
+          "passed": true
+        },
+        {
+          "name": "Kubernetes default service",
+          "passed": true
+        }
+      ],
+      "scope": "native auth resolver and TLS material loading; not live admission activation",
+      "unchanged_service": true,
+      "unchanged_boot": true,
+      "unchanged_static_pod": true
+    },
+    "10.1.201.71": {
+      "at": "2026-09-14T22:37:49.154085465Z",
+      "passed": true,
+      "library": "k8s.io/apiserver v0.35.7",
+      "checks": [
+        {
+          "name": "native AdmissionConfiguration parser",
+          "passed": true
+        },
+        {
+          "name": "existing PodSecurity and mutating webhook preserved",
+          "passed": true
+        },
+        {
+          "name": "native WebhookAdmissionConfiguration loader",
+          "passed": true
+        },
+        {
+          "name": "single exact service auth entry without fallback context",
+          "passed": true
+        },
+        {
+          "name": "exact service and port",
+          "passed": true
+        },
+        {
+          "name": "exact hostname and port",
+          "passed": true
+        },
+        {
+          "name": "different service",
+          "passed": true
+        },
+        {
+          "name": "different namespace",
+          "passed": true
+        },
+        {
+          "name": "different port",
+          "passed": true
+        },
+        {
+          "name": "hostname without explicit port",
+          "passed": true
+        },
+        {
+          "name": "unrelated webhook URL",
+          "passed": true
+        },
+        {
+          "name": "hostname suffix impersonation",
+          "passed": true
+        },
+        {
+          "name": "direct management IP",
+          "passed": true
+        },
+        {
+          "name": "Kubernetes default service",
+          "passed": true
+        }
+      ],
+      "scope": "native auth resolver and TLS material loading; not live admission activation",
+      "unchanged_service": true,
+      "unchanged_boot": true,
+      "unchanged_static_pod": true
+    },
+    "10.1.201.66": {
+      "at": "2026-09-14T22:37:50.702465812Z",
+      "passed": true,
+      "library": "k8s.io/apiserver v0.35.7",
+      "checks": [
+        {
+          "name": "native AdmissionConfiguration parser",
+          "passed": true
+        },
+        {
+          "name": "existing PodSecurity and mutating webhook preserved",
+          "passed": true
+        },
+        {
+          "name": "native WebhookAdmissionConfiguration loader",
+          "passed": true
+        },
+        {
+          "name": "single exact service auth entry without fallback context",
+          "passed": true
+        },
+        {
+          "name": "exact service and port",
+          "passed": true
+        },
+        {
+          "name": "exact hostname and port",
+          "passed": true
+        },
+        {
+          "name": "different service",
+          "passed": true
+        },
+        {
+          "name": "different namespace",
+          "passed": true
+        },
+        {
+          "name": "different port",
+          "passed": true
+        },
+        {
+          "name": "hostname without explicit port",
+          "passed": true
+        },
+        {
+          "name": "unrelated webhook URL",
+          "passed": true
+        },
+        {
+          "name": "hostname suffix impersonation",
+          "passed": true
+        },
+        {
+          "name": "direct management IP",
+          "passed": true
+        },
+        {
+          "name": "Kubernetes default service",
+          "passed": true
+        }
+      ],
+      "scope": "native auth resolver and TLS material loading; not live admission activation",
+      "unchanged_service": true,
+      "unchanged_boot": true,
+      "unchanged_static_pod": true
+    }
+  },
+  "passed": true
+}

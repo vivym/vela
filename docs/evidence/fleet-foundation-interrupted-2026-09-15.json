@@ -1,0 +1,21 @@
+{
+  "at": "2026-09-14T21:31:56.594514+00:00",
+  "checks": [
+    {
+      "name": "12 reviewed Fleet objects",
+      "passed": true
+    },
+    {
+      "name": "Control has two Ready replicas",
+      "passed": true
+    },
+    {
+      "name": "NATS has three Ready members",
+      "passed": false
+    }
+  ],
+  "stage": "preflight",
+  "error": "NATS has three Ready members",
+  "passed": false,
+  "finished_at": "2026-09-14T21:31:56.856978+00:00"
+}

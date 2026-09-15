@@ -1,0 +1,9 @@
+{
+  "at": "2026-09-14T22:10:45.772806+00:00",
+  "passed": true,
+  "archive": "/opt/vela-cluster/fleet-deployment-20260915/image/source.tar.gz",
+  "sha256": "a8273a5da3e8078517ea46809e7baf4a3fb775f34cbf0cffdbc53dabfb407efd",
+  "bytes": 262718,
+  "mode": "0o600",
+  "claim": "working-tree source snapshot for this Fleet image, not a clean-HEAD canonical release"
+}

@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-14T20:02:54.270031+00:00",
+  "base": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51",
+  "tag": "schema96-62911d49776c",
+  "source_sha256": "62911d49776c2b9b0187ca7d7341f5ed06119f5d853a833378273a71853bf275",
+  "binary_sha256": "e2a70cab354c03cd7b3076f50ba8c5431fafd6037cc06f76d36deefc8de7b85b",
+  "source_kind": "working-tree-snapshot",
+  "scope": "Control binary replacement on existing pinned runtime image; no clean-HEAD or complete-release claim",
+  "digest": "sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "image": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "config_digest": "sha256:183fcd1bfca3cd0c47ac272b003707170ddaf0321b0f6fe75318c1a57bb2ae0a",
+  "config_platform": "linux/amd64",
+  "layers": 5,
+  "passed": true
+}

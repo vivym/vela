@@ -1,0 +1,223 @@
+{
+  "at": "2026-09-14T19:18:06.063713+00:00",
+  "checks": [
+    {
+      "name": "candidate policy server dry-run",
+      "passed": true
+    },
+    {
+      "name": ".66 reaches llmpool02 TCP8444",
+      "passed": true
+    },
+    {
+      "name": ".66 reaches llmpool01 TCP8444",
+      "passed": true
+    },
+    {
+      "name": ".66 reaches Service TCP8444",
+      "passed": true
+    },
+    {
+      "name": "10.1.201.70 denied remote Control TCP8444",
+      "passed": true
+    },
+    {
+      "name": "10.1.201.71 denied remote Control TCP8444",
+      "passed": true
+    },
+    {
+      "name": ".66 cannot reach other protected Control ports",
+      "passed": true
+    },
+    {
+      "name": ".66 boot and service invocation unchanged",
+      "passed": true
+    },
+    {
+      "name": "same two Control Pods remain Ready",
+      "passed": true
+    },
+    {
+      "name": "placeholder policy removed",
+      "passed": true
+    },
+    {
+      "name": "live policy matches candidate",
+      "passed": true
+    }
+  ],
+  "policy": {
+    "apiVersion": "networking.k8s.io/v1",
+    "kind": "NetworkPolicy",
+    "metadata": {
+      "name": "vela-control-allow-node-agent",
+      "namespace": "vela-system",
+      "labels": {
+        "app.kubernetes.io/name": "vela-control",
+        "app.kubernetes.io/component": "fleet-maintenance",
+        "app.kubernetes.io/part-of": "vela"
+      }
+    },
+    "spec": {
+      "podSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/name": "vela-control"
+        }
+      },
+      "policyTypes": [
+        "Ingress"
+      ],
+      "ingress": [
+        {
+          "from": [
+            {
+              "ipBlock": {
+                "cidr": "10.42.2.0/32"
+              }
+            }
+          ],
+          "ports": [
+            {
+              "protocol": "TCP",
+              "port": 8444
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "before_66": [
+    {
+      "ip": "10.42.1.89",
+      "port": 8444,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8444,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.43.50.67",
+      "port": 8444,
+      "node": "Service",
+      "connected": false,
+      "errno": 11
+    }
+  ],
+  "scope": "Control ingress policy only; no workload, Secret, disk or host service mutation",
+  "after_66": [
+    {
+      "ip": "10.42.1.89",
+      "port": 8444,
+      "node": "llmpool02",
+      "connected": true,
+      "errno": 0
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8444,
+      "node": "llmpool01",
+      "connected": true,
+      "errno": 0
+    },
+    {
+      "ip": "10.43.50.67",
+      "port": 8444,
+      "node": "Service",
+      "connected": true,
+      "errno": 0
+    }
+  ],
+  "denied_other_hosts": [
+    {
+      "source": "10.1.201.70",
+      "results": [
+        {
+          "ip": "10.42.1.89",
+          "port": 8444,
+          "connected": false,
+          "errno": 11
+        }
+      ]
+    },
+    {
+      "source": "10.1.201.71",
+      "results": [
+        {
+          "ip": "10.42.0.6",
+          "port": 8444,
+          "connected": false,
+          "errno": 11
+        }
+      ]
+    }
+  ],
+  "denied_other_ports": [
+    {
+      "ip": "10.42.1.89",
+      "port": 8081,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.1.89",
+      "port": 8445,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.1.89",
+      "port": 8446,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.1.89",
+      "port": 8447,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8081,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8445,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8446,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8447,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    }
+  ],
+  "host66_after": {
+    "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+    "units": "Id=rke2-server.service\nActiveState=active\nUnitFileState=enabled\nInvocationID=9e1c27b1329c4045bbb03f3f5935d293\n\nId=vela-node-agent.service\nActiveState=inactive\nUnitFileState=\nInvocationID=\n\nId=vela-pidfd-broker.service\nActiveState=active\nUnitFileState=enabled\nInvocationID=bac31308afce407ea9b89e79267ed263\n\nId=vela-runtime-policy-issuer.service\nActiveState=inactive\nUnitFileState=disabled\nInvocationID=\n"
+  },
+  "passed": true
+}

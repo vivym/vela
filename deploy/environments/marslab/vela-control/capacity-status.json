@@ -1,0 +1,12 @@
+{
+  "profile": "infrastructure-validation",
+  "storageClassName": "longhorn-wffc",
+  "capacityPerClaim": "20Gi",
+  "applicationReplicas": 2,
+  "storageReplicas": 1,
+  "productionStorageContractSatisfied": false,
+  "dedicatedCapacityPool": false,
+  "iopsLimit": false,
+  "throughputLimit": false,
+  "requiredContract": "../../../vela-control/storage-contract.json"
+}

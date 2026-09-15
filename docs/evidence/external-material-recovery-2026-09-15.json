@@ -1,0 +1,35 @@
+{
+  "at": "2026-09-14T19:56:20.120804+00:00",
+  "reason": "current Control image rejects the two newly granted Fleet functions; restore its exact privilege boundary before rollout recovery",
+  "wait_processes": [
+    {
+      "pid": 4116120,
+      "args": [
+        "kubectl",
+        "-n",
+        "vela-system",
+        "rollout",
+        "status",
+        "deployment/vela-control",
+        "--timeout=240s"
+      ]
+    }
+  ],
+  "returncode": 0,
+  "transaction": "BEGIN\nREVOKE\nREVOKE\nCOMMIT\n",
+  "error": "",
+  "deployment": {
+    "ready": 1,
+    "generation": 13,
+    "configmaps": [
+      "vela-control-runtime-v-ebd9cc4d0cb4h",
+      null,
+      null
+    ]
+  },
+  "statefulset": {
+    "ready": 3,
+    "generation": 10,
+    "configmaps": []
+  }
+}

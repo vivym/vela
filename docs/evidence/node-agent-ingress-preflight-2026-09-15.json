@@ -1,0 +1,459 @@
+{
+  "at": "2026-09-14T19:16:33.832253+00:00",
+  "pods": [
+    {
+      "name": "vela-control-67fbf94d7-jdqvl",
+      "uid": "c0bef53c-71d1-47a6-935f-7d7e7ddbc225",
+      "ip": "10.42.1.89",
+      "node": "llmpool02",
+      "ready": true
+    },
+    {
+      "name": "vela-control-67fbf94d7-svk6s",
+      "uid": "dd91c9ae-9445-4d17-9493-5ba8524bd492",
+      "ip": "10.42.0.6",
+      "node": "llmpool01",
+      "ready": true
+    }
+  ],
+  "service": "10.43.50.67",
+  "baseline_66": [
+    {
+      "ip": "10.42.1.89",
+      "port": 8444,
+      "node": "llmpool02",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.42.0.6",
+      "port": 8444,
+      "node": "llmpool01",
+      "connected": false,
+      "errno": 11
+    },
+    {
+      "ip": "10.43.50.67",
+      "port": 8444,
+      "node": "Service",
+      "connected": false,
+      "errno": 11
+    }
+  ],
+  "host66_before": {
+    "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+    "units": "Id=rke2-server.service\nActiveState=active\nUnitFileState=enabled\nInvocationID=9e1c27b1329c4045bbb03f3f5935d293\n\nId=vela-node-agent.service\nActiveState=inactive\nUnitFileState=\nInvocationID=\n\nId=vela-pidfd-broker.service\nActiveState=active\nUnitFileState=enabled\nInvocationID=bac31308afce407ea9b89e79267ed263\n\nId=vela-runtime-policy-issuer.service\nActiveState=inactive\nUnitFileState=disabled\nInvocationID=\n"
+  },
+  "database": {
+    "database": "app",
+    "primary": "vela-postgres-1",
+    "query_returncode": 1,
+    "migration": "unverified",
+    "error": "ERROR:  column \"id\" does not exist\nLINE 1: ...d FROM goose_db_version WHERE is_applied ORDER BY id DESC LI...\n                                                             ^\ncommand terminated with exit code 1\n"
+  },
+  "policies": [
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"public-api\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-api\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"vela.ai/network-role\":\"api-ingress\"}},\"podSelector\":{\"matchLabels\":{\"vela.ai/client-role\":\"api-gateway\"}}}],\"ports\":[{\"port\":8080,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 2,
+        "labels": {
+          "app.kubernetes.io/component": "public-api",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-api",
+        "namespace": "vela-system",
+        "resourceVersion": "1252270",
+        "uid": "96b36f05-db38-4379-a838-40a5ee570fde"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "vela.ai/network-role": "api-ingress"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/instance": "apisix",
+                    "app.kubernetes.io/name": "apisix"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8080,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"compliance\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-compliance\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"vela.ai/network-role\":\"compliance\"}},\"podSelector\":{\"matchLabels\":{\"vela.ai/client-role\":\"legal-hold\"}}}],\"ports\":[{\"port\":8446,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 1,
+        "labels": {
+          "app.kubernetes.io/component": "compliance",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-compliance",
+        "namespace": "vela-system",
+        "resourceVersion": "763053",
+        "uid": "8a9caf08-d552-4f6a-b3d1-f30d47f76eb9"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "vela.ai/network-role": "compliance"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "vela.ai/client-role": "legal-hold"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8446,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"finance-reconciliation\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-finance\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"vela.ai/network-role\":\"finance\"}},\"podSelector\":{\"matchLabels\":{\"vela.ai/client-role\":\"finance-reconciliation\"}}}],\"ports\":[{\"port\":8445,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 1,
+        "labels": {
+          "app.kubernetes.io/component": "finance-reconciliation",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-finance",
+        "namespace": "vela-system",
+        "resourceVersion": "763047",
+        "uid": "98b2cac1-07c6-4148-b00a-400dd133e667"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "vela.ai/network-role": "finance"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "vela.ai/client-role": "finance-reconciliation"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8445,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"fleet-maintenance\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-fleet\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"kubernetes.io/metadata.name\":\"vela-system\"}},\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-fleet-controller\"}}}],\"ports\":[{\"port\":8444,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 1,
+        "labels": {
+          "app.kubernetes.io/component": "fleet-maintenance",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-fleet",
+        "namespace": "vela-system",
+        "resourceVersion": "763038",
+        "uid": "23e2d393-d9bf-4913-90fc-edb90d9256e6"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "vela-system"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "vela-fleet-controller"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8444,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"annotations\":{\"vela.ai/release-placeholder\":\"replace-entire-resource\"},\"labels\":{\"app.kubernetes.io/component\":\"fleet-maintenance\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-node-agent-placeholder\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"ipBlock\":{\"cidr\":\"192.0.2.0/32\"}}],\"ports\":[{\"port\":8444,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n",
+          "vela.ai/release-placeholder": "replace-entire-resource"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 1,
+        "labels": {
+          "app.kubernetes.io/component": "fleet-maintenance",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-node-agent-placeholder",
+        "namespace": "vela-system",
+        "resourceVersion": "763043",
+        "uid": "b8937c88-ebc1-4dbe-9b5c-34dfdbdb4a93"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "ipBlock": {
+                  "cidr": "192.0.2.0/32"
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8444,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"observability\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-observability\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"kubernetes.io/metadata.name\":\"monitoring\"}},\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"prometheus\"}}}],\"ports\":[{\"port\":8081,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 2,
+        "labels": {
+          "app.kubernetes.io/component": "observability",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-observability",
+        "namespace": "vela-system",
+        "resourceVersion": "763029",
+        "uid": "c864e135-a59b-4ed5-a760-47fe2c46e4ae"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "monitoring"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "prometheus"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8081,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/component\":\"stage-worker-control\",\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-allow-stage-worker\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[{\"from\":[{\"namespaceSelector\":{\"matchLabels\":{\"kubernetes.io/metadata.name\":\"vela-system\"}},\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-stage-worker\"}}}],\"ports\":[{\"port\":8447,\"protocol\":\"TCP\"}]}],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 1,
+        "labels": {
+          "app.kubernetes.io/component": "stage-worker-control",
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-allow-stage-worker",
+        "namespace": "vela-system",
+        "resourceVersion": "763034",
+        "uid": "1f7be963-883f-49e2-853c-05750ff472ef"
+      },
+      "spec": {
+        "ingress": [
+          {
+            "from": [
+              {
+                "namespaceSelector": {
+                  "matchLabels": {
+                    "kubernetes.io/metadata.name": "vela-system"
+                  }
+                },
+                "podSelector": {
+                  "matchLabels": {
+                    "app.kubernetes.io/name": "vela-stage-worker"
+                  }
+                }
+              }
+            ],
+            "ports": [
+              {
+                "port": 8447,
+                "protocol": "TCP"
+              }
+            ]
+          }
+        ],
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    },
+    {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "annotations": {
+          "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"networking.k8s.io/v1\",\"kind\":\"NetworkPolicy\",\"metadata\":{\"labels\":{\"app.kubernetes.io/name\":\"vela-control\",\"app.kubernetes.io/part-of\":\"vela\"},\"name\":\"vela-control-default-deny-ingress\",\"namespace\":\"vela-system\"},\"spec\":{\"ingress\":[],\"podSelector\":{\"matchLabels\":{\"app.kubernetes.io/name\":\"vela-control\"}},\"policyTypes\":[\"Ingress\"]}}\n"
+        },
+        "creationTimestamp": "2026-09-13T15:27:55Z",
+        "generation": 22,
+        "labels": {
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/part-of": "vela"
+        },
+        "name": "vela-control-default-deny-ingress",
+        "namespace": "vela-system",
+        "resourceVersion": "763021",
+        "uid": "fe9ae3e1-fd37-465e-804c-55a0ac1dfe23"
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ]
+      }
+    }
+  ],
+  "old_probes": []
+}

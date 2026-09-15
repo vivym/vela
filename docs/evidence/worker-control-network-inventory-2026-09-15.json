@@ -1,0 +1,624 @@
+{
+  "nodes": [
+    {
+      "name": "llmpool01",
+      "ip": "10.1.201.70",
+      "podCIDR": "10.42.0.0/24",
+      "labels": {
+        "vela.ai/control-plane-tier": "cpu",
+        "vela.ai/management": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "control-storage",
+        "vela.ai/role": "management-control"
+      },
+      "ready": true
+    },
+    {
+      "name": "llmpool02",
+      "ip": "10.1.201.71",
+      "podCIDR": "10.42.1.0/24",
+      "labels": {
+        "vela.ai/control-plane-tier": "cpu",
+        "vela.ai/management": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "control-storage",
+        "vela.ai/role": "management-control"
+      },
+      "ready": true
+    },
+    {
+      "name": "marslab-gpu-01",
+      "ip": "10.1.201.66",
+      "podCIDR": "10.42.2.0/24",
+      "labels": {
+        "vela.ai/control-plane-tier": "gpu-shared",
+        "vela.ai/gpu-role": "worker",
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "control-storage",
+        "vela.ai/role": "management-control-gpu"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-10",
+      "ip": "10.1.201.17",
+      "podCIDR": "10.42.8.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-11",
+      "ip": "10.1.201.39",
+      "podCIDR": "10.42.32.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-12",
+      "ip": "10.1.201.30",
+      "podCIDR": "10.42.22.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-120",
+      "ip": "10.1.201.58",
+      "podCIDR": "10.42.48.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-121",
+      "ip": "10.1.201.60",
+      "podCIDR": "10.42.51.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-124",
+      "ip": "10.1.201.59",
+      "podCIDR": "10.42.53.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-125",
+      "ip": "10.1.201.65",
+      "podCIDR": "10.42.56.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-126",
+      "ip": "10.1.201.63",
+      "podCIDR": "10.42.55.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-127",
+      "ip": "10.1.201.64",
+      "podCIDR": "10.42.54.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-128",
+      "ip": "10.1.201.62",
+      "podCIDR": "10.42.52.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-13",
+      "ip": "10.1.201.41",
+      "podCIDR": "10.42.35.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-14",
+      "ip": "10.1.201.21",
+      "podCIDR": "10.42.15.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-15",
+      "ip": "10.1.201.46",
+      "podCIDR": "10.42.39.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-16",
+      "ip": "10.1.201.29",
+      "podCIDR": "10.42.20.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-17",
+      "ip": "10.1.201.26",
+      "podCIDR": "10.42.18.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-18",
+      "ip": "10.1.201.31",
+      "podCIDR": "10.42.24.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-19",
+      "ip": "10.1.201.42",
+      "podCIDR": "10.42.37.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-20",
+      "ip": "10.1.201.50",
+      "podCIDR": "10.42.44.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-21",
+      "ip": "10.1.201.27",
+      "podCIDR": "10.42.21.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-22",
+      "ip": "10.1.201.11",
+      "podCIDR": "10.42.3.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-23",
+      "ip": "10.1.201.12",
+      "podCIDR": "10.42.5.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-25",
+      "ip": "10.1.201.33",
+      "podCIDR": "10.42.28.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-26",
+      "ip": "10.1.201.43",
+      "podCIDR": "10.42.38.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-27",
+      "ip": "10.1.201.51",
+      "podCIDR": "10.42.41.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-28",
+      "ip": "10.1.201.22",
+      "podCIDR": "10.42.14.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-29",
+      "ip": "10.1.201.24",
+      "podCIDR": "10.42.13.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-30",
+      "ip": "10.1.201.32",
+      "podCIDR": "10.42.26.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-31",
+      "ip": "10.1.201.13",
+      "podCIDR": "10.42.6.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-33",
+      "ip": "10.1.201.23",
+      "podCIDR": "10.42.16.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-34",
+      "ip": "10.1.201.15",
+      "podCIDR": "10.42.7.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-35",
+      "ip": "10.1.201.45",
+      "podCIDR": "10.42.40.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-36",
+      "ip": "10.1.201.19",
+      "podCIDR": "10.42.9.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": false
+    },
+    {
+      "name": "server-37",
+      "ip": "10.1.201.38",
+      "podCIDR": "10.42.31.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-38",
+      "ip": "10.1.201.18",
+      "podCIDR": "10.42.11.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-39",
+      "ip": "10.1.201.16",
+      "podCIDR": "10.42.12.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-40",
+      "ip": "10.1.201.35",
+      "podCIDR": "10.42.25.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-41",
+      "ip": "10.1.201.14",
+      "podCIDR": "10.42.4.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-42",
+      "ip": "10.1.201.20",
+      "podCIDR": "10.42.10.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-43",
+      "ip": "10.1.201.25",
+      "podCIDR": "10.42.17.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-44",
+      "ip": "10.1.201.40",
+      "podCIDR": "10.42.30.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-45",
+      "ip": "10.1.201.34",
+      "podCIDR": "10.42.23.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-46",
+      "ip": "10.1.201.36",
+      "podCIDR": "10.42.33.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-47",
+      "ip": "10.1.201.28",
+      "podCIDR": "10.42.19.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-48",
+      "ip": "10.1.201.48",
+      "podCIDR": "10.42.43.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-49",
+      "ip": "10.1.201.55",
+      "podCIDR": "10.42.46.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-50",
+      "ip": "10.1.201.52",
+      "podCIDR": "10.42.50.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-51",
+      "ip": "10.1.201.49",
+      "podCIDR": "10.42.45.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-52",
+      "ip": "10.1.201.47",
+      "podCIDR": "10.42.42.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-53",
+      "ip": "10.1.201.54",
+      "podCIDR": "10.42.49.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "server-54",
+      "ip": "10.1.201.53",
+      "podCIDR": "10.42.47.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    },
+    {
+      "name": "servser-24",
+      "ip": "10.1.201.37",
+      "podCIDR": "10.42.34.0/24",
+      "labels": {
+        "vela.ai/gpu-runtime": "true",
+        "vela.ai/node-metrics": "enabled",
+        "vela.ai/node-role": "gpu-worker"
+      },
+      "ready": true
+    }
+  ],
+  "private_password_variable_names": [
+    "password"
+  ],
+  "source_script_exists": true,
+  "control_pods": [
+    {
+      "name": "vela-control-6bfc884b87-554zb",
+      "uid": "dbfc32e5-1c05-4b5f-afb3-75f26dd720b2",
+      "node": "llmpool01",
+      "ip": "10.42.0.21",
+      "ready": true
+    },
+    {
+      "name": "vela-control-6bfc884b87-7bxq7",
+      "uid": "1baa7382-0545-44e7-88ef-26b00d22513d",
+      "node": "llmpool02",
+      "ip": "10.42.1.162",
+      "ready": true
+    }
+  ]
+}

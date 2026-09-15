@@ -1,0 +1,85 @@
+{
+  "at": "2026-09-14T19:45:02.480273+00:00",
+  "scope": "reference seed-state comparison and reversible transaction rehearsal; no committed production mutation",
+  "seed_checks": [
+    {
+      "table": "catalog_evidence_protocol_state",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [],
+      "passed": true
+    },
+    {
+      "table": "h3_exact_cache_hit_cursors",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [
+        "updated_at"
+      ],
+      "passed": true
+    },
+    {
+      "table": "legacy_h3_contraction_v52_function_restore",
+      "reference_rows": 2,
+      "live_rows": 2,
+      "ignored_fields": [],
+      "passed": true
+    },
+    {
+      "table": "profile_circuit_protocol_state",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [],
+      "passed": true
+    },
+    {
+      "table": "recovery_admission_control",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [
+        "updated_at",
+        "database_identity"
+      ],
+      "passed": true
+    },
+    {
+      "table": "retention_policy_revisions",
+      "reference_rows": 3,
+      "live_rows": 3,
+      "ignored_fields": [
+        "created_at"
+      ],
+      "passed": true
+    },
+    {
+      "table": "slo_measurement_protocol_state",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [],
+      "passed": true
+    },
+    {
+      "table": "stage_cutover_control",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [
+        "updated_at"
+      ],
+      "passed": true
+    },
+    {
+      "table": "stage_cutover_revisions",
+      "reference_rows": 1,
+      "live_rows": 1,
+      "ignored_fields": [
+        "activated_at"
+      ],
+      "passed": true
+    }
+  ],
+  "schema_sha256_before": "bcbf1ab4bf94c5036bf8c21d4f54726ace93b6661b689819baaeda6cd9370c8f",
+  "rehearsal_output": "BEGIN\nSET\nSET\n\nLOCK TABLE\nDO\nALTER TABLE\nALTER TABLE\nALTER TABLE\nALTER TABLE\nINSERT 0 96\nGRANT\nGRANT\nGRANT\nDO\nROLLBACK",
+  "rehearsal_schema_unchanged": true,
+  "rehearsal_ledger_unchanged": true,
+  "passed": true
+}

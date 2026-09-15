@@ -1,0 +1,73 @@
+{
+  "at": "2026-09-14T21:23:12.858864+00:00",
+  "source": "10.1.201.70",
+  "repository": "vela-fleet-controller",
+  "root_digest": "sha256:cee95fbf27503c81d420c7dff8cd46e5c754dea69627f90aa53a43d435fe96ca",
+  "targets": [
+    {
+      "host": "10.1.201.71",
+      "manifests": [
+        {
+          "digest": "sha256:cee95fbf27503c81d420c7dff8cd46e5c754dea69627f90aa53a43d435fe96ca",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 760,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:60908cee524b9f8fe4583213709e272ca7eb48706cc4447b29bc1a59834cbea9",
+          "size": 1742,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+          "size": 124284,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+          "size": 9345642,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    },
+    {
+      "host": "10.1.201.66",
+      "manifests": [
+        {
+          "digest": "sha256:cee95fbf27503c81d420c7dff8cd46e5c754dea69627f90aa53a43d435fe96ca",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 760,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:60908cee524b9f8fe4583213709e272ca7eb48706cc4447b29bc1a59834cbea9",
+          "size": 1742,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:20dd1a7657bb615132c8c3fd5795f2027ae60fffa866f457d14416d1106991d4",
+          "size": 124284,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:08c5f76a6a853553a6fa35560db3e11242c2710ae6624c9728f2d6dd840845dd",
+          "size": 9345642,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    }
+  ],
+  "result": "EXACT_IMAGE_REPLICATION_PASS"
+}

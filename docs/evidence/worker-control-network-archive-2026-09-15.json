@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-15T00:02:07.327280+00:00",
+  "result": "REVIEW_ARCHIVE_VERIFIED",
+  "path": "/opt/vela-cluster/worker-control-network-20260915/review.tar.gz",
+  "sha256": "7e74e2068ed6cfb375a4ebcbf7926e3181613eb079e87e16b7d7d4a3ccff764e",
+  "bytes": 52621,
+  "members": 15,
+  "verified_file_hashes": 14,
+  "executed_script_matches": true,
+  "directory_mode": "0700",
+  "archive_mode": "0600",
+  "scope": "worker network change review, not a canonical Vela release"
+}

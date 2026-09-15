@@ -1,0 +1,74 @@
+{
+  "at": "2026-09-14T20:05:40.737013+00:00",
+  "scope": "adopt schema-96 Control image and immutable material; keep values, NATS image, PVC configuration and replica counts",
+  "control_image": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "checks": [
+    {
+      "name": "no active business Jobs before rollout",
+      "passed": true
+    },
+    {
+      "name": "deployment initially Ready",
+      "passed": true
+    },
+    {
+      "name": "statefulset initially Ready",
+      "passed": true
+    },
+    {
+      "name": "all frozen objects reverified before references change",
+      "passed": true
+    },
+    {
+      "name": "deployment candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "statefulset candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "serviceaccount candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "Control rollout complete",
+      "passed": true
+    },
+    {
+      "name": "Control template equals approved candidate",
+      "passed": true
+    },
+    {
+      "name": "Control two replicas Ready",
+      "passed": true
+    }
+  ],
+  "renames": {
+    "vela-control-node-agents-v-ebd9cc4d0cb4e": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6",
+    "vela-control-runtime-v-ebd9cc4d0cb4h": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76",
+    "nats-server-tls": "nats-server-tls-r-541fc9387f9e",
+    "vela-control-artifact-credentials-v-ebd9cc4d0cb4": "vela-control-artifact-credentials-v-ebd9cc4d0cb4-r-f3bb5ccb7687",
+    "vela-control-credential-pepper-v-ebd9cc4d0cb4": "vela-control-credential-pepper-v-ebd9cc4d0cb4-r-fdbdd3fd0bbd",
+    "vela-control-database-urls-v-ebd9cc4d0cb4": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21",
+    "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4": "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4-r-86931fab3462",
+    "vela-control-invoice-export-v-ebd9cc4d0cb4": "vela-control-invoice-export-v-ebd9cc4d0cb4-r-f220395ecc2f",
+    "vela-control-keyrings-v-ebd9cc4d0cb4": "vela-control-keyrings-v-ebd9cc4d0cb4-r-138a0079996e",
+    "vela-control-nats-client-v-ebd9cc4d0cb4": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b",
+    "vela-control-privileged-http-tls-v-ebd9cc4d0cb4": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+    "vela-control-remediation-client-tls-v-ebd9cc4d0cb4": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3",
+    "vela-control-stage-worker-identity-v-ebd9cc4d0cb4": "vela-control-stage-worker-identity-v-ebd9cc4d0cb4-r-d76040d66ca5",
+    "vela-control-transport-tls-v-ebd9cc4d0cb4": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+    "vela-nats-auth-memory-d74221ecd013": "vela-nats-auth-memory-d74221ecd013-r-b378edfb15b7",
+    "vela-release-pull-v1": "vela-release-pull-v1-r-7c3b2ad47663"
+  },
+  "fleet_grants": "BEGIN\nGRANT\nGRANT\nCOMMIT\n",
+  "error": "kubectl -n failed: error: Internal error occurred: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec \"7de05f37e7d3d838ac4819ca8a7adc045dd565a9ba41cbc45e694bee2473f9d4\": OCI runtime exec failed: exec failed: unable to start container process: exec: \"wget\": executable file not found in $PATH\n",
+  "fleet_grants_rollback": "BEGIN\nREVOKE\nREVOKE\nCOMMIT\n",
+  "rollback": [
+    "deployment",
+    "serviceaccount"
+  ],
+  "passed": false,
+  "finished_at": "2026-09-14T20:07:36.129577+00:00"
+}

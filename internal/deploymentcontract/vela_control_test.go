@@ -73,9 +73,9 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		deployment.Spec.Strategy.Type != appsv1.RollingUpdateDeploymentStrategyType ||
 		deployment.Spec.Strategy.RollingUpdate == nil ||
 		deployment.Spec.Strategy.RollingUpdate.MaxUnavailable == nil ||
-		deployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntValue() != 0 ||
+		deployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntValue() != 1 ||
 		deployment.Spec.Strategy.RollingUpdate.MaxSurge == nil ||
-		deployment.Spec.Strategy.RollingUpdate.MaxSurge.IntValue() != 1 {
+		deployment.Spec.Strategy.RollingUpdate.MaxSurge.IntValue() != 0 {
 		t.Fatalf("vela-control Deployment identity/availability = %#v", deployment)
 	}
 	pod := deployment.Spec.Template.Spec
@@ -84,11 +84,12 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		pod.TerminationGracePeriodSeconds == nil || *pod.TerminationGracePeriodSeconds < 60 ||
 		pod.PriorityClassName != "vela-control-critical" ||
 		pod.NodeSelector["vela.ai/node-role"] != "control-storage" ||
+		pod.NodeSelector["vela.ai/management"] != "true" ||
 		pod.SecurityContext == nil || pod.SecurityContext.RunAsNonRoot == nil ||
 		!*pod.SecurityContext.RunAsNonRoot || pod.SecurityContext.RunAsUser == nil ||
 		*pod.SecurityContext.RunAsUser != 10001 || pod.SecurityContext.RunAsGroup == nil ||
-		*pod.SecurityContext.RunAsGroup != 10001 || pod.SecurityContext.FSGroup == nil ||
-		*pod.SecurityContext.FSGroup != 10001 || pod.SecurityContext.SeccompProfile == nil ||
+		*pod.SecurityContext.RunAsGroup != 10001 || pod.SecurityContext.FSGroup != nil ||
+		pod.SecurityContext.FSGroupChangePolicy != nil || pod.SecurityContext.SeccompProfile == nil ||
 		pod.SecurityContext.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
 		t.Fatalf("vela-control Pod identity/security = %#v", pod)
 	}
@@ -117,8 +118,13 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	requireVelaControlPort(t, control, "management", 8081)
 	requireVelaControlPort(t, control, "fleet-grpc", 8444)
 	requireVelaControlPort(t, control, "finance-https", 8445)
-	requireVelaControlPort(t, control, "compliance-https", 8446)
+	requireVelaControlPort(t, control, "compliance", 8446)
 	requireVelaControlPort(t, control, "stage-wkr-grpc", 8447)
+	for _, port := range control.Ports {
+		if problems := validation.IsValidPortName(port.Name); len(problems) != 0 {
+			t.Fatalf("Kubernetes rejects container port %q: %v", port.Name, problems)
+		}
+	}
 	for name, probe := range map[string]*corev1.Probe{
 		"startup": control.StartupProbe, "readiness": control.ReadinessProbe,
 		"liveness": control.LivenessProbe,
@@ -161,12 +167,8 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	if deployment.Spec.Template.Labels["vela.ai/release-revision"] != "r0-placeholder" {
 		t.Fatalf("vela-control Pod template release revision = %#v", deployment.Spec.Template.Labels)
 	}
-	if len(control.EnvFrom) != 3 || control.EnvFrom[0].ConfigMapRef == nil ||
-		control.EnvFrom[0].ConfigMapRef.Name != "vela-control-runtime-r0-placeholder" ||
-		control.EnvFrom[1].SecretRef == nil ||
-		control.EnvFrom[1].SecretRef.Name != "vela-control-database-urls-r0-placeholder" ||
-		control.EnvFrom[2].SecretRef == nil ||
-		control.EnvFrom[2].SecretRef.Name != "vela-control-credential-pepper-r0-placeholder" {
+	if len(control.EnvFrom) != 1 || control.EnvFrom[0].ConfigMapRef == nil ||
+		control.EnvFrom[0].ConfigMapRef.Name != "vela-control-runtime-r0-placeholder" {
 		t.Fatalf("vela-control environment sources = %#v", control.EnvFrom)
 	}
 	podUID := requireVelaControlEnvironment(t, control, "VELA_POD_UID")
@@ -180,6 +182,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 		t.Fatalf("vela-control Pod name environment = %#v", podName)
 	}
 	wantPodBound := map[string]string{
+		"VELA_STAGE_FINALIZER_ID":               "stage-finalizer/$(VELA_POD_UID)",
 		"VELA_SCHEDULER_ID":                     "scheduler/$(VELA_POD_UID)",
 		"VELA_ATTEMPT_COORDINATOR_ID":           "attempt-coordinator/$(VELA_POD_UID)",
 		"VELA_STAGE_SCHEDULER_ID":               "stage-scheduler/$(VELA_POD_UID)",
@@ -268,6 +271,9 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 		t.Fatalf("vela-control runtime ConfigMap = %#v", runtimeConfig)
 	}
 	for name, value := range runtimeConfig.Data {
+		if strings.Contains(value, "$(VELA_POD_") {
+			t.Fatalf("envFrom does not expand Pod identity in %s; use container env", name)
+		}
 		if problems := validation.IsEnvVarName(name); len(problems) != 0 {
 			t.Fatalf("vela-control envFrom key %q is invalid: %v", name, problems)
 		}
@@ -331,7 +337,7 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 		"vela-control":                {port: 8444, target: "fleet-grpc", appProtocol: "grpc"},
 		"vela-stage-worker-control":   {port: 8447, target: "stage-wkr-grpc", appProtocol: "grpc"},
 		"vela-finance-reconciliation": {port: 8445, target: "finance-https", appProtocol: "https"},
-		"vela-compliance":             {port: 8446, target: "compliance-https", appProtocol: "https"},
+		"vela-compliance":             {port: 8446, target: "compliance", appProtocol: "https"},
 	}
 	if len(services) != len(want) {
 		t.Fatalf("vela-control Services = %#v", services)
@@ -489,6 +495,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	wantFiles := map[string][]string{
 		"vela-control-transport-tls-r0-placeholder": {
 			"fleet-client-ca.crt", "fleet-tls.crt", "fleet-tls.key",
+			"runtime-policy-private.key",
 			"stage-worker-client-ca.crt", "stage-worker-tls.crt", "stage-worker-tls.key",
 		},
 		"vela-control-stage-worker-identity-r0-placeholder": {"identity-key"},
@@ -514,19 +521,38 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	var deployment appsv1.Deployment
 	loadVelaControlManifest(t, "deployment.yaml", &deployment)
 	pod := deployment.Spec.Template.Spec
-	var environmentSecretNames []string
-	for _, source := range pod.Containers[0].EnvFrom {
-		if source.SecretRef != nil {
-			environmentSecretNames = append(environmentSecretNames, source.SecretRef.Name)
+	environmentKeys := make(map[string][]string)
+	for _, source := range pod.Containers[0].Env {
+		if source.ValueFrom != nil && source.ValueFrom.SecretKeyRef != nil {
+			ref := source.ValueFrom.SecretKeyRef
+			if source.Name != ref.Key || (ref.Optional != nil && *ref.Optional) {
+				t.Fatalf("invalid keyed Secret environment: %#v", source)
+			}
+			environmentKeys[ref.Name] = append(environmentKeys[ref.Name], ref.Key)
 		}
 	}
-	if !sameStrings(environmentSecretNames, mapKeys(wantEnvironment)) {
-		t.Fatalf("vela-control environment Secret refs = %#v", environmentSecretNames)
+	if !sameStrings(mapKeys(environmentKeys), mapKeys(wantEnvironment)) {
+		t.Fatalf("vela-control environment Secret refs = %#v", environmentKeys)
+	}
+	for name, keys := range wantEnvironment {
+		if !sameStrings(environmentKeys[name], keys) {
+			t.Fatalf("environment Secret keys %s = %#v", name, environmentKeys[name])
+		}
 	}
 	var fileSecretNames []string
 	for _, volume := range pod.Volumes {
 		if volume.Secret != nil {
 			fileSecretNames = append(fileSecretNames, volume.Secret.SecretName)
+			var keys []string
+			for _, item := range volume.Secret.Items {
+				if item.Key != item.Path {
+					t.Fatal("file Secret path differs from materialized key")
+				}
+				keys = append(keys, item.Key)
+			}
+			if !sameStrings(keys, wantFiles[volume.Secret.SecretName]) {
+				t.Fatalf("file Secret keys %s = %#v", volume.Secret.SecretName, keys)
+			}
 		}
 	}
 	if !sameStrings(fileSecretNames, mapKeys(wantFiles)) {
@@ -792,7 +818,12 @@ func loadVelaControlRenderedResources[T any](
 
 func renderVelaControlResources(t *testing.T) []unstructured.Unstructured {
 	t.Helper()
-	command := exec.Command("kubectl", "kustomize", velaControlManifestDirectory(t))
+	return renderKustomizeResources(t, velaControlManifestDirectory(t))
+}
+
+func renderKustomizeResources(t *testing.T, directory string) []unstructured.Unstructured {
+	t.Helper()
+	command := exec.Command("kubectl", "kustomize", directory)
 	content, err := command.Output()
 	if err != nil {
 		if exit, ok := err.(*exec.ExitError); ok {

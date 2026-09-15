@@ -1,0 +1,8 @@
+{
+  "source_sha256": "62911d49776c2b9b0187ca7d7341f5ed06119f5d853a833378273a71853bf275",
+  "archive_sha256": "06bbda884355c42f1ba7b8e4cf09d0f46ccac342165017138dc9c0b7ab83fc72",
+  "files": 235,
+  "path": "/opt/vela-cluster/release-inputs-20260915/control-schema96-image/source.tar.gz",
+  "mode": "0o600",
+  "passed": true
+}

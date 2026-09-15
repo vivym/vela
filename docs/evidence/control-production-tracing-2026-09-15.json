@@ -1,0 +1,656 @@
+{
+  "at": "2026-09-14T20:25:54.861845+00:00",
+  "scope": "enable OTLP on current two Control Pods; verify unauthenticated read requests per Pod and both APISIX gateways; no business or model execution",
+  "checks": [
+    {
+      "name": "material adoption final checks passed",
+      "passed": true
+    },
+    {
+      "name": "Control initially 2/2 Ready",
+      "passed": true
+    },
+    {
+      "name": "Control uses traced schema96 binary",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL ready",
+      "passed": true
+    },
+    {
+      "name": "no active business Jobs before configuration rollout",
+      "passed": true
+    },
+    {
+      "name": "otel-collector ready",
+      "passed": true
+    },
+    {
+      "name": "tempo ready",
+      "passed": true
+    },
+    {
+      "name": "APISIX tracing already enabled",
+      "passed": true
+    },
+    {
+      "name": "tracing overrides absent before adoption",
+      "passed": true
+    },
+    {
+      "name": "runtime ConfigMap has no competing tracing options",
+      "passed": true
+    },
+    {
+      "name": "tracing candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "Control 2/2 Ready after tracing enabled",
+      "passed": true
+    },
+    {
+      "name": "only reviewed Control template adopted",
+      "passed": true
+    },
+    {
+      "name": "two distinct CPU Control hosts",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb rejects unauthenticated request",
+      "passed": true
+    },
+    {
+      "name": "vela-control-6bfc884b87-554zb temporary port-forward stopped",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 rejects unauthenticated request",
+      "passed": true
+    },
+    {
+      "name": "vela-control-6bfc884b87-7bxq7 temporary port-forward stopped",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 rejects unauthenticated request",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 rejects unauthenticated request",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb expected production services present",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb all spans have propagated trace ID",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb one Control span",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb Control records HTTP 401",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb Control attributes exclude request payload fields",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-554zb Control parent matches supplied parent",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 expected production services present",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 all spans have propagated trace ID",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 one Control span",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 Control records HTTP 401",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 Control attributes exclude request payload fields",
+      "passed": true
+    },
+    {
+      "name": "pod/vela-control-6bfc884b87-7bxq7 Control parent matches supplied parent",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 expected production services present",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 all spans have propagated trace ID",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 one Control span",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 Control records HTTP 401",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 Control attributes exclude request payload fields",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.70 Control parent is an APISIX span",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 expected production services present",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 all spans have propagated trace ID",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 one Control span",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 Control records HTTP 401",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 Control attributes exclude request payload fields",
+      "passed": true
+    },
+    {
+      "name": "gateway/10.1.201.71 Control parent is an APISIX span",
+      "passed": true
+    },
+    {
+      "name": "Control retains 2 Ready replicas after requests",
+      "passed": true
+    },
+    {
+      "name": "NATS still 3 Ready",
+      "passed": true
+    }
+  ],
+  "cases": [
+    {
+      "label": "pod/vela-control-6bfc884b87-554zb",
+      "trace_id": "d168a45b9a81426c947ddda1fb3cdf63",
+      "external_parent_span_id": "ffb62b77b1724507",
+      "status": 401,
+      "spans": [
+        {
+          "service": "vela-control",
+          "resource": {
+            "service.name": {
+              "stringValue": "vela-control"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            }
+          },
+          "traceId": "0WikW5qBQmyUfd2h+zzfYw==",
+          "spanId": "LwxAIA02Sr0=",
+          "parentSpanId": "/7Yrd7FyRQc=",
+          "flags": 769,
+          "name": "GET unmatched",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626310893430",
+          "endTimeUnixNano": "1789417626311114792",
+          "attributes": [
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "unmatched"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        }
+      ]
+    },
+    {
+      "label": "pod/vela-control-6bfc884b87-7bxq7",
+      "trace_id": "7cfe2c08fdd74bdeb5ffd7c80e21e735",
+      "external_parent_span_id": "5f3aaadf460e4879",
+      "status": 401,
+      "spans": [
+        {
+          "service": "vela-control",
+          "resource": {
+            "service.name": {
+              "stringValue": "vela-control"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            }
+          },
+          "traceId": "fP4sCP3XS961/9fIDiHnNQ==",
+          "spanId": "rPgwpoE/7HM=",
+          "parentSpanId": "Xzqq30YOSHk=",
+          "flags": 769,
+          "name": "GET unmatched",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626590055973",
+          "endTimeUnixNano": "1789417626590300031",
+          "attributes": [
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "unmatched"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        }
+      ]
+    },
+    {
+      "label": "gateway/10.1.201.70",
+      "trace_id": "721228573da6420daf84ec3543e2913a",
+      "external_parent_span_id": "19e7e35c9a274a53",
+      "status": 401,
+      "spans": [
+        {
+          "service": "APISIX",
+          "resource": {
+            "telemetry.sdk.language": {
+              "stringValue": "lua"
+            },
+            "telemetry.sdk.name": {
+              "stringValue": "opentelemetry-lua"
+            },
+            "telemetry.sdk.version": {
+              "stringValue": "0.1.1"
+            },
+            "hostname": {
+              "stringValue": "apisix-9c6c9c5c8-vckh6"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            },
+            "service.name": {
+              "stringValue": "APISIX"
+            }
+          },
+          "traceId": "chIoVz2mQg2vhOw1Q+KROg==",
+          "spanId": "Ijo28ja73+4=",
+          "parentSpanId": "GefjXJonSlM=",
+          "name": "GET /api/*",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626619290112",
+          "endTimeUnixNano": "1789417626629161984",
+          "attributes": [
+            {
+              "key": "net.host.name",
+              "value": {
+                "stringValue": "10.1.201.70"
+              }
+            },
+            {
+              "key": "http.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.scheme",
+              "value": {
+                "stringValue": "https"
+              }
+            },
+            {
+              "key": "http.target",
+              "value": {
+                "stringValue": "/api/v1/jobs"
+              }
+            },
+            {
+              "key": "http.user_agent",
+              "value": {
+                "stringValue": "Python-urllib/3.12"
+              }
+            },
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "url.scheme",
+              "value": {
+                "stringValue": "https"
+              }
+            },
+            {
+              "key": "url.path",
+              "value": {
+                "stringValue": "/api/v1/jobs"
+              }
+            },
+            {
+              "key": "user_agent.original",
+              "value": {
+                "stringValue": "Python-urllib/3.12"
+              }
+            },
+            {
+              "key": "apisix.route_id",
+              "value": {
+                "stringValue": "vela-api"
+              }
+            },
+            {
+              "key": "apisix.route_name",
+              "value": {
+                "stringValue": "vela-api"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "/api/*"
+              }
+            },
+            {
+              "key": "apisix.response_source",
+              "value": {
+                "stringValue": "upstream"
+              }
+            },
+            {
+              "key": "http.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        },
+        {
+          "service": "vela-control",
+          "resource": {
+            "service.name": {
+              "stringValue": "vela-control"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            }
+          },
+          "traceId": "chIoVz2mQg2vhOw1Q+KROg==",
+          "spanId": "3pkSnvqCpHM=",
+          "parentSpanId": "Ijo28ja73+4=",
+          "flags": 769,
+          "name": "GET unmatched",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626628683788",
+          "endTimeUnixNano": "1789417626628752197",
+          "attributes": [
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "unmatched"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        }
+      ]
+    },
+    {
+      "label": "gateway/10.1.201.71",
+      "trace_id": "775a4dc99a2f4f4996aa869a48be7e70",
+      "external_parent_span_id": "72e44fc4bb56475f",
+      "status": 401,
+      "spans": [
+        {
+          "service": "APISIX",
+          "resource": {
+            "telemetry.sdk.language": {
+              "stringValue": "lua"
+            },
+            "telemetry.sdk.name": {
+              "stringValue": "opentelemetry-lua"
+            },
+            "telemetry.sdk.version": {
+              "stringValue": "0.1.1"
+            },
+            "hostname": {
+              "stringValue": "apisix-9c6c9c5c8-t66cm"
+            },
+            "service.name": {
+              "stringValue": "APISIX"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            }
+          },
+          "traceId": "d1pNyZovT0mWqoaaSL5+cA==",
+          "spanId": "TvX1C3Paakg=",
+          "parentSpanId": "cuRPxLtWR18=",
+          "name": "GET /api/*",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626593673984",
+          "endTimeUnixNano": "1789417626604171008",
+          "attributes": [
+            {
+              "key": "net.host.name",
+              "value": {
+                "stringValue": "10.1.201.71"
+              }
+            },
+            {
+              "key": "http.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.scheme",
+              "value": {
+                "stringValue": "https"
+              }
+            },
+            {
+              "key": "http.target",
+              "value": {
+                "stringValue": "/api/v1/jobs"
+              }
+            },
+            {
+              "key": "http.user_agent",
+              "value": {
+                "stringValue": "Python-urllib/3.12"
+              }
+            },
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "url.scheme",
+              "value": {
+                "stringValue": "https"
+              }
+            },
+            {
+              "key": "url.path",
+              "value": {
+                "stringValue": "/api/v1/jobs"
+              }
+            },
+            {
+              "key": "user_agent.original",
+              "value": {
+                "stringValue": "Python-urllib/3.12"
+              }
+            },
+            {
+              "key": "apisix.route_id",
+              "value": {
+                "stringValue": "vela-api"
+              }
+            },
+            {
+              "key": "apisix.route_name",
+              "value": {
+                "stringValue": "vela-api"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "/api/*"
+              }
+            },
+            {
+              "key": "apisix.response_source",
+              "value": {
+                "stringValue": "upstream"
+              }
+            },
+            {
+              "key": "http.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        },
+        {
+          "service": "vela-control",
+          "resource": {
+            "service.name": {
+              "stringValue": "vela-control"
+            },
+            "deployment.environment": {
+              "stringValue": "marslab"
+            }
+          },
+          "traceId": "d1pNyZovT0mWqoaaSL5+cA==",
+          "spanId": "Qm5N9yjVcto=",
+          "parentSpanId": "TvX1C3Paakg=",
+          "flags": 769,
+          "name": "GET unmatched",
+          "kind": "SPAN_KIND_SERVER",
+          "startTimeUnixNano": "1789417626650822447",
+          "endTimeUnixNano": "1789417626650878069",
+          "attributes": [
+            {
+              "key": "http.request.method",
+              "value": {
+                "stringValue": "GET"
+              }
+            },
+            {
+              "key": "http.route",
+              "value": {
+                "stringValue": "unmatched"
+              }
+            },
+            {
+              "key": "http.response.status_code",
+              "value": {
+                "intValue": "401"
+              }
+            }
+          ],
+          "status": {}
+        }
+      ]
+    }
+  ],
+  "pods": [
+    {
+      "name": "vela-control-6bfc884b87-554zb",
+      "uid": "dbfc32e5-1c05-4b5f-afb3-75f26dd720b2",
+      "node": "llmpool01",
+      "restart_counts": [
+        0
+      ]
+    },
+    {
+      "name": "vela-control-6bfc884b87-7bxq7",
+      "uid": "1baa7382-0545-44e7-88ef-26b00d22513d",
+      "node": "llmpool02",
+      "restart_counts": [
+        0
+      ]
+    }
+  ],
+  "image": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "settings": {
+    "VELA_TRACING_ENABLED": "true",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-collector.monitoring.svc.cluster.local:4318",
+    "OTEL_TRACES_SAMPLER_ARG": "0.1"
+  },
+  "passed": true,
+  "finished_at": "2026-09-14T20:27:10.213936+00:00"
+}

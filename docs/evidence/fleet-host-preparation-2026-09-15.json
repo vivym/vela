@@ -1,0 +1,169 @@
+{
+  "at": "2026-09-14T22:28:16.708866+00:00",
+  "activated": false,
+  "hosts": {
+    "10.1.201.70": {
+      "at": "2026-09-14T22:28:17.031434+00:00",
+      "passed": true,
+      "activated": false,
+      "created": true,
+      "directory": "/var/lib/rancher/rke2/server/vela-fleet-admission/candidates/218cab1ddacab6acecca1266",
+      "source_admission": "/etc/rancher/rke2/rke2-pss.yaml",
+      "source_admission_sha256": "216a148292c7fef7eba8e5c90a9b89074f8f2e6e2d905f4f11c41d85c6bb91ae",
+      "material": {
+        "secret_name": "vela-fleet-apiserver-client-current-r-01b6bb048706",
+        "secret_uid": "0ceeb45e-684a-4b13-9168-f81f461188cd",
+        "secret_revision": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510",
+        "certificate_sha256": "ea335af6b6bea6e59a81caae23b62cd4d1e70b01edcaf5fe7534ab192a2a16c4",
+        "client_ca_file_sha256": "310d0418303bc1ad8725779089b727b105d6a4f1429858a47ad2273daf92980f",
+        "not_after": "2026-12-13T21:21:42+00:00",
+        "identity": "spiffe://vela.internal/kube-apiserver/admission"
+      },
+      "files": [
+        {
+          "name": "admission.yaml",
+          "mode": "0400",
+          "sha256": "1e562229e98b090deb2e77b94fbd1e5ec6c9049281899087718209238413da5e"
+        },
+        {
+          "name": "kubeconfig",
+          "mode": "0400",
+          "sha256": "60347ce87536289a66b9f1da324f19dedf9891261be7fd009fcd6c25ab61df9f"
+        },
+        {
+          "name": "rke2-drop-in.candidate.yaml",
+          "mode": "0400",
+          "sha256": "d070e6bb1c4c888cf0b52b02dfeca83047aaa69b45a4d800014fb99cffdfeb01"
+        },
+        {
+          "name": "material.json",
+          "mode": "0400",
+          "sha256": "919f34b50fd0acdbdde48f44fab217d8594aa49b7bac1550d9adfd0b6d0b61e5"
+        },
+        {
+          "name": "client.pem",
+          "mode": "0400",
+          "sha256": "01d9cc9482a67ecc20ca9694e1994b178f0bd9c353dce413dc3d0b1bf8ad4c64"
+        }
+      ],
+      "boot_id": "d8bca6a6-2a44-41af-ab33-5933b8b714db",
+      "rke2_invocation_id": "0d278fe79f694b0dbd9256df3f5ffbff",
+      "static_pod_sha256": "c29fda6f9359dd005cacb32063f1e6226f74f60e5f29c450c54c553fea5991cc",
+      "unchanged_boot_and_service": true
+    },
+    "10.1.201.71": {
+      "at": "2026-09-14T22:28:18.587048+00:00",
+      "passed": true,
+      "activated": false,
+      "created": true,
+      "directory": "/var/lib/rancher/rke2/server/vela-fleet-admission/candidates/218cab1ddacab6acecca1266",
+      "source_admission": "/etc/rancher/rke2/rke2-pss.yaml",
+      "source_admission_sha256": "216a148292c7fef7eba8e5c90a9b89074f8f2e6e2d905f4f11c41d85c6bb91ae",
+      "material": {
+        "secret_name": "vela-fleet-apiserver-client-current-r-01b6bb048706",
+        "secret_uid": "0ceeb45e-684a-4b13-9168-f81f461188cd",
+        "secret_revision": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510",
+        "certificate_sha256": "ea335af6b6bea6e59a81caae23b62cd4d1e70b01edcaf5fe7534ab192a2a16c4",
+        "client_ca_file_sha256": "310d0418303bc1ad8725779089b727b105d6a4f1429858a47ad2273daf92980f",
+        "not_after": "2026-12-13T21:21:42+00:00",
+        "identity": "spiffe://vela.internal/kube-apiserver/admission"
+      },
+      "files": [
+        {
+          "name": "admission.yaml",
+          "mode": "0400",
+          "sha256": "1e562229e98b090deb2e77b94fbd1e5ec6c9049281899087718209238413da5e"
+        },
+        {
+          "name": "kubeconfig",
+          "mode": "0400",
+          "sha256": "60347ce87536289a66b9f1da324f19dedf9891261be7fd009fcd6c25ab61df9f"
+        },
+        {
+          "name": "rke2-drop-in.candidate.yaml",
+          "mode": "0400",
+          "sha256": "d070e6bb1c4c888cf0b52b02dfeca83047aaa69b45a4d800014fb99cffdfeb01"
+        },
+        {
+          "name": "material.json",
+          "mode": "0400",
+          "sha256": "919f34b50fd0acdbdde48f44fab217d8594aa49b7bac1550d9adfd0b6d0b61e5"
+        },
+        {
+          "name": "client.pem",
+          "mode": "0400",
+          "sha256": "01d9cc9482a67ecc20ca9694e1994b178f0bd9c353dce413dc3d0b1bf8ad4c64"
+        }
+      ],
+      "boot_id": "676751e3-c639-4ff5-8f69-d0b9d4d7a635",
+      "rke2_invocation_id": "2813aad5f74e4f5b8cdcba379f7b457d",
+      "static_pod_sha256": "986285663a0780d9243be3197fb48eb82752d0d3c3bc5fdba0a66a3dd53d45bc",
+      "unchanged_boot_and_service": true
+    },
+    "10.1.201.66": {
+      "at": "2026-09-14T22:28:19.302141+00:00",
+      "passed": true,
+      "activated": false,
+      "created": true,
+      "directory": "/var/lib/rancher/rke2/server/vela-fleet-admission/candidates/218cab1ddacab6acecca1266",
+      "source_admission": "/etc/rancher/rke2/rke2-pss.yaml",
+      "source_admission_sha256": "216a148292c7fef7eba8e5c90a9b89074f8f2e6e2d905f4f11c41d85c6bb91ae",
+      "material": {
+        "secret_name": "vela-fleet-apiserver-client-current-r-01b6bb048706",
+        "secret_uid": "0ceeb45e-684a-4b13-9168-f81f461188cd",
+        "secret_revision": "sha256:fee841ee9d6830fc9ebf0dc81e6502aeac604e9769b0400090d55967018c0510",
+        "certificate_sha256": "ea335af6b6bea6e59a81caae23b62cd4d1e70b01edcaf5fe7534ab192a2a16c4",
+        "client_ca_file_sha256": "310d0418303bc1ad8725779089b727b105d6a4f1429858a47ad2273daf92980f",
+        "not_after": "2026-12-13T21:21:42+00:00",
+        "identity": "spiffe://vela.internal/kube-apiserver/admission"
+      },
+      "files": [
+        {
+          "name": "admission.yaml",
+          "mode": "0400",
+          "sha256": "1e562229e98b090deb2e77b94fbd1e5ec6c9049281899087718209238413da5e"
+        },
+        {
+          "name": "kubeconfig",
+          "mode": "0400",
+          "sha256": "60347ce87536289a66b9f1da324f19dedf9891261be7fd009fcd6c25ab61df9f"
+        },
+        {
+          "name": "rke2-drop-in.candidate.yaml",
+          "mode": "0400",
+          "sha256": "d070e6bb1c4c888cf0b52b02dfeca83047aaa69b45a4d800014fb99cffdfeb01"
+        },
+        {
+          "name": "material.json",
+          "mode": "0400",
+          "sha256": "919f34b50fd0acdbdde48f44fab217d8594aa49b7bac1550d9adfd0b6d0b61e5"
+        },
+        {
+          "name": "client.pem",
+          "mode": "0400",
+          "sha256": "01d9cc9482a67ecc20ca9694e1994b178f0bd9c353dce413dc3d0b1bf8ad4c64"
+        }
+      ],
+      "boot_id": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+      "rke2_invocation_id": "9e1c27b1329c4045bbb03f3f5935d293",
+      "static_pod_sha256": "8d2b75cf039fa358bf672b1ad75ab30986cff7e5f3579cf7723abddf1d7d090c",
+      "unchanged_boot_and_service": true
+    }
+  },
+  "version": {
+    "major": "1",
+    "minor": "35",
+    "emulationMajor": "1",
+    "emulationMinor": "35",
+    "minCompatibilityMajor": "1",
+    "minCompatibilityMinor": "34",
+    "gitVersion": "v1.35.7+rke2r1",
+    "gitCommit": "96cb9ab4201d88ce5e549fde047a686171838fdb",
+    "gitTreeState": "clean",
+    "buildDate": "2026-07-23T16:19:22Z",
+    "goVersion": "go1.25.12 X:boringcrypto",
+    "compiler": "gc",
+    "platform": "linux/amd64"
+  },
+  "passed": true
+}

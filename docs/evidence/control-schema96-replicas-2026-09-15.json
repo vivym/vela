@@ -1,0 +1,109 @@
+{
+  "at": "2026-09-14T20:04:42.013877+00:00",
+  "source": "10.1.201.70",
+  "repository": "vela-control",
+  "root_digest": "sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "targets": [
+    {
+      "host": "10.1.201.71",
+      "manifests": [
+        {
+          "digest": "sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 1410,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:183fcd1bfca3cd0c47ac272b003707170ddaf0321b0f6fe75318c1a57bb2ae0a",
+          "size": 3030,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+          "size": 124284,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+          "size": 19118756,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+          "size": 4573237,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+          "size": 1278515,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+          "size": 19624998,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    },
+    {
+      "host": "10.1.201.66",
+      "manifests": [
+        {
+          "digest": "sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+          "media_type": "application/vnd.oci.image.manifest.v1+json",
+          "size": 1410,
+          "verified": true
+        }
+      ],
+      "blobs": [
+        {
+          "digest": "sha256:183fcd1bfca3cd0c47ac272b003707170ddaf0321b0f6fe75318c1a57bb2ae0a",
+          "size": 3030,
+          "uploaded": true,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+          "size": 124284,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+          "size": 19118756,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+          "size": 4573237,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+          "size": 1278515,
+          "uploaded": false,
+          "sha256_verified": true
+        },
+        {
+          "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+          "size": 19624998,
+          "uploaded": true,
+          "sha256_verified": true
+        }
+      ],
+      "result": "EXACT_IMAGE_REPLICA_PASS"
+    }
+  ],
+  "result": "EXACT_IMAGE_REPLICATION_PASS"
+}

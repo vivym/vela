@@ -10,13 +10,15 @@ kubectl kustomize deploy/vela-control
 ```
 
 The repository base is deliberately not deployable as production
-configuration. Both container images use an invalid all-zero digest.
+configuration. The Control image uses an invalid all-zero digest; the BusyBox
+materializer already uses a real pinned digest.
 `vela-control-runtime-r0-placeholder` contains `.invalid` endpoints and
 placeholder public keys/revisions, while
 `vela-control-node-agents-r0-placeholder` contains one placeholder Node Agent
 registration. A release overlay must replace both complete immutable
 ConfigMaps, every `r0-placeholder` Secret name, the Pod template release label,
-the Artifact scratch StorageClass, and both images as one release revision; it
+the Artifact scratch StorageClass, and the Control image as one release revision;
+it must also bind the BusyBox image and supply-chain evidence to that release. It
 may not patch only the visibly convenient fields. Rendering this base is not a
 deployment receipt or a Launch Receipt and does not advance any Production Gate
 from `0/9 PASS`.
@@ -24,7 +26,7 @@ from `0/9 PASS`.
 The Node Agent registry is shared by outbound Remediation dispatch and inbound
 WorkerInstance evidence authorization. The Fleet mTLS client CA establishes
 certificate-chain trust only; `vela-control` additionally requires the exact
-registered Node identity, legacy Worker UUID, and canonical Node Agent SPIFFE
+registered Node identity, Node Agent UUID/epoch, and canonical Node Agent SPIFFE
 URI before accepting `ObserveWorkerInstance`. Other Fleet RPCs remain limited
 to the configured Fleet Controller identity. The Fleet client CA file must be
 an explicit bundle of the approved Fleet Controller client issuer and host Node
@@ -50,11 +52,11 @@ credential rotation, storage placement, CNI enforcement, or deployment health.
 
 ## Placement And Availability
 
-Every eligible Control/Storage node must carry
-`vela.ai/node-role=control-storage`. At least two distinct
+Every eligible CPU management node must carry
+`vela.ai/node-role=control-storage` and `vela.ai/management=true`. At least two distinct
 `kubernetes.io/hostname` failure domains are required for the two replicas; the
 required anti-affinity intentionally leaves a replica Pending rather than
-co-locating both instances. The zero-unavailable rolling strategy and
+co-locating both instances. The zero-surge/one-unavailable rolling strategy and
 `minAvailable: 1` disruption budget preserve one serving replica during a
 routine release. They do not prove PostgreSQL, NATS, object-store, or ingress
 availability and do not replace the N/N-1 rollback and long-running Job drain
@@ -71,11 +73,14 @@ capacity and enforces I/O isolation from PostgreSQL, etcd, JetStream, and object
 storage. [`storage-contract.json`](storage-contract.json) is the machine-readable
 preflight for `WaitForFirstConsumer`, delete reclaim, a dedicated capacity pool,
 IOPS and throughput limits, and a live verification receipt. Capacity planning
-must reserve three active 110 GiB claims for the one-surge rollout plus at least
-one additional claim for a terminating Pod and delayed PVC/PV reclamation: four
-claims and 440 GiB in aggregate. The release must prove that reclamation stays
-within that headroom, or reserve additional capacity, and prove the Artifact
-size and ffprobe workload fit on all three Control/Storage nodes.
+currently retains a conservative four-claim/440 GiB contract. Its original
+three-active-claim derivation predates the zero-surge rollout and requires
+reconciliation with actual termination and reclamation bounds. More importantly,
+the application accepts a 100 GiB input, spools it, then copies it into the
+sandbox: peak storage can approach 200 GiB before executable and concurrency
+overhead. The existing 110 GiB per-claim value is therefore not proof that this
+workload fits. The release must close both the peak-space calculation and the
+reclamation bound before claiming capacity on the two eligible CPU nodes.
 Provider-specific StorageClass parameters and their live effect remain release
 evidence; the repository placeholder does not claim that isolation already
 exists.
@@ -148,7 +153,7 @@ Each Service selects the same Pod set but publishes exactly one interface:
 
 | Service | Pod port | Purpose |
 | --- | ---: | --- |
-| `vela-api` | 8080 | Public REST API behind Envoy Gateway TLS termination |
+| `vela-api` | 8080 | Public REST API behind the approved API gateway (APISIX in MarsLab) |
 | `vela-control` | 8444 | Fleet maintenance mTLS gRPC; preserves the existing Fleet DNS contract |
 | `vela-finance-reconciliation` | 8445 | Finance Reconciliation mTLS HTTPS |
 | `vela-compliance` | 8446 | Compliance / Legal Hold mTLS HTTPS |

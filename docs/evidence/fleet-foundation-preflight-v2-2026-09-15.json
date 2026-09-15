@@ -1,0 +1,24 @@
+{
+  "at": "2026-09-14T23:03:07.901528+00:00",
+  "checks": [
+    {
+      "name": "12 reviewed Fleet objects",
+      "passed": true
+    },
+    {
+      "name": "Control has two Ready replicas",
+      "passed": true
+    },
+    {
+      "name": "All three management nodes Ready without resource pressure",
+      "passed": false
+    }
+  ],
+  "stage": "preflight",
+  "error": "All three management nodes Ready without resource pressure",
+  "passed": false,
+  "finished_at": "2026-09-14T23:03:08.344290+00:00",
+  "runner_sha256": "fe5791ecfac77be9516b1babc452a972a7065b4b756c795bf451d089aa469eba",
+  "default_preflight_only": true,
+  "production_mutation_started": false
+}

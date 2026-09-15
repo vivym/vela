@@ -1,0 +1,59 @@
+{
+  "at": "2026-09-14T19:52:02.983968+00:00",
+  "scope": "adopt verified immutable material and explicit Secret keys; keep images, values, PVC configuration and replica counts",
+  "checks": [
+    {
+      "name": "no active business Jobs before rollout",
+      "passed": true
+    },
+    {
+      "name": "deployment initially Ready",
+      "passed": true
+    },
+    {
+      "name": "statefulset initially Ready",
+      "passed": true
+    },
+    {
+      "name": "all frozen objects reverified before references change",
+      "passed": true
+    },
+    {
+      "name": "deployment candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "statefulset candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "serviceaccount candidate server dry-run",
+      "passed": true
+    }
+  ],
+  "renames": {
+    "vela-control-node-agents-v-ebd9cc4d0cb4e": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6",
+    "vela-control-runtime-v-ebd9cc4d0cb4h": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76",
+    "nats-server-tls": "nats-server-tls-r-541fc9387f9e",
+    "vela-control-artifact-credentials-v-ebd9cc4d0cb4": "vela-control-artifact-credentials-v-ebd9cc4d0cb4-r-f3bb5ccb7687",
+    "vela-control-credential-pepper-v-ebd9cc4d0cb4": "vela-control-credential-pepper-v-ebd9cc4d0cb4-r-fdbdd3fd0bbd",
+    "vela-control-database-urls-v-ebd9cc4d0cb4": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21",
+    "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4": "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4-r-86931fab3462",
+    "vela-control-invoice-export-v-ebd9cc4d0cb4": "vela-control-invoice-export-v-ebd9cc4d0cb4-r-f220395ecc2f",
+    "vela-control-keyrings-v-ebd9cc4d0cb4": "vela-control-keyrings-v-ebd9cc4d0cb4-r-138a0079996e",
+    "vela-control-nats-client-v-ebd9cc4d0cb4": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b",
+    "vela-control-privileged-http-tls-v-ebd9cc4d0cb4": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+    "vela-control-remediation-client-tls-v-ebd9cc4d0cb4": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3",
+    "vela-control-stage-worker-identity-v-ebd9cc4d0cb4": "vela-control-stage-worker-identity-v-ebd9cc4d0cb4-r-d76040d66ca5",
+    "vela-control-transport-tls-v-ebd9cc4d0cb4": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+    "vela-nats-auth-memory-d74221ecd013": "vela-nats-auth-memory-d74221ecd013-r-b378edfb15b7",
+    "vela-release-pull-v1": "vela-release-pull-v1-r-7c3b2ad47663"
+  },
+  "error": "kubectl -n failed: error: timed out waiting for the condition\n",
+  "rollback": [
+    "deployment",
+    "serviceaccount"
+  ],
+  "passed": false,
+  "finished_at": "2026-09-14T19:57:07.817883+00:00"
+}

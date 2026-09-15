@@ -1,0 +1,116 @@
+{
+  "at": "2026-09-14T22:42:34.932169+00:00",
+  "passed": true,
+  "activated": false,
+  "host": "10.1.201.70",
+  "path": "/opt/vela-cluster/fleet-deployment-20260915/host-candidates-v2/source-archive/source.tar.gz",
+  "sha256": "dffa1be07b6eb8fcdfe152dc835727097f2609210ac6bfdf807357898b7ada51",
+  "bytes": 51705,
+  "members": 21,
+  "manifest": {
+    "scope": "Fleet host preparation source and sanitized receipts; no activation or private materials",
+    "binary_sha256": "95b486f8d20d881cfe321551ee374bc223e73ec0dfc0a99120b20c1682f83c73",
+    "files": [
+      {
+        "name": "deploy/environments/marslab/fleet-controller/HOST-ADMISSION.md",
+        "sha256": "9827fa63e5d7809b7ad276c739020b6a05fbb62301a226dbc10f31a78c04bb60",
+        "bytes": 2908
+      },
+      {
+        "name": "docs/cluster-production-readiness-2026-09-14.md",
+        "sha256": "fe5e08c05db49cc5ba8ba1b5076a913dc389a025945e8aeb85e41db9b09027cd",
+        "bytes": 22251
+      },
+      {
+        "name": "docs/evidence/cluster-readiness-after-fleet-preparation-2026-09-15.json",
+        "sha256": "ed9288d95a36c5ddd54ce2e02721fb4e71aa3f9daf17affb9811fc0e38b922e4",
+        "bytes": 25285
+      },
+      {
+        "name": "docs/evidence/fleet-host-idempotence-2026-09-15.json",
+        "sha256": "b8796c2a5cdfd3054235b9d63fab36c7095cc8cb468916b277599b4150fa920b",
+        "bytes": 6476
+      },
+      {
+        "name": "docs/evidence/fleet-host-native-validation-2026-09-15.json",
+        "sha256": "d2fc7a89813a7c6f80521ac021c6c498799747be22d18d39a37af9babcbe7008",
+        "bytes": 5348
+      },
+      {
+        "name": "docs/evidence/fleet-host-native-validation-initial-2026-09-15.json",
+        "sha256": "d0ed4fe46813fc8ba9b541acab58ba9b7efeaebd927dd9d409e65ebd044369ca",
+        "bytes": 379
+      },
+      {
+        "name": "docs/evidence/fleet-host-preparation-2026-09-15.json",
+        "sha256": "fd673191339d31f52f47a81ad371c8647cc0bfaaeaad3229f2de1a00a0813e6c",
+        "bytes": 6975
+      },
+      {
+        "name": "docs/fleet-controller-deployment-preparation-2026-09-15.md",
+        "sha256": "6efb246e656c123bb47103a897ce78f32cd1488cd600fdbd2dd08a0d936b1ed8",
+        "bytes": 7664
+      },
+      {
+        "name": "docs/node66-disk-pressure-2026-09-15.md",
+        "sha256": "cdd813b6d706ce4a8d4a87b8c1cdd01d084a200fef7e65926e2553bafd3902a5",
+        "bytes": 5630
+      },
+      {
+        "name": "docs/node66-temporary-artifact-reclamation-plan-2026-09-15.md",
+        "sha256": "68b8d0b1d94e58e4968c37af6e4cf6c08bd75a3bd22d2ec6a8200e850956360a",
+        "bytes": 8890
+      },
+      {
+        "name": "evidence/native-binary-build-info.txt",
+        "sha256": "03bce3f6a697ffdda0a341c0af1386fb83a2769bbcc0214d20feb0dfb1fb24eb",
+        "bytes": 5558
+      },
+      {
+        "name": "evidence/prepare-unit-tests.log",
+        "sha256": "e218d83951b91b8ea4e16d01ba7e20b7893e46e1c3a7ffd1e89f7936b2121b26",
+        "bytes": 1202
+      },
+      {
+        "name": "hack/collect-cluster-readiness.py",
+        "sha256": "f8e02f1c54c0ddcbc664f4a25522197fd828f315ae199fe422c85ccf9f073848",
+        "bytes": 8703
+      },
+      {
+        "name": "hack/fleet-webhook-native-check/README.md",
+        "sha256": "7c92b645b18f8a9945392aad761202df2a3dd2157bf83da5048a9b6488e813b4",
+        "bytes": 2028
+      },
+      {
+        "name": "hack/fleet-webhook-native-check/go.mod",
+        "sha256": "e1b261a82a71459a6ab0c674a789b416ceb90c774aa34d48788e505bc565262b",
+        "bytes": 2963
+      },
+      {
+        "name": "hack/fleet-webhook-native-check/go.sum",
+        "sha256": "66c0c9e97b8f7dea8806efc29cfb56ec04f032b93e1eb1bf3ddeec2846309131",
+        "bytes": 14815
+      },
+      {
+        "name": "hack/fleet-webhook-native-check/main.go",
+        "sha256": "a46d542eab511c712d0787a8b7b857edaac6b572ea1889e6b5cf8f49d37a2f0a",
+        "bytes": 8713
+      },
+      {
+        "name": "hack/fleet-webhook-native-check/main_test.go",
+        "sha256": "e402db9870fc66239127ed3db439cd8e04140390fa8ecb0aea84df0d1750ecca",
+        "bytes": 2242
+      },
+      {
+        "name": "hack/prepare-fleet-webhook-host.py",
+        "sha256": "b88f897dec555aaa88dcb714d5cc2604213d0d2982b3a45928f094b758444f65",
+        "bytes": 11082
+      },
+      {
+        "name": "hack/prepare_fleet_webhook_host_test.py",
+        "sha256": "4fbf553531d77982d3668636450cdd41a9c18be3e1e0d9bfb4cfb4a1af918ed7",
+        "bytes": 8102
+      }
+    ]
+  }
+}

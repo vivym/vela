@@ -1,0 +1,1244 @@
+{
+  "at": "2026-09-15T01:12:07.669826+00:00",
+  "scope": "Kubernetes-reported host versions; offline node reports may be stale",
+  "nodes": [
+    {
+      "name": "llmpool01",
+      "uid": "108426a1-4419-4ab0-a7c9-f17c3fac0203",
+      "ip": "10.1.201.70",
+      "gpu_runtime": false,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "d8bca6a6-2a44-41af-ab33-5933b8b714db",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "7.0.0-31-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "c012d487e5af40cdb77784326d3b014e",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "systemUUID": "4c4c4544-004b-3210-8043-b5c04f514633"
+      },
+      "pressures": []
+    },
+    {
+      "name": "llmpool02",
+      "uid": "3f44d9e1-bf83-4644-b766-50b43e24ea21",
+      "ip": "10.1.201.71",
+      "gpu_runtime": false,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "676751e3-c639-4ff5-8f69-d0b9d4d7a635",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-138-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "78f646f7a9b54c90bd0c8ae66839b1b3",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 22.04.5 LTS",
+        "systemUUID": "4c4c4544-0046-4610-8037-c7c04f4a4c32"
+      },
+      "pressures": []
+    },
+    {
+      "name": "marslab-gpu-01",
+      "uid": "b09bae97-221b-47e4-94ff-3babb7afeb93",
+      "ip": "10.1.201.66",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "e7cb0945-b805-4dad-9f2e-b3d36c71bb5f",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-137-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "8922f8e8b57945e99c56d50fecb904e3",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "59184cd9-2c52-4aa9-ba33-9c6b004f76d5"
+      },
+      "pressures": [
+        "DiskPressure"
+      ]
+    },
+    {
+      "name": "server-10",
+      "uid": "41a62164-f28f-46ca-9f69-2fb620c5da1f",
+      "ip": "10.1.201.17",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "0917ee95-6e9a-4058-8532-49b0cb9e4e27",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "53cacfeb745d4cfa83af5c2d7af32216",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "6c6cec00-1c5c-11ed-8000-3cecefeab3b0"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-11",
+      "uid": "85683a38-1dc2-465a-917b-f932bf466c65",
+      "ip": "10.1.201.39",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "cb0641ee-f7b3-4425-82e8-aaafa5bcf93e",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "1a663bd9dc5146d38c5d490b01fe520c",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "9eab0c00-1aeb-11ed-8000-3cecefeab32c"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-12",
+      "uid": "affac750-7905-433b-9cff-29e395d79a88",
+      "ip": "10.1.201.30",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "d945ff5a-1ce8-4f5b-aebd-a59bd5493463",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "b942dbfbb6f94e1698448836303dfb55",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "baa2d600-26c5-11ed-8000-7cc25529f432"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-120",
+      "uid": "beb307d5-37dd-4431-bd28-1443535e5341",
+      "ip": "10.1.201.58",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "84e156cc-3d31-489c-aab1-d1566995f860",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "f21db7aa861b4da19e1f4dc539bb954b",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "55c39e00-1590-11ec-8000-3cecef68abca"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-121",
+      "uid": "730d31f4-ff95-49d8-a7e9-c4403cfc0d4d",
+      "ip": "10.1.201.60",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "5a7d32e2-d817-4329-a4d1-09933d85de03",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "bf9d8d6c896c49dba18260be6fe09968",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "3c1ede00-b1cd-11eb-8000-3cecef05a022"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-124",
+      "uid": "f6829698-e475-44ba-9444-973dfafc458f",
+      "ip": "10.1.201.59",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "686aeae4-77d4-4141-8d20-af2afc14273a",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "dc0309cfa6a8483a8c286b5c4e80b43d",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "07382c00-0355-11ef-8000-7cc2554f5844"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-125",
+      "uid": "7c76c965-8bbb-4f91-9750-f142a4c1fca5",
+      "ip": "10.1.201.65",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "0645b154-0b0c-46d1-b0a8-e87b5cbdf5b7",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "2d23dee803144565a9b88cb46fef3455",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "8fce4600-e939-11eb-8000-3cecef66be5c"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-126",
+      "uid": "c0823550-5f67-46c2-b4aa-e6ab9bb2b6c9",
+      "ip": "10.1.201.63",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "1155a979-e34d-4809-bed0-92e3c89921a3",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "e256eea8f8ef46ceae7e484ce13a80ae",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "c6ca0200-b1fa-11eb-8000-3cecef059e06"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-127",
+      "uid": "513d8922-e1b7-48ba-a8e1-ae7730406db6",
+      "ip": "10.1.201.64",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "9b15f836-f24d-4249-a6e8-9d9e4dae7b88",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "920b04b7f56e4ba5916f743ada66ceea",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "6e8b0400-b1ea-11eb-8000-3cecef059914"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-128",
+      "uid": "a46efbb6-7dd3-4805-8a63-37bcc6cc3ec9",
+      "ip": "10.1.201.62",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "846b84c3-c084-45cd-8bb9-70712d8b54b3",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "2e2ad17435984ac298747a0d7782293a",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "85fd4a00-9771-11eb-8000-3cecef0576fc"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-13",
+      "uid": "b3331b64-b9ec-4508-a76f-64688e025b47",
+      "ip": "10.1.201.41",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "1806df18-98f6-47ba-a8f2-cfe1bf1e43e8",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "6f4775d57eda4c1b810912dcb171e43c",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "d0291c00-2153-11ec-8000-3cecef6884ae"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-14",
+      "uid": "d0a9b504-ffc9-40b8-963c-9d74823fb83e",
+      "ip": "10.1.201.21",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "4592fb5c-d7f6-4ec3-ab77-fadee73fe375",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "de1e6fdbc6e0421da3d054b3500ef344",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "b431b800-3cb0-11eb-8000-3cecefea6f4c"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-15",
+      "uid": "0ddc7fc1-e5f5-4b0f-ae3a-84ccec538353",
+      "ip": "10.1.201.46",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "49fe7cf0-7e5e-4049-98ce-3c0c26e53d37",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "a4ec85dd08fa434daf132983f3ead7d2",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "e763f000-1cb8-11ed-8000-3cecefeab366"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-16",
+      "uid": "25974968-6579-4338-a240-a9d6ee7894c7",
+      "ip": "10.1.201.29",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "f4a4a21b-11ac-4941-8650-1ea9d4833feb",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "627e89d7c94d4131a57f8f56e2f920b5",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "899a9a00-e290-11ea-8000-3cecefea6b18"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-17",
+      "uid": "9c44b6e6-2daa-4291-b6f7-c6a9f5228cdd",
+      "ip": "10.1.201.26",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "2edb4c49-a7d7-42a3-8a60-d1a36017816e",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "8bc253b8e89f4d39945517b983079405",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "5a386400-1b1d-11ed-8000-3cecefeab35a"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-18",
+      "uid": "34dc508c-7a03-4423-8822-511f466c54b1",
+      "ip": "10.1.201.31",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "f29f4c62-2644-4dbe-903f-92d3c0c6680f",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "ab4c2cff2f1a42c18f46def0dd3fdb99",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "ba222e00-1c35-11ed-8000-3cecefea6caa"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-19",
+      "uid": "1780aeeb-9152-4fa2-bccb-c722b062da6f",
+      "ip": "10.1.201.42",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "a0f2e906-8bc2-42ae-bc97-fedb9e4d5f8a",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "c42d9cc04cff4e08a5c140a17209adc4",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "78f17000-1e27-11ed-8000-3cecefeab364"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-20",
+      "uid": "f982696e-0a2d-427f-a6c9-d7a4e5d823c9",
+      "ip": "10.1.201.50",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "c4ba195a-06b8-42c2-9abb-aefa52ad08d4",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "583fb71b22264b15af6469bd3c6ba264",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "56fc5c00-37de-11ed-8000-7cc2554b1740"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-21",
+      "uid": "607458cc-cc15-4de3-8c88-ac5353f531d9",
+      "ip": "10.1.201.27",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "c5bcd6f4-e508-40de-96a4-56454f5e4f7d",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "61eb926f318f401c89edaa27013ecfdf",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "88fd2a00-1c44-11ed-8000-3cecefeab2f0"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-22",
+      "uid": "b06b6fe4-3eb2-4b38-bfb8-bded5cf8a95f",
+      "ip": "10.1.201.11",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "c6bdd211-ce93-4e17-a08f-991d82ffe41d",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "2bb9f2fe486e4e2a8dbef2847e24f3e7",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "2fe86600-0dfd-11ed-8000-3cecefeab0fa"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-23",
+      "uid": "17d1b11b-258b-4c22-b20d-d2030b381c95",
+      "ip": "10.1.201.12",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "a24cb1ce-6eee-4473-ac13-bb95beb0ff05",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "458e8f6dcf1a4dc18e3a3c79eef8874c",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "09fda000-6ccf-11ed-8000-7cc2554ab730"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-25",
+      "uid": "85363a53-93c1-4801-81f4-d6ec4287e8b2",
+      "ip": "10.1.201.33",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "84e31ba0-d6fd-42e6-aff7-7acbc53415ef",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "e5e710344a8746958e978d2b6021d22f",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "d7b6be00-1c5c-11ed-8000-3cecefeab2d8"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-26",
+      "uid": "ed411366-5e9d-434d-878b-92a8501d58a2",
+      "ip": "10.1.201.43",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "ba1af013-3772-4e1e-ac68-be58f1fc2476",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "423dac085e034b31a2b8cfdb022eeb41",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "78f8e400-0e16-11ed-8000-3cecefeab0f6"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-27",
+      "uid": "33e05590-67d5-4b94-a4b2-5b7564b72320",
+      "ip": "10.1.201.51",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "560d14c7-4125-4ef1-96d4-8d9f37c65bd0",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "9f5a2b8cb64c441d82a2ee696b95f788",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "6a0cae00-1d92-11ed-8000-3cecefeab380"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-28",
+      "uid": "50efbea6-2da4-4c13-a4be-6e265037b115",
+      "ip": "10.1.201.22",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "6c2a1621-cdbe-42d0-a819-8996450aaa3c",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "53829c2ac4014a848917e4aac799f697",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "1eaa5400-0e13-11ed-8000-3cecefeab10a"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-29",
+      "uid": "73b3d5f7-2f24-4ea8-abe2-951960cd548a",
+      "ip": "10.1.201.24",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "87534e99-971a-4c59-8577-7bd5844e5523",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "52d24969718e4f4b8777f58d6e749f5a",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "c9605e00-6d84-11ed-8000-7cc2554ab754"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-30",
+      "uid": "98e7ff54-3483-4bd0-b66c-995494f15f61",
+      "ip": "10.1.201.32",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "9dfe1281-5783-4c8d-bb05-99b2e5abcd40",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "395b87ad967b46b1a0151f19b06cb411",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "242bcc00-1b7f-11ed-8000-3cecefeab38c"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-31",
+      "uid": "1855e08d-437a-41bd-befa-a07e9ad8b62e",
+      "ip": "10.1.201.13",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "64f83c3d-8216-42ac-b0cc-b7161694adb5",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "951a8ae6fb00451aa16d278eedb662e7",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "9f269a00-7874-11ed-8000-7cc25529f494"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-33",
+      "uid": "1970f756-5435-4bb8-9a82-e798ccbdc46a",
+      "ip": "10.1.201.23",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "dff42b96-ed0b-4779-acfe-af93fbfa6538",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "3d1d64a723564550bf855816443ef82e",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "cc7c6000-f456-11eb-8000-3cecef695a70"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-34",
+      "uid": "df5d90ea-9d96-473a-8ed7-5e3ea2290e1a",
+      "ip": "10.1.201.15",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "888e1876-c04c-433c-8b49-dc27b6672ad2",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "de6e979c78054eaf8419bd899d833ed8",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "57558a00-f612-11eb-8000-3cecef695cf4"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-35",
+      "uid": "6528757e-1f07-4d8f-b5bd-7f9e5a921239",
+      "ip": "10.1.201.45",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "dd3e5b36-de30-4ccd-955e-bf330b57df78",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "e37b24642d604efa913393ef773466ea",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "24ad8200-f57d-11eb-8000-3cecef688a12"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-36",
+      "uid": "1b5ef5fc-b762-462f-aaa2-1a2a0a4cf22b",
+      "ip": "10.1.201.19",
+      "gpu_runtime": true,
+      "ready": false,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "1dd1be52-6504-45d1-adcb-fefd2929ec09",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "d605f3f1f2844544bf5d9daa83926625",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "d9085800-e610-11eb-8000-3cecef66c15a"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-37",
+      "uid": "7eccca38-9c5c-40c3-93e8-e74700b0826f",
+      "ip": "10.1.201.38",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "58698711-de1b-4738-87f3-9c81796d5007",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-138-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "857e7db3dd7a45d6987baa2336d8cd37",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "57403a00-0739-11ec-8000-3cecef6884a0"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-38",
+      "uid": "30390211-eb14-4cc0-b1c5-821c7f1046a9",
+      "ip": "10.1.201.18",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "9bb77cf7-6fb4-4b8b-8ea5-d85a6f2e2205",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "1c2a1e988d244344baf124de8d99ada4",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "d093aa00-dd16-11ec-8000-3ceceff1e2ea"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-39",
+      "uid": "010058bb-b5e6-44fe-a40c-9adced62c11b",
+      "ip": "10.1.201.16",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "85845d4a-7924-453c-b124-2d8a35eb5168",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "bc1b78c89fda44e9bd31716bd2749f84",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "08f99200-dc0a-11ec-8000-7cc25514f368"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-40",
+      "uid": "565b7a37-d616-4ff5-85ad-37b55085a48a",
+      "ip": "10.1.201.35",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "10d374a9-0c22-4fc8-baff-efa173b2b4f1",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-138-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "1cb7a9bcf3464de084a23202e1a03479",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "901ed000-3053-11ec-8000-3ceceff609be"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-41",
+      "uid": "04f3cf87-23bd-4bc4-8366-0c312eb86ad6",
+      "ip": "10.1.201.14",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "7cf03d5e-c449-4156-aee3-c75bff83e427",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "8d0103e4ac854696b49805ec5fc1795f",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "91f7fe00-1592-11ec-8000-3cecef68acd8"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-42",
+      "uid": "fc1e469a-aa6a-4e1f-b04b-0f889b4dd048",
+      "ip": "10.1.201.20",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "7cbe1723-1135-4676-842e-79b151bc4d1a",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "d26a146019764fada82e5f7ede64724f",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "36247400-0ac0-11ec-8000-3cecef68ac3a"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-43",
+      "uid": "baa024c1-71fc-4a57-b7ae-cc3a4bd2aa56",
+      "ip": "10.1.201.25",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "677cc3e5-5a49-450e-b436-320642e29673",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "54e34a54e52c467f8f1f4169c32a4372",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "89459c00-a82c-11eb-8000-3cecef057892"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-44",
+      "uid": "de4d7382-00b2-451e-9238-0da408e789a4",
+      "ip": "10.1.201.40",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "5df25cd0-b9ba-42a0-928f-f1831a902797",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "9fe3b4009d6d4d308424a644c74e4682",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "69551c00-07d4-11ed-8000-3ceceff60c00"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-45",
+      "uid": "907f4b7e-994d-4577-af05-b7a0209d8d9f",
+      "ip": "10.1.201.34",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "fc0a67d0-4c3f-4eec-b6e6-1ecc1c596344",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "b4c70de9932142049cdcd2e859d9fc69",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "db4ed400-f131-11eb-8000-3cecef695baa"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-46",
+      "uid": "52ee517b-0c3a-4295-8035-c23c706538e4",
+      "ip": "10.1.201.36",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "23cf509b-ef93-4df3-8edf-a44f6bfdd2ae",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "6daf89f350eb4360a7a0bc4758a9c082",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "e6e1b800-2f34-11ec-8000-3ceceff60acc"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-47",
+      "uid": "208f7a12-d01e-43b8-aa6e-c7caa133b128",
+      "ip": "10.1.201.28",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "0b66f033-980f-42b7-b9d6-bb89598ef01f",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "78b2b6ae667747bcad937594aa9f465d",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "b0ef8800-dcfc-11ec-8000-3ceceff60b56"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-48",
+      "uid": "28bb665c-1ba9-4182-a3d2-eaff4d766a98",
+      "ip": "10.1.201.48",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "d690d151-a64e-411d-b3f2-93896f108e58",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "2d7e1cd7537c457897388d0167700d9e",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "ebf66800-0738-11ec-8000-3cecef688498"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-49",
+      "uid": "1fd5aa32-e240-4a53-92c2-954aaac46b64",
+      "ip": "10.1.201.55",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "955b42ad-3350-4718-9abf-5d233978ad43",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "9eb1685d7e9e4a258916cf65e364483e",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "61b35800-b6a3-11eb-8000-3cecef05de30"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-50",
+      "uid": "b4c30c37-6a19-4fb1-84eb-0166d0258ff2",
+      "ip": "10.1.201.52",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "45466584-9eee-4bd5-a717-79532f744643",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "6b62773e752f46959de4bb09581ad236",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "3b94aa00-f566-11eb-8000-3cecef695a1a"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-51",
+      "uid": "cfb5d8f7-611f-420b-b001-907033bb970d",
+      "ip": "10.1.201.49",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "3475c9b9-18b3-407e-b8a4-69f1c5270e2d",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "56ebc5d3c48b436ab549dbb5f46e223b",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "2ceade00-dd98-11ec-8000-3ceceff1e164"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-52",
+      "uid": "5a540431-62ff-40c8-935f-0ed4a8c52c87",
+      "ip": "10.1.201.47",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "c18270e7-72a8-4a45-9dab-3ce776a8a9f1",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "9fea7c896af44abbaaa6c86f5c7455e4",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "d17d9400-2fef-11ec-8000-3ceceff609ea"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-53",
+      "uid": "664b1b72-dc57-41ff-88ac-91c400430b1a",
+      "ip": "10.1.201.54",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "c0cdfec0-b591-42b3-87b6-a1e03329adf0",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "0d168cdfba94407b843a41372da5fef8",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "a4020800-f0dc-11eb-8000-3cecef695b96"
+      },
+      "pressures": []
+    },
+    {
+      "name": "server-54",
+      "uid": "afe05c72-0a78-4d94-b945-cde27c824b70",
+      "ip": "10.1.201.53",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "cbd363cb-ce89-4133-ba5f-cb36ab2e5b5f",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-138-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "56ffa29a91244c2c9ebc6d96638a120b",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "50c6fe00-9684-11eb-8000-3cecef059fec"
+      },
+      "pressures": []
+    },
+    {
+      "name": "servser-24",
+      "uid": "f3d3aa6b-94be-4feb-b042-68cffbf983ce",
+      "ip": "10.1.201.37",
+      "gpu_runtime": true,
+      "ready": true,
+      "node_info": {
+        "architecture": "amd64",
+        "bootID": "508ef7dd-733c-459c-b750-b06075090d78",
+        "containerRuntimeVersion": "containerd://2.2.6-k3s1",
+        "kernelVersion": "6.8.0-139-generic",
+        "kubeProxyVersion": "",
+        "kubeletVersion": "v1.35.7+rke2r1",
+        "machineID": "9b28c96365ec498683d67b7d0c2dfa87",
+        "operatingSystem": "linux",
+        "osImage": "Ubuntu 24.04.4 LTS",
+        "swap": {
+          "capacity": 8589930496
+        },
+        "systemUUID": "83db2400-35d0-11ed-8000-7cc2554b1800"
+      },
+      "pressures": []
+    }
+  ]
+}

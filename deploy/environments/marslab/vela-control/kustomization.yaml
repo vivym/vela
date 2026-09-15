@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../../vela-control
+patches:
+  - target:
+      kind: ServiceAccount
+      name: vela-control
+    patch: |-
+      - op: add
+        path: /imagePullSecrets
+        value: [{name: vela-release-pull-v1-r-7c3b2ad47663}]
+  - target:
+      kind: ConfigMap
+      name: vela-control-runtime-r0-placeholder
+    path: runtime-config.patch.json
+    options:
+      allowNameChange: true
+  - target:
+      kind: ConfigMap
+      name: vela-control-node-agents-r0-placeholder
+    path: node-agent-config.patch.json
+    options:
+      allowNameChange: true
+  - target:
+      kind: Deployment
+      name: vela-control
+    path: deployment.patch.json
+  - target:
+      kind: Deployment
+      name: vela-control
+    path: tracing.patch.json
+  - target:
+      kind: NetworkPolicy
+      name: vela-control-allow-observability
+    path: observability-access.patch.json
+  - target:
+      kind: NetworkPolicy
+      name: vela-control-allow-api
+    path: api-gateway-access.patch.json
+  - target:
+      kind: NetworkPolicy
+      name: vela-control-allow-node-agent-placeholder
+    path: node-agent-access.patch.json
+    options:
+      allowNameChange: true

@@ -1,0 +1,9 @@
+{
+  "at": "2026-09-14T20:33:49.129375+00:00",
+  "archive": "/opt/vela-cluster/release-inputs-20260915/post-adoption-audit/audit-source.tar.gz",
+  "archive_sha256": "d59947063c6b391a85841cc93ddb0ee1f13f1c098b4c115c3c93056ce22bf41d",
+  "files": 67,
+  "archive_mode": "0o600",
+  "scope": "R4 material/schema adoption and R6 Control tracing; no Secret payload or SSH credential helper",
+  "passed": true
+}

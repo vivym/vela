@@ -1,0 +1,128 @@
+{
+  "at": "2026-09-14T20:11:00.042943+00:00",
+  "scope": "adopt schema-96 Control image and immutable material; keep values, NATS image, PVC configuration and replica counts",
+  "control_image": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64",
+  "checks": [
+    {
+      "name": "no active business Jobs before rollout",
+      "passed": true
+    },
+    {
+      "name": "deployment initially Ready",
+      "passed": true
+    },
+    {
+      "name": "statefulset initially Ready",
+      "passed": true
+    },
+    {
+      "name": "all frozen objects reverified before references change",
+      "passed": true
+    },
+    {
+      "name": "deployment candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "statefulset candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "serviceaccount candidate server dry-run",
+      "passed": true
+    },
+    {
+      "name": "nats-0 JetStream health probe preflight",
+      "passed": true
+    },
+    {
+      "name": "nats-1 JetStream health probe preflight",
+      "passed": true
+    },
+    {
+      "name": "nats-2 JetStream health probe preflight",
+      "passed": true
+    },
+    {
+      "name": "Control rollout complete",
+      "passed": true
+    },
+    {
+      "name": "Control template equals approved candidate",
+      "passed": true
+    },
+    {
+      "name": "Control two replicas Ready",
+      "passed": true
+    },
+    {
+      "name": "nats-0 JetStream healthy before rollout",
+      "passed": true
+    },
+    {
+      "name": "nats-1 JetStream healthy before rollout",
+      "passed": true
+    },
+    {
+      "name": "nats-2 JetStream healthy before rollout",
+      "passed": true
+    },
+    {
+      "name": "NATS rollout complete",
+      "passed": true
+    },
+    {
+      "name": "NATS template equals approved candidate",
+      "passed": true
+    },
+    {
+      "name": "NATS three replicas Ready",
+      "passed": true
+    },
+    {
+      "name": "nats-0 JetStream healthy after rollout",
+      "passed": true
+    },
+    {
+      "name": "nats-1 JetStream healthy after rollout",
+      "passed": true
+    },
+    {
+      "name": "nats-2 JetStream healthy after rollout",
+      "passed": true
+    },
+    {
+      "name": "deployment no old material references remain",
+      "passed": true
+    },
+    {
+      "name": "statefulset no old material references remain",
+      "passed": true
+    },
+    {
+      "name": "serviceaccount no old material references remain",
+      "passed": true
+    }
+  ],
+  "renames": {
+    "vela-control-node-agents-v-ebd9cc4d0cb4e": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6",
+    "vela-control-runtime-v-ebd9cc4d0cb4h": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76",
+    "nats-server-tls": "nats-server-tls-r-541fc9387f9e",
+    "vela-control-artifact-credentials-v-ebd9cc4d0cb4": "vela-control-artifact-credentials-v-ebd9cc4d0cb4-r-f3bb5ccb7687",
+    "vela-control-credential-pepper-v-ebd9cc4d0cb4": "vela-control-credential-pepper-v-ebd9cc4d0cb4-r-fdbdd3fd0bbd",
+    "vela-control-database-urls-v-ebd9cc4d0cb4": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21",
+    "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4": "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4-r-86931fab3462",
+    "vela-control-invoice-export-v-ebd9cc4d0cb4": "vela-control-invoice-export-v-ebd9cc4d0cb4-r-f220395ecc2f",
+    "vela-control-keyrings-v-ebd9cc4d0cb4": "vela-control-keyrings-v-ebd9cc4d0cb4-r-138a0079996e",
+    "vela-control-nats-client-v-ebd9cc4d0cb4": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b",
+    "vela-control-privileged-http-tls-v-ebd9cc4d0cb4": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244",
+    "vela-control-remediation-client-tls-v-ebd9cc4d0cb4": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3",
+    "vela-control-stage-worker-identity-v-ebd9cc4d0cb4": "vela-control-stage-worker-identity-v-ebd9cc4d0cb4-r-d76040d66ca5",
+    "vela-control-transport-tls-v-ebd9cc4d0cb4": "vela-control-transport-tls-v-ebd9cc4d0cb4-r-e065c3d7fabb",
+    "vela-nats-auth-memory-d74221ecd013": "vela-nats-auth-memory-d74221ecd013-r-b378edfb15b7",
+    "vela-release-pull-v1": "vela-release-pull-v1-r-7c3b2ad47663"
+  },
+  "fleet_grants": "BEGIN\nGRANT\nGRANT\nCOMMIT\n",
+  "passed": true,
+  "finished_at": "2026-09-14T20:12:40.533363+00:00"
+}

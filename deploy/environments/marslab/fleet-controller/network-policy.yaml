@@ -1,0 +1,170 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "NetworkPolicy",
+  "metadata": {
+    "name": "vela-fleet-controller",
+    "namespace": "vela-system",
+    "labels": {
+      "app.kubernetes.io/part-of": "vela"
+    }
+  },
+  "spec": {
+    "podSelector": {
+      "matchLabels": {
+        "app.kubernetes.io/name": "vela-fleet-controller"
+      }
+    },
+    "policyTypes": [
+      "Ingress",
+      "Egress"
+    ],
+    "ingress": [
+      {
+        "from": [
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.70/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.71/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.66/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.42.0.0/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.42.1.0/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.42.2.0/32"
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "TCP",
+            "port": 9443
+          }
+        ]
+      }
+    ],
+    "egress": [
+      {
+        "to": [
+          {
+            "namespaceSelector": {
+              "matchLabels": {
+                "kubernetes.io/metadata.name": "vela-system"
+              }
+            },
+            "podSelector": {
+              "matchLabels": {
+                "app.kubernetes.io/name": "vela-control"
+              }
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "TCP",
+            "port": 8444
+          }
+        ]
+      },
+      {
+        "to": [
+          {
+            "ipBlock": {
+              "cidr": "10.43.0.1/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.70/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.71/32"
+            }
+          },
+          {
+            "ipBlock": {
+              "cidr": "10.1.201.66/32"
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "TCP",
+            "port": 443
+          },
+          {
+            "protocol": "TCP",
+            "port": 6443
+          }
+        ]
+      },
+      {
+        "to": [
+          {
+            "namespaceSelector": {
+              "matchLabels": {
+                "kubernetes.io/metadata.name": "kube-system"
+              }
+            },
+            "podSelector": {
+              "matchLabels": {
+                "k8s-app": "kube-dns"
+              }
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "UDP",
+            "port": 53
+          },
+          {
+            "protocol": "TCP",
+            "port": 53
+          }
+        ]
+      },
+      {
+        "to": [
+          {
+            "namespaceSelector": {
+              "matchLabels": {
+                "kubernetes.io/metadata.name": "monitoring"
+              }
+            },
+            "podSelector": {
+              "matchLabels": {
+                "app.kubernetes.io/name": "otel-collector"
+              }
+            }
+          }
+        ],
+        "ports": [
+          {
+            "protocol": "TCP",
+            "port": 4318
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "at": "2026-09-14T20:31:18.509916+00:00",
+  "checks": [
+    {
+      "name": "live Control still equals tracing candidate",
+      "passed": true
+    },
+    {
+      "name": "rendered image matches live",
+      "passed": true
+    },
+    {
+      "name": "rendered env matches live",
+      "passed": true
+    },
+    {
+      "name": "rendered envFrom matches live",
+      "passed": true
+    },
+    {
+      "name": "rendered pull Secret matches live",
+      "passed": true
+    },
+    {
+      "name": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6 bytes and immutable revision match",
+      "passed": true
+    },
+    {
+      "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76 bytes and immutable revision match",
+      "passed": true
+    },
+    {
+      "name": "Control still 2 Ready",
+      "passed": true
+    },
+    {
+      "name": "NATS unchanged and 3 Ready",
+      "passed": true
+    }
+  ],
+  "offline_node": {
+    "name": "server-36",
+    "addresses": [
+      {
+        "address": "10.1.201.19",
+        "type": "InternalIP"
+      },
+      {
+        "address": "server-36",
+        "type": "Hostname"
+      }
+    ],
+    "ready": [
+      "Unknown"
+    ],
+    "cordoned": true
+  },
+  "passed": true
+}

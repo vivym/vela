@@ -1,0 +1,465 @@
+{
+  "at": "2026-09-14T19:19:40.232834+00:00",
+  "scope": "read-only release input metadata; no Secret or ConfigMap content; not a canonical bundle",
+  "workloads": [
+    {
+      "identity": "Deployment/vela-system/vela-control",
+      "ready": 2,
+      "replicas": 2,
+      "images": [
+        {
+          "container": "secret-materializer",
+          "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0"
+        },
+        {
+          "container": "vela-control",
+          "image": "10.1.201.70:5005/vela-control@sha256:7d1acb338a3c8a31cea7393863070ae0e4ef375b414355dc7b03dcfebfcaee51"
+        }
+      ]
+    },
+    {
+      "identity": "StatefulSet/vela-system/nats",
+      "ready": 3,
+      "replicas": 3,
+      "images": [
+        {
+          "container": "nats",
+          "image": "docker.io/library/nats@sha256:26b0ee1a95285aedae137aefb953701d9da1dfffcf7818eb3aeb536c4373892f"
+        }
+      ]
+    }
+  ],
+  "external_references": [
+    {
+      "kind": "ConfigMap",
+      "namespace": "vela-system",
+      "name": "vela-control-node-agents-v-ebd9cc4d0cb4e",
+      "uid": "c42e7ee7-226c-420e-9931-24d854ada152",
+      "resource_version": "168685",
+      "immutable": true,
+      "release_annotation": null,
+      "type": null,
+      "keys": [
+        "node-agents.json"
+      ],
+      "explicit_reference_keys": [
+        "node-agents.json"
+      ],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "ConfigMap",
+      "namespace": "vela-system",
+      "name": "vela-control-runtime-v-ebd9cc4d0cb4h",
+      "uid": "a44314e5-c991-4985-8d0a-7404b882df9a",
+      "resource_version": "1026943",
+      "immutable": true,
+      "release_annotation": null,
+      "type": null,
+      "keys": [
+        "VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE",
+        "VELA_ARTIFACT_BACKUP_S3_BUCKET",
+        "VELA_ARTIFACT_BACKUP_S3_ENDPOINT",
+        "VELA_ARTIFACT_BACKUP_S3_PATH_STYLE",
+        "VELA_ARTIFACT_BACKUP_S3_REGION",
+        "VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
+        "VELA_ARTIFACT_FFPROBE_PATH",
+        "VELA_ARTIFACT_FFPROBE_VERSION",
+        "VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE",
+        "VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
+        "VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE",
+        "VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE",
+        "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE",
+        "VELA_ARTIFACT_S3_BUCKET",
+        "VELA_ARTIFACT_S3_ENDPOINT",
+        "VELA_ARTIFACT_S3_PATH_STYLE",
+        "VELA_ARTIFACT_S3_REGION",
+        "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE",
+        "VELA_ARTIFACT_SANDBOX_ROOT",
+        "VELA_ARTIFACT_SPOOL_DIRECTORY",
+        "VELA_ARTIFACT_VALIDATOR_HELPER_PATH",
+        "VELA_ARTIFACT_VALIDATOR_REVISION",
+        "VELA_ATTEMPT_COORDINATOR_BATCH_SIZE",
+        "VELA_ATTEMPT_COORDINATOR_CLAIM_TTL",
+        "VELA_ATTEMPT_COORDINATOR_RETRY_DELAY",
+        "VELA_ATTEMPT_COORDINATOR_TICK",
+        "VELA_COMPLIANCE_CLIENT_CA_FILE",
+        "VELA_COMPLIANCE_SERVER_CERT_FILE",
+        "VELA_COMPLIANCE_SERVER_KEY_FILE",
+        "VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE",
+        "VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE",
+        "VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE",
+        "VELA_FLEET_CONTROLLER_ACTOR_IDENTITY",
+        "VELA_FLEET_CONTROLLER_SPIFFE_ID",
+        "VELA_FLEET_GRPC_ADDRESS",
+        "VELA_FLEET_GRPC_CLIENT_CA_FILE",
+        "VELA_FLEET_GRPC_TLS_CERT_FILE",
+        "VELA_FLEET_GRPC_TLS_KEY_FILE",
+        "VELA_FLEET_RUNTIME_POLICY_PRIVATE_KEY_FILE",
+        "VELA_H3_EXACT_CACHE_BATCH_SIZE",
+        "VELA_H3_EXACT_CACHE_CARRY_COST_MINOR",
+        "VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR",
+        "VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID",
+        "VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE",
+        "VELA_H3_EXACT_CACHE_SEED_RNG_REVISION",
+        "VELA_H3_EXACT_CACHE_TICK",
+        "VELA_HTTP_ADDRESS",
+        "VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE",
+        "VELA_INVOICE_EXPORT_ENDPOINT",
+        "VELA_LEASE_ACTIVE_KEY_ID",
+        "VELA_LEASE_KEYRING_FILE",
+        "VELA_MANAGEMENT_ADDRESS",
+        "VELA_NATS_CLIENT_CERT_FILE",
+        "VELA_NATS_CLIENT_KEY_FILE",
+        "VELA_NATS_CREDENTIALS_FILE",
+        "VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY",
+        "VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS",
+        "VELA_NATS_OUTBOX_USER_PUBLIC_KEYS",
+        "VELA_NATS_ROOT_CA_FILE",
+        "VELA_NATS_SCHEDULER_CREDENTIALS_FILE",
+        "VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS",
+        "VELA_NATS_URL",
+        "VELA_OIDC_AUDIENCE",
+        "VELA_OIDC_ISSUER",
+        "VELA_OIDC_JWKS_URL",
+        "VELA_PLATFORM_OIDC_AUDIENCE",
+        "VELA_PLATFORM_OIDC_ISSUER",
+        "VELA_PLATFORM_OIDC_JWKS_URL",
+        "VELA_REMEDIATION_NODE_AGENTS_FILE",
+        "VELA_REMEDIATION_TLS_CERT_FILE",
+        "VELA_REMEDIATION_TLS_KEY_FILE",
+        "VELA_REMEDIATION_TLS_ROOT_CA_FILE",
+        "VELA_STAGE_SCHEDULER_BATCH_SIZE",
+        "VELA_STAGE_SCHEDULER_CLAIM_TTL",
+        "VELA_STAGE_SCHEDULER_LEASE_TTL",
+        "VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL",
+        "VELA_STAGE_SCHEDULER_TICK",
+        "VELA_STAGE_WORKER_CONTROL_ADDRESS",
+        "VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE",
+        "VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE",
+        "VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE",
+        "VELA_STAGE_WORKER_IDENTITY_KEY_FILE",
+        "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID",
+        "VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "nats-server-tls",
+      "uid": "177a5bbf-5828-427e-9c66-d967302ef6d4",
+      "resource_version": "113648",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "StatefulSet/vela-system/nats"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-artifact-credentials-v-ebd9cc4d0cb4",
+      "uid": "a468f73b-1edf-4a2b-9083-68ad6b62def3",
+      "resource_version": "144127",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "backup-retention-access-key-id",
+        "backup-retention-secret-access-key",
+        "primary-access-key-id",
+        "primary-secret-access-key",
+        "replication-backup-access-key-id",
+        "replication-backup-secret-access-key",
+        "replication-source-access-key-id",
+        "replication-source-secret-access-key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-credential-pepper-v-ebd9cc4d0cb4",
+      "uid": "0244b8ec-e8b1-48ed-aa10-898a2571d31a",
+      "resource_version": "144128",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "VELA_CREDENTIAL_PEPPER_BASE64"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-database-urls-v-ebd9cc4d0cb4",
+      "uid": "4aaad094-27b1-4d8d-aa9f-155c8f42fe5c",
+      "resource_version": "160578",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "VELA_ARTIFACT_REPLICATION_DATABASE_URL",
+        "VELA_ARTIFACT_REQUEST_DATABASE_URL",
+        "VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
+        "VELA_AUTH_DATABASE_URL",
+        "VELA_BACKUP_RETENTION_DATABASE_URL",
+        "VELA_BILLING_DATABASE_URL",
+        "VELA_BREAK_GLASS_AUDIT_DATABASE_URL",
+        "VELA_BREAK_GLASS_REQUEST_DATABASE_URL",
+        "VELA_CANCEL_DATABASE_URL",
+        "VELA_COMPLIANCE_DATABASE_URL",
+        "VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL",
+        "VELA_DEBUG_DUMP_REQUEST_DATABASE_URL",
+        "VELA_FINANCE_RECONCILIATION_DATABASE_URL",
+        "VELA_FLEET_DATABASE_URL",
+        "VELA_HUMAN_AUTH_DATABASE_URL",
+        "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL",
+        "VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL",
+        "VELA_IDENTITY_REQUEST_DATABASE_URL",
+        "VELA_INTERNAL_DATABASE_URL",
+        "VELA_NON_CONTENT_EXPIRY_DATABASE_URL",
+        "VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL",
+        "VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL",
+        "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL",
+        "VELA_REMEDIATION_DATABASE_URL",
+        "VELA_REQUEST_DATABASE_URL",
+        "VELA_RETENTION_DATABASE_URL",
+        "VELA_RETENTION_REQUEST_DATABASE_URL",
+        "VELA_STAGE_ARTIFACT_DATABASE_URL",
+        "VELA_STAGE_SCHEDULER_DATABASE_URL",
+        "VELA_STAGE_WORKER_CONTROL_DATABASE_URL",
+        "VELA_WEBHOOK_DATABASE_URL",
+        "VELA_WEBHOOK_REQUEST_DATABASE_URL"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4",
+      "uid": "da4608b8-a5be-4310-962c-78ace02f04a6",
+      "resource_version": "144132",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "projects.json"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-invoice-export-v-ebd9cc4d0cb4",
+      "uid": "8f1436f5-32d3-41d0-96fc-bf31a2f2acf7",
+      "resource_version": "144133",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "bearer-token"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-keyrings-v-ebd9cc4d0cb4",
+      "uid": "4c09d073-fd6e-4936-9c35-a5b401c08932",
+      "resource_version": "144134",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "lease.json",
+        "webhook.json"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-nats-client-v-ebd9cc4d0cb4",
+      "uid": "3dc4d195-b418-43ed-8bcd-976c245f45a8",
+      "resource_version": "177515",
+      "immutable": false,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "ca.crt",
+        "outbox.creds",
+        "scheduler.creds",
+        "tls.crt",
+        "tls.key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4",
+      "uid": "838b0867-1d73-4a54-8164-8cc7991210ed",
+      "resource_version": "171052",
+      "immutable": false,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "compliance-client-ca.crt",
+        "compliance-tls.crt",
+        "compliance-tls.key",
+        "finance-client-ca.crt",
+        "finance-tls.crt",
+        "finance-tls.key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4",
+      "uid": "e0c012a3-fb07-463c-8ecc-7ff8332404c3",
+      "resource_version": "173307",
+      "immutable": false,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "ca.crt",
+        "tls.crt",
+        "tls.key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-stage-worker-identity-v-ebd9cc4d0cb4",
+      "uid": "9459687e-24ca-48c6-b3b7-a6d7c62fe96e",
+      "resource_version": "144143",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "identity-key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-control-transport-tls-v-ebd9cc4d0cb4",
+      "uid": "f28ca7cf-905c-4d68-bcdf-8d66dcbd0f0c",
+      "resource_version": "175073",
+      "immutable": false,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "fleet-client-ca.crt",
+        "fleet-tls.crt",
+        "fleet-tls.key",
+        "runtime-policy-private.key",
+        "stage-worker-client-ca.crt",
+        "stage-worker-tls.crt",
+        "stage-worker-tls.key"
+      ],
+      "explicit_reference_keys": [],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-nats-auth-memory-d74221ecd013",
+      "uid": "ac045232-cadb-443b-93cc-8f5637aefa31",
+      "resource_version": "1320696",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "Opaque",
+      "keys": [
+        "bootstrap.creds",
+        "metadata.json",
+        "nats.conf",
+        "outbox.creds",
+        "scheduler.creds"
+      ],
+      "explicit_reference_keys": [
+        "nats.conf"
+      ],
+      "consumers": [
+        "StatefulSet/vela-system/nats"
+      ]
+    },
+    {
+      "kind": "Secret",
+      "namespace": "vela-system",
+      "name": "vela-release-pull-v1",
+      "uid": "2392e87c-7980-4329-b200-b05552e8150f",
+      "resource_version": "1405223",
+      "immutable": true,
+      "release_annotation": null,
+      "type": "kubernetes.io/dockerconfigjson",
+      "keys": [
+        ".dockerconfigjson"
+      ],
+      "explicit_reference_keys": [
+        ".dockerconfigjson"
+      ],
+      "consumers": [
+        "Deployment/vela-system/vela-control"
+      ]
+    }
+  ],
+  "postgres": {
+    "primary": "vela-postgres-1",
+    "instances": 3,
+    "ready": 3,
+    "image": "ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe",
+    "applied_migration": 0
+  },
+  "node19_ssh_tcp": 113
+}

@@ -33,6 +33,27 @@ type externalResourceContent struct {
 	BinaryData    map[string][]byte `json:"binary_data,omitempty"`
 }
 
+// ConfigMapContentRevision computes the same identity used by launch evidence.
+// It does not verify immutability, ownership, or revision annotations.
+func ConfigMapContentRevision(value corev1.ConfigMap) (string, error) {
+	return digestExternalResourceContent(externalResourceContent{
+		SchemaVersion: 1, Kind: "ConfigMap", Namespace: value.Namespace, Name: value.Name,
+		StringData: value.Data, BinaryData: value.BinaryData,
+	})
+}
+
+// SecretContentRevision hashes decoded API data without returning its payload.
+// stringData is a write-only API input and must first be resolved by Kubernetes.
+func SecretContentRevision(value corev1.Secret) (string, error) {
+	if len(value.StringData) != 0 {
+		return "", invalid("Secret stringData must be resolved before computing its content revision")
+	}
+	return digestExternalResourceContent(externalResourceContent{
+		SchemaVersion: 1, Kind: "Secret", Namespace: value.Namespace, Name: value.Name,
+		SecretType: value.Type, BinaryData: value.Data,
+	})
+}
+
 // VerifyExternalResources binds canonical release declarations to exact live
 // Kubernetes objects while returning only sanitized identities and digests.
 func VerifyExternalResources(
@@ -67,10 +88,7 @@ func VerifyExternalResources(
 			value.Immutable, value.Annotations); err != nil {
 			return nil, err
 		}
-		digest, err := digestExternalResourceContent(externalResourceContent{
-			SchemaVersion: 1, Kind: "ConfigMap", Namespace: value.Namespace, Name: value.Name,
-			StringData: value.Data, BinaryData: value.BinaryData,
-		})
+		digest, err := ConfigMapContentRevision(value)
 		if err != nil {
 			return nil, err
 		}
@@ -98,10 +116,7 @@ func VerifyExternalResources(
 		if !reflect.DeepEqual(keys, expectation.RequiredKeys) {
 			return nil, invalid("live Secret %s/%s key set does not match the canonical release", value.Namespace, value.Name)
 		}
-		digest, err := digestExternalResourceContent(externalResourceContent{
-			SchemaVersion: 1, Kind: "Secret", Namespace: value.Namespace, Name: value.Name,
-			SecretType: value.Type, BinaryData: value.Data,
-		})
+		digest, err := SecretContentRevision(value)
 		if err != nil {
 			return nil, err
 		}

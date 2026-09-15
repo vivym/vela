@@ -1,0 +1,296 @@
+[
+  {
+    "op": "replace",
+    "path": "",
+    "value": {
+      "apiVersion": "networking.k8s.io/v1",
+      "kind": "NetworkPolicy",
+      "metadata": {
+        "name": "vela-control-allow-node-agent",
+        "namespace": "vela-system",
+        "labels": {
+          "app.kubernetes.io/name": "vela-control",
+          "app.kubernetes.io/component": "fleet-maintenance",
+          "app.kubernetes.io/part-of": "vela"
+        }
+      },
+      "spec": {
+        "podSelector": {
+          "matchLabels": {
+            "app.kubernetes.io/name": "vela-control"
+          }
+        },
+        "policyTypes": [
+          "Ingress"
+        ],
+        "ingress": [
+          {
+            "from": [
+              {
+                "ipBlock": {
+                  "cidr": "10.42.2.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.3.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.4.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.5.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.6.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.7.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.8.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.10.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.11.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.12.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.13.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.14.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.15.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.16.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.17.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.18.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.19.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.20.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.21.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.22.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.23.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.24.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.25.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.26.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.28.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.30.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.31.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.32.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.33.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.34.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.35.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.37.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.38.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.39.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.40.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.41.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.42.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.43.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.44.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.45.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.46.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.47.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.48.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.49.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.50.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.51.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.52.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.53.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.54.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.55.0/32"
+                }
+              },
+              {
+                "ipBlock": {
+                  "cidr": "10.42.56.0/32"
+                }
+              }
+            ],
+            "ports": [
+              {
+                "protocol": "TCP",
+                "port": 8444
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+]

@@ -1,0 +1,264 @@
+[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/imagePullSecrets",
+    "value": [
+      {
+        "name": "vela-release-pull-v1-r-7c3b2ad47663"
+      }
+    ]
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/metadata/labels/vela.ai~1release-revision",
+    "value": "v-ebd9cc4d0cb4"
+  },
+  {
+    "op": "add",
+    "path": "/metadata/annotations",
+    "value": {
+      "vela.ai/deployment-profile": "infrastructure-validation"
+    }
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/image",
+    "value": "10.1.201.70:5005/vela-control@sha256:9cd421866b4526d60b693cd161d3e1a2d92314fa5966e4504e9f0a0e24884d64"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/envFrom",
+    "value": [
+      {
+        "configMapRef": {
+          "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76"
+        }
+      }
+    ]
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/1/ephemeral/volumeClaimTemplate/spec/storageClassName",
+    "value": "longhorn-wffc"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/1/ephemeral/volumeClaimTemplate/spec/resources/requests/storage",
+    "value": "20Gi"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/2/configMap/name",
+    "value": "vela-control-node-agents-v-ebd9cc4d0cb4e-r-9680ac7946e6"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/3/secret/secretName",
+    "value": "vela-control-transport-tls-fleet-v1-r-1c7bbdf59dad"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/4/secret/secretName",
+    "value": "vela-control-stage-worker-identity-v-ebd9cc4d0cb4-r-d76040d66ca5"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/5/secret/secretName",
+    "value": "vela-control-privileged-http-tls-v-ebd9cc4d0cb4-r-7bea56326244"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/6/secret/secretName",
+    "value": "vela-control-nats-client-v-ebd9cc4d0cb4-r-ab7e9003c35b"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/7/secret/secretName",
+    "value": "vela-control-artifact-credentials-v-ebd9cc4d0cb4-r-f3bb5ccb7687"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/8/secret/secretName",
+    "value": "vela-control-keyrings-v-ebd9cc4d0cb4-r-138a0079996e"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/9/secret/secretName",
+    "value": "vela-control-h3-exact-cache-keyring-v-ebd9cc4d0cb4-r-86931fab3462"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/10/secret/secretName",
+    "value": "vela-control-invoice-export-v-ebd9cc4d0cb4-r-f220395ecc2f"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes/11/secret/secretName",
+    "value": "vela-control-remediation-client-tls-v-ebd9cc4d0cb4-r-88313f9f53a3"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/15/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/16/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/17/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/18/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/19/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/20/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/21/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/22/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/23/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/24/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/25/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/26/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/27/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/28/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/29/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/30/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/31/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/32/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/33/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/34/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/35/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/36/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/37/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/38/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/39/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/40/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/41/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/42/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/43/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/44/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/45/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/46/valueFrom/secretKeyRef/name",
+    "value": "vela-control-database-urls-v-ebd9cc4d0cb4-r-b11c77a5ee21"
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/env/47/valueFrom/secretKeyRef/name",
+    "value": "vela-control-credential-pepper-v-ebd9cc4d0cb4-r-fdbdd3fd0bbd"
+  }
+]

@@ -1,0 +1,51 @@
+{
+  "at": "2026-09-14T19:47:01.816667+00:00",
+  "scope": "adopt verified schema-96 baseline and repair two Fleet function grants; no business table DML or workload restart",
+  "checks": [
+    {
+      "name": "same schema as reviewed preflight",
+      "passed": true
+    },
+    {
+      "name": "only physical ledger column order differs in dump",
+      "passed": false
+    }
+  ],
+  "sql_sha256": "a61f2f2c819bd99fe6cbc4e34d5d5935399aaece8f291b9f093498e901b1163b",
+  "before_schema_sha256": "bcbf1ab4bf94c5036bf8c21d4f54726ace93b6661b689819baaeda6cd9370c8f",
+  "before_seed_hashes": {
+    "catalog_evidence_protocol_state": "251364ff317565a37b8728f2bf64044f406f6a99444f9c16956f6ad97436de4a",
+    "h3_exact_cache_hit_cursors": "4a1ee590e1ea869fcfcab76a76963629ea7d39e7a4b1c216cbae0d3d664a8858",
+    "legacy_h3_contraction_v52_function_restore": "4a7e20bd5d3c1665aaeea511a752abec3c302b29181e23b5e5720b5a2b1d3b8a",
+    "profile_circuit_protocol_state": "d32828cfa538f23943564f4fe1570fa0231e4d3adde402e7484a9593f719ae9f",
+    "recovery_admission_control": "762ec789eb4bd9fee659282b1b9c088030bdd42e89460440f68303133ac9b20e",
+    "retention_policy_revisions": "9cba61ddd4698c246dc00df6c6058a9e68084dd99d40e06c4cbcb04ffcff2f9a",
+    "slo_measurement_protocol_state": "2c737f094afd061ea446240535eb7b5f7cd30e9dd9498dc2950a44918705dcd8",
+    "stage_cutover_control": "a926856f2b670bdc2ab29c79fab2317d1df0cb1b9b1335003b64c8f3ff3b9342",
+    "stage_cutover_revisions": "8a94625ed48d1695e120855fdb88adaf0fc8a759d698ffcb8a60a082a660b96a"
+  },
+  "before_nonempty_business_tables": {
+    "stage_cutover_revisions": 1,
+    "finance_reconciliation_principals": 1,
+    "compliance_principals": 1,
+    "retention_policy_revisions": 3,
+    "finance_reconciliation_database_bindings": 1,
+    "compliance_database_bindings": 1,
+    "h3_exact_cache_hit_cursors": 1,
+    "legacy_h3_contraction_v52_function_restore": 2,
+    "profile_circuit_protocol_state": 1,
+    "recovery_admission_control": 1,
+    "slo_measurement_protocol_state": 1,
+    "catalog_evidence_protocol_state": 1,
+    "finance_reconciliation_cursors": 1,
+    "compliance_event_cursors": 1,
+    "stage_cutover_control": 1
+  },
+  "mutation_started": true,
+  "transaction_output": "BEGIN\nSET\nSET\n\nLOCK TABLE\nDO\nALTER TABLE\nALTER TABLE\nALTER TABLE\nALTER TABLE\nINSERT 0 96\nGRANT\nGRANT\nGRANT\nDO\nCOMMIT",
+  "committed": true,
+  "raw_schema_differences": [
+    "TABLE goose_db_version; Type: ACL; Schema: public; Owner: postgres",
+    "goose_db_version; Type: TABLE; Schema: public; Owner: postgres"
+  ]
+}

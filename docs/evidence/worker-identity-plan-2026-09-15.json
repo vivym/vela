@@ -1,0 +1,844 @@
+{
+  "at": "2026-09-15T01:19:30.365330+00:00",
+  "result": "WORKER_IDENTITY_PLAN_GENERATED",
+  "scope": "candidate identity map only; no secrets, certificates, or cluster mutation",
+  "count": 52,
+  "online": 51,
+  "offline": [
+    "10.1.201.19"
+  ],
+  "records": [
+    {
+      "node": "marslab-gpu-01",
+      "ip": "10.1.201.66",
+      "node_uid": "b09bae97-221b-47e4-94ff-3babb7afeb93",
+      "agent_id": "670206ff-2dd6-515f-b40e-9ae59e26088c",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/marslab-gpu-01/670206ff-2dd6-515f-b40e-9ae59e26088c",
+      "address": "10.1.201.66:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-10",
+      "ip": "10.1.201.17",
+      "node_uid": "41a62164-f28f-46ca-9f69-2fb620c5da1f",
+      "agent_id": "51918baa-a421-5c45-85c1-b05ad2a18e6c",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-10/51918baa-a421-5c45-85c1-b05ad2a18e6c",
+      "address": "10.1.201.17:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-11",
+      "ip": "10.1.201.39",
+      "node_uid": "85683a38-1dc2-465a-917b-f932bf466c65",
+      "agent_id": "214f54ee-8312-5fbc-ad96-2cccb6cb7b52",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-11/214f54ee-8312-5fbc-ad96-2cccb6cb7b52",
+      "address": "10.1.201.39:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-12",
+      "ip": "10.1.201.30",
+      "node_uid": "affac750-7905-433b-9cff-29e395d79a88",
+      "agent_id": "a42e085e-0be4-50f3-baf8-42aec96d4dec",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-12/a42e085e-0be4-50f3-baf8-42aec96d4dec",
+      "address": "10.1.201.30:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-120",
+      "ip": "10.1.201.58",
+      "node_uid": "beb307d5-37dd-4431-bd28-1443535e5341",
+      "agent_id": "88b20e97-cdee-52df-a17e-03179ecc677a",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-120/88b20e97-cdee-52df-a17e-03179ecc677a",
+      "address": "10.1.201.58:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-121",
+      "ip": "10.1.201.60",
+      "node_uid": "730d31f4-ff95-49d8-a7e9-c4403cfc0d4d",
+      "agent_id": "80ac51f6-90a7-580d-aad5-6ae1856816eb",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-121/80ac51f6-90a7-580d-aad5-6ae1856816eb",
+      "address": "10.1.201.60:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-124",
+      "ip": "10.1.201.59",
+      "node_uid": "f6829698-e475-44ba-9444-973dfafc458f",
+      "agent_id": "6f7ceb1b-15a9-58fb-babb-b607579fd315",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-124/6f7ceb1b-15a9-58fb-babb-b607579fd315",
+      "address": "10.1.201.59:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-125",
+      "ip": "10.1.201.65",
+      "node_uid": "7c76c965-8bbb-4f91-9750-f142a4c1fca5",
+      "agent_id": "50674650-915b-5658-abfa-09bca58bb35d",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-125/50674650-915b-5658-abfa-09bca58bb35d",
+      "address": "10.1.201.65:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-126",
+      "ip": "10.1.201.63",
+      "node_uid": "c0823550-5f67-46c2-b4aa-e6ab9bb2b6c9",
+      "agent_id": "2b2920a5-c924-5d4c-81e0-611b5ad27992",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-126/2b2920a5-c924-5d4c-81e0-611b5ad27992",
+      "address": "10.1.201.63:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-127",
+      "ip": "10.1.201.64",
+      "node_uid": "513d8922-e1b7-48ba-a8e1-ae7730406db6",
+      "agent_id": "e078da40-1d89-5290-bfda-0e776f5c43a0",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-127/e078da40-1d89-5290-bfda-0e776f5c43a0",
+      "address": "10.1.201.64:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-128",
+      "ip": "10.1.201.62",
+      "node_uid": "a46efbb6-7dd3-4805-8a63-37bcc6cc3ec9",
+      "agent_id": "6e9abe12-b659-565f-9c26-857630a92539",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-128/6e9abe12-b659-565f-9c26-857630a92539",
+      "address": "10.1.201.62:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-13",
+      "ip": "10.1.201.41",
+      "node_uid": "b3331b64-b9ec-4508-a76f-64688e025b47",
+      "agent_id": "9814fade-4d74-5870-98f5-7e49938e5571",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-13/9814fade-4d74-5870-98f5-7e49938e5571",
+      "address": "10.1.201.41:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-14",
+      "ip": "10.1.201.21",
+      "node_uid": "d0a9b504-ffc9-40b8-963c-9d74823fb83e",
+      "agent_id": "3958614a-4507-5cfc-a58f-61c4db6aa838",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-14/3958614a-4507-5cfc-a58f-61c4db6aa838",
+      "address": "10.1.201.21:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-15",
+      "ip": "10.1.201.46",
+      "node_uid": "0ddc7fc1-e5f5-4b0f-ae3a-84ccec538353",
+      "agent_id": "ba3c25f7-bc83-5283-abc8-23bdfbc7403c",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-15/ba3c25f7-bc83-5283-abc8-23bdfbc7403c",
+      "address": "10.1.201.46:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-16",
+      "ip": "10.1.201.29",
+      "node_uid": "25974968-6579-4338-a240-a9d6ee7894c7",
+      "agent_id": "9541244a-9132-5032-9e76-f1c4f08cc9b8",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-16/9541244a-9132-5032-9e76-f1c4f08cc9b8",
+      "address": "10.1.201.29:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-17",
+      "ip": "10.1.201.26",
+      "node_uid": "9c44b6e6-2daa-4291-b6f7-c6a9f5228cdd",
+      "agent_id": "86e6dd05-8586-5cab-bfd8-59bf92b63252",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-17/86e6dd05-8586-5cab-bfd8-59bf92b63252",
+      "address": "10.1.201.26:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-18",
+      "ip": "10.1.201.31",
+      "node_uid": "34dc508c-7a03-4423-8822-511f466c54b1",
+      "agent_id": "bd6a069d-7411-50a3-a9e2-715fb85464b3",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-18/bd6a069d-7411-50a3-a9e2-715fb85464b3",
+      "address": "10.1.201.31:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-19",
+      "ip": "10.1.201.42",
+      "node_uid": "1780aeeb-9152-4fa2-bccb-c722b062da6f",
+      "agent_id": "21cbe269-dfb4-5c53-99b0-234b58c0c9ab",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-19/21cbe269-dfb4-5c53-99b0-234b58c0c9ab",
+      "address": "10.1.201.42:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-20",
+      "ip": "10.1.201.50",
+      "node_uid": "f982696e-0a2d-427f-a6c9-d7a4e5d823c9",
+      "agent_id": "6d6941ac-0c21-53fa-bcd3-226ac8f5bdf7",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-20/6d6941ac-0c21-53fa-bcd3-226ac8f5bdf7",
+      "address": "10.1.201.50:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-21",
+      "ip": "10.1.201.27",
+      "node_uid": "607458cc-cc15-4de3-8c88-ac5353f531d9",
+      "agent_id": "33faa5c4-1b6d-5d8f-adc3-c3148a840041",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-21/33faa5c4-1b6d-5d8f-adc3-c3148a840041",
+      "address": "10.1.201.27:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-22",
+      "ip": "10.1.201.11",
+      "node_uid": "b06b6fe4-3eb2-4b38-bfb8-bded5cf8a95f",
+      "agent_id": "f92f8976-6136-5216-babc-bb3f0317b8d2",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-22/f92f8976-6136-5216-babc-bb3f0317b8d2",
+      "address": "10.1.201.11:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-23",
+      "ip": "10.1.201.12",
+      "node_uid": "17d1b11b-258b-4c22-b20d-d2030b381c95",
+      "agent_id": "b26282ca-d1bc-5113-8692-07828aa9cc10",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-23/b26282ca-d1bc-5113-8692-07828aa9cc10",
+      "address": "10.1.201.12:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-25",
+      "ip": "10.1.201.33",
+      "node_uid": "85363a53-93c1-4801-81f4-d6ec4287e8b2",
+      "agent_id": "6f91baf9-cc13-5b76-8578-7d28252f202b",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-25/6f91baf9-cc13-5b76-8578-7d28252f202b",
+      "address": "10.1.201.33:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-26",
+      "ip": "10.1.201.43",
+      "node_uid": "ed411366-5e9d-434d-878b-92a8501d58a2",
+      "agent_id": "0a393732-be4f-5efc-87b7-e3f311506bd0",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-26/0a393732-be4f-5efc-87b7-e3f311506bd0",
+      "address": "10.1.201.43:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-27",
+      "ip": "10.1.201.51",
+      "node_uid": "33e05590-67d5-4b94-a4b2-5b7564b72320",
+      "agent_id": "cbd8422e-5d2d-5123-9574-7a567416dd7a",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-27/cbd8422e-5d2d-5123-9574-7a567416dd7a",
+      "address": "10.1.201.51:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-28",
+      "ip": "10.1.201.22",
+      "node_uid": "50efbea6-2da4-4c13-a4be-6e265037b115",
+      "agent_id": "6c0ebe6b-b015-5cde-ad23-8863cb5788b5",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-28/6c0ebe6b-b015-5cde-ad23-8863cb5788b5",
+      "address": "10.1.201.22:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-29",
+      "ip": "10.1.201.24",
+      "node_uid": "73b3d5f7-2f24-4ea8-abe2-951960cd548a",
+      "agent_id": "cea7a1cf-e73c-5ced-a5c6-5c4b14801bc7",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-29/cea7a1cf-e73c-5ced-a5c6-5c4b14801bc7",
+      "address": "10.1.201.24:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-30",
+      "ip": "10.1.201.32",
+      "node_uid": "98e7ff54-3483-4bd0-b66c-995494f15f61",
+      "agent_id": "8380d1dd-8062-5fc6-93de-b6537732c0c3",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-30/8380d1dd-8062-5fc6-93de-b6537732c0c3",
+      "address": "10.1.201.32:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-31",
+      "ip": "10.1.201.13",
+      "node_uid": "1855e08d-437a-41bd-befa-a07e9ad8b62e",
+      "agent_id": "bf101c55-824b-500e-b547-16caa75cdcab",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-31/bf101c55-824b-500e-b547-16caa75cdcab",
+      "address": "10.1.201.13:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-33",
+      "ip": "10.1.201.23",
+      "node_uid": "1970f756-5435-4bb8-9a82-e798ccbdc46a",
+      "agent_id": "256663fb-01f7-5d08-90f5-b9f60739f2cd",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-33/256663fb-01f7-5d08-90f5-b9f60739f2cd",
+      "address": "10.1.201.23:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-34",
+      "ip": "10.1.201.15",
+      "node_uid": "df5d90ea-9d96-473a-8ed7-5e3ea2290e1a",
+      "agent_id": "12712f01-563a-5fee-b21a-020039b778c2",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-34/12712f01-563a-5fee-b21a-020039b778c2",
+      "address": "10.1.201.15:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-35",
+      "ip": "10.1.201.45",
+      "node_uid": "6528757e-1f07-4d8f-b5bd-7f9e5a921239",
+      "agent_id": "9b8472b7-74f3-5c6a-9227-03b954aea593",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-35/9b8472b7-74f3-5c6a-9227-03b954aea593",
+      "address": "10.1.201.45:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-36",
+      "ip": "10.1.201.19",
+      "node_uid": "1b5ef5fc-b762-462f-aaa2-1a2a0a4cf22b",
+      "agent_id": "175efca3-9050-5237-be0c-7bb5813ccea0",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-36/175efca3-9050-5237-be0c-7bb5813ccea0",
+      "address": "10.1.201.19:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-37",
+      "ip": "10.1.201.38",
+      "node_uid": "7eccca38-9c5c-40c3-93e8-e74700b0826f",
+      "agent_id": "7a7e5d22-2615-5e2c-9f19-dc7a3aa6a83e",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-37/7a7e5d22-2615-5e2c-9f19-dc7a3aa6a83e",
+      "address": "10.1.201.38:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-38",
+      "ip": "10.1.201.18",
+      "node_uid": "30390211-eb14-4cc0-b1c5-821c7f1046a9",
+      "agent_id": "f664f4d5-f0d7-5bdc-86fa-6aa66f467531",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-38/f664f4d5-f0d7-5bdc-86fa-6aa66f467531",
+      "address": "10.1.201.18:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-39",
+      "ip": "10.1.201.16",
+      "node_uid": "010058bb-b5e6-44fe-a40c-9adced62c11b",
+      "agent_id": "2100eaa8-4548-5298-bd50-b0da913edea2",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-39/2100eaa8-4548-5298-bd50-b0da913edea2",
+      "address": "10.1.201.16:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-40",
+      "ip": "10.1.201.35",
+      "node_uid": "565b7a37-d616-4ff5-85ad-37b55085a48a",
+      "agent_id": "67db9d21-1a1f-5963-ae54-30373056d354",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-40/67db9d21-1a1f-5963-ae54-30373056d354",
+      "address": "10.1.201.35:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-41",
+      "ip": "10.1.201.14",
+      "node_uid": "04f3cf87-23bd-4bc4-8366-0c312eb86ad6",
+      "agent_id": "f762489c-dff3-57c1-a53e-5eebf47dde39",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-41/f762489c-dff3-57c1-a53e-5eebf47dde39",
+      "address": "10.1.201.14:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-42",
+      "ip": "10.1.201.20",
+      "node_uid": "fc1e469a-aa6a-4e1f-b04b-0f889b4dd048",
+      "agent_id": "743bab35-7ae5-5fb1-964d-397f80478a23",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-42/743bab35-7ae5-5fb1-964d-397f80478a23",
+      "address": "10.1.201.20:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-43",
+      "ip": "10.1.201.25",
+      "node_uid": "baa024c1-71fc-4a57-b7ae-cc3a4bd2aa56",
+      "agent_id": "9fddc1d6-baf8-585c-abaa-679adc820617",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-43/9fddc1d6-baf8-585c-abaa-679adc820617",
+      "address": "10.1.201.25:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-44",
+      "ip": "10.1.201.40",
+      "node_uid": "de4d7382-00b2-451e-9238-0da408e789a4",
+      "agent_id": "bdc4fb7b-0fcf-5d9d-a7d7-55dfc09405b7",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-44/bdc4fb7b-0fcf-5d9d-a7d7-55dfc09405b7",
+      "address": "10.1.201.40:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-45",
+      "ip": "10.1.201.34",
+      "node_uid": "907f4b7e-994d-4577-af05-b7a0209d8d9f",
+      "agent_id": "d448b364-f438-5cd1-b789-56a9348d98fe",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-45/d448b364-f438-5cd1-b789-56a9348d98fe",
+      "address": "10.1.201.34:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-46",
+      "ip": "10.1.201.36",
+      "node_uid": "52ee517b-0c3a-4295-8035-c23c706538e4",
+      "agent_id": "8a59eda3-4547-589f-9fc3-b37a4b7fc474",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-46/8a59eda3-4547-589f-9fc3-b37a4b7fc474",
+      "address": "10.1.201.36:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-47",
+      "ip": "10.1.201.28",
+      "node_uid": "208f7a12-d01e-43b8-aa6e-c7caa133b128",
+      "agent_id": "9f2878b7-a5be-503a-83be-baa0e58ad3c8",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-47/9f2878b7-a5be-503a-83be-baa0e58ad3c8",
+      "address": "10.1.201.28:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-48",
+      "ip": "10.1.201.48",
+      "node_uid": "28bb665c-1ba9-4182-a3d2-eaff4d766a98",
+      "agent_id": "6313f4f0-7c0b-5732-92aa-356a8c7fc698",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-48/6313f4f0-7c0b-5732-92aa-356a8c7fc698",
+      "address": "10.1.201.48:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-49",
+      "ip": "10.1.201.55",
+      "node_uid": "1fd5aa32-e240-4a53-92c2-954aaac46b64",
+      "agent_id": "4fb68c05-d99a-572a-9040-228bfc889bd2",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-49/4fb68c05-d99a-572a-9040-228bfc889bd2",
+      "address": "10.1.201.55:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-50",
+      "ip": "10.1.201.52",
+      "node_uid": "b4c30c37-6a19-4fb1-84eb-0166d0258ff2",
+      "agent_id": "086066f7-3e63-511c-9145-bef33c11f47d",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-50/086066f7-3e63-511c-9145-bef33c11f47d",
+      "address": "10.1.201.52:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-51",
+      "ip": "10.1.201.49",
+      "node_uid": "cfb5d8f7-611f-420b-b001-907033bb970d",
+      "agent_id": "960822ac-8074-581e-a4c2-2c06cf2f8ea9",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-51/960822ac-8074-581e-a4c2-2c06cf2f8ea9",
+      "address": "10.1.201.49:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-52",
+      "ip": "10.1.201.47",
+      "node_uid": "5a540431-62ff-40c8-935f-0ed4a8c52c87",
+      "agent_id": "7ec25711-def1-5db8-8daf-141383728997",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-52/7ec25711-def1-5db8-8daf-141383728997",
+      "address": "10.1.201.47:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-53",
+      "ip": "10.1.201.54",
+      "node_uid": "664b1b72-dc57-41ff-88ac-91c400430b1a",
+      "agent_id": "2c0de28b-a6bf-54c8-9b5e-663cf04e1e65",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-53/2c0de28b-a6bf-54c8-9b5e-663cf04e1e65",
+      "address": "10.1.201.54:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "server-54",
+      "ip": "10.1.201.53",
+      "node_uid": "afe05c72-0a78-4d94-b945-cde27c824b70",
+      "agent_id": "539881d2-b177-5eb0-8fec-11869ccb6d78",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/server-54/539881d2-b177-5eb0-8fec-11869ccb6d78",
+      "address": "10.1.201.53:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    },
+    {
+      "node": "servser-24",
+      "ip": "10.1.201.37",
+      "node_uid": "f3d3aa6b-94be-4feb-b042-68cffbf983ce",
+      "agent_id": "bfdaa138-6922-5ea7-865e-62c942f7983b",
+      "spiffe_identity": "spiffe://vela.internal/node-agent/servser-24/bfdaa138-6922-5ea7-865e-62c942f7983b",
+      "address": "10.1.201.37:9444",
+      "status": "candidate-only",
+      "required_before_apply": [
+        "node-agent server certificate/private key",
+        "Fleet client certificate/private key",
+        "controller CA bundle",
+        "signed application identity mapping",
+        "root-owned /etc/vela/node-agent.env"
+      ]
+    }
+  ]
+}

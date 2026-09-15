@@ -228,13 +228,13 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 			"/etc/vela-fleet/residency-plan-rollouts/rollouts.json" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_ADDRESS").Value != ":9443" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_CLIENT_CA_FILE").Value !=
-			"/etc/vela-fleet/admission-client-ca/ca.crt" ||
+			"/etc/vela-fleet/materialized/admission-client-ca/ca.crt" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID").Value !=
 			"spiffe://vela.internal/kube-apiserver/admission" {
 		t.Fatalf("Fleet controller environment = %#v", controller.Env)
 	}
 	for _, name := range []string{
-		"residency-plan-rollouts", "control-tls", "admission-tls", "admission-client-ca",
+		"residency-plan-rollouts", "materialized-tls",
 	} {
 		if !hasFleetVolume(pod.Volumes, name) || !hasFleetVolumeMount(controller.VolumeMounts, name) {
 			t.Fatalf("Fleet controller is missing volume %q", name)
@@ -254,6 +254,57 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		disruptionBudget.Spec.Selector.MatchLabels["app.kubernetes.io/name"] !=
 			"vela-fleet-controller" {
 		t.Fatalf("Fleet disruption budget = %#v", disruptionBudget)
+	}
+}
+
+func TestFleetTLSUsesPrivateRegularFilesInsteadOfProjectedSecretSymlinks(t *testing.T) {
+	var deployment appsv1.Deployment
+	if err := k8syaml.Unmarshal(readFleetManifest(t, "deployment.yaml"), &deployment); err != nil {
+		t.Fatal(err)
+	}
+	pod := deployment.Spec.Template.Spec
+	if pod.SecurityContext.FSGroup != nil || len(pod.InitContainers) != 1 {
+		t.Fatal("Fleet TLS needs one materializer without fsGroup permission changes")
+	}
+	init := pod.InitContainers[0]
+	if init.Image != pinnedBusyBoxLinuxAMD64Image || init.SecurityContext.RunAsUser == nil ||
+		*init.SecurityContext.RunAsUser != 0 || init.SecurityContext.AllowPrivilegeEscalation == nil ||
+		*init.SecurityContext.AllowPrivilegeEscalation || init.SecurityContext.ReadOnlyRootFilesystem == nil ||
+		!*init.SecurityContext.ReadOnlyRootFilesystem || init.SecurityContext.Capabilities == nil ||
+		!reflect.DeepEqual(init.SecurityContext.Capabilities.Drop, []corev1.Capability{"ALL"}) ||
+		!reflect.DeepEqual(init.SecurityContext.Capabilities.Add, []corev1.Capability{"CHOWN"}) {
+		t.Fatal("Fleet TLS materializer must have only the ownership-change capability")
+	}
+	controller := pod.Containers[0]
+	command := strings.Join(init.Command, "\n")
+	for name, relative := range map[string]string{
+		"VELA_FLEET_TLS_CERT_FILE":            "control-tls/tls.crt",
+		"VELA_FLEET_TLS_KEY_FILE":             "control-tls/tls.key",
+		"VELA_FLEET_CA_FILE":                  "control-tls/ca.crt",
+		"VELA_FLEET_ADMISSION_TLS_CERT_FILE":  "admission-tls/tls.crt",
+		"VELA_FLEET_ADMISSION_TLS_KEY_FILE":   "admission-tls/tls.key",
+		"VELA_FLEET_ADMISSION_CLIENT_CA_FILE": "admission-client-ca/ca.crt",
+	} {
+		if requireFleetEnvironment(t, controller, name).Value != "/etc/vela-fleet/materialized/"+relative ||
+			!strings.Contains(command, "cp /projected/"+relative+" /materialized/"+relative+"\n") {
+			t.Fatalf("Fleet TLS input %s bypasses regular-file materialization", name)
+		}
+	}
+	for _, name := range []string{"control-tls", "admission-tls", "admission-client-ca"} {
+		if hasFleetVolumeMount(controller.VolumeMounts, name) || !hasFleetVolumeMount(init.VolumeMounts, name) {
+			t.Fatalf("projected Secret %s must only be mounted in the init container", name)
+		}
+	}
+	var memoryVolume bool
+	for _, volume := range pod.Volumes {
+		if volume.Name == "materialized-tls" {
+			memoryVolume = volume.EmptyDir != nil && volume.EmptyDir.Medium == corev1.StorageMediumMemory &&
+				volume.EmptyDir.SizeLimit != nil && volume.EmptyDir.SizeLimit.Value() == 8<<20
+		}
+	}
+	if !memoryVolume || !strings.Contains(command, "chmod 0400 ") ||
+		!strings.Contains(command, "chmod 0700 ") || !strings.Contains(command, "chown -R 10001:10001 /materialized") {
+		t.Fatal("Fleet TLS files must be bounded, private and owned by the service UID")
 	}
 }
 

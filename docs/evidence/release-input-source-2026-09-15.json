@@ -1,0 +1,207 @@
+{
+  "at": "2026-09-14T19:25:01.508828+00:00",
+  "scope": "dirty worktree and audit source snapshot; not a canonical release or clean HEAD proof",
+  "head_reference_only": "92199f2975b6dd0b5809313f3086d5c3ea217884",
+  "files": [
+    {
+      "path": "audit-tools/check-release-database.py",
+      "sha256": "0eda9d535c78eab016a16c53a1cec71920dfa58ba846a86ca2d3f17186dc6beb",
+      "bytes": 1917
+    },
+    {
+      "path": "audit-tools/collect-live-release-inputs.py",
+      "sha256": "5bd15bff6f35830f1c4b419753a3d2b37ae5ad0feed91754d25d8f1f05f4caf7",
+      "bytes": 3762
+    },
+    {
+      "path": "audit-tools/cutover-control-ingress.py",
+      "sha256": "8bc82c12fa84f0591c6c90c5c2efb74111ed23d294c4d88d31622f7603f9d489",
+      "bytes": 6058
+    },
+    {
+      "path": "audit-tools/dryrun-release-candidates.py",
+      "sha256": "b44230d7d366d898a6e2f25f392eb72b2417f2b5d072af3f09738fcaa81be7e7",
+      "bytes": 4311
+    },
+    {
+      "path": "audit-tools/preflight-control-release.py",
+      "sha256": "4429572e3ee393864c380714092e1666500c3a516310e36fb2ba24307ff1a45c",
+      "bytes": 3739
+    },
+    {
+      "path": "audit-tools/verify-node-agent-source.py",
+      "sha256": "a75e15ac928f095a62a585d298b947921cff682aec3b4b6e0d4b3d209cbf7091",
+      "bytes": 7491
+    },
+    {
+      "path": "deploy/control-storage/barman-cloud-plugin-contract.json",
+      "sha256": "3daf05fd05017749baa70788274c654a3f5ffe7beb871f8e0e114703bae9cba4",
+      "bytes": 2049
+    },
+    {
+      "path": "deploy/control-storage/nats-statefulset.yaml",
+      "sha256": "d8c4d349bd0768d033707f269e2d71932512a27f83570d541823b8a94c2a19a3",
+      "bytes": 3423
+    },
+    {
+      "path": "deploy/control-storage/postgres-cluster.yaml",
+      "sha256": "af10be8b12760498aa8cc74349345ff94fd88d0e58d677942cf6f84667a6b56f",
+      "bytes": 1051
+    },
+    {
+      "path": "deploy/environments/marslab/vela-control/README.md",
+      "sha256": "0c6982483ddca91723e70902a4d60478c23805607b3f171c47dd98791a5a5408",
+      "bytes": 3564
+    },
+    {
+      "path": "deploy/environments/marslab/vela-control/deployment.patch.json",
+      "sha256": "4bbd6726341368ac058a19e7433093588bba8692cdfb8c6078502622fe2bf954",
+      "bytes": 8312
+    },
+    {
+      "path": "deploy/environments/marslab/vela-control/kustomization.yaml",
+      "sha256": "b138a638785621de63c35f6a76d02a6e7ff96bfc0958185c7ca6ddc6def6434e",
+      "bytes": 1109
+    },
+    {
+      "path": "deploy/environments/marslab/vela-control/node-agent-access.patch.json",
+      "sha256": "e7f99ece8ff6195907e367f25d7883038e624a138ad2b9ce4507d3f794bbad2b",
+      "bytes": 740
+    },
+    {
+      "path": "deploy/observability/README.md",
+      "sha256": "e7e4c752e7fdc09c127b134091b53b82cc5b9979053e84a8e8262613de88df63",
+      "bytes": 5769
+    },
+    {
+      "path": "deploy/observability/dashboard.json",
+      "sha256": "db2ce364b44997c5797952dcda76c884082471e6481f21cd7cc39196ba23255a",
+      "bytes": 4253
+    },
+    {
+      "path": "deploy/observability/kustomization.yaml",
+      "sha256": "f82b374246ad6b9a61427e92ae67ac8c5f52a609bb455f54efab77302f4a6b5d",
+      "bytes": 1969
+    },
+    {
+      "path": "deploy/observability/observability-contract.json",
+      "sha256": "889ecdc998ed021d01ef4928f4bf17d6982a5fa22bf99e7b29c2750f5250b93f",
+      "bytes": 1966
+    },
+    {
+      "path": "deploy/observability/pod-monitor.yaml",
+      "sha256": "38b8d048a87eceb5dca7ccf5fe01a456e38236bddea9c0e8c5b394b9cd2de852",
+      "bytes": 466
+    },
+    {
+      "path": "deploy/observability/prometheus-rule.yaml",
+      "sha256": "107bd26aad8748865bee27b569d8757174d419f9d06f6601585051d8b88c84c3",
+      "bytes": 5899
+    },
+    {
+      "path": "deploy/observability/rule-tests.yaml",
+      "sha256": "4f5a0731101a88bd2b77e6783e6e849bdf7b659ead5fb4b3b4bf0f182daad36d",
+      "bytes": 4510
+    },
+    {
+      "path": "deploy/observability/rules.yaml",
+      "sha256": "fa09f8edb9e8f1f93ec55fc7290d553b3ac73fe1a20078511114e35ea14a6956",
+      "bytes": 5433
+    },
+    {
+      "path": "deploy/vela-control/deployment.yaml",
+      "sha256": "3d287d9ad4e6739823e93444ff21578fa823be902e6cb4a9f847f13112057140",
+      "bytes": 24388
+    },
+    {
+      "path": "docs/cluster-production-readiness-2026-09-14.md",
+      "sha256": "d629d3a7b9f0fd8f028f1ed4618a12366d4835f7485199617f52186cb1945bd6",
+      "bytes": 17532
+    },
+    {
+      "path": "docs/evidence/node-agent-ingress-2026-09-15.json",
+      "sha256": "c6e7610359af0291c1cd2bd455bbad6cb5eb8a444fe2a4a782603e352b4eda2a",
+      "bytes": 4815
+    },
+    {
+      "path": "docs/evidence/node-agent-ingress-preflight-2026-09-15.json",
+      "sha256": "c6a1d4e05a9137db6c46e2c982d792764cd493c27ebe4af3bb2202461beed07f",
+      "bytes": 17821
+    },
+    {
+      "path": "docs/evidence/node-agent-source-2026-09-15.json",
+      "sha256": "2332bca0b396a063f8d6c4cbb5c408046a31d60324bd7b726cb230df82092244",
+      "bytes": 2835
+    },
+    {
+      "path": "docs/evidence/release-candidate-dryrun-2026-09-15.json",
+      "sha256": "19416209c8632820fe52c929424a7a76321cb456f26217a1b2fad75107d2ea95",
+      "bytes": 9633
+    },
+    {
+      "path": "docs/evidence/release-database-inputs-2026-09-15.json",
+      "sha256": "c614b5a7ca8e58008ef331d654ea673804fc438c7f7581a15c2368ba65ce5dca",
+      "bytes": 2082
+    },
+    {
+      "path": "docs/evidence/release-live-inputs-2026-09-15.json",
+      "sha256": "dda8117511726d05b5a870dfb69a19c68547e66b1eeb88b1c32bfe6cd47d9338",
+      "bytes": 14878
+    },
+    {
+      "path": "docs/release-input-validation-2026-09-15.md",
+      "sha256": "ba60c59353e1aea20fb342757d6437529e73092b14b22a9c97842d018594dfeb",
+      "bytes": 5656
+    },
+    {
+      "path": "docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md",
+      "sha256": "9187e5faa49237728253d3829a06020a753dd6dca41f1ff2cb5313a8edcfc12a",
+      "bytes": 9697
+    },
+    {
+      "path": "hack/render-release-observability.py",
+      "sha256": "92069eada4eeb1c04a741c285333133fdc94f9b5c5ad425fbfbea9def5e2844b",
+      "bytes": 2445
+    },
+    {
+      "path": "internal/deploymentcontract/marslab_test.go",
+      "sha256": "2d33a9f9336c0cab9427868a358ead85ff4e60d95227ddebf1d4aede873d0d03",
+      "bytes": 11240
+    },
+    {
+      "path": "internal/deploymentcontract/postgres_test.go",
+      "sha256": "fd9ec68c933bb67672c4e2b238bb441a64ca8cf4686541a49b625e5d3bcb8b92",
+      "bytes": 19923
+    },
+    {
+      "path": "internal/deploymentcontract/vela_control_test.go",
+      "sha256": "9b5d2146c5f0448bb7da1f4fd16b818d8c4cd8290c8ecfa3563c1aadf3ffc0d3",
+      "bytes": 37153
+    },
+    {
+      "path": "internal/releasebundle/build.go",
+      "sha256": "4d7fc19f34ca269193f83b642967527440cb243db2f7bd984ee1b614d8f49420",
+      "bytes": 34752
+    },
+    {
+      "path": "internal/releasebundle/model.go",
+      "sha256": "d7c358e27beaad1e1ccc30ae29eafbf6b966868b505715bc21dd5be959559170",
+      "bytes": 7159
+    },
+    {
+      "path": "internal/releasebundle/render.go",
+      "sha256": "830802187743876a8252d5d72de35a4410e529548d5ed31e7ecbf0f212d73a30",
+      "bytes": 35425
+    },
+    {
+      "path": "internal/releasebundle/render_contract_test.go",
+      "sha256": "979c5891c1c739c90f6753eee3b8734b1823f43139b99b3b713cbb6922a2e0c9",
+      "bytes": 11340
+    },
+    {
+      "path": "internal/releasebundle/residency.go",
+      "sha256": "1dd65cd4063e2e62d64940bbbc67bc371fd5b01225c23371f5a94cc2270e5f01",
+      "bytes": 2169
+    }
+  ]
+}

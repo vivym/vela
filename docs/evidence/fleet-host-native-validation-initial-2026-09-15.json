@@ -1,0 +1,8 @@
+{
+  "at": "2026-09-14T22:29:41.550713+00:00",
+  "activated": false,
+  "binary_sha256": "279cd2b18936174085cfdb6a5ea46e9920e26830d8a429ebf79a70d7a90e92ed",
+  "hosts": {},
+  "passed": false,
+  "error": "10.1.201.70: Traceback (most recent call last):\n  File \"<string>\", line 6, in <module>\nAssertionError: only the combined certificate file may configure authentication\n\n"
+}
