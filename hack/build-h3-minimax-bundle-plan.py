@@ -94,6 +94,21 @@ def main():
                                                        f"device.attributes['gpu.nvidia.com/uuid'] == '{worker['gpu_uuid']}'"}}]}]}}
         }
         (directory / "resource-claim.json").write_text(json.dumps(claim, indent=2) + "\n")
+        pod = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {"name": f"minimax-h3-{worker['role']}-{worker['ordinal']}",
+                          "namespace": "vela-system",
+                          "labels": {"vela.ai/model": "minimax-h3", "vela.ai/role": worker["role"]}},
+            "spec": {"nodeName": worker["node"], "restartPolicy": "Always",
+                     "serviceAccountName": f"minimax-h3-{worker['role']}-{worker['ordinal']}",
+                     "resourceClaims": [{"name": "gpu", "resourceClaimName": claim["metadata"]["name"]}],
+                     "containers": [{"name": "stage-worker", "image": "10.1.201.70:5005/vela-stage-worker-agent",
+                                     "env": [{"name": "VELA_WORKER_INSTANCE_ID", "value": worker["worker_instance_id"]},
+                                             {"name": "VELA_WORKER_COMPONENT", "value": worker["component"]}],
+                                     "resources": {"claims": [{"name": "gpu"}]}}]}
+        }
+        (directory / "pod.json").write_text(json.dumps(pod, indent=2) + "\n")
 
 
 if __name__ == "__main__":
