@@ -1,0 +1,733 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-16T01:23:45.201254+00:00",
+  "complete_e2e_passed": false,
+  "production_gate_evidence": false,
+  "authentication": {
+    "schema_version": 1,
+    "observed_at": "2026-09-15T13:47:03.925923+00:00",
+    "environment": "internal-acceptance",
+    "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+    "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+    "checks": [
+      {
+        "gateway": "10.1.201.70",
+        "check": "anonymous",
+        "http_status": 401,
+        "body": {
+          "code": "unauthorized",
+          "message": "valid bearer credential is required"
+        }
+      },
+      {
+        "gateway": "10.1.201.70",
+        "check": "authenticated_missing_job",
+        "http_status": 404,
+        "body": {
+          "code": "not_found",
+          "message": "Job is not visible in this Project"
+        }
+      },
+      {
+        "gateway": "10.1.201.70",
+        "check": "cross_project",
+        "http_status": 404,
+        "body": {
+          "code": "not_found",
+          "message": "Job is not visible in this Project"
+        }
+      },
+      {
+        "gateway": "10.1.201.70",
+        "check": "submit",
+        "http_status": 400,
+        "body": {
+          "code": "invalid_sku",
+          "message": "no ACTIVE certified Rate Card line matches the request"
+        }
+      },
+      {
+        "gateway": "10.1.201.71",
+        "check": "anonymous",
+        "http_status": 401,
+        "body": {
+          "code": "unauthorized",
+          "message": "valid bearer credential is required"
+        }
+      },
+      {
+        "gateway": "10.1.201.71",
+        "check": "authenticated_missing_job",
+        "http_status": 404,
+        "body": {
+          "code": "not_found",
+          "message": "Job is not visible in this Project"
+        }
+      },
+      {
+        "gateway": "10.1.201.71",
+        "check": "cross_project",
+        "http_status": 404,
+        "body": {
+          "code": "not_found",
+          "message": "Job is not visible in this Project"
+        }
+      },
+      {
+        "gateway": "10.1.201.71",
+        "check": "submit",
+        "http_status": 400,
+        "body": {
+          "code": "invalid_sku",
+          "message": "no ACTIVE certified Rate Card line matches the request"
+        }
+      }
+    ],
+    "complete_e2e": false,
+    "production_gate_evidence": false
+  },
+  "api_flow": {
+    "70": {
+      "schema_version": 1,
+      "passed": false,
+      "production_gate_evidence": false,
+      "checks": [
+        "anonymous_api_denied"
+      ],
+      "scope": "real-job-video-and-durable-charge",
+      "submission": {
+        "http_status": 400,
+        "response": {
+          "code": "invalid_sku",
+          "message": "no ACTIVE certified Rate Card line matches the request"
+        }
+      },
+      "error": "Job submission rejected: HTTP 400 invalid_sku"
+    },
+    "71": {
+      "schema_version": 1,
+      "passed": false,
+      "production_gate_evidence": false,
+      "checks": [
+        "anonymous_api_denied"
+      ],
+      "scope": "real-job-video-and-durable-charge",
+      "submission": {
+        "http_status": 400,
+        "response": {
+          "code": "invalid_sku",
+          "message": "no ACTIVE certified Rate Card line matches the request"
+        }
+      },
+      "error": "Job submission rejected: HTTP 400 invalid_sku"
+    }
+  },
+  "downloads": {
+    "70": {
+      "billing_acceptance": false,
+      "download_http": 200,
+      "download_origin": "https://10.1.201.70:30443",
+      "job_acceptance": false,
+      "negative_http": {
+        "signature": 403,
+        "unsigned": 403,
+        "version": 403
+      },
+      "object_key": "artifacts/transport-acceptance/c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a/video.mp4",
+      "object_version": "11f1b164-5c49-4ef0-afcf-084b15029884",
+      "observed_at": "2026-09-15T13:57:27.081769265Z",
+      "schema_version": 1,
+      "scope": "artifact-transport-only",
+      "sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a",
+      "size_bytes": 954339,
+      "tls_verified": true
+    },
+    "71": {
+      "billing_acceptance": false,
+      "download_http": 200,
+      "download_origin": "https://10.1.201.71:30443",
+      "job_acceptance": false,
+      "negative_http": {
+        "signature": 403,
+        "unsigned": 403,
+        "version": 403
+      },
+      "object_key": "artifacts/transport-acceptance/c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a/video.mp4",
+      "object_version": "11f1b164-5c49-4ef0-afcf-084b15029884",
+      "observed_at": "2026-09-15T13:57:27.198129881Z",
+      "schema_version": 1,
+      "scope": "artifact-transport-only",
+      "sha256": "c2be7e83e8dc37524601f72676b26dcd8c445ab0849f58c6179911e30fdcff9a",
+      "size_bytes": 954339,
+      "tls_verified": true
+    }
+  },
+  "control_image": {
+    "image": "10.1.201.70:5005/vela-control@sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563",
+    "tag": "10.1.201.70:5005/vela-control:api-flow-a2dc0d728817",
+    "binary_sha256": "a2dc0d72881757e146790c436233866d1df57deb84b99e2cde5222c3d283b9c7",
+    "base_image": "10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea"
+  },
+  "control_rollout": {
+    "passed": true,
+    "image": "10.1.201.70:5005/vela-control@sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563",
+    "config_map": "vela-control-runtime-api-6dbdb1fe456b",
+    "ready": 2,
+    "updated": 2,
+    "observed_at": "2026-09-15T13:59:52.229121+00:00"
+  },
+  "control_replication": {
+    "at": "2026-09-15T14:09:30.943463+00:00",
+    "source": "10.1.201.70",
+    "repository": "vela-control",
+    "root_digest": "sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563",
+    "socket_timeout_seconds": 300.0,
+    "targets": [
+      {
+        "host": "10.1.201.71",
+        "manifests": [
+          {
+            "digest": "sha256:df98e373813b87c36890113d98be629f8f15945ea22535239c4570a090857b06",
+            "media_type": "application/vnd.oci.image.manifest.v1+json",
+            "size": 1828,
+            "verified": true
+          },
+          {
+            "digest": "sha256:d850e76ea7c410c5c72c803b8be1d142f86575e23de2bcac8f150ceb0c3c71e0",
+            "media_type": "application/vnd.oci.image.manifest.v1+json",
+            "size": 566,
+            "verified": true
+          },
+          {
+            "digest": "sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563",
+            "media_type": "application/vnd.oci.image.index.v1+json",
+            "size": 856,
+            "verified": true
+          }
+        ],
+        "blobs": [
+          {
+            "digest": "sha256:d044d94a5d9b016d694e94d524a3e5d3cc91c9cf4d81f21cd967e6d38816b2d9",
+            "size": 3950,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+            "size": 124284,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+            "size": 19118756,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+            "size": 4573237,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+            "size": 1278515,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+            "size": 19624998,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+            "size": 19634253,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+            "size": 4573421,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:87b5f3817cdc38d70f0e49661d7e273a8d09d508f793b6681b23ecb64b80840a",
+            "size": 19633969,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:34740d0633fd8fa45ad4ada4507354fe3f7c889c56b1a15a98dfed22ceb013f7",
+            "size": 167,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:596ef3d0aacc622358e0703587ec23073490aa8d81edf8419a859f5c3c68cf86",
+            "size": 1147,
+            "uploaded": true,
+            "sha256_verified": true
+          }
+        ],
+        "result": "EXACT_IMAGE_REPLICA_PASS"
+      },
+      {
+        "host": "10.1.201.66",
+        "manifests": [
+          {
+            "digest": "sha256:df98e373813b87c36890113d98be629f8f15945ea22535239c4570a090857b06",
+            "media_type": "application/vnd.oci.image.manifest.v1+json",
+            "size": 1828,
+            "verified": true
+          },
+          {
+            "digest": "sha256:d850e76ea7c410c5c72c803b8be1d142f86575e23de2bcac8f150ceb0c3c71e0",
+            "media_type": "application/vnd.oci.image.manifest.v1+json",
+            "size": 566,
+            "verified": true
+          },
+          {
+            "digest": "sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563",
+            "media_type": "application/vnd.oci.image.index.v1+json",
+            "size": 856,
+            "verified": true
+          }
+        ],
+        "blobs": [
+          {
+            "digest": "sha256:d044d94a5d9b016d694e94d524a3e5d3cc91c9cf4d81f21cd967e6d38816b2d9",
+            "size": 3950,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:c0900b4018c135675924d9b6640e22658c03988ad8f96f966953e891c0e5fd5c",
+            "size": 124284,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:88b3a1c423389f6c3278e36d964f2aa60ebf53bbbfcd12800fc82814bfe7152c",
+            "size": 19118756,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:a18f521a9b7f60da115f718249fadb522f6443082a760a67cd573f5c9659d4b6",
+            "size": 4573237,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:eb896bed4d3f274cde8fa892a3e933115e130588e6d92b9cceb36dc4d0a55982",
+            "size": 1278515,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:e49487c17f0d051c4d50f211db362045a0defeafa1445974795c7bb6a141ec13",
+            "size": 19624998,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:5cf8285e00d902581829bf97a211311a5c8b33dd5206c4911b291e9c6cd7b5ce",
+            "size": 19634253,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:bc2ce56450338221f81879c6f9a65b41bb35d3e2a54706b49ad548bbff0fce08",
+            "size": 4573421,
+            "uploaded": false,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:87b5f3817cdc38d70f0e49661d7e273a8d09d508f793b6681b23ecb64b80840a",
+            "size": 19633969,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:34740d0633fd8fa45ad4ada4507354fe3f7c889c56b1a15a98dfed22ceb013f7",
+            "size": 167,
+            "uploaded": true,
+            "sha256_verified": true
+          },
+          {
+            "digest": "sha256:596ef3d0aacc622358e0703587ec23073490aa8d81edf8419a859f5c3c68cf86",
+            "size": 1147,
+            "uploaded": true,
+            "sha256_verified": true
+          }
+        ],
+        "result": "EXACT_IMAGE_REPLICA_PASS"
+      }
+    ],
+    "result": "EXACT_IMAGE_REPLICATION_PASS"
+  },
+  "eventstream": {
+    "created_stream": false,
+    "created_consumer": false,
+    "stream": {
+      "config": {
+        "name": "VELA_EVENTS",
+        "subjects": [
+          "vela.events.>"
+        ],
+        "retention": "limits",
+        "max_consumers": 32,
+        "max_msgs": 1000000,
+        "max_bytes": 34359738368,
+        "discard": "old",
+        "max_age": 604800000000000,
+        "max_msgs_per_subject": -1,
+        "max_msg_size": 1048576,
+        "storage": "file",
+        "num_replicas": 3,
+        "duplicate_window": 600000000000,
+        "deny_delete": true,
+        "deny_purge": true,
+        "compression": "none",
+        "allow_direct": false,
+        "mirror_direct": false,
+        "consumer_limits": {},
+        "metadata": {
+          "vela.contract": "event-delivery",
+          "vela.revision": "2"
+        }
+      },
+      "created": "2026-09-15T13:57:27.876024923Z",
+      "state": {
+        "messages": 0,
+        "bytes": 0,
+        "first_seq": 0,
+        "first_ts": "0001-01-01T00:00:00Z",
+        "last_seq": 0,
+        "last_ts": "0001-01-01T00:00:00Z",
+        "consumer_count": 1,
+        "deleted": null,
+        "num_deleted": 0,
+        "num_subjects": 0,
+        "subjects": null
+      },
+      "cluster": {
+        "name": "VELA",
+        "raft_group": "S-R3F-KAS2JFQL",
+        "leader": "nats-2",
+        "replicas": [
+          {
+            "name": "nats-0",
+            "current": true,
+            "active": 398164512
+          },
+          {
+            "name": "nats-1",
+            "current": true,
+            "active": 398086987
+          }
+        ]
+      },
+      "ts": "2026-09-15T14:13:26.840782734Z"
+    },
+    "consumer": {
+      "stream_name": "VELA_EVENTS",
+      "name": "VELA_SCHEDULER",
+      "created": "2026-09-15T13:57:28.451286222Z",
+      "config": {
+        "name": "VELA_SCHEDULER",
+        "durable_name": "VELA_SCHEDULER",
+        "description": "PostgreSQL-authoritative Scheduler job.ready wakeup",
+        "deliver_policy": "all",
+        "ack_policy": "explicit",
+        "ack_wait": 30000000000,
+        "max_deliver": -1,
+        "filter_subject": "vela.events.job.ready",
+        "replay_policy": "instant",
+        "max_waiting": 32,
+        "max_ack_pending": 128,
+        "max_batch": 1,
+        "max_expires": 5000000000,
+        "num_replicas": 3,
+        "metadata": {
+          "vela.contract": "scheduler-wakeup",
+          "vela.revision": "1"
+        }
+      },
+      "delivered": {
+        "consumer_seq": 0,
+        "stream_seq": 0
+      },
+      "ack_floor": {
+        "consumer_seq": 0,
+        "stream_seq": 0
+      },
+      "num_ack_pending": 0,
+      "num_redelivered": 0,
+      "num_waiting": 0,
+      "num_pending": 0,
+      "cluster": {
+        "name": "VELA",
+        "raft_group": "C-R3F-4jvjb2D9",
+        "leader": "nats-0",
+        "replicas": [
+          {
+            "name": "nats-1",
+            "current": true,
+            "active": 782096834
+          },
+          {
+            "name": "nats-2",
+            "current": true,
+            "active": 782099141
+          }
+        ]
+      },
+      "ts": "2026-09-15T14:13:26.802078459Z"
+    }
+  },
+  "download_media": {
+    "streams": [
+      {
+        "index": 0,
+        "codec_name": "h264",
+        "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "profile": "High",
+        "codec_type": "video",
+        "codec_tag_string": "avc1",
+        "codec_tag": "0x31637661",
+        "width": 1344,
+        "height": 768,
+        "coded_width": 1344,
+        "coded_height": 768,
+        "has_b_frames": 2,
+        "pix_fmt": "yuv420p",
+        "level": 32,
+        "chroma_location": "left",
+        "field_order": "progressive",
+        "refs": 4,
+        "is_avc": "true",
+        "nal_length_size": "4",
+        "id": "0x1",
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "time_base": "1/12288",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 63488,
+        "duration": "5.166667",
+        "bit_rate": "1340723",
+        "bits_per_raw_sample": "8",
+        "nb_frames": "124",
+        "nb_read_frames": "124",
+        "extradata_size": 41,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "VideoHandler",
+          "vendor_id": "[0][0][0][0]"
+        }
+      },
+      {
+        "index": 1,
+        "codec_name": "aac",
+        "codec_long_name": "AAC (Advanced Audio Coding)",
+        "codec_type": "audio",
+        "codec_tag_string": "mp4a",
+        "codec_tag": "0x6134706d",
+        "sample_rate": "32000",
+        "channels": 2,
+        "bits_per_sample": 0,
+        "initial_padding": 0,
+        "id": "0x2",
+        "r_frame_rate": "0/0",
+        "avg_frame_rate": "0/0",
+        "time_base": "1/32000",
+        "start_pts": 0,
+        "start_time": "0.000000",
+        "duration_ts": 165600,
+        "duration": "5.175000",
+        "bit_rate": "127600",
+        "nb_frames": "163",
+        "extradata_size": 5,
+        "disposition": {
+          "default": 1,
+          "dub": 0,
+          "original": 0,
+          "comment": 0,
+          "lyrics": 0,
+          "karaoke": 0,
+          "forced": 0,
+          "hearing_impaired": 0,
+          "visual_impaired": 0,
+          "clean_effects": 0,
+          "attached_pic": 0,
+          "timed_thumbnails": 0,
+          "non_diegetic": 0,
+          "captions": 0,
+          "descriptions": 0,
+          "metadata": 0,
+          "dependent": 0,
+          "still_image": 0,
+          "multilayer": 0
+        },
+        "tags": {
+          "language": "und",
+          "handler_name": "SoundHandler",
+          "vendor_id": "[0][0][0][0]"
+        }
+      }
+    ],
+    "format": {
+      "filename": "/input/complete-video.mp4",
+      "nb_streams": 2,
+      "nb_programs": 0,
+      "nb_stream_groups": 0,
+      "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+      "format_long_name": "QuickTime / MOV",
+      "start_time": "0.000000",
+      "duration": "5.175000",
+      "size": "954339",
+      "bit_rate": "1475306",
+      "probe_score": 100,
+      "tags": {
+        "major_brand": "isom",
+        "minor_version": "512",
+        "compatible_brands": "isomiso2avc1mp41",
+        "encoder": "Lavf58.29.100"
+      }
+    }
+  },
+  "config_revision": "sha256:836123ad97459f4b8ef01541e3ad5df533fb0ab3c48f2dda1ed133c21008200b",
+  "database": {
+    "jobs": 0,
+    "workers": 0,
+    "residencies": 0,
+    "plans": 0,
+    "certifications": 0,
+    "rate_card_lines": 0,
+    "charges": 0,
+    "test_organizations": 1,
+    "test_service_principals": 1,
+    "production_gate_receipts": 0
+  },
+  "control_live": {
+    "vela-control": {
+      "ready": 2,
+      "updated": 2,
+      "image": "10.1.201.70:5005/vela-control@sha256:5d358d19738d32ebc315bdf208410f4dbb044713c6fb28f9598ba788dce21563"
+    },
+    "vela-fleet-controller": {
+      "ready": 2,
+      "updated": 2,
+      "image": "10.1.201.70:5005/vela-fleet-controller@sha256:e2bd94d501754098bd75c2c03138f944941824e5e14cb862e9433c887f41b86e"
+    }
+  },
+  "nodes": [
+    {
+      "name": "llmpool01",
+      "conditions": {
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    },
+    {
+      "name": "llmpool02",
+      "conditions": {
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    },
+    {
+      "name": "marslab-gpu-01",
+      "conditions": {
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    },
+    {
+      "name": "server-22",
+      "conditions": {
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    },
+    {
+      "name": "server-23",
+      "conditions": {
+        "MemoryPressure": "False",
+        "DiskPressure": "False",
+        "PIDPressure": "False",
+        "Ready": "True"
+      }
+    }
+  ],
+  "formal_startup_repair": {
+    "attempted": true,
+    "workers": {
+      "aux": {
+        "node": "server-22",
+        "instance": "5ec5e262-65ab-51b1-8405-8f52ba45cfab",
+        "bootstrap": "committed",
+        "binding": "generated",
+        "result": "blocked_backend_incarnation_unproven"
+      },
+      "dit": {
+        "node": "server-23",
+        "instance": "7e0aec18-5420-5207-bb6c-16b4788e517e",
+        "bootstrap": "committed",
+        "binding": "generated",
+        "result": "blocked_startup_ledger_incomplete"
+      },
+      "thumbnail": {
+        "node": "server-22",
+        "instance": "4a82ff10-a5ea-5aa4-9ec8-e80481801792",
+        "bootstrap": "committed",
+        "binding": "generated",
+        "result": "blocked_backend_incarnation_unproven"
+      }
+    },
+    "kubernetes": {
+      "r12_pods": "SchedulingGated",
+      "dra": "not_allocated",
+      "running": false
+    },
+    "cleanup": {
+      "r12_claim_templates_deleted": true,
+      "pod_delete_requires_fleet_controller": true
+    },
+    "rebooted_nodes": []
+  }
+}

@@ -61,6 +61,50 @@ subjects:
     namespace: vela-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vela-node-runtime-reader
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-node-agent
+    app.kubernetes.io/part-of: vela
+rules:
+  - apiGroups: [""]
+    resources: [pods, configmaps, secrets]
+    verbs: [get, list, watch, patch]
+  - apiGroups: ["resource.k8s.io"]
+    resources: [resourceclaims]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vela-node-server-22-runtime
+  namespace: vela-system
+subjects:
+  - kind: ServiceAccount
+    name: vela-node-server-22
+    namespace: vela-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vela-node-runtime-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vela-node-server-23-runtime
+  namespace: vela-system
+subjects:
+  - kind: ServiceAccount
+    name: vela-node-server-23
+    namespace: vela-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vela-node-runtime-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: vela-fleet-controller-node-reader
