@@ -27,8 +27,11 @@ import (
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/h3launchevidence"
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/stageworkercontrol"
+	"github.com/vivym/vela/internal/stageworkertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -645,6 +648,38 @@ func TestNodeAgentWorkerInstanceReporterPersistsThroughMutualTLS(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	templateEvidence := workerRegistryEvidenceValue(t, workerInstanceID, 0x13)
+	// Match the real catalog before the Node reporter persists the residency.
+	// The generic catalog fixture uses abbreviated image names, while the
+	// Registry transport requires a complete immutable digest.
+	if _, err := database.Admin.Exec(`INSERT INTO stage_profile_revisions
+		(id,stable_id,revision,state,stage_definition_revision_id,model_component_revision,runtime_image_digest,
+		 worker_profile_revision_id,result_equivalence_revision_id,certified_capacity_vector,content_digest)
+		SELECT '49200000-0000-0000-0000-000000000015','h3-reporter-registration',1,'CERTIFIED',
+		 stage_definition_revision_id,model_component_revision,$2,worker_profile_revision_id,
+		 result_equivalence_revision_id,certified_capacity_vector,decode(repeat('15',32),'hex')
+		FROM stage_profile_revisions WHERE id=(SELECT stage_profile_revision_id FROM capacity_pools WHERE id=$1)`,
+		workerRegistryPoolID, templateEvidence.Residencies[0].RuntimeImageDigest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Admin.Exec(`UPDATE capacity_pools SET stage_profile_revision_id='49200000-0000-0000-0000-000000000015' WHERE id=$1`, workerRegistryPoolID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Admin.Exec(`INSERT INTO model_runtime_capacity_routes
+		(worker_instance_id,model_residency_id,capacity_pool_id,stage_profile_revision_id)
+		VALUES ($1,$2,$3,'49200000-0000-0000-0000-000000000015')`,
+		workerInstanceID, templateEvidence.Residencies[0].ID, workerRegistryPoolID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Admin.QueryRow(`SELECT profile.model_component_revision, profile.runtime_image_digest
+		FROM capacity_pools pool JOIN stage_profile_revisions profile ON profile.id=pool.stage_profile_revision_id
+		WHERE pool.id=$1`, workerRegistryPoolID).Scan(
+		&templateEvidence.Residencies[0].ModelComponentRevision, &templateEvidence.Residencies[0].RuntimeImageDigest); err != nil {
+		t.Fatal(err)
+	}
+	readinessEvidence := []byte("reporter registration integration readiness")
+	readinessDigest := sha256.Sum256(readinessEvidence)
+	templateEvidence.Residencies[0].WarmupEvidenceDigest = hex.EncodeToString(readinessDigest[:])
+	templateEvidence.Residencies[0].CanaryEvidenceDigest = hex.EncodeToString(readinessDigest[:])
 	attested := templateEvidence.DeviceSet.Devices[0]
 	templateEvidence.ObservedAt = time.Time{}
 	templateEvidence.ObservedBy = ""
@@ -711,6 +746,58 @@ func TestNodeAgentWorkerInstanceReporterPersistsThroughMutualTLS(t *testing.T) {
 			observations,
 			observedBy,
 		)
+	}
+	// Register using the actual SPIFFE URI and the member digest persisted by
+	// the reporter. Do not overwrite member identity to make this test pass.
+	workerPool := newRolePool(t, database.DSN, "vela_stage_worker_control_login", "vela-stage-worker-control-password")
+	backend, err := stageworkercontrol.NewPostgresWorkerEvidenceBackend(workerPool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, residency := templateEvidence.Members[0], templateEvidence.Residencies[0]
+	spiffe := "spiffe://vela.internal/stage-worker/" + member.ID.String()
+	identityDigest := sha256.Sum256([]byte(spiffe))
+	var deviceSetDigest, membershipDigest, storedIdentity []byte
+	var stageProfile uuid.UUID
+	if err := database.Admin.QueryRow(`SELECT worker.device_set_digest, worker.membership_digest,
+		member.identity_digest, pool.stage_profile_revision_id
+		FROM worker_instances worker JOIN worker_members member ON member.worker_instance_id=worker.id
+		JOIN capacity_pools pool ON pool.id=worker.capacity_pool_id WHERE worker.id=$1`, workerInstanceID).Scan(
+		&deviceSetDigest, &membershipDigest, &storedIdentity, &stageProfile); err != nil {
+		t.Fatal(err)
+	}
+	if hex.EncodeToString(storedIdentity) != hex.EncodeToString(identityDigest[:]) {
+		t.Fatal("reporter member identity differs from SPIFFE")
+	}
+	command := stageworkercontrol.CommandContext{CommandID: uuid.New(), Identity: stageworkertransport.Identity{SPIFFEID: spiffe}, ControlSessionEpoch: 2}
+	stageSequence := int64(1<<32) + 1
+	now := time.Now().UTC()
+	capacity, err := backend.ReportCapacityObservation(t.Context(), command, &velav1.ReportStageCapacityObservationRequest{
+		WorkerInstanceId: workerInstanceID.String(), WorkerInstanceEpoch: 1, ObservationSequence: stageSequence,
+		CapacityVector: templateEvidence.Capacity.Vector, ObservedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(time.Minute))})
+	if err != nil || !capacity.Ready || capacity.ControlSessionEpoch != 2 {
+		t.Fatalf("stage capacity takeover: %v %v", capacity, err)
+	}
+	registered, err := backend.RegisterWorkerEvidence(t.Context(), command, &velav1.RegisterWorkerEvidenceRequest{
+		RuntimeIdentity: &velav1.ModelRuntimeIdentity{WorkerInstanceId: workerInstanceID.String(), WorkerInstanceEpoch: 1, WorkerMemberId: member.ID.String(), WorkerMemberEpoch: member.MemberEpoch,
+			DeviceSetDigest: deviceSetDigest, MembershipDigest: membershipDigest, ModelResidencyId: residency.ID.String(), RuntimeIdentity: residency.RuntimeIdentity,
+			ModelRuntimeEpoch: residency.ModelRuntimeEpoch, StageProfileRevisionId: stageProfile.String()},
+		CapacityObservationSequence: stageSequence, ReadinessEvidence: readinessEvidence,
+		Devices: []*velav1.StageAuthorityDeviceEpoch{{DeviceId: attested.ID.String(), DeviceEpoch: 1}},
+		Members: []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: member.ID.String(), MemberEpoch: member.MemberEpoch, ModelRuntimeEpoch: residency.ModelRuntimeEpoch, IdentityDigest: identityDigest[:]}}})
+	if err != nil || !registered.Ready {
+		t.Fatalf("register reporter-backed SPIFFE: %v %v", registered, err)
+	}
+	// A stale Node report gets the current epoch without refreshing state; its
+	// following report then refreshes physical evidence under that exact epoch.
+	template := nodeagent.WorkerInstanceEvidenceTemplate{Evidence: templateEvidence, ObservedBy: nodeAgentSPIFFE}
+	synchronized, err := reporter.Report(t.Context(), template)
+	if err != nil || synchronized.ControlSessionEpoch != 2 {
+		t.Fatalf("synchronize Node report: %v %v", synchronized, err)
+	}
+	template.Evidence.ControlSessionEpoch = synchronized.ControlSessionEpoch
+	if _, err := reporter.Report(t.Context(), template); err != nil {
+		t.Fatalf("refresh after Stage registration: %v", err)
 	}
 }
 
