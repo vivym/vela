@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -86,11 +88,15 @@ func loadDurableWorkerLaunch(configuration config) (*durableWorkerLaunch, error)
 			return nil, errors.New("worker membership does not match launch manifest")
 		}
 	}
-	admission.RegistryVerifier, err = journalbinding.ReadVerifierFile(configuration.journalBindingVerifierFile)
-	if err != nil {
-		return nil, err
+	publicationRoot := runtimelaunch.MemberRoot(configuration.workerMemberID.String()) + "/worker-bootstrap/"
+	if configuration.journalBindingFile == publicationRoot+"binding.json" && configuration.journalBindingVerifierFile == publicationRoot+"verifier.json" {
+		admission.RegistryBinding, admission.RegistryVerifier, err = journalbinding.LoadNodePublication(configuration.journalBindingFile, configuration.journalBindingVerifierFile, uint32(os.Getegid()))
+	} else {
+		admission.RegistryVerifier, err = journalbinding.ReadVerifierFile(configuration.journalBindingVerifierFile)
+		if err == nil {
+			admission.RegistryBinding, err = journalbinding.LoadFile(configuration.journalBindingFile, admission.RegistryVerifier)
+		}
 	}
-	admission.RegistryBinding, err = journalbinding.LoadFile(configuration.journalBindingFile, admission.RegistryVerifier)
 	if err != nil {
 		return nil, err
 	}

@@ -69,6 +69,7 @@ type fileWorkerInstanceEpochState struct {
 	NodeEpoch            int64                                    `json:"node_epoch"`
 	AgentSessionEpoch    int64                                    `json:"agent_session_epoch"`
 	Devices              map[string]fileWorkerInstanceDeviceEpoch `json:"devices"`
+	CPUSlots             map[string]fileWorkerInstanceCPUEpoch    `json:"cpu_slots,omitempty"`
 	ObservationSequences map[string]int64                         `json:"observation_sequences"`
 }
 
@@ -160,6 +161,13 @@ func (store *FileWorkerInstanceEpochStore) load(nodeIdentity string, bootID stri
 		}
 		state.NodeEpoch++
 		state.BootID = bootID
+		for id, slot := range state.CPUSlots {
+			if slot.Epoch == math.MaxInt64 {
+				return errors.New("WorkerInstance CPU slot epoch is exhausted")
+			}
+			slot.Epoch++
+			state.CPUSlots[id] = slot
+		}
 		for gpuUUID, device := range state.Devices {
 			if device.Epoch == math.MaxInt64 {
 				return errors.New("WorkerInstance Device epoch is exhausted")
@@ -398,6 +406,15 @@ func validFileWorkerInstanceEpochState(state fileWorkerInstanceEpochState) bool 
 		state.ObservationSequences == nil {
 		return false
 	}
+	if len(state.CPUSlots) > maxWorkerInstanceEpochDevices {
+		return false
+	}
+	for id, slot := range state.CPUSlots {
+		parsed, err := uuid.Parse(id)
+		if err != nil || parsed == uuid.Nil || parsed.String() != id || slot.Epoch <= 0 || !validDigestHex(slot.AttestationDigest) {
+			return false
+		}
+	}
 	bootID, err := uuid.Parse(state.BootID)
 	if err != nil || bootID == uuid.Nil || bootID.String() != state.BootID {
 		return false
@@ -426,6 +443,10 @@ func cloneFileWorkerInstanceEpochState(
 	state fileWorkerInstanceEpochState,
 ) fileWorkerInstanceEpochState {
 	cloned := state
+	cloned.CPUSlots = make(map[string]fileWorkerInstanceCPUEpoch, len(state.CPUSlots))
+	for id, slot := range state.CPUSlots {
+		cloned.CPUSlots[id] = slot
+	}
 	cloned.Devices = make(map[string]fileWorkerInstanceDeviceEpoch, len(state.Devices))
 	for gpuUUID, device := range state.Devices {
 		cloned.Devices[gpuUUID] = device
@@ -440,3 +461,8 @@ func cloneFileWorkerInstanceEpochState(
 var _ WorkerInstanceEpochStore = (*FileWorkerInstanceEpochStore)(nil)
 var _ WorkerInstanceObservationSequencer = (*FileWorkerInstanceEpochStore)(nil)
 var _ DeviceEpochSource = (*FileWorkerInstanceEpochStore)(nil)
+
+type fileWorkerInstanceCPUEpoch struct {
+	AttestationDigest string `json:"attestation_digest"`
+	Epoch             int64  `json:"epoch"`
+}

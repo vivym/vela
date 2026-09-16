@@ -2,6 +2,7 @@ package nodeagent
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -74,6 +75,24 @@ func TestRuntimeTaskMechanismPolicy(t *testing.T) {
 	if err := makeLaunch(valid(), &specs.Hooks{}).CheckRuntimeMechanism(policy); err == nil {
 		t.Fatal("hook structure accepted")
 	}
+	hooks := &specs.Hooks{CreateContainer: []specs.Hook{{Path: "/usr/bin/nvidia-cdi-hook", Args: []string{"nvidia-cdi-hook", "update-ldcache"}}}}
+	approved, err := json.Marshal(hooks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	qualified := policy
+	qualified.HooksDigest = sha256.Sum256(approved)
+	if err := makeLaunch(valid(), hooks).CheckRuntimeMechanism(qualified); err != nil {
+		t.Fatal(err)
+	}
+	hooks.CreateContainer[0].Args = append(hooks.CreateContainer[0].Args, "unapproved")
+	if err := makeLaunch(valid(), hooks).CheckRuntimeMechanism(qualified); err == nil {
+		t.Fatal("altered hook was accepted")
+	}
+	if err := makeLaunch(valid(), nil).CheckRuntimeMechanism(qualified); err == nil {
+		t.Fatal("missing required hook was accepted")
+	}
+
 	for _, extra := range []string{`"task_api_address":"unix:///unapproved",`, `"task_api_version":3,`} {
 		changed := makeLaunch(valid(), nil)
 		var fields map[string]json.RawMessage

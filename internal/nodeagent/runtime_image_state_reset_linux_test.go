@@ -258,7 +258,7 @@ func recoverRuntimeImageStateReset(t *testing.T, scenario string) {
 		t.Fatalf("recovery removed the control view metadata: %v", err)
 	}
 	controlActivation, err := observer.mounts.Info(fixture.ctx, &mountsapi.InfoRequest{Name: receipt.ControlKey})
-	if err != nil || !proto.Equal(runtimeImagePersistedActivation(activation.GetInfo()), controlActivation.GetInfo()) {
+	if err != nil || !sameRuntimeImageActivation(activation.GetInfo(), controlActivation.GetInfo()) {
 		t.Fatalf("recovery changed the new control activation: %v", err)
 	}
 	leases, err := observer.leases.List(fixture.ctx, &leasesapi.ListRequest{})

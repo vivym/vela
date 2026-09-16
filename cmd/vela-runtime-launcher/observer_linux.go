@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -24,11 +25,16 @@ const (
 	ptraceInterrupt = 0x4207
 	ptraceSetOpts   = 0x4200
 	ptraceCont      = 7
+	ptraceListen    = 0x4208
+	ptraceEventStop = 128
 	ptraceOExitKill = 1 << 20
 	wall            = 0x40000000
 )
 
 func runAttachedObserver(args []string) error {
+	// Linux ptrace ownership belongs to the tracer thread, not its Go process.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if os.Geteuid() != 0 || len(args) != 3 || args[0] != "--attach-fd4" {
 		return errors.New("vela-runtime-observer requires root and --attach-fd4 UID GID")
 	}
@@ -197,20 +203,81 @@ func handleCustody(uid, gid uint32, targetPID int) error {
 	if err := writeFrame(unixConnection, ready); err != nil {
 		return err
 	}
+	idleDeadline := time.Now().Add(30 * time.Second)
 	for {
-		frame, err := readFrame(unixConnection)
-		if err != nil {
+		// Keep signal delivery moving on the same locked tracer thread while
+		// waiting for Node heartbeats. A live pidfd may name a stopped process.
+		if err := continueTraceeEvents(targetPID); err != nil {
 			return err
 		}
-		if len(frame) != len(ready) || frame[len(custodyProtocol)] != 'P' || !equalNonce(frame, ready) {
+		readDeadline := time.Now().Add(20 * time.Millisecond)
+		if idleDeadline.Before(readDeadline) {
+			readDeadline = idleDeadline
+		}
+		if err := unixConnection.SetReadDeadline(readDeadline); err != nil {
+			return err
+		}
+		frame, err := readFrame(unixConnection)
+		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) && time.Now().Before(idleDeadline) {
+				continue
+			}
+			return err
+		}
+		// Each Check carries a fresh nonce on the private custody socket. Echo
+		// that challenge; it deliberately differs from the handshake nonce.
+		if !validLivenessChallenge(frame) {
 			return errors.New("invalid custody liveness challenge")
 		}
 		live := append([]byte(nil), frame...)
 		live[len(custodyProtocol)] = 'L'
+		if err := unixConnection.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			return err
+		}
 		if err := writeFrame(unixConnection, live); err != nil {
 			return err
 		}
+		idleDeadline = time.Now().Add(30 * time.Second)
 	}
+}
+
+func continueTraceeEvents(pid int) error {
+	for {
+		var status unix.WaitStatus
+		got, err := unix.Wait4(pid, &status, wall|unix.WNOHANG, nil)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("observe Runtime ptrace event: %w", err)
+		}
+		if got == 0 {
+			return nil
+		}
+		if status.Exited() || status.Signaled() {
+			return errors.New("observed Runtime exited")
+		}
+		if !status.Stopped() {
+			return errors.New("unexpected Runtime ptrace event")
+		}
+		signal := status.StopSignal()
+		request, forwarded := ptraceCont, uintptr(signal)
+		if uint32(status)>>16 == ptraceEventStop {
+			// Preserve job-control group stops. SIGCONT wakes PTRACE_LISTEN;
+			// the resulting synthetic SIGTRAP must not reach the Runtime.
+			forwarded = 0
+			if signal == unix.SIGSTOP || signal == unix.SIGTSTP || signal == unix.SIGTTIN || signal == unix.SIGTTOU {
+				request = ptraceListen
+			}
+		}
+		if err := ptrace(request, pid, 0, forwarded); err != nil {
+			return fmt.Errorf("continue Runtime ptrace event: %w", err)
+		}
+	}
+}
+
+func validLivenessChallenge(frame []byte) bool {
+	return len(frame) == len(custodyProtocol)+1+32 && string(frame[:len(custodyProtocol)]) == custodyProtocol && frame[len(custodyProtocol)] == 'P'
 }
 
 func equalNonce(left, right []byte) bool {

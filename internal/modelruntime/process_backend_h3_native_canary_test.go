@@ -81,6 +81,7 @@ func TestFastH3NativeGPUCanary(t *testing.T) {
 				Component: component, ModelComponentRevision: "h3-native-0de6ff6-6dbcc182-v1",
 				Command: []string{python, "-B", "-m", "fast_h3.vela.driver", "--component", component, "--runtime-factory", "fast_h3.vela.h3_runtime:create_runtime"},
 				Environment: []string{
+					"HOME=" + componentRoot,
 					"PYTHONPATH=" + filepath.Join(source, "src") + ":" + filepath.Join(source, "sglang/python"),
 					"PATH=" + filepath.Dir(python) + ":/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin",
 					"XDG_CACHE_HOME=" + filepath.Join(componentRoot, "cache"),

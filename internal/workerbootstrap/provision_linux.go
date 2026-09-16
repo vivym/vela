@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -35,6 +37,7 @@ type provisionIntent struct {
 	OwnerUID      int               `json:"owner_uid"`
 	OwnerGID      int               `json:"owner_gid"`
 	MaxRecords    int               `json:"max_records"`
+	NodeCustody   bool              `json:"node_custody,omitempty"`
 }
 
 type provisionFile struct {
@@ -111,7 +114,7 @@ func provision(ctx context.Context, config Config, directory string, authority A
 	}
 	intent := provisionIntent{SchemaVersion: 1, ID: uuid.New(), Root: identity(info), File: identity(intentInfo),
 		Node: config.NodeIdentity, Actor: config.ActorIdentity, BundleDigest: p.digest, LaunchDigest: p.launchID,
-		OwnerUID: provisionOwner, OwnerGID: provisionOwner, MaxRecords: config.MaxRecords}
+		OwnerUID: provisionOwner, OwnerGID: provisionOwner, MaxRecords: config.MaxRecords, NodeCustody: config.Bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol}
 	intentWire, err := json.Marshal(intent)
 	if err != nil {
 		return result, err
@@ -171,7 +174,7 @@ func provision(ctx context.Context, config Config, directory string, authority A
 		if err != nil || pathErr != nil || !os.SameFile(info, current) || identity(info) != files[i].Identity {
 			return result, errors.New("prepared storage changed before ownership transfer")
 		}
-		if err := errors.Join(held[i].Chown(provisionOwner, provisionOwner), held[i].Sync()); err != nil {
+		if err := errors.Join(held[i].Chown(provisionFileOwner(intent.NodeCustody, files[i].Path), provisionFileOwner(intent.NodeCustody, files[i].Path)), held[i].Sync()); err != nil {
 			return result, err
 		}
 		if err := checkpoint("after-handover:" + files[i].Path); err != nil {
@@ -188,7 +191,7 @@ func provision(ctx context.Context, config Config, directory string, authority A
 			return result, errors.New("transferred journal storage identity or mode changed")
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != provisionOwner || stat.Gid != provisionOwner {
+		if !ok || stat.Uid != uint32(provisionFileOwner(intent.NodeCustody, files[i].Path)) || stat.Gid != uint32(provisionFileOwner(intent.NodeCustody, files[i].Path)) {
 			return result, errors.New("journal ownership transfer is incomplete")
 		}
 		if !files[i].Directory {
@@ -315,4 +318,18 @@ func provisionNames(root *os.Root, path string, expected []string) error {
 		}
 	}
 	return nil
+}
+
+// Kubernetes mounts only the Worker journal and content children. Node retains
+// the parent, bootstrap evidence and Runtime journal outside workload mounts.
+func provisionFileOwner(nodeCustody bool, path string) int {
+	if !nodeCustody {
+		return provisionOwner
+	}
+	for _, child := range []string{"worker-admission", "inputs", "outputs"} {
+		if path == child || strings.HasPrefix(path, child+"/") {
+			return provisionOwner
+		}
+	}
+	return 0
 }

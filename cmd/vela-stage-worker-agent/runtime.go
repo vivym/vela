@@ -19,6 +19,7 @@ import (
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/materializationauthority"
+	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageartifact"
@@ -52,7 +53,8 @@ func workerJournalIdentity(binding *velav1.WorkerBootstrapBinding) (workerjourna
 }
 
 type productionAuthorityConsumers struct {
-	newMemberServer func(
+	newRuntimeJournalWriter func(config, *durableWorkerLaunch) (modelruntime.JournalCommandWriter, error)
+	newMemberServer         func(
 		stageworkermembertransport.ServerConfig,
 	) (*stageworkermembertransport.Server, error)
 	newInputResolver func(
@@ -250,6 +252,21 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(fmt.Errorf("connect to resident ModelRuntime: %w", err))
 	}
+	var localRuntime velav1.ModelRuntimeServiceClient = runtime.modelRuntime
+	if configuration.workerJournalSocket != "" {
+		factory := consumers.newRuntimeJournalWriter
+		if factory == nil {
+			factory = newRuntimeJournalWriter
+		}
+		writer, writerErr := factory(configuration, launch)
+		if writerErr != nil {
+			return fail(fmt.Errorf("configure Worker runtime journal writer: %w", writerErr))
+		}
+		localRuntime, err = modelruntime.NewJournalWorkerClient(localRuntime, writer)
+		if err != nil {
+			return fail(err)
+		}
+	}
 	expectedRuntime := stageworkeragent.RuntimeIdentityExpectation{
 		WorkerInstanceID: configuration.workerInstanceID.String(), WorkerInstanceEpoch: configuration.workerInstanceEpoch,
 		WorkerMemberID: configuration.workerMemberID.String(), WorkerMemberEpoch: configuration.workerMemberEpoch,
@@ -259,7 +276,7 @@ func newProductionRuntimeUsing(
 	}
 	runtimeIdentities, err := stageworkeragent.DiscoverRuntimeIdentities(
 		ctx,
-		runtime.modelRuntime,
+		localRuntime,
 		expectedRuntime,
 	)
 	if err != nil {
@@ -275,7 +292,7 @@ func newProductionRuntimeUsing(
 		return fail(err)
 	}
 	runtimeMembers := []stageworkeragent.RuntimeMember{{
-		ID: configuration.workerMemberID.String(), Client: runtime.modelRuntime,
+		ID: configuration.workerMemberID.String(), Client: localRuntime,
 	}}
 	if len(configuration.members) > 1 {
 		if err := validateLocalMemberCertificateIdentity(
@@ -306,7 +323,7 @@ func newProductionRuntimeUsing(
 			stageworkermembertransport.ServerConfig{
 				Authenticator:   stageworkertransport.PeerAuthenticator{},
 				Validator:       stageAuthorityValidator,
-				Runtime:         runtime.modelRuntime,
+				Runtime:         localRuntime,
 				LocalIdentities: runtimeIdentities,
 				Members:         memberBindings,
 				MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,

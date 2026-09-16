@@ -321,6 +321,48 @@ func TestLoadWorkerInstanceTemplatesInjectsCanonicalNodeAgentIdentity(t *testing
 	}
 }
 
+func TestLoadWorkerInstanceTemplatesAllowsUnobservedCPUSlots(t *testing.T) {
+	var templates []workerInstanceTemplateConfig
+	if err := json.Unmarshal([]byte(validWorkerInstanceTemplatesJSON()), &templates); err != nil {
+		t.Fatal(err)
+	}
+	item := templates[0]
+	item.DeviceSet.Devices[0].Kind = "CPU"
+	item.DeviceSet.Devices[0].GPUUUID, item.DeviceSet.Devices[0].PCIBDF = "", ""
+	item.Members[0].Readiness = "UNOBSERVED"
+	for i := range item.Residencies {
+		item.Residencies[i].State = "UNOBSERVED"
+		item.Residencies[i].ModelRuntimeEpoch = 0
+		item.Residencies[i].WarmupEvidenceDigest, item.Residencies[i].CanaryEvidenceDigest = "", ""
+	}
+	for _, fault := range []string{"none", "gpu-field", "pci-field", "cross-node"} {
+		t.Run(fault, func(t *testing.T) {
+			// Round-trip to give each mutation an independent nested config.
+			wire, _ := json.Marshal(item)
+			var candidate workerInstanceTemplateConfig
+			if err := json.Unmarshal(wire, &candidate); err != nil {
+				t.Fatal(err)
+			}
+			switch fault {
+			case "gpu-field":
+				candidate.DeviceSet.Devices[0].GPUUUID = "GPU-00000000-0000-0000-0000-000000000001"
+			case "pci-field":
+				candidate.DeviceSet.Devices[0].PCIBDF = "0000:01:00.0"
+			case "cross-node":
+				candidate.DeviceSet.Devices[0].NodeIdentity = "other"
+			}
+			got, err := workerInstanceTemplate(candidate, "node-1", "node-agent/test")
+			if fault == "none" {
+				if err != nil || got.Evidence.Residencies[0].State != "UNOBSERVED" {
+					t.Fatalf("CPU template: %v %v", got, err)
+				}
+			} else if err == nil {
+				t.Fatal("accepted invalid CPU template")
+			}
+		})
+	}
+}
+
 func TestLoadWorkerInstanceTemplatesRejectsRuntimeFieldsDuplicateKeysAndCrossNode(t *testing.T) {
 	identity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: "node-1",

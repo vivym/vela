@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -715,6 +716,23 @@ func publishRuntimeBootstrapBeforeLaunch(ctx context.Context, configuration conf
 		Name:      expectedPod.Name,
 	}); err != nil {
 		return fmt.Errorf("preflight authenticated Fleet-created Pod: %w", err)
+	}
+	if pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		// A CRI pull can leave only overlay snapshots. Verify the independently
+		// prepared native image view before consuming a backend incarnation.
+		_, digest, pinned := strings.Cut(runtimeContainer.Image, "@")
+		if !pinned || resources.image == nil || resources.image.Images == nil {
+			return errors.New("preflight requires a pinned runtime image observer")
+		}
+		if _, err := resources.image.Images.InspectLaunch(ctx, digest); err != nil {
+			return fmt.Errorf("preflight native runtime image (prepare its native snapshot before starting): %w", err)
+		}
+		for _, name := range []string{"launch", "worker-bootstrap"} {
+			path := filepath.Join(filepath.Dir(configuration.runtimeStartupSocket), name)
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("preflight requires unused startup directory %s: %w", path, errors.Join(errors.New("path already exists or cannot be inspected"), err))
+			}
+		}
 	}
 	runtimeSocket, brokerSocket := "", ""
 	if pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {

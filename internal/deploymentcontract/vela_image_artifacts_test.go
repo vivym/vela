@@ -28,7 +28,7 @@ type velaImageArtifactTarget struct {
 var velaImageArtifactTargets = [...]velaImageArtifactTarget{
 	{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 	{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-	{name: "vela-h3-stage-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
+	{name: "vela-h3-stage-runtime", entrypoint: "/usr/local/bin/vela-runtime-entrypoint"},
 	{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 }
 
@@ -256,6 +256,11 @@ func writeOCIImageLayoutFixture(
 			User: "10001:10001", Entrypoint: []string{entrypoint}, Labels: labels,
 		},
 		RootFS: ociv1.RootFS{Type: "layers", DiffIDs: []ocidigest.Digest{ocidigest.FromBytes(layerEncoded)}},
+	}
+	if title == "vela-h3-stage-runtime" {
+		config.Config.Entrypoint = append(config.Config.Entrypoint, "runtime")
+		config.Config.WorkingDir = "/"
+		config.Config.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/"}
 	}
 	configEncoded := marshalJSONFixture(t, config)
 	configDigest := sha256.Sum256(configEncoded)

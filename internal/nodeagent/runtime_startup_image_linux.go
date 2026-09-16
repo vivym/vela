@@ -61,6 +61,16 @@ func (check *runtimeStartupImageCheck) inspect(ctx context.Context, config Runti
 	if firstImage != lastImage || !reflect.DeepEqual(firstTask, lastTask) || !reflect.DeepEqual(check.first.RemoteCLI, current.RemoteCLI) {
 		return ErrRuntimePlannedImage
 	}
+	if (check.first.Entrypoint == nil) != (current.Entrypoint == nil) {
+		return ErrRuntimePlannedImage
+	}
+	if current.Entrypoint != nil {
+		first, last := *check.first.Entrypoint, *current.Entrypoint
+		first.ObservedFrom, first.ObservedThrough = last.ObservedFrom, last.ObservedThrough
+		if first != last {
+			return ErrRuntimePlannedImage
+		}
+	}
 	return nil
 }
 

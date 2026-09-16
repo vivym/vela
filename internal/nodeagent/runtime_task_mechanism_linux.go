@@ -32,10 +32,14 @@ func validateRuntimeTaskBootstrap(data []byte) error {
 // request. All three paths must be explicit; resolving an empty binary through
 // the shim's PATH is not an approved runtime selection.
 type RuntimeTaskRuntimePolicy struct {
-	ShimBinaryPath    string
-	RuntimeBinaryPath string
-	RuntimeStateRoot  string
-	SystemdCgroup     bool
+	ShimBinaryPath    string `json:"shim_binary_path"`
+	RuntimeBinaryPath string `json:"runtime_binary_path"`
+	RuntimeStateRoot  string `json:"runtime_state_root"`
+	SystemdCgroup     bool   `json:"systemd_cgroup"`
+	// A nonzero digest approves one exact set of operator-qualified OCI hooks.
+	// It is never populated from the task being checked.
+	HooksDigest           [sha256.Size]byte `json:"hooks_digest"`
+	AdditionalEnvironment []string          `json:"additional_environment"`
 }
 
 type RuntimeTaskFileObservation struct {
@@ -74,7 +78,7 @@ func parseRuntimeTaskOptions(data []byte) (*options.Options, error) {
 // fields. This is a content-policy prerequisite, NOT executable attestation,
 // effective mount approval, current process authority or a startup grant.
 // Only explicit runc/shim paths, explicit runc state, cgroup mode and otherwise
-// default options are supported; all OCI hooks are rejected.
+// default options are supported. Hooks require an exact independently approved digest.
 func (launch *RuntimeTaskLaunch) CheckRuntimeMechanism(policy RuntimeTaskRuntimePolicy) error {
 	for _, path := range []string{policy.ShimBinaryPath, policy.RuntimeBinaryPath, policy.RuntimeStateRoot} {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" || len(path) > 4096 || strings.ContainsRune(path, '\x00') {
@@ -90,8 +94,18 @@ func (launch *RuntimeTaskLaunch) CheckRuntimeMechanism(policy RuntimeTaskRuntime
 		return ErrRuntimeTaskMechanism
 	}
 	configuration, err := launch.Configuration()
-	if err != nil || configuration.Hooks != nil {
+	if err != nil {
 		return errors.Join(ErrRuntimeTaskMechanism, err)
+	}
+	if configuration.Hooks == nil {
+		if policy.HooksDigest != ([sha256.Size]byte{}) {
+			return ErrRuntimeTaskMechanism
+		}
+	} else {
+		wire, err := json.Marshal(configuration.Hooks)
+		if err != nil || policy.HooksDigest == ([sha256.Size]byte{}) || sha256.Sum256(wire) != policy.HooksDigest {
+			return ErrRuntimeTaskMechanism
+		}
 	}
 	return nil
 }

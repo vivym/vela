@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/nodeagent"
@@ -42,11 +44,12 @@ func TestRuntimeStartupLaunchTargetsBindLivePodUID(t *testing.T) {
 	// A signed launch plan carries a Pod template and therefore normally has
 	// no Kubernetes metadata.uid. The launcher supplies the UID of the live Pod;
 	// CRI/Kubernetes observation binds that UID before reservation.
+	// Kubernetes and CRI count the first container launch as attempt zero.
 	uid := uuid.New()
 	target := nodeagent.RuntimeContainerTarget{
 		ContainerID: strings.Repeat("a", 64), SandboxID: strings.Repeat("b", 64),
 		PodUID: uid, PodNamespace: "vela-system", PodName: "vela-worker",
-		ContainerName: "model-runtime", ContainerAttempt: 1,
+		ContainerName: "model-runtime", ContainerAttempt: 0,
 	}
 	worker := target
 	worker.ContainerID, worker.ContainerName = strings.Repeat("c", 64), "stage-worker-agent"
@@ -135,5 +138,37 @@ func TestTrustedLauncherBinaryRequiresRootAndExecutable(t *testing.T) {
 	}
 	if err := trustedLauncherBinary(path); err == nil {
 		t.Fatal("non-executable launcher was accepted")
+	}
+}
+
+func TestRuntimeLauncherReceiveSurvivesThreadSignals(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	fds, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := os.NewFile(uintptr(fds[0]), "interrupted-launcher-control")
+	defer parent.Close()
+	defer unix.Close(fds[1])
+	tid := unix.Gettid()
+	done := make(chan error, 1)
+	go func() {
+		for range 20 {
+			time.Sleep(5 * time.Millisecond)
+			if err := unix.Tgkill(unix.Getpid(), tid, unix.SIGURG); err != nil {
+				done <- err
+				return
+			}
+		}
+		done <- unix.Sendmsg(fds[1], []byte("handoff"), nil, nil, 0)
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	control := &runtimeLauncherControl{file: parent}
+	packet, rights, receiveErr := control.recv(ctx, 0)
+	closeRights(rights)
+	if sendErr := <-done; sendErr != nil || receiveErr != nil || string(packet) != "handoff" {
+		t.Fatalf("signal interrupted handoff: packet=%q recv=%v sender=%v", packet, receiveErr, sendErr)
 	}
 }

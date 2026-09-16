@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/runtimepolicy"
 )
 
@@ -60,6 +61,7 @@ type RuntimeStartupAuthority struct {
 	RuntimeOwner                 *RuntimeNamespaceOwner
 	RuntimeJournalEndpoint       *JournalEndpoint
 	RuntimePublication           *RuntimeStartupPublicationConfig
+	Image                        *RuntimeStartupImageConfig
 	Registry                     RuntimeStartupRegistry
 	AuthorizationPolicy          RuntimeStartupAuthorizationPolicy
 	PolicyAuthorizationPublisher func(context.Context, []byte) error
@@ -83,6 +85,7 @@ type RuntimeStartupAuthorityConfig struct {
 	RuntimeOwner                 *RuntimeNamespaceOwner
 	RuntimeJournalEndpoint       *JournalEndpoint
 	RuntimePublication           *RuntimeStartupPublicationConfig
+	Image                        *RuntimeStartupImageConfig
 	Registry                     RuntimeStartupRegistry
 	AuthorizationPolicy          RuntimeStartupAuthorizationPolicy
 	PolicyAuthorizationPublisher func(context.Context, []byte) error
@@ -104,6 +107,7 @@ func NewRuntimeStartupAuthority(config RuntimeStartupAuthorityConfig) (RuntimeSt
 		RuntimeOwner:           config.RuntimeOwner,
 		RuntimeJournalEndpoint: config.RuntimeJournalEndpoint,
 		RuntimePublication:     config.RuntimePublication,
+		Image:                  config.Image,
 		Registry:               config.Registry, AuthorizationPolicy: config.AuthorizationPolicy,
 		PolicyAuthorizationPublisher: config.PolicyAuthorizationPublisher,
 		AuthorizationHash:            config.AuthorizationHash,
@@ -129,6 +133,9 @@ func (authority RuntimeStartupAuthority) validate(caller *RuntimeCaller) error {
 
 func (authority RuntimeStartupAuthority) validateSources() error {
 	if authority.Ledger == nil || authority.Plan == nil || authority.Pods == nil || authority.Observer == nil || authority.Journal == nil || authority.WorkerOwner == nil || authority.Registry == nil || authority.Custody == nil || authority.AuthorizationPolicy == nil || authority.PolicyAuthorizationPublisher == nil || authority.AuthorizationHash != ([sha256.Size]byte{}) {
+		return ErrRuntimeStartupAuthority
+	}
+	if authority.Plan.pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol && (authority.Image == nil || authority.Image.Images == nil || authority.RuntimePublication == nil) {
 		return ErrRuntimeStartupAuthority
 	}
 	if len(authority.Credentials) == 0 || authority.ExchangeTimeout <= 0 || authority.ObserverInterval <= 0 || authority.ObserverInterval > time.Second || authority.ObserverTimeout <= 0 || authority.ObserverTimeout > 5*time.Second {
@@ -174,6 +181,7 @@ func (authority RuntimeStartupAuthority) Prepare(ctx context.Context, caller *Ru
 			RuntimeOwner:                 authority.RuntimeOwner,
 			publication:                  authority.RuntimePublication,
 		},
+		Image:       authority.Image,
 		WorkerOwner: authority.WorkerOwner, Observer: authority.Custody,
 		AuthorizationPolicy: authority.AuthorizationPolicy, Credentials: authority.Credentials,
 		ObserverInterval: authority.ObserverInterval, ObserverTimeout: authority.ObserverTimeout,

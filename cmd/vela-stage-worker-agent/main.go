@@ -174,7 +174,7 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("VELA_MODEL_RUNTIME_EXPECTED_UID must be a positive uint32")
 	}
 	runtimeStartupTimeout, err := requiredDuration(
-		"VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", time.Second, time.Minute,
+		"VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", time.Second, 24*time.Hour,
 	)
 	if err != nil {
 		return config{}, err

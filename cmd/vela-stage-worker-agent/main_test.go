@@ -62,6 +62,19 @@ func TestLoadConfigRequiresStageWorkerRuntimeBoundary(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAllowsBoundedModelWarmupWait(t *testing.T) {
+	setValidStageWorkerEnv(t)
+	t.Setenv("VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", "90m")
+	configuration, err := loadConfig()
+	if err != nil || configuration.runtimeStartupTimeout != 90*time.Minute {
+		t.Fatalf("model warmup wait: duration=%v error=%v", configuration.runtimeStartupTimeout, err)
+	}
+	t.Setenv("VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", "25h")
+	if _, err := loadConfig(); err == nil {
+		t.Fatal("unbounded model startup wait was accepted")
+	}
+}
+
 func TestLoadConfigBindsSingleMemberRuntimeAndDurableMaterialization(t *testing.T) {
 	setValidStageWorkerEnv(t)
 

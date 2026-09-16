@@ -12,6 +12,7 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/vivym/vela/internal/runtimelaunch"
 )
 
 var ErrRuntimeRemoteCLI = errors.New("runtime remote CLI arguments or environment are not approved")
@@ -42,9 +43,17 @@ func (ledger *RuntimeStartupLedger) ReservePublishedRemoteCLI(ctx context.Contex
 }
 
 func checkRemoteCLIConfiguration(image ocispec.ImageConfig, task *specs.Process, bootstrapPath, hostname string) error {
+	return checkRemoteCLIConfigurationWithEnvironment(image, task, bootstrapPath, hostname, nil)
+}
+
+func checkRemoteCLIConfigurationWithEnvironment(image ocispec.ImageConfig, task *specs.Process, bootstrapPath, hostname string, additional []string) error {
 	arguments, err := runtimeImageDefaultArguments(image)
+	cli := arguments
+	if runtimelaunch.RuntimeEntrypoint(arguments) {
+		cli = runtimelaunch.RuntimeArguments()
+	}
 	if err != nil || task == nil || hostname == "" || task.Terminal || task.Cwd != "/" || image.WorkingDir != "" && image.WorkingDir != "/" ||
-		len(arguments) != 4 || arguments[1] != "serve-remote" || arguments[2] != "--bootstrap-file" || arguments[3] != bootstrapPath || !slices.Equal(task.Args, arguments) {
+		len(cli) != 4 || cli[1] != "serve-remote" || cli[2] != "--bootstrap-file" || cli[3] != bootstrapPath || !slices.Equal(task.Args, arguments) {
 		return ErrRuntimeRemoteCLI
 	}
 	// No ambient loader, Go runtime, inherited backend or local-journal knobs.
@@ -56,12 +65,22 @@ func checkRemoteCLIConfiguration(image ocispec.ImageConfig, task *specs.Process,
 		}
 		seen[item] = true
 	}
-	if len(task.Env) != 3 {
+	if len(additional) > 2 {
 		return ErrRuntimeRemoteCLI
+	}
+	for i, item := range additional {
+		if (item != "NVIDIA_VISIBLE_DEVICES=void" && item != "NVIDIA_CTK_LIBCUDA_DIR=/usr/lib/x86_64-linux-gnu") || slices.Contains(additional[:i], item) {
+			return ErrRuntimeRemoteCLI
+		}
 	}
 	// Set HOME explicitly in the task; runc otherwise adds a passwd-derived
 	// value after writing config.json, outside the approved vector.
 	expected := []string{"HOME=/", "HOSTNAME=" + hostname, "PATH=" + runtimeRemoteCLIPath}
+	if runtimelaunch.RuntimeEntrypoint(arguments) {
+		expected = append(expected, runtimelaunch.DisabledServiceEnvironment()...)
+	}
+	expected = append(expected, additional...)
+	slices.Sort(expected)
 	environment := slices.Clone(task.Env)
 	slices.Sort(environment)
 	if !slices.Equal(environment, expected) {

@@ -2,6 +2,8 @@ package nodeagent_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
@@ -47,12 +49,13 @@ func TestWorkerInstanceEvidenceReporterAttestsExactDeviceSetBeforeObserve(t *tes
 	if probe.calls != 1 || len(observer.evidence) != 1 {
 		t.Fatalf("WorkerInstance evidence calls probe=%d observe=%d", probe.calls, len(observer.evidence))
 	}
+	identityDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
 	evidence := observer.evidence[0]
 	device := evidence.DeviceSet.Devices[0]
 	if device.GPUUUID != probe.observations[0].GPUUUID || device.PCIBDF != probe.observations[0].PCIBDF ||
 		device.DeviceEpoch != 11 || device.AgentSessionEpoch != 9 ||
 		len(evidence.DeviceSet.MembershipDigest) != 64 || len(evidence.DeviceSet.TopologyDigest) != 64 ||
-		len(evidence.Members[0].DeviceSubsetDigest) != 64 || len(evidence.Members[0].IdentityDigest) != 64 ||
+		len(evidence.Members[0].DeviceSubsetDigest) != 64 || evidence.Members[0].IdentityDigest != hex.EncodeToString(identityDigest[:]) ||
 		evidence.Capacity.Sequence != 41 || sequencer.workerIDs[0] != workerID ||
 		!evidence.ObservedAt.Equal(now) || !evidence.Capacity.ObservedAt.Equal(now) ||
 		!evidence.Capacity.ExpiresAt.Equal(now.Add(2*time.Minute)) {

@@ -239,7 +239,12 @@ func (agent *Agent) Status(
 			response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
 			!bytes.Equal(response.GetAuthorityDigest(), digest[:]) ||
 			!runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberResult.id) {
-			joined = errors.Join(joined, fmt.Errorf("status member %s returned stale authority", memberResult.id))
+			joined = errors.Join(joined, fmt.Errorf(
+				"status member %s returned invalid authority response: decision=%s digest_matches=%t identity_matches=%t detail=%q",
+				memberResult.id, response.GetDecision(), bytes.Equal(response.GetAuthorityDigest(), digest[:]),
+				runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberResult.id),
+				boundedResponseDetail(response.GetDetail()),
+			))
 			result.AllStopped = false
 			continue
 		}

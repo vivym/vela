@@ -90,6 +90,7 @@ func (launcher *execRuntimeStartupLauncher) Launch(ctx context.Context, plan *no
 	child := os.NewFile(uintptr(childFD), "runtime-launcher-control-child")
 	cmd := exec.CommandContext(ctx, launcher.path, "--vela-runtime-launcher-control-fd=3")
 	cmd.ExtraFiles = []*os.File{child}
+	cmd.Stderr = os.Stderr
 	helperPIDFD := -1
 	cmd.SysProcAttr = &syscall.SysProcAttr{PidFD: &helperPIDFD}
 	if err := cmd.Start(); err != nil {
@@ -239,6 +240,9 @@ func (control *runtimeLauncherControl) send(ctx context.Context, value any) erro
 		pollfds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLOUT | unix.POLLHUP}}
 		_, err := unix.Poll(pollfds, 100)
 		if err != nil {
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
 			return err
 		}
 		if pollfds[0].Revents&unix.POLLHUP != 0 {
@@ -249,7 +253,7 @@ func (control *runtimeLauncherControl) send(ctx context.Context, value any) erro
 		}
 		written, err := unix.Write(fd, wire)
 		if err != nil {
-			if errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
+			if errors.Is(err, unix.EINTR) || errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EWOULDBLOCK) {
 				continue
 			}
 			return err
@@ -277,6 +281,9 @@ func (control *runtimeLauncherControl) recv(ctx context.Context, expectedRights 
 		pollfds := []unix.PollFd{{Fd: int32(control.file.Fd()), Events: unix.POLLIN | unix.POLLHUP}}
 		_, err := unix.Poll(pollfds, 100)
 		if err != nil {
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
 			return nil, nil, err
 		}
 		if pollfds[0].Revents&(unix.POLLIN|unix.POLLHUP) != 0 {
@@ -285,7 +292,17 @@ func (control *runtimeLauncherControl) recv(ctx context.Context, expectedRights 
 	}
 	buf := make([]byte, 64<<10)
 	oob := make([]byte, unix.CmsgSpace(16*4))
-	n, oobn, flags, _, err := unix.Recvmsg(int(control.file.Fd()), buf, oob, 0)
+	var n, oobn, flags int
+	var err error
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		n, oobn, flags, _, err = unix.Recvmsg(int(control.file.Fd()), buf, oob, unix.MSG_CMSG_CLOEXEC)
+		if !errors.Is(err, unix.EINTR) {
+			break
+		}
+	}
 	if err != nil {
 		return nil, nil, err
 	}

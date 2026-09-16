@@ -32,6 +32,7 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/runtimechannel"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
 	"golang.org/x/sys/unix"
@@ -96,6 +97,7 @@ type productionWorkload struct {
 	startupPath   string
 	kube          kubernetes.Interface
 	uid, gid      uint32
+	kubernetesPod *corev1.Pod
 }
 
 func main() {
@@ -212,6 +214,9 @@ func runtimeLauncherStartupTimeout() (time.Duration, error) {
 }
 
 func launchProductionWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) (*productionWorkload, error) {
+	if pod != nil && pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		return launchKubernetesWorkload(ctx, startupSocket, pod)
+	}
 	if pod == nil || pod.UID == "" || uuidMust(string(pod.UID)) == uuid.Nil || pod.Namespace == "" || pod.Name == "" {
 		return nil, errors.New("signed Pod identity is invalid")
 	}
@@ -654,6 +659,9 @@ func (workload *productionWorkload) Close() error {
 		return nil
 	}
 	var result error
+	if workload.kubernetesPod != nil {
+		result = errors.Join(result, workload.stopKubernetesWorkload())
+	}
 	if workload.workerFD != nil {
 		result = errors.Join(result, workload.workerFD.Close())
 		workload.workerFD = nil
@@ -675,7 +683,7 @@ func (workload *productionWorkload) Close() error {
 		}
 		workload.observer = nil
 	}
-	if workload.runtime != nil {
+	if workload.kubernetesPod == nil && workload.runtime != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		for index := len(workload.initIDs) - 1; index >= 0; index-- {
 			id := workload.initIDs[index]
@@ -1619,6 +1627,9 @@ func newPIDFDOffer(root, name string, uid, gid uint32) (*pidfdOffer, error) {
 		return nil, err
 	}
 	if err := os.Chown(directory, 0, int(gid)); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(directory, 0o750); err != nil {
 		return nil, err
 	}
 	hostPath := filepath.Join(directory, "pidfd.sock")

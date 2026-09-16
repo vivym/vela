@@ -15,6 +15,7 @@ import (
 // must be the independently held owner of the paired Worker journal.
 type RemoteStartupOrchestrationConfig struct {
 	Reservation         RuntimeStartupReservationConfig
+	Image               *RuntimeStartupImageConfig
 	WorkerOwner         *RuntimeNamespaceOwner
 	Observer            *RuntimeObserverCustody
 	AuthorizationPolicy RuntimeStartupAuthorizationPolicy
@@ -73,7 +74,16 @@ func (ledger *RuntimeStartupLedger) PrepareRemoteStartupOrchestration(ctx contex
 			_ = config.Observer.Close()
 		}
 	}()
-	record, err := ledger.ReserveRemote(ctx, config.Reservation)
+	var record RuntimeStartupReservationRecord
+	var err error
+	if config.Image != nil {
+		if config.Reservation.publication == nil {
+			return nil, record, ErrRuntimeRemoteCLI
+		}
+		record, err = ledger.ReservePublishedRemoteCLI(ctx, config.Reservation, *config.Image, *config.Reservation.publication)
+	} else {
+		record, err = ledger.ReserveRemote(ctx, config.Reservation)
+	}
 	if err != nil {
 		return nil, RuntimeStartupReservationRecord{}, err
 	}

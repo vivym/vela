@@ -101,6 +101,7 @@ type config struct {
 	runtimeJournalStateDir                  string
 	runtimeStartupLedgerDir                 string
 	runtimeCRISocket                        string
+	runtimeImagePolicyFile                  string
 	runtimeKubeconfig                       string
 	runtimeStartupSocket                    string
 	runtimeLauncherPath                     string
@@ -534,6 +535,7 @@ func loadConfig() (config, error) {
 		runtimeJournalStateDir:                  os.Getenv("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"),
 		runtimeStartupLedgerDir:                 os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY"),
 		runtimeCRISocket:                        os.Getenv("VELA_NODE_AGENT_RUNTIME_CRI_SOCKET"),
+		runtimeImagePolicyFile:                  os.Getenv("VELA_NODE_AGENT_RUNTIME_IMAGE_POLICY_FILE"),
 		runtimeKubeconfig:                       os.Getenv("VELA_NODE_AGENT_RUNTIME_KUBECONFIG"),
 		runtimeStartupSocket:                    os.Getenv("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET"),
 		runtimeLauncherPath:                     os.Getenv("VELA_NODE_AGENT_RUNTIME_LAUNCHER_PATH"),
@@ -913,10 +915,10 @@ func loadWorkerInstanceTemplates(
 			if _, duplicate := seenDevices[device.ID]; duplicate {
 				return nil, errors.New("WorkerInstance Device identity is duplicated")
 			}
-			if _, duplicate := seenGPUUUIDs[device.GPUUUID]; duplicate {
+			if _, duplicate := seenGPUUUIDs[device.GPUUUID]; device.Kind == "GPU" && duplicate {
 				return nil, errors.New("WorkerInstance GPU UUID is duplicated")
 			}
-			if _, duplicate := seenPCIBDFs[device.PCIBDF]; duplicate {
+			if _, duplicate := seenPCIBDFs[device.PCIBDF]; device.Kind == "GPU" && duplicate {
 				return nil, errors.New("WorkerInstance PCI BDF is duplicated")
 			}
 			seenDevices[device.ID] = struct{}{}
@@ -962,19 +964,17 @@ func workerInstanceTemplate(
 		if deviceErr != nil || nodeErr != nil || item.NodeIdentity != nodeIdentity ||
 			!validWorkerInstanceText(item.Region, 200) ||
 			!validWorkerInstanceText(item.NetworkDomain, 200) ||
-			!validWorkerInstanceText(item.FaultDomain, 200) || item.Kind != "GPU" ||
-			!workerInstanceGPUUUIDPattern.MatchString(item.GPUUUID) ||
-			!workerInstancePCIBDFPattern.MatchString(item.PCIBDF) || item.Ordinal < 0 ||
+			!validWorkerInstanceText(item.FaultDomain, 200) || !validWorkerInstanceDeviceIdentity(item.Kind, item.GPUUUID, item.PCIBDF) || item.Ordinal < 0 ||
 			computeNodeID != uuid.Nil && nodeID != computeNodeID {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance Device template is invalid")
 		}
 		if _, duplicate := deviceIDs[deviceID]; duplicate {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance Device identity is duplicated")
 		}
-		if _, duplicate := gpuUUIDs[item.GPUUUID]; duplicate {
+		if _, duplicate := gpuUUIDs[item.GPUUUID]; item.Kind == "GPU" && duplicate {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance GPU UUID is duplicated")
 		}
-		if _, duplicate := pciBDFs[item.PCIBDF]; duplicate {
+		if _, duplicate := pciBDFs[item.PCIBDF]; item.Kind == "GPU" && duplicate {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance PCI BDF is duplicated")
 		}
 		if _, duplicate := ordinals[item.Ordinal]; duplicate {
@@ -1006,7 +1006,7 @@ func workerInstanceTemplate(
 		nodeID, nodeErr := canonicalWorkerInstanceUUID(item.ComputeNodeID)
 		if memberErr != nil || nodeErr != nil || nodeID != computeNodeID || item.MemberEpoch <= 0 ||
 			!workerInstanceKeyPattern.MatchString(item.MemberKey) || len(item.MemberKey) > 100 ||
-			len(item.DeviceIDs) == 0 || item.Readiness != "READY" {
+			len(item.DeviceIDs) == 0 || (item.Readiness != "READY" && item.Readiness != "UNOBSERVED") {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance member template is invalid")
 		}
 		if _, duplicate := memberIDs[memberID]; duplicate {
@@ -1055,12 +1055,13 @@ func workerInstanceTemplate(
 	residentComponents := make(map[string]struct{}, len(configured.Residencies))
 	for _, item := range configured.Residencies {
 		residencyID, residencyErr := canonicalWorkerInstanceUUID(item.ID)
+		unobserved := item.State == "UNOBSERVED" && item.ModelRuntimeEpoch == 0 && item.WarmupEvidenceDigest == "" && item.CanaryEvidenceDigest == ""
 		if residencyErr != nil || !validWorkerInstanceText(item.ModelComponentRevision, 300) ||
 			!validWorkerInstanceText(item.RuntimeIdentity, 500) ||
 			!workerInstanceImagePattern.MatchString(item.RuntimeImageDigest) ||
-			item.ModelRuntimeEpoch <= 0 || item.State != "READY" ||
-			!workerInstanceDigestPattern.MatchString(item.WarmupEvidenceDigest) ||
-			!workerInstanceDigestPattern.MatchString(item.CanaryEvidenceDigest) {
+			(!unobserved && (item.ModelRuntimeEpoch <= 0 || item.State != "READY" ||
+				!workerInstanceDigestPattern.MatchString(item.WarmupEvidenceDigest) ||
+				!workerInstanceDigestPattern.MatchString(item.CanaryEvidenceDigest))) {
 			return nodeagent.WorkerInstanceEvidenceTemplate{}, errors.New("WorkerInstance ModelResidency template is invalid")
 		}
 		if _, duplicate := residencyIDs[residencyID]; duplicate {
@@ -1178,4 +1179,9 @@ func envOrDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func validWorkerInstanceDeviceIdentity(kind, gpuUUID, pciBDF string) bool {
+	return kind == "GPU" && workerInstanceGPUUUIDPattern.MatchString(gpuUUID) && workerInstancePCIBDFPattern.MatchString(pciBDF) ||
+		kind == "CPU" && gpuUUID == "" && pciBDF == ""
 }

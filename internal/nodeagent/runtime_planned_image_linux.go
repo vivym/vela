@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"golang.org/x/sys/unix"
 )
 
@@ -34,6 +35,9 @@ type RuntimePlannedImageCallerObservation struct {
 	Image     RuntimeImageExecutableObservation
 	Task      *RuntimeTaskLaunch
 	RemoteCLI *RuntimeRemoteCLIObservation
+	// Entrypoint records the measured pre-exec stub when the image uses the
+	// fixed Kubernetes pidfd handoff. Image always measures the live Runtime.
+	Entrypoint *RuntimeImageExecutableObservation
 }
 
 func (observer *RuntimeContainerObserver) ObservePlannedImageCaller(ctx context.Context, config RuntimePlannedImageCallerConfig) (*RuntimePlannedImageCallerObservation, error) {
@@ -52,7 +56,7 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 	if plan == nil || plan.binding == nil || config.Images == nil || config.Images.namespace != "k8s.io" {
 		return nil, ErrRuntimePlannedImage
 	}
-	var manifest string
+	var manifest, imageReference string
 	for _, container := range plan.pod.Spec.Containers {
 		if container.Name != "model-runtime" {
 			continue
@@ -67,6 +71,7 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 			return nil, ErrRuntimePlannedImage
 		}
 		manifest = digest
+		imageReference = container.Image
 	}
 	if manifest == "" {
 		return nil, ErrRuntimePlannedImage
@@ -103,7 +108,26 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Equal(configuration.Process.Args, arguments) || first.Caller.Container.ImageRef != image.executable.Target.ConfigDigest ||
+	var entrypoint *RuntimeImageExecutableObservation
+	cliArguments := arguments
+	if runtimelaunch.RuntimeEntrypoint(arguments) {
+		if !config.remoteCLI || plan.pod.Annotations[runtimelaunch.ProtocolAnnotation] != runtimelaunch.Protocol {
+			return nil, ErrRuntimePlannedImage
+		}
+		stub := image.executable
+		entrypoint = &stub
+		cliArguments = runtimelaunch.RuntimeArguments()
+		program, err := config.Images.InspectExecutable(ctx, RuntimeImageTarget{
+			ManifestDigest: stub.Target.ManifestDigest, ConfigDigest: stub.Target.ConfigDigest,
+			ExecutablePath: cliArguments[0],
+		})
+		if err != nil {
+			return nil, err
+		}
+		image.executable = program
+	}
+	if !slices.Equal(configuration.Process.Args, arguments) ||
+		!plannedRuntimeImageRefMatches(first.Caller.Container, image.executable.Target.ConfigDigest, imageReference) ||
 		first.Executable.Digest != image.executable.Digest || first.Executable.SizeBytes != image.executable.SizeBytes ||
 		first.Executable.FileUID != 0 || first.Executable.FileGID != 0 || first.Executable.FileLinks != 1 ||
 		first.Executable.FileMode&0o7022 != 0 || first.Executable.FileMode&unix.S_IFMT != unix.S_IFREG {
@@ -114,10 +138,14 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 		if config.publication == nil || plan.pod.Spec.Hostname != "" || plan.pod.Spec.Subdomain != "" {
 			return nil, ErrRuntimeRemoteCLI
 		}
-		if err := checkRemoteCLIConfiguration(imageConfiguration.Config, configuration.Process, config.publication.BootstrapPath, plan.pod.Name); err != nil {
+		if err := checkRemoteCLIConfigurationWithEnvironment(imageConfiguration.Config, configuration.Process, config.publication.BootstrapPath, plan.pod.Name, config.RuntimePolicy.AdditionalEnvironment); err != nil {
 			return nil, err
 		}
-		observed, err := config.Caller.inspectRemoteCLIVectors(ctx, configuration.Process)
+		// OCI records the original stub argv; procfs records the Runtime after
+		// exec. Both vectors are derived from the same immutable image contract.
+		process := *configuration.Process
+		process.Args = cliArguments
+		observed, err := config.Caller.inspectRemoteCLIVectors(ctx, &process)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +166,12 @@ func (observer *RuntimeContainerObserver) observePlannedImageCaller(ctx context.
 	if err := errors.Join(config.Images.sameDaemon(observer), observer.check(), config.Images.local.check(), ctx.Err()); err != nil {
 		return nil, err
 	}
-	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task, RemoteCLI: cli}, nil
+	return &RuntimePlannedImageCallerObservation{Planned: last, Image: image.executable, Task: task, RemoteCLI: cli, Entrypoint: entrypoint}, nil
+}
+
+func plannedRuntimeImageRefMatches(observed RuntimeContainerObservation, configDigest, signedReference string) bool {
+	return observed.ImageConfigDigest == configDigest &&
+		(observed.ImageRef == configDigest || observed.ImageRef == signedReference)
 }
 
 func samePlannedImageCaller(first, last RuntimePlannedCallerObservation) bool {

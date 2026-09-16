@@ -1,0 +1,214 @@
+{
+  "containerd_state_directory": "/run/k3s/containerd",
+  "runtime": {
+    "runtime_type": "io.containerd.runc.v2",
+    "options": {
+      "BinaryName": "/var/lib/rancher/rke2/data/v1.35.7-rke2r1-74310658583d/bin/runc",
+      "Root": "/run/vela-runc",
+      "SystemdCgroup": true
+    }
+  },
+  "binaries": {
+    "/var/lib/rancher/rke2/bin/containerd-shim-runc-v2": {
+      "resolved": "/var/lib/rancher/rke2/data/v1.35.7-rke2r1-74310658583d/bin/containerd-shim-runc-v2",
+      "sha256": "615c6bf8f9bf05ce8470156e1621f604713e413ea9066f4127f1a244a1434361"
+    },
+    "/var/lib/rancher/rke2/bin/runc": {
+      "resolved": "/var/lib/rancher/rke2/data/v1.35.7-rke2r1-74310658583d/bin/runc",
+      "sha256": "b5d1a64d539042d9aaafb6754007f6914da8a006d5386fe003686210dd69c4ba"
+    },
+    "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook": {
+      "resolved": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+      "sha256": "fc5d41b7b9e63e44e8d9e408629efb244e86ef58ae11219c0669ab69fc453dfc"
+    }
+  },
+  "node_identity": "server-23",
+  "gpu_uuid": "GPU-9c30be22-01e2-4ed0-6657-d6357832784e",
+  "dra": {
+    "cdi_spec": {
+      "cdiVersion": "1.1.0",
+      "kind": "k8s.gpu.nvidia.com/claim",
+      "devices": [
+        {
+          "name": "1",
+          "containerEdits": {
+            "hooks": [
+              {
+                "hookName": "createContainer",
+                "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+                "args": [
+                  "nvidia-cdi-hook",
+                  "create-symlinks",
+                  "--link",
+                  "../card4::/driver-root/dev/dri/by-path/pci-0000:25:00.0-card",
+                  "--link",
+                  "../renderD131::/driver-root/dev/dri/by-path/pci-0000:25:00.0-render"
+                ],
+                "env": [
+                  "NVIDIA_CTK_DEBUG=false"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "containerEdits": {
+        "env": [
+          "NVIDIA_CTK_LIBCUDA_DIR=/usr/lib/x86_64-linux-gnu",
+          "NVIDIA_VISIBLE_DEVICES=void"
+        ],
+        "hooks": [
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "create-symlinks",
+              "--link",
+              "../libnvidia-allocator.so.1::/usr/lib/x86_64-linux-gnu/gbm/nvidia-drm_gbm.so",
+              "--link",
+              "libglxserver_nvidia.so.580.159.03::/usr/lib/xorg/modules/extensions/libglxserver_nvidia.so"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          },
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "create-symlinks",
+              "--link",
+              "libEGL_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.0",
+              "--link",
+              "libGLESv1_CM_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/libGLESv1_CM_nvidia.so.1",
+              "--link",
+              "libGLESv2_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/libGLESv2_nvidia.so.2",
+              "--link",
+              "libGLX_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/libGLX_indirect.so.0",
+              "--link",
+              "libGLX_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/libGLX_nvidia.so.0",
+              "--link",
+              "libcuda.so.1::/usr/lib/x86_64-linux-gnu/libcuda.so",
+              "--link",
+              "libcuda.so.580.159.03::/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+              "--link",
+              "libcudadebugger.so.580.159.03::/usr/lib/x86_64-linux-gnu/libcudadebugger.so.1",
+              "--link",
+              "libnvcuvid.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvcuvid.so.1",
+              "--link",
+              "libnvcuvid.so.1::/usr/lib/x86_64-linux-gnu/libnvcuvid.so",
+              "--link",
+              "libnvidia-allocator.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-allocator.so.1",
+              "--link",
+              "libnvidia-allocator.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-allocator.so",
+              "--link",
+              "libnvidia-cfg.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-cfg.so.1",
+              "--link",
+              "libnvidia-cfg.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-cfg.so",
+              "--link",
+              "libnvidia-encode.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1",
+              "--link",
+              "libnvidia-encode.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-encode.so",
+              "--link",
+              "libnvidia-fbc.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-fbc.so.1",
+              "--link",
+              "libnvidia-fbc.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-fbc.so",
+              "--link",
+              "libnvidia-ml.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-ml.so.1",
+              "--link",
+              "libnvidia-ml.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-ml.so",
+              "--link",
+              "libnvidia-ngx.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-ngx.so.1",
+              "--link",
+              "libnvidia-nvvm.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-nvvm.so.4",
+              "--link",
+              "libnvidia-nvvm.so.4::/usr/lib/x86_64-linux-gnu/libnvidia-nvvm.so",
+              "--link",
+              "libnvidia-opencl.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-opencl.so.1",
+              "--link",
+              "libnvidia-opticalflow.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-opticalflow.so",
+              "--link",
+              "libnvidia-opticalflow.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-opticalflow.so.1",
+              "--link",
+              "libnvidia-ptxjitcompiler.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.1",
+              "--link",
+              "libnvidia-ptxjitcompiler.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so",
+              "--link",
+              "libnvidia-sandboxutils.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-sandboxutils.so.1",
+              "--link",
+              "libnvidia-sandboxutils.so.1::/usr/lib/x86_64-linux-gnu/libnvidia-sandboxutils.so",
+              "--link",
+              "libnvidia-vksc-core.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvidia-vksc-core.so.1",
+              "--link",
+              "libnvoptix.so.580.159.03::/usr/lib/x86_64-linux-gnu/libnvoptix.so.1",
+              "--link",
+              "libvdpau_nvidia.so.580.159.03::/usr/lib/x86_64-linux-gnu/vdpau/libvdpau_nvidia.so.1"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          },
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "enable-cuda-compat",
+              "--host-driver-version=580.159.03"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          },
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "update-ldcache",
+              "--folder",
+              "/usr/lib/x86_64-linux-gnu",
+              "--folder",
+              "/usr/lib/x86_64-linux-gnu/vdpau"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          },
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "disable-device-node-modification"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          },
+          {
+            "hookName": "createContainer",
+            "path": "/var/lib/kubelet/plugins/gpu.nvidia.com/nvidia-cdi-hook",
+            "args": [
+              "nvidia-cdi-hook",
+              "update-application-profile"
+            ],
+            "env": [
+              "NVIDIA_CTK_DEBUG=false"
+            ]
+          }
+        ]
+      }
+    },
+    "gpu_uuid": "GPU-9c30be22-01e2-4ed0-6657-d6357832784e",
+    "provenance": {
+      "dra_image": "10.1.201.70:5005/nvidia-dra-driver@sha256:e7f21f226f90dfc993caba2e851ce652ded6da8c18f11de4a7238f6bde1e4bc8",
+      "node": "server-23",
+      "helper_sha256": "5cacfd2822abe36b62460e71836628f14fd5c8c537513a89138d8f01273de6cd",
+      "method": "DRA v0.5.0 vendored nvcdi static NVML discovery; no workload OCI input",
+      "hook_sha256": "fc5d41b7b9e63e44e8d9e408629efb244e86ef58ae11219c0669ab69fc453dfc"
+    }
+  }
+}

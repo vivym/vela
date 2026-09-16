@@ -28,11 +28,13 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     for binary in \
       vela-control \
 	      vela-artifact-validator \
-	      vela-fleet-controller \
+      vela-fleet-controller \
+	      vela-fleet-retire-unstarted \
 	      vela-lab-bootstrap \
 	      vela-lab-cpu-thumbnail-mock \
 	      vela-lab-smoke \
 	      vela-model-runtime \
+	      vela-runtime-entrypoint \
 	      vela-release-artifacts \
 	      vela-stage-worker-agent; do \
       go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
@@ -66,11 +68,13 @@ RUN printf '%s  %s\n' \
       --enable-static \
       --extra-ldflags=-static \
       --enable-decoder=h264 \
+      --enable-decoder=aac \
       --enable-decoder=webp \
       --enable-demuxer=image_webp_pipe \
       --enable-demuxer=mov \
       --enable-ffprobe \
       --enable-parser=h264 \
+      --enable-parser=aac \
       --enable-parser=webp \
       --enable-protocol=fd \
       --enable-protocol=file && \
@@ -96,6 +100,7 @@ LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.title="vela-fleet-controller"
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-builder --chmod=0555 /out/vela-fleet-controller /usr/local/bin/vela-fleet-controller
+COPY --from=go-builder --chmod=0555 /out/vela-fleet-retire-unstarted /usr/local/bin/vela-fleet-retire-unstarted
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-fleet-controller"]
 
@@ -106,6 +111,7 @@ LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.title="vela-stage-worker-agent"
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-builder --chmod=0555 /out/vela-stage-worker-agent /usr/local/bin/vela-stage-worker-agent
+COPY --from=go-builder --chmod=0555 /out/vela-runtime-entrypoint /usr/local/bin/vela-runtime-entrypoint
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-stage-worker-agent"]
 
@@ -147,6 +153,9 @@ RUN /out/vela-release-artifacts verify-h3-runtime-commands \
       "${H3_DIT_SHA256}" \
       "${H3_VAE_DECODER_SHA256}"
 
+# The approved base must have only PATH/HOME in its OCI environment. Normalize
+# its config once when publishing the base, retaining dependency layer digests.
+# CUDA/Python environment belongs to the signed backend commands.
 FROM ${H3_RUNTIME_BASE} AS vela-h3-stage-runtime
 ARG RELEASE_REVISION
 ARG H3_RUNTIME_BASE
@@ -162,9 +171,12 @@ LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       vela.ai.h3-vae-decoder.sha256="${H3_VAE_DECODER_SHA256}"
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
+COPY --from=go-builder --chmod=0555 /out/vela-runtime-entrypoint /usr/local/bin/vela-runtime-entrypoint
 COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-encoder /opt/vela/bin/h3-encoder
 COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-dit /opt/vela/bin/h3-dit
 COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-vae-decoder /opt/vela/bin/h3-vae-decoder
 USER 10001:10001
-ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]
+WORKDIR /
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/
+ENTRYPOINT ["/usr/local/bin/vela-runtime-entrypoint", "runtime"]
 CMD []

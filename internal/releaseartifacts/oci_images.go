@@ -17,6 +17,7 @@ import (
 	"github.com/opencontainers/image-spec/specs-go"
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vivym/vela/internal/releasebundle"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"golang.org/x/sys/unix"
 )
 
@@ -140,7 +141,7 @@ func velaImageSpecifications() [velaImageCount]velaImageSpecification {
 	return [velaImageCount]velaImageSpecification{
 		{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-		{name: "vela-h3-stage-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
+		{name: "vela-h3-stage-runtime", entrypoint: runtimelaunch.Entrypoint},
 		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 	}
 }
@@ -437,9 +438,16 @@ func validateOCIImageConfig(
 	if err := decodeStrictJSON(encoded, &config); err != nil {
 		return fmt.Errorf("decode OCI config: %w", err)
 	}
+	entrypoint := []string{specification.entrypoint}
+	if specification.name == "vela-h3-stage-runtime" {
+		entrypoint = append(entrypoint, "runtime")
+		if config.Config.WorkingDir != "/" || !slices.Equal(config.Config.Env, []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/"}) {
+			return errors.New("H3 Runtime CLI requires a clean immutable environment and root workdir")
+		}
+	}
 	if !exactLinuxAMD64(config.Platform) ||
 		config.Config.User != "10001:10001" ||
-		!slices.Equal(config.Config.Entrypoint, []string{specification.entrypoint}) ||
+		!slices.Equal(config.Config.Entrypoint, entrypoint) ||
 		len(config.Config.Cmd) != 0 ||
 		config.Config.Labels["org.opencontainers.image.title"] != specification.name ||
 		config.Config.Labels["org.opencontainers.image.revision"] != request.Revision {

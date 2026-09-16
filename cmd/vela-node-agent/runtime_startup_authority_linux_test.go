@@ -178,6 +178,7 @@ func TestRuntimeStartupGateSnapshotsPermitBeforeShutdownFailure(t *testing.T) {
 		func(context.Context, config, *runtimeStartupResources, runtimeStartupLauncher) (*runtimeStartupLifecycle, error) {
 			return &runtimeStartupLifecycle{orchestration: fake, resources: resources}, nil
 		},
+		fixtureWaitRuntimeStartup,
 	)
 	if !errors.Is(err, fake.waitErr) {
 		t.Fatalf("gate error=%v, want wait failure", err)
@@ -225,6 +226,7 @@ func TestRuntimeStartupGatePersistsSuccessfulCompositionBeforeWait(t *testing.T)
 		func(context.Context, config, *runtimeStartupResources, runtimeStartupLauncher) (*runtimeStartupLifecycle, error) {
 			return &runtimeStartupLifecycle{orchestration: fake, resources: resources}, nil
 		},
+		fixtureWaitRuntimeStartup,
 	)
 	if err != nil {
 		t.Fatalf("successful gate returned error: %v", err)
@@ -253,6 +255,7 @@ func TestRuntimeStartupGateFailsClosedOnNilComposedLifecycle(t *testing.T) {
 		func(context.Context, config, *runtimeStartupResources, runtimeStartupLauncher) (*runtimeStartupLifecycle, error) {
 			return nil, nil
 		},
+		fixtureWaitRuntimeStartup,
 	)
 	if !errors.Is(err, nodeagent.ErrRuntimeStartupAuthority) {
 		t.Fatalf("nil composed lifecycle crossed gate: %v", err)
@@ -292,6 +295,7 @@ func TestRuntimeStartupGateRecordsHelperFailuresAndCleansResources(t *testing.T)
 				func(config) runtimeStartupLauncher { return launcher },
 				func(context.Context, config) (*runtimeStartupResources, error) { return resources, nil },
 				compose,
+				fixtureWaitRuntimeStartup,
 			)
 			if err == nil || !strings.Contains(err.Error(), scenario.err.Error()) || !closed {
 				t.Fatalf("helper failure was not propagated and cleaned: err=%v closed=%v", err, closed)
@@ -391,6 +395,7 @@ func TestComposeRuntimeStartupAuthorityFailsClosedBeforeLauncherWithoutFleetKey(
 		t.Fatal(err)
 	}
 	configuration.runtimeStartupSocket = filepath.Join(root, "startup.sock")
+	configuration.runtimePolicyAuthorizationPublicKeyFile = filepath.Join(root, "missing-fleet.pub")
 	socket, err := listenRuntimeStartupSocket(configuration)
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +406,7 @@ func TestComposeRuntimeStartupAuthorityFailsClosedBeforeLauncherWithoutFleetKey(
 		called = true
 		return runtimeStartupLaunch{}, nil
 	})
-	resources := &runtimeStartupResources{plan: &nodeagent.RuntimeLaunchPlan{}, observer: &nodeagent.RuntimeContainerObserver{}, socket: socket}
+	resources := &runtimeStartupResources{plan: &nodeagent.RuntimeLaunchPlan{}, observer: &nodeagent.RuntimeContainerObserver{}, socket: socket, authorizationPolicy: compositionNoopPolicy{}}
 	_, err = composeRuntimeStartupAuthority(context.Background(), configuration, resources, launcher)
 	if err == nil || !strings.Contains(err.Error(), "Fleet authorization public key") {
 		t.Fatalf("missing Fleet key was accepted: %v", err)
@@ -559,4 +564,8 @@ func TestLoadRuntimeStartupResourcesStopsBeforeAnyImplicitFallback(t *testing.T)
 	if err := (&runtimeStartupResources{}).Close(); err != nil {
 		t.Fatalf("empty resource close: %v", err)
 	}
+}
+
+func fixtureWaitRuntimeStartup(ctx context.Context, _ config, lifecycle *runtimeStartupLifecycle) error {
+	return lifecycle.orchestration.Wait(ctx)
 }

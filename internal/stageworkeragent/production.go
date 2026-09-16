@@ -1006,9 +1006,18 @@ func (agent *ProductionAgent) probeReadiness(
 	ctx context.Context,
 	identity *velav1.ModelRuntimeIdentity,
 ) ([]byte, error) {
+	return ProbeRuntimeReadiness(ctx, agent.runtime, identity)
+}
+
+// ProbeRuntimeReadiness collects the same bounded checks for Worker registration
+// and Node residency observation. Callers authenticate the live Runtime peer.
+func ProbeRuntimeReadiness(ctx context.Context, runtime RuntimeReadinessClient, identity *velav1.ModelRuntimeIdentity) ([]byte, error) {
+	if ctx == nil || runtime == nil || identity == nil {
+		return nil, errors.New("runtime readiness probe is incomplete")
+	}
 	checks := make([]ReadinessEvidenceCheck, 0, len(productionReadinessChecks))
 	for _, check := range productionReadinessChecks {
-		response, err := agent.runtime.ProbeReadiness(
+		response, err := runtime.ProbeReadiness(
 			ctx,
 			&velav1.ModelRuntimeServiceProbeReadinessRequest{
 				Identity: proto.Clone(identity).(*velav1.ModelRuntimeIdentity),

@@ -130,7 +130,11 @@ func TestProductionPIDFDOfferBindsKernelSenderToTask(t *testing.T) {
 			if scenario == "wrong-uid" {
 				uid--
 			}
+			// The host service uses UMask=0077. It must still publish the
+			// explicitly approved group traversal for the non-root sender.
+			previousMask := unix.Umask(0o077)
 			offer, err := newPIDFDOffer(directory, "worker", uid, 65532)
+			unix.Umask(previousMask)
 			if err != nil {
 				t.Fatal(err)
 			}

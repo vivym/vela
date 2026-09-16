@@ -12,9 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleetcontract"
 )
 
 type ExpectedWorkerDevice struct {
+	Kind          string
 	DeviceID      uuid.UUID
 	ComputeNodeID uuid.UUID
 	NodeIdentity  string
@@ -105,8 +107,7 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 	expectedByID := make(map[uuid.UUID]fleet.WorkerDeviceEvidence, len(evidence.DeviceSet.Devices))
 	for _, device := range evidence.DeviceSet.Devices {
 		if device.ID == uuid.Nil || device.ComputeNodeID == uuid.Nil ||
-			!validText(device.NodeIdentity, maxIdentityText) || !gpuUUIDPattern.MatchString(device.GPUUUID) ||
-			!pciBDFPattern.MatchString(device.PCIBDF) || device.Kind != "GPU" {
+			!validText(device.NodeIdentity, maxIdentityText) || !validWorkerDeviceIdentity(device.Kind, device.GPUUUID, device.PCIBDF) {
 			return fleet.WorkerInstanceDecision{}, errors.New("expected WorkerInstance device identity is invalid")
 		}
 		if _, exists := expectedByID[device.ID]; exists {
@@ -114,7 +115,7 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 		}
 		expectedByID[device.ID] = device
 		expected = append(expected, ExpectedWorkerDevice{
-			DeviceID: device.ID, ComputeNodeID: device.ComputeNodeID,
+			Kind: device.Kind, DeviceID: device.ID, ComputeNodeID: device.ComputeNodeID,
 			NodeIdentity: device.NodeIdentity, GPUUUID: device.GPUUUID, PCIBDF: device.PCIBDF,
 		})
 	}
@@ -130,6 +131,9 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 	for _, device := range observed {
 		expectedDevice, exists := expectedByID[device.DeviceID]
 		physicalKey := device.GPUUUID + "\x00" + device.PCIBDF
+		if expectedDevice.Kind == "CPU" {
+			physicalKey = "CPU\x00" + device.DeviceID.String()
+		}
 		if !exists || device.ComputeNodeID != expectedDevice.ComputeNodeID ||
 			device.NodeIdentity != expectedDevice.NodeIdentity || device.GPUUUID != expectedDevice.GPUUUID ||
 			device.PCIBDF != expectedDevice.PCIBDF || device.NodeEpoch <= 0 ||
@@ -200,6 +204,12 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 	return decision, nil
 }
 
+// CPU devices are approved logical slots; GPU identity is always physical.
+func validWorkerDeviceIdentity(kind, gpuUUID, pciBDF string) bool {
+	return kind == "GPU" && validGPUUUID(gpuUUID) && validPCIBDF(pciBDF) ||
+		kind == "CPU" && gpuUUID == "" && pciBDF == ""
+}
+
 func bindWorkerMemberEvidence(evidence *fleet.WorkerInstanceEvidence) error {
 	deviceIDs := make(map[uuid.UUID]struct{}, len(evidence.DeviceSet.Devices))
 	for _, device := range evidence.DeviceSet.Devices {
@@ -225,17 +235,7 @@ func bindWorkerMemberEvidence(evidence *fleet.WorkerInstanceEvidence) error {
 		}
 		sort.Strings(identities)
 		member.DeviceSubsetDigest = digestCanonical(identities)
-		member.IdentityDigest = digestCanonical(struct {
-			ID           string `json:"id"`
-			Key          string `json:"key"`
-			NodeID       string `json:"node_id"`
-			Epoch        int64  `json:"epoch"`
-			DeviceDigest string `json:"device_digest"`
-		}{
-			ID: member.ID.String(), Key: member.MemberKey,
-			NodeID: member.ComputeNodeID.String(), Epoch: member.MemberEpoch,
-			DeviceDigest: member.DeviceSubsetDigest,
-		})
+		member.IdentityDigest = fleetcontract.WorkerMemberIdentityDigest(member.ID)
 	}
 	if len(covered) != len(deviceIDs) {
 		return errors.New("WorkerInstance member evidence does not cover every device")

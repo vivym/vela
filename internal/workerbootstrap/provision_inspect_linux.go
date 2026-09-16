@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/journalbinding"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/securefile"
 )
 
@@ -86,7 +87,7 @@ func inspectProvisionedJournals(ctx context.Context, config Config, directory st
 	if intent.SchemaVersion != 1 || intent.ID == uuid.Nil || intent.Root != identity(info) ||
 		intent.File != identity(held[provisionIntentName].info) || intent.Node != config.NodeIdentity || intent.Actor != config.ActorIdentity ||
 		intent.BundleDigest != p.digest || intent.LaunchDigest != p.launchID || intent.MaxRecords != config.MaxRecords ||
-		intent.OwnerUID != provisionOwner || intent.OwnerGID != provisionOwner || origin.Intent != intent ||
+		intent.OwnerUID != provisionOwner || intent.OwnerGID != provisionOwner || intent.NodeCustody != (config.Bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol) || origin.Intent != intent ||
 		done.SchemaVersion != 1 || done.ProvisionID != intent.ID || done.RequestID == uuid.Nil || done.RequestID != origin.Result.RequestID ||
 		done.OriginDigest != sha256.Sum256(held[provisionOriginName].wire) {
 		return result, errors.New("protected handover records differ from original scope or storage")
@@ -163,7 +164,7 @@ func inspectProvisionedJournals(ctx context.Context, config Config, directory st
 				return errors.New("provisioned storage identity, type or mode changed")
 			}
 			stat := info.Sys().(*syscall.Stat_t)
-			if stat.Uid != provisionOwner || stat.Gid != provisionOwner || !record.Directory && (!info.Mode().IsRegular() || stat.Nlink != 1) {
+			if stat.Uid != uint32(provisionFileOwner(intent.NodeCustody, record.Path)) || stat.Gid != uint32(provisionFileOwner(intent.NodeCustody, record.Path)) || !record.Directory && (!info.Mode().IsRegular() || stat.Nlink != 1) {
 				return errors.New("provisioned storage ownership or links changed")
 			}
 			if !record.Directory {

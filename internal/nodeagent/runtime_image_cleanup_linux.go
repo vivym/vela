@@ -42,13 +42,23 @@ func runtimeImageActivationPath(key string, info *types.ActivationInfo) (string,
 	if info == nil || info.Name != key || len(info.Active) != 1 || info.Active[0] == nil ||
 		info.Active[0].Mount == nil || info.Active[0].Mount.Type != "bind" || info.Active[0].MountedAt == nil ||
 		info.Active[0].MountedAt.CheckValid() != nil || len(info.Active[0].Data) != 0 ||
-		len(info.System) != 1 || info.System[0] == nil || info.System[0].Type != "bind" ||
-		info.System[0].Source != info.Active[0].MountPoint || info.System[0].Target != "" ||
-		!slices.Equal(info.System[0].Options, []string{"rbind"}) || !validRuntimeImagePath(info.Active[0].MountPoint) ||
+		!validRuntimeImageSystemMount(info) || !validRuntimeImagePath(info.Active[0].MountPoint) ||
 		info.Active[0].MountPoint == "/" || len(info.Active[0].MountPoint)+len(runtimeImageMountPathLabel) > 4096 {
 		return "", errors.New("image cleanup activation identity is incomplete")
 	}
 	return info.Active[0].MountPoint, nil
+}
+
+// Some containerd mount-manager versions reconstruct System only for Activate,
+// not Info. Cleanup uses the persisted active mountpoint and our leased journal;
+// when a System mount is returned it must still describe that exact bind.
+func validRuntimeImageSystemMount(info *types.ActivationInfo) bool {
+	if len(info.System) == 0 {
+		return true
+	}
+	return len(info.System) == 1 && info.System[0] != nil && info.System[0].Type == "bind" &&
+		info.System[0].Source == info.Active[0].MountPoint && info.System[0].Target == "" &&
+		slices.Equal(info.System[0].Options, []string{"rbind"})
 }
 
 func (observer *RuntimeImageObserver) closeImageActivation(ctx context.Context, key string) error {

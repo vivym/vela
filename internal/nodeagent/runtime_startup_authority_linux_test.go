@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/runtimepolicy"
 )
 
@@ -94,6 +95,18 @@ func TestRuntimeStartupAuthorityRejectsCredentialsOutsideVerifiedPlan(t *testing
 	authority.Credentials = []RuntimeCallerCredentials{{UID: authority.Plan.uid, GID: authority.Plan.gid}}
 	if err := authority.validateSources(); err != nil {
 		t.Fatalf("credentials matching verified launch plan rejected: %v", err)
+	}
+	authority.Plan.pod.Annotations = map[string]string{runtimelaunch.ProtocolAnnotation: runtimelaunch.Protocol}
+	if err := authority.validateSources(); err == nil {
+		t.Fatal("Kubernetes startup accepted no image verification source")
+	}
+	authority.Image = &RuntimeStartupImageConfig{Images: &RuntimeImageObserver{}}
+	if err := authority.validateSources(); err == nil {
+		t.Fatal("Kubernetes startup accepted no bootstrap publication")
+	}
+	authority.RuntimePublication = &RuntimeStartupPublicationConfig{}
+	if err := authority.validateSources(); err != nil {
+		t.Fatal(err)
 	}
 	authority.AuthorizationHash = sha256.Sum256([]byte("legacy digest"))
 	if err := authority.validateSources(); err == nil {

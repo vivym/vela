@@ -633,7 +633,7 @@ func TestVelaImageDockerfilePinsRuntimeContract(t *testing.T) {
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
 		{
 			name:       "vela-h3-stage-runtime",
-			entrypoint: "/usr/local/bin/vela-model-runtime",
+			entrypoint: "/usr/local/bin/vela-runtime-entrypoint\", \"runtime",
 			required: []string{
 				"vela.ai.h3-runtime-base=\"${H3_RUNTIME_BASE}\"",
 				"vela.ai.h3-encoder.sha256=\"${H3_ENCODER_SHA256}\"",

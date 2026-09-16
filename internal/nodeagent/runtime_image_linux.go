@@ -286,7 +286,7 @@ func (observer *RuntimeImageObserver) inspectExecutable(ctx context.Context, tar
 		return result, err
 	}
 	lastActivation, err := observer.mounts.Info(ctx, &mountsapi.InfoRequest{Name: key})
-	if err != nil || !proto.Equal(runtimeImagePersistedActivation(activation.GetInfo()), lastActivation.GetInfo()) {
+	if err != nil || !sameRuntimeImageActivation(activation.GetInfo(), lastActivation.GetInfo()) {
 		return result, errors.Join(errors.New("image activation changed during observation"), err)
 	}
 	lastView, err := observer.statSnapshot(ctx, key, chain, snapshotsapi.Kind_VIEW)

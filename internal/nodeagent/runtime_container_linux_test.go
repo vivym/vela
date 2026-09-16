@@ -472,3 +472,60 @@ func TestRuntimeContainerObserverRejectsUntrustedSocket(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeContainerObservationAcceptsBoundContainerdImageReferences(t *testing.T) {
+	for _, scenario := range []string{"bound", "different-config", "different-request", "mutable-tag", "different-image-spec", "different-image-id"} {
+		t.Run(scenario, func(t *testing.T) {
+			fixture := newContainerCRIServer()
+			entry, status := fixture.listed.Containers[0], fixture.container.Status
+			status.ImageRef = "registry.internal/runtime@sha256:" + strings.Repeat("a", 64)
+			status.Image = &runtimev1.ImageSpec{Image: entry.ImageRef, UserSpecifiedImage: status.ImageRef}
+			entry.Image = proto.CloneOf(status.Image)
+			switch scenario {
+			case "different-config":
+				entry.ImageRef = "sha256:" + strings.Repeat("b", 64)
+			case "different-request":
+				status.ImageRef = "registry.internal/other@sha256:" + strings.Repeat("a", 64)
+			case "mutable-tag":
+				status.ImageRef = "registry.internal/runtime:latest"
+				status.Image.UserSpecifiedImage = status.ImageRef
+				entry.Image = proto.CloneOf(status.Image)
+			case "different-image-spec":
+				entry.Image.UserSpecifiedImage = "another"
+			case "different-image-id":
+				status.ImageId = "different"
+			}
+			observer := dialContainerCRI(t, serveContainerCRI(t, fixture))
+			result, err := observer.Inspect(t.Context(), fixture.target)
+			if scenario == "bound" {
+				if err != nil || result.ImageRef != status.ImageRef || result.ImageConfigDigest != entry.ImageRef {
+					t.Fatalf("bound containerd references rejected or rewritten: %+v %v", result, err)
+				}
+			} else if err == nil || result != (RuntimeContainerObservation{}) {
+				t.Fatalf("inconsistent image accepted: %+v %v", result, err)
+			}
+		})
+	}
+}
+
+func TestPlannedRuntimeImageReferenceRequiresExactApprovedIdentity(t *testing.T) {
+	config := "sha256:" + strings.Repeat("c", 64)
+	approved := "registry.internal/runtime@sha256:" + strings.Repeat("a", 64)
+	for _, ref := range []string{config, approved} {
+		if !plannedRuntimeImageRefMatches(RuntimeContainerObservation{ImageRef: ref, ImageConfigDigest: config}, config, approved) {
+			t.Fatalf("approved identity rejected: %s", ref)
+		}
+	}
+	for _, ref := range []string{"registry.internal/runtime:latest", "sha256:" + strings.Repeat("b", 64), "registry.internal/other@sha256:" + strings.Repeat("a", 64)} {
+		if plannedRuntimeImageRefMatches(RuntimeContainerObservation{ImageRef: ref, ImageConfigDigest: config}, config, approved) {
+			t.Fatalf("unapproved identity accepted: %s", ref)
+		}
+	}
+	// Both CRI replies can agree on a different config while retaining the
+	// approved manifest reference. That must never substitute another image.
+	for _, ref := range []string{config, approved} {
+		if plannedRuntimeImageRefMatches(RuntimeContainerObservation{ImageRef: ref, ImageConfigDigest: "sha256:" + strings.Repeat("d", 64)}, config, approved) {
+			t.Fatalf("approved reference hid an unapproved CRI config: %s", ref)
+		}
+	}
+}

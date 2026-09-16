@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
@@ -102,12 +103,17 @@ func (observer *RuntimeContainerObserver) Inspect(ctx context.Context, target Ru
 		first.CreatedAt > through.UnixNano() || first.StartedAt > through.UnixNano() || first.FinishedAt > through.UnixNano() {
 		return RuntimeContainerObservation{}, errors.New("CRI container observation time is inconsistent")
 	}
+	imageConfig := first.ImageRef
+	if !validRuntimeImageDigest(imageConfig) {
+		imageConfig = first.Image.GetImage()
+	}
 	return RuntimeContainerObservation{
 		SchemaVersion: 1, Target: target, NodeIdentity: observer.nodeIdentity, BootID: boot,
 		RuntimeName: version.RuntimeName, RuntimeVersion: version.RuntimeVersion, RuntimeAPIVersion: version.RuntimeApiVersion,
 		ContainerState: first.State.String(), CreatedAt: criTimestamp(first.CreatedAt), StartedAt: criTimestamp(first.StartedAt),
 		FinishedAt: criTimestamp(first.FinishedAt), ExitCode: first.ExitCode, ImageRef: first.ImageRef,
-		SandboxCreatedAt: criTimestamp(sandbox.CreatedAt), SandboxAttempt: sandbox.Metadata.Attempt,
+		ImageConfigDigest: imageConfig,
+		SandboxCreatedAt:  criTimestamp(sandbox.CreatedAt), SandboxAttempt: sandbox.Metadata.Attempt,
 		SandboxState: sandbox.State.String(), SandboxPIDNamespace: sandbox.Linux.Namespaces.Options.Pid.String(),
 		SandboxPIDTargetID: sandbox.Linux.Namespaces.Options.TargetId,
 		ObservedFrom:       from, ObservedThrough: through,
@@ -195,7 +201,7 @@ func (observer *RuntimeContainerObserver) readContainer(ctx context.Context, tar
 	}
 	status := response.GetStatus()
 	if status == nil || status.Id != target.ContainerID || status.Metadata == nil || !proto.Equal(status.Metadata, entry.Metadata) ||
-		status.CreatedAt != entry.CreatedAt || status.State != entry.State || status.ImageRef != entry.ImageRef ||
+		status.CreatedAt != entry.CreatedAt || status.State != entry.State || !consistentCRIContainerImages(entry, status) ||
 		!validText(status.ImageRef, 1024) || !validCRIContainerTimes(status) {
 		return nil, nil, errors.New("CRI container status is incomplete or inconsistent")
 	}
@@ -218,6 +224,24 @@ func (observer *RuntimeContainerObserver) readContainer(ctx context.Context, tar
 		return nil, nil, errors.New("CRI sandbox namespace target is inconsistent")
 	}
 	return proto.CloneOf(status), proto.CloneOf(sandbox), nil
+}
+
+func consistentCRIContainerImages(entry *runtimev1.Container, status *runtimev1.ContainerStatus) bool {
+	if entry.ImageRef == status.ImageRef {
+		return true
+	}
+	// containerd may list the image config digest while ContainerStatus returns
+	// the requested manifest reference. Require both replies to bind those two
+	// names through the same ImageSpec. Preserve the raw status reference; the
+	// planned-image check subsequently matches it to the signed Pod image and
+	// independently verifies the manifest, config and live executable bytes.
+	if entry.Image == nil || status.Image == nil || !proto.Equal(entry.Image, status.Image) ||
+		!validRuntimeImageDigest(entry.ImageRef) || entry.ImageRef != status.Image.Image ||
+		status.ImageRef != status.Image.UserSpecifiedImage || entry.ImageId != status.ImageId {
+		return false
+	}
+	repository, digest, ok := strings.Cut(status.ImageRef, "@")
+	return ok && repository != "" && validRuntimeImageDigest(digest)
 }
 
 func validCRIContainerTimes(status *runtimev1.ContainerStatus) bool {

@@ -50,12 +50,23 @@ func runtimeImagePersistedActivation(info *types.ActivationInfo) *types.Activati
 	// containerd 2.3.1 putActiveMount persists Type, MountPoint and MountedAt,
 	// but explicitly omits Source, Target and Options from the active mount.
 	// The initial Activate response was validated against the snapshot view;
-	// System's complete bind specification must still survive the reread.
+	// System may be reconstructed only by Activate on other daemon versions.
 	stored := proto.CloneOf(info)
 	for _, active := range stored.Active {
 		active.Mount.Source, active.Mount.Target, active.Mount.Options = "", "", nil
 	}
 	return stored
+}
+
+func sameRuntimeImageActivation(initial, current *types.ActivationInfo) bool {
+	if initial == nil || current == nil {
+		return false
+	}
+	expected := runtimeImagePersistedActivation(initial)
+	if len(current.System) == 0 {
+		expected.System = nil
+	}
+	return proto.Equal(expected, current)
 }
 
 func requireReadOnlyRuntimeImage(file *os.File) error {

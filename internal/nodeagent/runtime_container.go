@@ -45,6 +45,7 @@ type RuntimeContainerObservation struct {
 	FinishedAt          time.Time              `json:"finished_at"`
 	ExitCode            int32                  `json:"exit_code"`
 	ImageRef            string                 `json:"image_ref"`
+	ImageConfigDigest   string                 `json:"image_config_digest,omitempty"`
 	SandboxCreatedAt    time.Time              `json:"sandbox_created_at"`
 	SandboxAttempt      uint32                 `json:"sandbox_attempt"`
 	SandboxState        string                 `json:"sandbox_state"`

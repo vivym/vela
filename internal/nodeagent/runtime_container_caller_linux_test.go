@@ -46,7 +46,7 @@ func (server *runtimeCallerTaskServer) Get(ctx context.Context, request *tasksap
 }
 
 func TestRuntimeContainerCallerCorrelation(t *testing.T) {
-	for _, scenario := range []string{"matching", "nil-exit-time", "wrong-task-id", "wrong-pid", "paused", "unknown-state", "exit-time", "malformed-time",
+	for _, scenario := range []string{"matching", "rke2-containerd", "nil-exit-time", "wrong-task-id", "wrong-pid", "paused", "unknown-state", "exit-time", "malformed-time",
 		"missing-task", "lost-task", "changing-task", "changing-cri", "different-boot", "unsupported-runtime", "closed-caller", "closed-observer", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
 			connection, _, _ := runtimeCallerConnection(t, "normal", "unixpacket", true)
@@ -66,6 +66,8 @@ func TestRuntimeContainerCallerCorrelation(t *testing.T) {
 			cri.mu.Lock()
 			switch scenario {
 			case "matching":
+			case "rke2-containerd":
+				cri.version.RuntimeVersion = "v2.2.6-k3s1"
 			case "nil-exit-time":
 				tasks.process.ExitedAt = nil
 			case "wrong-task-id":
@@ -117,7 +119,7 @@ func TestRuntimeContainerCallerCorrelation(t *testing.T) {
 			tasks.mu.Lock()
 			calls := tasks.calls
 			tasks.mu.Unlock()
-			if scenario == "matching" || scenario == "nil-exit-time" {
+			if scenario == "matching" || scenario == "rke2-containerd" || scenario == "nil-exit-time" {
 				if err != nil || result.SchemaVersion != 1 || result.Container.Target != cri.target || result.Process.HostPID != process.HostPID ||
 					result.ObservedFrom.IsZero() || result.ObservedThrough.Before(result.ObservedFrom) || calls != 2 {
 					t.Fatalf("matching namespace owner failed correlation: %+v %v", result, err)

@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	tasksapi "github.com/containerd/containerd/api/services/tasks/v1"
@@ -45,8 +46,12 @@ func (observer *RuntimeContainerObserver) ObserveCaller(ctx context.Context, tar
 		return RuntimeContainerCallerObservation{}, errors.Join(ErrRuntimeContainerCaller, err)
 	}
 	first, err := observer.Inspect(ctx, target)
-	if err != nil || !supportedRuntimeCallerContainer(first, firstProcess) {
+	if err != nil {
 		return RuntimeContainerCallerObservation{}, errors.Join(ErrRuntimeContainerCaller, err)
+	}
+	if !supportedRuntimeCallerContainer(first, firstProcess) {
+		return RuntimeContainerCallerObservation{}, fmt.Errorf("%w: runtime=%s version=%s container=%s sandbox=%s same_boot=%t",
+			ErrRuntimeContainerCaller, first.RuntimeName, first.RuntimeVersion, first.ContainerState, first.SandboxState, first.BootID == firstProcess.BootID)
 	}
 	firstTask, err := observer.callerTask(ctx, target, firstProcess)
 	if err != nil {
@@ -84,7 +89,8 @@ func (observer *RuntimeContainerObserver) ObserveCaller(ctx context.Context, tar
 }
 
 func supportedRuntimeCallerContainer(container RuntimeContainerObservation, process RuntimeCallerObservation) bool {
-	return container.RuntimeName == "containerd" && container.RuntimeVersion == "v2.3.1" &&
+	return container.RuntimeName == "containerd" &&
+		(container.RuntimeVersion == "v2.3.1" || container.RuntimeVersion == "v2.2.6-k3s1") &&
 		container.ContainerState == "CONTAINER_RUNNING" && container.SandboxState == "SANDBOX_READY" &&
 		container.BootID == process.BootID
 }

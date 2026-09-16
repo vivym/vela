@@ -16,7 +16,9 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	"golang.org/x/sys/unix"
 )
@@ -298,5 +300,40 @@ func TestProvisionProcessHelper(t *testing.T) {
 		if err := os.Remove(path); !errors.Is(err, os.ErrPermission) {
 			t.Fatalf("workload removed protected evidence: %s %v", path, err)
 		}
+	}
+}
+
+func TestKubernetesProvisionRetainsNodeJournalCustody(t *testing.T) {
+	config, directory, registry := provisionFixture(t)
+	config.Bundle.RuntimeLaunchProtocol = runtimelaunch.Protocol
+	var err error
+	config.Bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(config.Bundle)
+	mustDo(t, err)
+	want, err := Provision(t.Context(), config, directory, registry)
+	mustDo(t, err)
+	got, err := InspectProvisionedJournals(t.Context(), config, directory, constantHistory(recordedHistory(config, registry)))
+	mustDo(t, err)
+	if got != want {
+		t.Fatal("independent inspector disagreed with handover")
+	}
+	for _, check := range []struct {
+		path string
+		uid  uint32
+	}{
+		{"scratch", 0}, {"scratch/bootstrap", 0}, {"scratch/runtime-admission", 0},
+		{"scratch/runtime-admission/execution-admission.lock", 0}, {"scratch/worker-admission", 10001},
+		{"scratch/worker-admission/assignment-admission.lock", 10001}, {"scratch/inputs", 10001}, {"scratch/outputs", 10001},
+	} {
+		info, err := os.Stat(filepath.Join(directory, check.path))
+		mustDo(t, err)
+		stat := info.Sys().(*syscall.Stat_t)
+		if stat.Uid != check.uid || stat.Gid != check.uid {
+			t.Fatalf("incorrect journal custody: %s", check.path)
+		}
+	}
+	// Transferring Node's journal afterwards must invalidate handover evidence.
+	mustDo(t, os.Chown(filepath.Join(directory, "scratch/runtime-admission"), 10001, 10001))
+	if _, err := InspectProvisionedJournals(t.Context(), config, directory, constantHistory(recordedHistory(config, registry))); err == nil {
+		t.Fatal("lost root custody accepted")
 	}
 }
