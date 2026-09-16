@@ -246,6 +246,7 @@ type config struct {
 	stageFinalizationTick                  time.Duration
 	artifactCleanupTick                    time.Duration
 	artifactS3Endpoint                     string
+	artifactS3DownloadEndpoint             string
 	artifactS3Region                       string
 	artifactS3Bucket                       string
 	artifactS3AccessKeyFile                string
@@ -1552,6 +1553,7 @@ func loadConfig() (config, error) {
 		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
 		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
 		artifactS3Endpoint:                os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
+		artifactS3DownloadEndpoint:        os.Getenv("VELA_ARTIFACT_S3_DOWNLOAD_ENDPOINT"),
 		artifactS3Region:                  os.Getenv("VELA_ARTIFACT_S3_REGION"),
 		artifactS3Bucket:                  os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
 		artifactS3AccessKeyFile:           os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
@@ -2258,13 +2260,14 @@ func openArtifactStore(ctx context.Context, configuration config) (*artifactstor
 		return nil, err
 	}
 	store, err := artifactstore.NewS3(artifactstore.S3Config{
-		Endpoint:        configuration.artifactS3Endpoint,
-		Region:          configuration.artifactS3Region,
-		Bucket:          configuration.artifactS3Bucket,
-		AccessKeyID:     accessKeyID,
-		SecretAccessKey: secretAccessKey,
-		UsePathStyle:    configuration.artifactS3PathStyle,
-		SignedGETTTL:    artifactstore.MaxSignedGETTTL,
+		Endpoint:         configuration.artifactS3Endpoint,
+		DownloadEndpoint: configuration.artifactS3DownloadEndpoint,
+		Region:           configuration.artifactS3Region,
+		Bucket:           configuration.artifactS3Bucket,
+		AccessKeyID:      accessKeyID,
+		SecretAccessKey:  secretAccessKey,
+		UsePathStyle:     configuration.artifactS3PathStyle,
+		SignedGETTTL:     artifactstore.MaxSignedGETTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure Artifact Store: %w", err)

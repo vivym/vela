@@ -54,6 +54,7 @@ lint:
 
 test:
 	go test ./...
+	python3 -m unittest hack/h3_api_flow_test.py
 	$(MAKE) test-runtime-startup-validation
 
 test-integration:

@@ -1,0 +1,228 @@
+{
+  "observed_at_utc": "2026-09-16T09:17:56.494458+00:00",
+  "scope": "one real H3 Job and deployment verification; not all Production Gates",
+  "job_id": "d79a51f4-9c1c-4f23-90d0-8d95086515a7",
+  "database_schema": 107,
+  "workers": [
+    {
+      "id": "5a3f760e-f782-58ed-af82-1407f06c1a3f",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "observation_sequence": 4294967308,
+      "capacity_vector": {
+        "gpu_count": 1,
+        "concurrency": 1,
+        "active_stage_slots": 1
+      },
+      "observed_at": "2026-09-16T09:10:53.012642+00:00",
+      "expires_at": "2026-09-16T09:19:03.500107+00:00",
+      "fresh_capacity": true,
+      "active_allocations": 0
+    },
+    {
+      "id": "6bcaed29-d8c4-5f11-9e48-ab0c0d7a7670",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "observation_sequence": 4294967307,
+      "capacity_vector": {
+        "concurrency": 1,
+        "cpu_slot_count": 1,
+        "active_stage_slots": 1
+      },
+      "observed_at": "2026-09-16T09:10:53.060203+00:00",
+      "expires_at": "2026-09-16T09:19:03.160776+00:00",
+      "fresh_capacity": true,
+      "active_allocations": 0
+    },
+    {
+      "id": "b66e21ad-5025-5069-a45d-2b50066d4be3",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "observation_sequence": 4294967315,
+      "capacity_vector": {
+        "gpu_count": 1,
+        "concurrency": 1,
+        "active_stage_slots": 1
+      },
+      "observed_at": "2026-09-16T09:10:51.496647+00:00",
+      "expires_at": "2026-09-16T09:19:14.118975+00:00",
+      "fresh_capacity": true,
+      "active_allocations": 0
+    }
+  ],
+  "stages": [
+    {
+      "stage_key": "encoder",
+      "state": "SUCCEEDED",
+      "created_at": "2026-09-16T09:00:11.205857+00:00",
+      "updated_at": "2026-09-16T09:00:14.112422+00:00",
+      "renewals": 2,
+      "last_renewal": "2026-09-16T09:00:13.597238+00:00"
+    },
+    {
+      "stage_key": "dit",
+      "state": "SUCCEEDED",
+      "created_at": "2026-09-16T09:00:11.206175+00:00",
+      "updated_at": "2026-09-16T09:07:06.107014+00:00",
+      "renewals": 22,
+      "last_renewal": "2026-09-16T09:07:03.907391+00:00"
+    },
+    {
+      "stage_key": "vae",
+      "state": "SUCCEEDED",
+      "created_at": "2026-09-16T09:00:11.2062+00:00",
+      "updated_at": "2026-09-16T09:07:50.13241+00:00",
+      "renewals": 4,
+      "last_renewal": "2026-09-16T09:07:49.557444+00:00"
+    },
+    {
+      "stage_key": "thumbnail",
+      "state": "SUCCEEDED",
+      "created_at": "2026-09-16T09:00:11.206219+00:00",
+      "updated_at": "2026-09-16T09:08:13.48539+00:00",
+      "renewals": 3,
+      "last_renewal": "2026-09-16T09:08:13.198154+00:00"
+    }
+  ],
+  "previous_failed_job": {
+    "id": "ec15406b-3466-4abc-882c-28d82ca0f1de",
+    "state": "FAILED",
+    "updated_at": "2026-09-16T08:54:12.908581+00:00",
+    "finalization_deadline_at": "2026-09-16T08:54:12.586712+00:00",
+    "execution_max_finalization_seconds_per_attempt": 600,
+    "charges": 0,
+    "reservation_state": "RELEASED"
+  },
+  "control": {
+    "generation": 28,
+    "status": {
+      "availableReplicas": 2,
+      "conditions": [
+        {
+          "lastTransitionTime": "2026-09-15T15:16:34Z",
+          "lastUpdateTime": "2026-09-15T15:16:34Z",
+          "message": "Deployment has minimum availability.",
+          "reason": "MinimumReplicasAvailable",
+          "status": "True",
+          "type": "Available"
+        },
+        {
+          "lastTransitionTime": "2026-09-13T20:01:57Z",
+          "lastUpdateTime": "2026-09-16T09:11:17Z",
+          "message": "ReplicaSet \"vela-control-86559f5d98\" has successfully progressed.",
+          "reason": "NewReplicaSetAvailable",
+          "status": "True",
+          "type": "Progressing"
+        }
+      ],
+      "observedGeneration": 28,
+      "readyReplicas": 2,
+      "replicas": 2,
+      "terminatingReplicas": 0,
+      "updatedReplicas": 2
+    },
+    "node_selector": {
+      "vela.ai/artifact-sandbox": "bd44ec5ac61a",
+      "vela.ai/management": "true",
+      "vela.ai/node-role": "control-storage"
+    },
+    "security_context": {
+      "runAsGroup": 10001,
+      "runAsNonRoot": true,
+      "runAsUser": 10001,
+      "seccompProfile": {
+        "type": "RuntimeDefault"
+      }
+    },
+    "containers": [
+      {
+        "name": "vela-control",
+        "image": "10.1.201.70:5005/vela-control@sha256:b47d386c9ed9f4838cc68197136ad2eb1da3c9f377a9928d68c058d3e7326c18",
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "runAsGroup": 10001,
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "seccompProfile": {
+            "localhostProfile": "vela/artifact-sandbox-bd44ec5ac61a.json",
+            "type": "Localhost"
+          }
+        }
+      }
+    ],
+    "pods": [
+      {
+        "name": "vela-control-86559f5d98-5wj4c",
+        "node": "llmpool01",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "vela-control",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      },
+      {
+        "name": "vela-control-86559f5d98-tkhqk",
+        "node": "llmpool02",
+        "phase": "Running",
+        "containers": [
+          {
+            "name": "vela-control",
+            "ready": true,
+            "restart_count": 0
+          }
+        ]
+      }
+    ],
+    "runtime_config": {
+      "name": "vela-control-runtime-api-95ce430963ad",
+      "immutable": true,
+      "revision": "sha256:b6d149529e1fba375fdcb8430e757b1b911f06675f64b267db2458bc8833ba3e",
+      "ffprobe_version": "8.0.1"
+    }
+  },
+  "sandbox": {
+    "sha256": "bd44ec5ac61a84a03c37cb405a62e80c16093ceba8ae7cbdcb66a0a59d546ca5",
+    "default_policy_changed_only_by_one_rule": true,
+    "added_rule": {
+      "names": [
+        "clone"
+      ],
+      "action": "SCMP_ACT_ALLOW",
+      "args": [
+        {
+          "index": 0,
+          "value": 2114060288,
+          "valueTwo": 2080505856,
+          "op": "SCMP_CMP_MASKED_EQ"
+        }
+      ]
+    },
+    "tests": {
+      "vela-artifact-sandbox-probe-default": {
+        "node": "llmpool01",
+        "phase": "Failed",
+        "log": "=== RUN   TestPinnedFFprobePreservesFullH3VideoAndAudioFacts\n--- PASS: TestPinnedFFprobePreservesFullH3VideoAndAudioFacts (0.02s)\n=== RUN   TestLandlockRestrictsFilesystemToPinnedExecutable\n--- PASS: TestLandlockRestrictsFilesystemToPinnedExecutable (0.02s)\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4\n    sandbox_linux_test.go:280: probe through production sandbox: sandboxed ffprobe failed: fork/exec /tmp/TestProductionSandboxProbesPinnedVideoAndThumbnail2568268980/001/.vela-ffprobe-sandbox-3397531536/artifact-validator-helper: operation not permitted: \n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp\n    sandbox_linux_test.go:280: probe through production sandbox: sandboxed ffprobe failed: fork/exec /tmp/TestProductionSandboxProbesPinnedVideoAndThumbnail2568268980/001/.vela-ffprobe-sandbox-809416897/artifact-validator-helper: operation not permitted: \n--- FAIL: TestProductionSandboxProbesPinnedVideoAndThumbnail (0.10s)\n    --- FAIL: TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4 (0.05s)\n    --- FAIL: TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp (0.05s)\nFAIL\n"
+      },
+      "vela-artifact-sandbox-probe-local": {
+        "node": "llmpool01",
+        "phase": "Succeeded",
+        "log": "=== RUN   TestPinnedFFprobePreservesFullH3VideoAndAudioFacts\n--- PASS: TestPinnedFFprobePreservesFullH3VideoAndAudioFacts (0.01s)\n=== RUN   TestLandlockRestrictsFilesystemToPinnedExecutable\n--- PASS: TestLandlockRestrictsFilesystemToPinnedExecutable (0.03s)\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp\n--- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail (0.14s)\n    --- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4 (0.07s)\n    --- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp (0.07s)\nPASS\n"
+      },
+      "vela-artifact-sandbox-probe-local-node71": {
+        "node": "llmpool02",
+        "phase": "Succeeded",
+        "log": "=== RUN   TestPinnedFFprobePreservesFullH3VideoAndAudioFacts\n--- PASS: TestPinnedFFprobePreservesFullH3VideoAndAudioFacts (0.02s)\n=== RUN   TestLandlockRestrictsFilesystemToPinnedExecutable\n--- PASS: TestLandlockRestrictsFilesystemToPinnedExecutable (0.02s)\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4\n=== RUN   TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp\n--- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail (0.58s)\n    --- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail/video.mp4 (0.33s)\n    --- PASS: TestProductionSandboxProbesPinnedVideoAndThumbnail/thumbnail.webp (0.25s)\nPASS\n"
+      }
+    }
+  },
+  "verifier_sha256": "b7256e6a836f382c515ea3e12da133c6f7e0369132295082bde4ad216010ce2b"
+}

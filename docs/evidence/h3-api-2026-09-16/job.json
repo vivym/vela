@@ -1,0 +1,16 @@
+{
+  "attempts_started": 1,
+  "created_at": "2026-09-16T09:00:11.133642Z",
+  "job_expires_at": "2026-09-16T11:10:11.037854Z",
+  "job_id": "d79a51f4-9c1c-4f23-90d0-8d95086515a7",
+  "pricing": {
+    "currency": "CNY",
+    "quantity": 1,
+    "quoted_amount_minor": 100,
+    "rate_card_revision_id": "3ed820f5-22c8-5b38-927f-6e8dfe9f60b2",
+    "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+    "unit_amount_minor": 100
+  },
+  "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+  "state": "SUCCEEDED"
+}

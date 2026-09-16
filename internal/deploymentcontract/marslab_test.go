@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -289,5 +290,38 @@ func TestMarslabOverlayResolvesConfigurationAndPreservesValidationBoundary(t *te
 	content, err = os.ReadFile(filepath.Join(directory, "capacity-status.json"))
 	if err != nil || json.Unmarshal(content, &status) != nil || status.ProductionStorageContractSatisfied || status.CapacityPerClaim != "20Gi" {
 		t.Fatal("environment capacity status must retain the unfinished production contract")
+	}
+}
+
+func TestMarslabFFprobeVersionMatchesBuiltRuntime(t *testing.T) {
+	dockerfile, err := os.ReadFile(filepath.Join(deploymentRepositoryRoot(t), "Dockerfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := regexp.MustCompile(`https://ffmpeg\.org/releases/ffmpeg-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.xz`).FindSubmatch(dockerfile)
+	if len(version) != 2 {
+		t.Fatal("cannot resolve the pinned ffprobe build version")
+	}
+	directory := filepath.Join(velaControlManifestDirectory(t), "..", "environments", "marslab", "vela-control")
+	found := false
+	for _, object := range renderKustomizeResources(t, directory) {
+		if object.GetKind() != "ConfigMap" {
+			continue
+		}
+		data, ok := object.Object["data"].(map[string]any)
+		if !ok {
+			continue
+		}
+		configured, ok := data["VELA_ARTIFACT_FFPROBE_VERSION"]
+		if !ok {
+			continue
+		}
+		found = true
+		if configured != string(version[1]) {
+			t.Fatalf("configured ffprobe version %q must match program_version.version %q, without a product prefix", configured, version[1])
+		}
+	}
+	if !found {
+		t.Fatal("rendered Marslab runtime has no ffprobe version")
 	}
 }

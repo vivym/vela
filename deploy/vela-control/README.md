@@ -64,7 +64,7 @@ receipts required by ADR 0013.
 
 The application service account has no Kubernetes API RBAC and does not receive
 an automounted token. The application runs as UID/GID 10001 with a read-only
-root filesystem, RuntimeDefault seccomp, no added capability, bounded
+root filesystem, a restricted seccomp policy, no added capability, bounded
 CPU/memory/ephemeral storage, and the non-preempting `vela-control-critical`
 PriorityClass. Each Pod requests a 110 GiB generic ephemeral PVC for Artifact
 validation. The release must replace
@@ -84,6 +84,16 @@ reclamation bound before claiming capacity on the two eligible CPU nodes.
 Provider-specific StorageClass parameters and their live effect remain release
 evidence; the repository placeholder does not claim that isolation already
 exists.
+
+The base manifest uses RuntimeDefault. Before releasing an environment, run the
+production Artifact sandbox tests inside its actual control image, with the
+same security context, on every eligible management node. Some containerd
+defaults reject the validator's isolated namespace `clone` with `EPERM` even
+when the kernel supports it. Marslab uses a
+[pinned Localhost policy](../environments/marslab/vela-control/seccomp/README.md)
+that adds only the validator's full namespace combination; its node selector
+requires the installed and tested profile. Do not disable sandbox validation or
+use Unconfined/privileged containers to pass this check.
 
 ## Secret Contract
 

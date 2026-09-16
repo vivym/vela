@@ -1,0 +1,13 @@
+{
+  "name": "vela-artifact-worker",
+  "uris": ["/vela-artifacts", "/vela-artifacts/*"],
+  "methods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+  "remote_addrs": ["10.1.201.0/24", "10.42.0.0/16"],
+  "priority": 10,
+  "upstream": {
+    "type": "roundrobin",
+    "pass_host": "pass",
+    "nodes": {"minio.object-store.svc.cluster.local:9000": 1},
+    "timeout": {"connect": 10, "send": 300, "read": 300}
+  }
+}

@@ -90,5 +90,6 @@ data:
   VELA_ARTIFACT_FFPROBE_PATH: /usr/bin/ffprobe
   VELA_ARTIFACT_SANDBOX_ROOT: /var/lib/vela/artifact-validation/sandboxes
   VELA_ARTIFACT_SPOOL_DIRECTORY: /var/lib/vela/artifact-validation/spool
+  # Exact program_version.version from ffprobe JSON (e.g. 8.0.1), without "ffprobe-".
   VELA_ARTIFACT_FFPROBE_VERSION: replace-with-certified-ffprobe-version
   VELA_ARTIFACT_VALIDATOR_REVISION: replace-with-certified-validator-revision

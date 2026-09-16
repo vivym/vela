@@ -23,7 +23,7 @@
   {
     "op": "replace",
     "path": "/spec/template/spec/containers/0/image",
-    "value": "10.1.201.70:5005/vela-control@sha256:e5132776a18db030cc3530cb6eaa0d6513eee88e349044741bb15c6666060dea"
+    "value": "10.1.201.70:5005/vela-control@sha256:f12e249463984dd936364a0c06274e73ca76b02abded69f5933aa97cdad80b96"
   },
   {
     "op": "replace",
@@ -31,7 +31,7 @@
     "value": [
       {
         "configMapRef": {
-          "name": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76"
+          "name": "vela-control-runtime-api-95ce430963ad"
         }
       }
     ]
@@ -260,5 +260,18 @@
     "op": "replace",
     "path": "/spec/template/spec/containers/0/env/47/valueFrom/secretKeyRef/name",
     "value": "vela-control-credential-pepper-v-ebd9cc4d0cb4-r-fdbdd3fd0bbd"
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/securityContext/seccompProfile",
+    "value": {
+      "type": "Localhost",
+      "localhostProfile": "vela/artifact-sandbox-bd44ec5ac61a.json"
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/nodeSelector/vela.ai~1artifact-sandbox",
+    "value": "bd44ec5ac61a"
   }
 ]

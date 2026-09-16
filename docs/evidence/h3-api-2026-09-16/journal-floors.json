@@ -1,0 +1,35 @@
+[
+  {
+    "worker": "b66e21ad-5025-5069-a45d-2b50066d4be3",
+    "file": "scratch/runtime-admission/execution-admission.json",
+    "floor": 11,
+    "highest": 11
+  },
+  {
+    "worker": "b66e21ad-5025-5069-a45d-2b50066d4be3",
+    "file": "scratch/worker-admission/assignment-admission.json",
+    "floor": 11
+  },
+  {
+    "worker": "6bcaed29-d8c4-5f11-9e48-ab0c0d7a7670",
+    "file": "scratch/runtime-admission/execution-admission.json",
+    "floor": 12,
+    "highest": 12
+  },
+  {
+    "worker": "6bcaed29-d8c4-5f11-9e48-ab0c0d7a7670",
+    "file": "scratch/worker-admission/assignment-admission.json",
+    "floor": 12
+  },
+  {
+    "worker": "5a3f760e-f782-58ed-af82-1407f06c1a3f",
+    "file": "scratch/worker-admission/assignment-admission.json",
+    "floor": 10
+  },
+  {
+    "worker": "5a3f760e-f782-58ed-af82-1407f06c1a3f",
+    "file": "scratch/runtime-admission/execution-admission.json",
+    "floor": 10,
+    "highest": 10
+  }
+]

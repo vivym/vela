@@ -1,0 +1,13 @@
+{
+  "name": "vela-artifact-download",
+  "uri": "/vela-artifacts/artifacts/*",
+  "methods": ["GET"],
+  "upstream": {
+    "type": "roundrobin",
+    "pass_host": "pass",
+    "nodes": {
+      "minio.object-store.svc.cluster.local:9000": 1
+    },
+    "timeout": {"connect": 10, "send": 60, "read": 300}
+  }
+}

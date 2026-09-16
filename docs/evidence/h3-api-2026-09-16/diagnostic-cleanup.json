@@ -1,0 +1,10 @@
+{
+  "observed_at_utc": "2026-09-16T09:18:50.051742+00:00",
+  "deleted_pods": [
+    "vela-artifact-sandbox-probe-default",
+    "vela-artifact-sandbox-probe-local",
+    "vela-artifact-sandbox-probe-local-node71"
+  ],
+  "logs_preserved": true,
+  "host_reboots_performed": false
+}

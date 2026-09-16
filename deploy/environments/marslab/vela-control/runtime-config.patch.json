@@ -7,7 +7,7 @@
   {
     "op": "replace",
     "path": "/metadata/name",
-    "value": "vela-control-runtime-v-ebd9cc4d0cb4h-r-55f745cacf76"
+    "value": "vela-control-runtime-api-95ce430963ad"
   },
   {
     "op": "replace",
@@ -20,7 +20,7 @@
       "VELA_ARTIFACT_BACKUP_S3_REGION": "us-east-1",
       "VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE": "/etc/vela-control/materialized/artifact/backup-retention-secret-access-key",
       "VELA_ARTIFACT_FFPROBE_PATH": "/usr/bin/ffprobe",
-      "VELA_ARTIFACT_FFPROBE_VERSION": "ffprobe-8.0.1",
+      "VELA_ARTIFACT_FFPROBE_VERSION": "8.0.1",
       "VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE": "/etc/vela-control/materialized/artifact/replication-backup-access-key-id",
       "VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE": "/etc/vela-control/materialized/artifact/replication-backup-secret-access-key",
       "VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE": "/etc/vela-control/materialized/artifact/replication-source-access-key-id",
@@ -96,14 +96,16 @@
       "VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE": "/etc/vela-control/materialized/stage-worker/tls.key",
       "VELA_STAGE_WORKER_IDENTITY_KEY_FILE": "/etc/vela-control/materialized/stage-worker/identity-key",
       "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID": "webhook-key-1",
-      "VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE": "/etc/vela-control/materialized/keyrings/webhook.json"
+      "VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE": "/etc/vela-control/materialized/keyrings/webhook.json",
+      "VELA_ARTIFACT_S3_DOWNLOAD_ENDPOINT": "https://10.1.201.70:30443"
     }
   },
   {
     "op": "add",
     "path": "/metadata/annotations",
     "value": {
-      "vela.ai/release-revision": "sha256:418eccbcef389a93320ddb62ce73e3fbd0f472336529a909e965615b99a605f4"
+      "vela.ai/deployment-profile": "api-acceptance-validation",
+      "vela.ai/release-revision": "sha256:b6d149529e1fba375fdcb8430e757b1b911f06675f64b267db2458bc8833ba3e"
     }
   }
 ]

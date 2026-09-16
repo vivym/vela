@@ -214,6 +214,9 @@ func (s *Service) Submit(
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, fmt.Errorf("read Idempotency-Key result: %w", err)
 	}
+	if err := validateNativeH3Request(request, requestContent); err != nil {
+		return Job{}, err
+	}
 
 	sku, err := queries.ResolveActiveSKU(ctx, store.ResolveActiveSKUParams{
 		Model:            request.Model,
@@ -645,6 +648,25 @@ func canonicalRequest(request Request, idempotencyKey string) ([]byte, [sha256.S
 		return nil, [sha256.Size]byte{}, failure(FailureCodeInvalidRequest, "client_metadata cannot be encoded", 0)
 	}
 	return content, sha256.Sum256(content), nil
+}
+
+// This native AV SKU is served by the pinned dense 20-sigma release. Reject
+// unsupported sampling before reserving credit or assigning a Worker. Run this
+// after idempotency lookup so previously accepted requests retain their replay.
+func validateNativeH3Request(request Request, content []byte) error {
+	if request.OutputSpec != "h3-native-av-1344x768-5s-24fps" {
+		return nil
+	}
+	var frozen frozenRequestContent
+	if err := json.Unmarshal(content, &frozen); err != nil {
+		return err
+	}
+	sampling := frozen.H3.Parameters.Sampling
+	if sampling.NumInferenceSteps != 20 || sampling.Quality != "lossless" {
+		return failure(FailureCodeInvalidRequest,
+			"this native H3 release requires h3.sampling.num_inference_steps=20 and h3.sampling.quality=lossless", 0)
+	}
+	return nil
 }
 
 func canonicalJSONObject(raw json.RawMessage) (json.RawMessage, error) {

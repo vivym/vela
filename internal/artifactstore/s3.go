@@ -44,22 +44,27 @@ var (
 )
 
 type S3Config struct {
-	Endpoint        string
-	Region          string
-	Bucket          string
-	AccessKeyID     string
-	SecretAccessKey string
-	UsePathStyle    bool
-	SignedGETTTL    time.Duration
-	RootCAPEM       []byte
+	Endpoint string
+	// DownloadEndpoint is an optional HTTPS origin for customer GET signatures.
+	// The gateway must preserve the signed Host, path and query when proxying.
+	// Storage operations and multipart upload signatures still use Endpoint.
+	DownloadEndpoint string
+	Region           string
+	Bucket           string
+	AccessKeyID      string
+	SecretAccessKey  string
+	UsePathStyle     bool
+	SignedGETTTL     time.Duration
+	RootCAPEM        []byte
 }
 
 type S3 struct {
-	client       *s3.Client
-	presign      *s3.PresignClient
-	bucket       string
-	signedGETTTL time.Duration
-	now          func() time.Time
+	client          *s3.Client
+	presign         *s3.PresignClient
+	downloadPresign *s3.PresignClient
+	bucket          string
+	signedGETTTL    time.Duration
+	now             func() time.Time
 }
 
 type MultipartUpload struct {
@@ -156,6 +161,14 @@ func NewS3(config S3Config) (*S3, error) {
 		parsedEndpoint.Fragment != "" {
 		return nil, errors.New("invalid S3 Artifact Store endpoint")
 	}
+	if config.DownloadEndpoint != "" {
+		public, err := url.Parse(config.DownloadEndpoint)
+		if err != nil || public.Scheme != "https" || public.Host == "" || public.User != nil ||
+			public.RawQuery != "" || public.ForceQuery || public.Fragment != "" ||
+			(public.Path != "" && public.Path != "/") || public.RawPath != "" || !config.UsePathStyle {
+			return nil, errors.New("S3 download endpoint must be an HTTPS origin with path-style addressing")
+		}
+	}
 
 	awsConfig := aws.Config{
 		Region: region,
@@ -184,12 +197,20 @@ func NewS3(config S3Config) (*S3, error) {
 		options.BaseEndpoint = aws.String(strings.TrimRight(endpoint, "/"))
 		options.UsePathStyle = config.UsePathStyle
 	})
+	downloadClient := client
+	if config.DownloadEndpoint != "" {
+		downloadClient = s3.NewFromConfig(awsConfig, func(options *s3.Options) {
+			options.BaseEndpoint = aws.String(strings.TrimRight(config.DownloadEndpoint, "/"))
+			options.UsePathStyle = true
+		})
+	}
 	return &S3{
-		client:       client,
-		presign:      s3.NewPresignClient(client),
-		bucket:       bucket,
-		signedGETTTL: config.SignedGETTTL,
-		now:          time.Now,
+		client:          client,
+		presign:         s3.NewPresignClient(client),
+		downloadPresign: s3.NewPresignClient(downloadClient),
+		bucket:          bucket,
+		signedGETTTL:    config.SignedGETTTL,
+		now:             time.Now,
 	}, nil
 }
 
@@ -850,7 +871,7 @@ func (store *S3) presignExactVersion(
 	versionID string,
 	notAfter time.Time,
 ) (SignedRead, error) {
-	if store == nil || store.presign == nil || store.now == nil {
+	if store == nil || store.downloadPresign == nil || store.now == nil {
 		return SignedRead{}, errors.New("S3 Artifact Store is not configured")
 	}
 	if err := validateExactVersion(objectKey, versionID); err != nil {
@@ -864,7 +885,7 @@ func (store *S3) presignExactVersion(
 	if !expiresAt.After(issuedAt) {
 		return SignedRead{}, errors.New("signed S3 Artifact expiry has elapsed")
 	}
-	output, err := store.presign.PresignGetObject(
+	output, err := store.downloadPresign.PresignGetObject(
 		ctx,
 		&s3.GetObjectInput{
 			Bucket:    aws.String(store.bucket),
