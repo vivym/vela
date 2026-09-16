@@ -1,0 +1,19 @@
+{
+  "host": "llmpool01",
+  "observed_at_utc": "2026-09-16T09:52:53.057228+00:00",
+  "site_sha256": "daa56d9b3027de96c434a1d6fc7a76ce123961b005c918ca74c6f3846ca33275",
+  "other_configs_unchanged": true,
+  "other_config_count": 9,
+  "install_output": "/etc/nginx/ssl/ragflow.marslab.ic/wildcard.marslab.ic.crt: OK\n/etc/nginx/ssl/ragflow.marslab.ic/current/tls.crt: OK\nactive\nactive\nenabled\nenabled\nbackup=/root/vela-backups/nginx-vela-20260916-175251\nVela HTTPS=401 (expected), RAGFlow HTTPS=200\n",
+  "config_hashes": {
+    "/etc/nginx/nginx.conf": "48c6a4ec1e1fd28ccf968490f07e34a1d7f755793b2108a3ed8670b1ee2a0aa2",
+    "/etc/nginx/fastcgi.conf": "dc4a3e6f16eb08000fb4a4ba6aaf9faeb50d55a3eaf152907938632f5b85b3aa",
+    "/etc/nginx/sites-enabled/default": "ce0901350a021608139b5639cf4ccd7717bef8c3a9e4f79031eb46386b67b03f",
+    "/etc/nginx/snippets/snakeoil.conf": "69de463039725a6636b5a3ca87a0968dde646279bc8bb4419d200f547448a55a",
+    "/etc/nginx/snippets/fastcgi-php.conf": "a9dd98bf9631d727f0a846a9c7f4fe6193468a714c782df26d5cc9a7756411f2",
+    "/etc/nginx/conf.d/api.benpay.vip.conf": "88c2d6e715643ef9ecff070b5c490e8e4aecd442234b9edd2011a17449338fa7",
+    "/etc/nginx/conf.d/board.benpay.vip.conf": "1e576ff110162f244ad58612d19e73cb58dcc1dadd2e33cd39fc0ed57409ffb0",
+    "/etc/nginx/conf.d/admin.benpay.vip.conf": "d09261c023e3e6dfe13328c87912cfad024642ee826b0c9d0f0f7168a86825d9",
+    "/etc/nginx/conf.d/ragflow.marslab.ic.conf": "70622e3b688c9c9812ca652f6b5e69a843663af305ee8ab84af3d2b00f7483cc"
+  }
+}

@@ -7,7 +7,7 @@
   {
     "op": "replace",
     "path": "/metadata/name",
-    "value": "vela-control-runtime-api-95ce430963ad"
+    "value": "vela-control-runtime-api-0ec8cb63b1a5"
   },
   {
     "op": "replace",
@@ -97,7 +97,7 @@
       "VELA_STAGE_WORKER_IDENTITY_KEY_FILE": "/etc/vela-control/materialized/stage-worker/identity-key",
       "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID": "webhook-key-1",
       "VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE": "/etc/vela-control/materialized/keyrings/webhook.json",
-      "VELA_ARTIFACT_S3_DOWNLOAD_ENDPOINT": "https://10.1.201.70:30443"
+      "VELA_ARTIFACT_S3_DOWNLOAD_ENDPOINT": "https://vela.marslab.ic"
     }
   },
   {
@@ -105,7 +105,7 @@
     "path": "/metadata/annotations",
     "value": {
       "vela.ai/deployment-profile": "api-acceptance-validation",
-      "vela.ai/release-revision": "sha256:b6d149529e1fba375fdcb8430e757b1b911f06675f64b267db2458bc8833ba3e"
+      "vela.ai/release-revision": "sha256:a048dfc7837a3141b7e4da2485980d777af290de1707bdfd3cbbeeea543697aa"
     }
   }
 ]

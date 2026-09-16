@@ -1,0 +1,22 @@
+{
+  "host": "llmpool02",
+  "observed_at_utc": "2026-09-16T09:54:32.742274+00:00",
+  "site_sha256": "daa56d9b3027de96c434a1d6fc7a76ce123961b005c918ca74c6f3846ca33275",
+  "other_configs_unchanged": true,
+  "other_config_count": 12,
+  "install_output": "/etc/nginx/ssl/ragflow.marslab.ic/wildcard.marslab.ic.crt: OK\n/etc/nginx/ssl/ragflow.marslab.ic/current/tls.crt: OK\nactive\nactive\nenabled\nenabled\nbackup=/root/vela-backups/nginx-vela-20260916-175432\nVela HTTPS=401 (expected), RAGFlow HTTPS=200\n",
+  "config_hashes": {
+    "/etc/nginx/fastcgi.conf": "dc4a3e6f16eb08000fb4a4ba6aaf9faeb50d55a3eaf152907938632f5b85b3aa",
+    "/etc/nginx/nginx.conf": "4869cddce1030ceffb99bf88b1a64a0ec2b5d51c0c2377958f48533bae320522",
+    "/etc/nginx/modules-enabled/50-mod-stream.conf": "a1bf6e1e25eedbd7e6f816bd608f0a54adc1f2cdb238580890d03574296b81eb",
+    "/etc/nginx/modules-enabled/70-mod-stream-geoip2.conf": "8600573de6c41876bd679b89f4e8f298b19bfa9d51701e348206c92c0747c492",
+    "/etc/nginx/modules-enabled/50-mod-mail.conf": "5e3838f1653ca24c82d0dee5b3db7de73221fbfff8aed8c2fc157fa6252f5f9d",
+    "/etc/nginx/modules-enabled/50-mod-http-geoip2.conf": "fcf0f66b8668ce6969314b16c5be6437bb0954b809238617eeb3cb075e084d4b",
+    "/etc/nginx/modules-enabled/50-mod-http-xslt-filter.conf": "9a66703196a121300eb20c4fcbdbffca8ab662793d9b16eac6c10d65cc2733a3",
+    "/etc/nginx/modules-enabled/50-mod-http-image-filter.conf": "1c155b881a2ccec0d14a7ea4569d5791e4998aa94ea1efef5080641216774c7f",
+    "/etc/nginx/snippets/fastcgi-php.conf": "a9dd98bf9631d727f0a846a9c7f4fe6193468a714c782df26d5cc9a7756411f2",
+    "/etc/nginx/snippets/snakeoil.conf": "69de463039725a6636b5a3ca87a0968dde646279bc8bb4419d200f547448a55a",
+    "/etc/nginx/conf.d/ragflow.marslab.ic.conf": "70622e3b688c9c9812ca652f6b5e69a843663af305ee8ab84af3d2b00f7483cc",
+    "/etc/nginx/sites-enabled/default": "ce0901350a021608139b5639cf4ccd7717bef8c3a9e4f79031eb46386b67b03f"
+  }
+}

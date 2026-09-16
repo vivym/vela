@@ -31,7 +31,7 @@
     "value": [
       {
         "configMapRef": {
-          "name": "vela-control-runtime-api-95ce430963ad"
+          "name": "vela-control-runtime-api-0ec8cb63b1a5"
         }
       }
     ]

@@ -1,0 +1,208 @@
+{
+  "passed": true,
+  "observed_at_utc": "2026-09-16T09:58:51.598528+00:00",
+  "base_url": "https://vela.marslab.ic/api",
+  "dns_mode": "explicit connection target; user manages DNS",
+  "checks": [
+    {
+      "node": "10.1.201.70",
+      "check": "anonymous_denied",
+      "status": 401
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "permanent_key_authenticated",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "tampered_key_denied",
+      "status": 401
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "other_project_denied",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "other_project_job_not_visible",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "identity_administration_denied",
+      "status": 403
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "existing_successful_job",
+      "status": 200
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "private_storage_path_not_exposed",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "grafana_not_exposed",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "http_to_https_preserves_uri",
+      "status": 308
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "ragflow_unaffected",
+      "status": 200
+    },
+    {
+      "node": "10.1.201.70",
+      "check": "ragflow_admin_blocked",
+      "status": 403
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "anonymous_denied",
+      "status": 401
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "permanent_key_authenticated",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "tampered_key_denied",
+      "status": 401
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "other_project_denied",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "other_project_job_not_visible",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "identity_administration_denied",
+      "status": 403
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "existing_successful_job",
+      "status": 200
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "private_storage_path_not_exposed",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "grafana_not_exposed",
+      "status": 404
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "http_to_https_preserves_uri",
+      "status": 308
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "ragflow_unaffected",
+      "status": 200
+    },
+    {
+      "node": "10.1.201.71",
+      "check": "ragflow_admin_blocked",
+      "status": 403
+    }
+  ],
+  "artifacts": [
+    {
+      "node": "10.1.201.70",
+      "kind": "VIDEO",
+      "status": 200,
+      "size_bytes": 855445,
+      "sha256": "5a1d3f3204976a9a20bad067e8fab9446d1ee4db892a6fd3fab185a878952306",
+      "range_status": 206,
+      "unsigned_status": 403,
+      "write_status": 405,
+      "object_version_id": "a2b8fc3b-6eb8-449b-a87e-fe271d05fd01",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      }
+    },
+    {
+      "node": "10.1.201.70",
+      "kind": "THUMBNAIL",
+      "status": 200,
+      "size_bytes": 6944,
+      "sha256": "3a995ac1955d64ffc5af38d6c90ebd470cb6d75ec9b04eafc70dcca4fde3983e",
+      "range_status": 206,
+      "unsigned_status": 403,
+      "write_status": 405,
+      "object_version_id": "2e99aab2-3d63-4c87-9e6c-eff152453e39",
+      "media": null
+    },
+    {
+      "node": "10.1.201.71",
+      "kind": "VIDEO",
+      "status": 200,
+      "size_bytes": 855445,
+      "sha256": "5a1d3f3204976a9a20bad067e8fab9446d1ee4db892a6fd3fab185a878952306",
+      "range_status": 206,
+      "unsigned_status": 403,
+      "write_status": 405,
+      "object_version_id": "a2b8fc3b-6eb8-449b-a87e-fe271d05fd01",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      }
+    },
+    {
+      "node": "10.1.201.71",
+      "kind": "THUMBNAIL",
+      "status": 200,
+      "size_bytes": 6944,
+      "sha256": "3a995ac1955d64ffc5af38d6c90ebd470cb6d75ec9b04eafc70dcca4fde3983e",
+      "range_status": 206,
+      "unsigned_status": 403,
+      "write_status": 405,
+      "object_version_id": "2e99aab2-3d63-4c87-9e6c-eff152453e39",
+      "media": null
+    }
+  ],
+  "database": {
+    "relay_jobs": 0,
+    "relay_charges": 0,
+    "existing_job_charges": 1
+  },
+  "control_ready_replicas": 2
+}

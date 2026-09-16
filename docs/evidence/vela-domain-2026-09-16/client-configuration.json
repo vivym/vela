@@ -1,0 +1,31 @@
+{
+  "observed_at_utc": "2026-09-16T11:27:55.303343+00:00",
+  "private_base_url": "https://vela.marslab.ic/api",
+  "private_ca_matches_public_marslab_ca": true,
+  "private_permissions_correct": true,
+  "system_dns_addresses": [],
+  "earlier_local_curl_checks": [
+    {
+      "node": "10.1.201.70",
+      "anonymous_status": 401,
+      "ssl_verify_result": 0
+    },
+    {
+      "node": "10.1.201.71",
+      "anonymous_status": 401,
+      "ssl_verify_result": 0
+    }
+  ],
+  "python_strict_tls": {
+    "version": "3.14.7",
+    "result": "rejected",
+    "reason": "CA cert does not include key usage extension",
+    "root_certificate_has_key_usage": false
+  },
+  "later_local_authenticated_probe": {
+    "result": "timeout",
+    "status": 0,
+    "curl_exit_code": 28,
+    "note": "Server-side two-node authenticated/download acceptance passed; local network probe later timed out."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "observed_at_utc": "2026-09-16T11:30:34.560492+00:00",
+  "source": "marslab-server-170hx-66",
+  "checks": [
+    {
+      "node": "10.1.201.70",
+      "status": 401,
+      "tls_verified": true
+    },
+    {
+      "node": "10.1.201.71",
+      "status": 401,
+      "tls_verified": true
+    }
+  ],
+  "system_dns_addresses": []
+}
