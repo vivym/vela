@@ -84,6 +84,16 @@ def main():
         }
         (directory / "launch.json").write_text(json.dumps(launch, indent=2) + "\n")
         (directory / "evidence-template.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        claim = {
+            "apiVersion": "resource.k8s.io/v1beta1",
+            "kind": "ResourceClaim",
+            "metadata": {"name": f"minimax-h3-{worker['role']}-{worker['ordinal']}",
+                          "namespace": "vela-system"},
+            "spec": {"devices": {"requests": [{"name": "gpu", "deviceClassName": "gpu.nvidia.com",
+                                                   "selectors": [{"cel": {"expression":
+                                                       f"device.attributes['gpu.nvidia.com/uuid'] == '{worker['gpu_uuid']}'"}}]}]}}
+        }
+        (directory / "resource-claim.json").write_text(json.dumps(claim, indent=2) + "\n")
 
 
 if __name__ == "__main__":
