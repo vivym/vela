@@ -15,8 +15,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/journalbinding"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/runtimepolicy"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -88,6 +91,7 @@ type runtimeStartupResources struct {
 	socket                       *runtimeStartupSocket
 	workerOwner                  *nodeagent.RuntimeNamespaceOwner
 	custody                      *nodeagent.RuntimeObserverCustody
+	stopCustodyHeartbeat         func()
 	launcherClose                func() error
 	workerInputJournal           *stageworkeragent.FileInputTransferJournal
 	workerMaterializationJournal *stageworkeragent.FileMaterializationJournal
@@ -106,6 +110,7 @@ type runtimeStartupResources struct {
 	runtimeBootstrap             *nodeagent.RuntimeBootstrapPublication
 	registryVerifierKeys         map[string][]byte
 	runtimePublication           *nodeagent.RuntimeStartupPublicationConfig
+	image                        *nodeagent.RuntimeStartupImageConfig
 	// authorizationPolicy is populated only by a validation composition
 	// harness. Production assembly leaves it nil and uses the supervised issuer
 	// through runtimeStartupPolicyFactory.
@@ -212,13 +217,14 @@ func runRuntimeStartupGate(configuration config) error {
 		func(configuration config) runtimeStartupLauncher { return runtimeStartupLauncherFactory(configuration) },
 		loadRuntimeStartupResources,
 		composeRuntimeStartupAuthority,
+		waitRuntimeStartupWithReporting,
 	)
 }
 
 type runtimeStartupResourceLoader func(context.Context, config) (*runtimeStartupResources, error)
 type runtimeStartupAuthorityComposer func(context.Context, config, *runtimeStartupResources, runtimeStartupLauncher) (*runtimeStartupLifecycle, error)
 
-func runRuntimeStartupGateWithDependencies(configuration config, launcherFactory func(config) runtimeStartupLauncher, loadResources runtimeStartupResourceLoader, composeAuthority runtimeStartupAuthorityComposer) error {
+func runRuntimeStartupGateWithDependencies(configuration config, launcherFactory func(config) runtimeStartupLauncher, loadResources runtimeStartupResourceLoader, composeAuthority runtimeStartupAuthorityComposer, wait func(context.Context, config, *runtimeStartupLifecycle) error) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	runID := uuid.New()
@@ -227,7 +233,7 @@ func runRuntimeStartupGateWithDependencies(configuration config, launcherFactory
 		receipt := nodeagent.NewRuntimeStartupFailureReceipt(input)
 		return errors.Join(input.Cause, writeRuntimeStartupFailureReceipt(configuration.receiptDirectory, runID, receipt))
 	}
-	if launcherFactory == nil || loadResources == nil || composeAuthority == nil {
+	if launcherFactory == nil || loadResources == nil || composeAuthority == nil || wait == nil {
 		return recordFailure(nodeagent.RuntimeStartupFailureReceiptInput{Phase: nodeagent.RuntimeStartupFailureResourceLoad, Cause: errors.New("runtime startup gate dependencies are incomplete"), CleanupVerified: true})
 	}
 	launcher := launcherFactory(configuration)
@@ -279,7 +285,7 @@ func runRuntimeStartupGateWithDependencies(configuration config, launcherFactory
 		// The startup socket exchange is one-shot; a successful Permit does not
 		// end the Runtime lifetime. Keep custody and journal observation alive
 		// until the monitored original process exits or Node is canceled.
-		serveErr = lifecycle.orchestration.Wait(ctx)
+		serveErr = wait(ctx, configuration, lifecycle)
 	}
 	// Snapshot the authority state before Shutdown revokes the live grant. A
 	// wait/cleanup failure after a successful Permit must retain the fact that a
@@ -527,6 +533,9 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 		cleanup()
 		return nil, err
 	}
+	// Keep the observer alive through caller/CRI inspection, reservation, and
+	// the handoff to ongoing orchestration. Close joins it before releasing custody.
+	resources.stopCustodyHeartbeat = maintainRuntimeStartupCustody(custody)
 	caller, err := receiveRuntimeStartupCaller(ctx, resources.socket, resources.plan)
 	if err != nil {
 		_ = custody.Close()
@@ -553,7 +562,7 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 		return nil, nodeagent.ErrRuntimeLaunchPlan
 	}
 	runtimeObservation, err := resources.observer.ObserveCaller(ctx, launch.Target, caller)
-	if launch.Target.PodUID == uuid.Nil || launch.Target.ContainerName != "model-runtime" || launch.Target.ContainerAttempt == 0 || err != nil || runtimeObservation.Process.UID != credentials.UID || runtimeObservation.Process.GID != credentials.GID {
+	if launch.Target.PodUID == uuid.Nil || launch.Target.ContainerName != "model-runtime" || err != nil || runtimeObservation.Process.UID != credentials.UID || runtimeObservation.Process.GID != credentials.GID {
 		_ = caller.Close()
 		_ = custody.Close()
 		cleanup()
@@ -578,7 +587,6 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 		launch.WorkerTarget.PodNamespace != expectedPod.Namespace ||
 		launch.WorkerTarget.PodName != expectedPod.Name ||
 		launch.WorkerTarget.ContainerName != "stage-worker-agent" ||
-		launch.WorkerTarget.ContainerAttempt == 0 ||
 		launch.WorkerTarget.SandboxID != launch.Target.SandboxID {
 		_ = caller.Close()
 		// custody is still local until all launch targets have been bound;
@@ -627,6 +635,7 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 	launch.Close = nil
 	authority, err := newRuntimeStartupAuthority(configuration, resources.plan, nodeagent.RuntimeStartupAuthorityConfig{
 		Ledger: resources.ledger, Plan: resources.plan, Pods: resources.pods, Observer: resources.observer,
+		Image:   resources.image,
 		Custody: custody, Journal: resources.journal, WorkerOwner: workerOwner, RuntimeOwner: resources.runtimeOwner, RuntimeJournalEndpoint: resources.runtimeJournalEndpoint, RuntimePublication: resources.runtimePublication, Registry: resources.registry,
 		AuthorizationPolicy: authorizationPolicy, PolicyAuthorizationPublisher: policyAuthorizationPublisher, Credentials: []nodeagent.RuntimeCallerCredentials{credentials},
 		ObserverInterval: 250 * time.Millisecond, ObserverTimeout: 5 * time.Second, ExchangeTimeout: 30 * time.Second,
@@ -656,10 +665,10 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 func validateRuntimeStartupLaunchTargets(expectedPod *corev1.Pod, launch runtimeStartupLaunch) error {
 	if expectedPod == nil || launch.Target.PodUID == uuid.Nil || launch.WorkerTarget.PodUID == uuid.Nil ||
 		launch.Target.PodNamespace != expectedPod.Namespace || launch.Target.PodName != expectedPod.Name ||
-		launch.Target.ContainerName != "model-runtime" || launch.Target.ContainerAttempt == 0 ||
+		launch.Target.ContainerName != "model-runtime" ||
 		launch.WorkerTarget.PodUID != launch.Target.PodUID || launch.WorkerTarget.PodNamespace != expectedPod.Namespace ||
 		launch.WorkerTarget.PodName != expectedPod.Name || launch.WorkerTarget.ContainerName != "stage-worker-agent" ||
-		launch.WorkerTarget.ContainerAttempt == 0 || launch.WorkerTarget.SandboxID != launch.Target.SandboxID {
+		launch.WorkerTarget.SandboxID != launch.Target.SandboxID {
 		return nodeagent.ErrRuntimeLaunchPlan
 	}
 	return nil
@@ -693,7 +702,25 @@ func publishRuntimeBootstrapBeforeLaunch(ctx context.Context, configuration conf
 	if runtimeContainer == nil || bootstrapErr != nil {
 		return nodeagent.ErrRuntimeLaunchPlan
 	}
+	// Verify the authenticated Kubernetes reader before recording the
+	// irreversible backend startup intent. A missing RBAC grant, deleted Pod,
+	// or incomplete Pod identity is a preflight failure and must remain
+	// retryable; it must not poison the journal with an unresolved incarnation.
+	expectedPod := resources.plan.ExpectedPod()
+	if expectedPod == nil {
+		return nodeagent.ErrRuntimeLaunchPlan
+	}
+	if _, err := resources.pods.GetWorkerInstancePod(ctx, fleetcontroller.ResourceKey{
+		Namespace: expectedPod.Namespace,
+		Name:      expectedPod.Name,
+	}); err != nil {
+		return fmt.Errorf("preflight authenticated Fleet-created Pod: %w", err)
+	}
 	runtimeSocket, brokerSocket := "", ""
+	if pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		runtimeSocket = "/run/vela-model-runtime/private/runtime.sock"
+		brokerSocket = runtimelaunch.BrokerSocket
+	}
 	for _, env := range runtimeContainer.Env {
 		if env.ValueFrom == nil {
 			if env.Name == "VELA_MODEL_RUNTIME_SOCKET" {
@@ -726,7 +753,45 @@ func publishRuntimeBootstrapBeforeLaunch(ctx context.Context, configuration conf
 		return fmt.Errorf("publish runtime bootstrap: %w", err)
 	}
 	resources.runtimeBootstrap = publication
+	if pod.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		if err := publishKubernetesWorkerBootstrap(configuration, resources, credentials); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func publishKubernetesWorkerBootstrap(configuration config, resources *runtimeStartupResources, credentials nodeagent.RuntimeCallerCredentials) error {
+	binding, err := journalbinding.Encode(resources.plan.RegistryBinding())
+	if err != nil {
+		return err
+	}
+	keys, err := json.Marshal(resources.registryVerifierKeys)
+	if err != nil {
+		return err
+	}
+	root := filepath.Join(filepath.Dir(configuration.runtimeStartupSocket), "worker-bootstrap")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		return fmt.Errorf("create fresh Worker bootstrap publication: %w", err)
+	}
+	for _, entry := range []struct {
+		name string
+		wire []byte
+	}{{"binding.json", binding}, {"verifier.json", keys}} {
+		file, err := os.OpenFile(filepath.Join(root, entry.name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o400)
+		if err != nil {
+			return err
+		}
+		_, writeErr := file.Write(entry.wire)
+		err = errors.Join(writeErr, file.Chown(0, int(credentials.GID)), file.Chmod(0o440), file.Sync(), file.Close())
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.Chown(root, 0, int(credentials.GID)); err != nil {
+		return err
+	}
+	return os.Chmod(root, 0o750)
 }
 
 // runtimeContainerBootstrapPath validates the effective OCI argv. Kubernetes
@@ -737,6 +802,11 @@ func publishRuntimeBootstrapBeforeLaunch(ctx context.Context, configuration conf
 func runtimeContainerBootstrapPath(container *corev1.Container) (string, error) {
 	if container == nil {
 		return "", nodeagent.ErrRuntimeLaunchPlan
+	}
+	if len(container.Command) == 0 && len(container.Args) == 0 {
+		// The Kubernetes image contract fixes both pre-exec and Runtime argv.
+		// Actual image content/defaults are independently checked before grant.
+		return runtimelaunch.Bootstrap, nil
 	}
 	command := append([]string(nil), container.Command...)
 	if len(command) == 0 {
@@ -887,7 +957,7 @@ func loadRuntimeJournalOwner(configuration config, plan *nodeagent.RuntimeLaunch
 	if err != nil {
 		return nil, fmt.Errorf("read verified runtime launch manifest: %w", err)
 	}
-	routes, err := manifest.RuntimeBindings()
+	routes, err := modelruntime.RemoteStartupBindings(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("derive runtime journal routes: %w", err)
 	}
@@ -903,7 +973,17 @@ func loadRuntimeJournalOwner(configuration config, plan *nodeagent.RuntimeLaunch
 }
 
 func loadRuntimeStartupResources(ctx context.Context, configuration config) (*runtimeStartupResources, error) {
-	return loadRuntimeStartupResourcesWithFactory(ctx, configuration, runtimeStartupProductionResourceFactory())
+	resources, err := loadRuntimeStartupResourcesWithFactory(ctx, configuration, runtimeStartupProductionResourceFactory())
+	if err != nil {
+		return nil, err
+	}
+	if resources.plan.ExpectedPod().Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		resources.image, err = loadRuntimeStartupImage(ctx, configuration)
+		if err != nil {
+			return nil, errors.Join(err, resources.Close())
+		}
+	}
+	return resources, nil
 }
 
 // loadRuntimeStartupResourcesWithFactory is the single composition-root
@@ -951,7 +1031,18 @@ func loadRuntimeStartupResourcesWithFactory(ctx context.Context, configuration c
 	if journal == nil {
 		return nil, errors.New("open runtime execution journal: factory returned nil owner")
 	}
-	ledger, err := factory.openLedger(ctx, configuration.runtimeStartupLedgerDir, configuration.nodeIdentity, true)
+	// Initialization is only valid for the first process that owns this
+	// per-node ledger.  A systemd restart must reopen the existing append-only
+	// journal; passing initialize=true would (correctly) reject the non-empty
+	// directory and create a restart storm after any startup failure.
+	initializeLedger := true
+	ledgerPath := filepath.Join(configuration.runtimeStartupLedgerDir, "runtime-startups.jsonl")
+	if _, statErr := os.Stat(ledgerPath); statErr == nil {
+		initializeLedger = false
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspect runtime startup ledger: %w", statErr)
+	}
+	ledger, err := factory.openLedger(ctx, configuration.runtimeStartupLedgerDir, configuration.nodeIdentity, initializeLedger)
 	if err != nil {
 		_ = journal.Close()
 		return nil, fmt.Errorf("open runtime startup ledger: %w", err)
@@ -1096,6 +1187,10 @@ func (resources *runtimeStartupResources) Close() error {
 		closeErr = errors.Join(closeErr, resources.registryClose())
 		resources.registryClose = nil
 	}
+	if resources.stopCustodyHeartbeat != nil {
+		resources.stopCustodyHeartbeat()
+		resources.stopCustodyHeartbeat = nil
+	}
 	if resources.custody != nil {
 		closeErr = errors.Join(closeErr, resources.custody.Close())
 		resources.custody = nil
@@ -1113,6 +1208,10 @@ func (resources *runtimeStartupResources) Close() error {
 		closeErr = errors.Join(closeErr, resources.launcherCleanupVerify(checkCtx))
 		cancel()
 		resources.launcherCleanupVerify = nil
+	}
+	if resources.image != nil {
+		closeErr = errors.Join(closeErr, resources.image.Images.Close())
+		resources.image = nil
 	}
 	if resources.observer != nil {
 		closeErr = errors.Join(closeErr, resources.observer.Close())
