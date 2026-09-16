@@ -27,12 +27,25 @@ func ReadVerifierKeyringFile(path string) (map[string][]byte, error) {
 	return readKeyringFile(path, "StageAuthority verifier", ed25519.PublicKeySize, ed25519.PublicKeySize)
 }
 
+func ReadNodePublishedVerifierKeyringFile(path string, gid uint32) (map[string][]byte, error) {
+	document, err := securefile.ReadRootPublication(path, maxKeyringFileBytes, gid)
+	if err != nil {
+		return nil, err
+	}
+	defer clear(document)
+	return parseKeyring(document, "Node-published verifier", ed25519.PublicKeySize, ed25519.PublicKeySize)
+}
+
 func readKeyringFile(path, description string, minimumKeyBytes, maximumKeyBytes int) (map[string][]byte, error) {
 	document, err := securefile.Read(path, maxKeyringFileBytes, true)
 	if err != nil {
 		return nil, fmt.Errorf("read %s keyring: %w", description, err)
 	}
 	defer clear(document)
+	return parseKeyring(document, description, minimumKeyBytes, maximumKeyBytes)
+}
+
+func parseKeyring(document []byte, description string, minimumKeyBytes, maximumKeyBytes int) (map[string][]byte, error) {
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	opening, err := decoder.Token()
 	if err != nil || opening != json.Delim('{') {

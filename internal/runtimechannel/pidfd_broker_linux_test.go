@@ -17,6 +17,58 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestPIDFDBrokerWaitsForFirstPacketAndHonorsDeadline(t *testing.T) {
+	for _, send := range []bool{true, false} {
+		t.Run(map[bool]string{true: "delayed-packet", false: "deadline"}[send], func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "broker.sock")
+			listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: path, Net: "unixpacket"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			client, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: path, Net: "unixpacket"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			server, err := listener.AcceptUnix()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			if err := server.SetReadDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { _, rights, err := readPIDFDBrokerRequest(server); closePIDFDBrokerRights(rights); done <- err }()
+			select {
+			case err := <-done:
+				t.Fatalf("accepted connection rejected before first packet: %v", err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			if send {
+				pidfd, err := unix.PidfdOpen(os.Getpid(), 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer unix.Close(pidfd)
+				frame := make([]byte, pidFDBrokerFrame)
+				copy(frame, pidFDBrokerProtocol)
+				if err := sendPIDFDBrokerFrame(client, frame, []int{pidfd, pidfd}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = <-done
+			if send && err != nil {
+				t.Fatal(err)
+			}
+			if !send && !os.IsTimeout(err) {
+				t.Fatalf("idle peer deadline returned %v", err)
+			}
+		})
+	}
+}
+
 func TestPIDFDBrokerComparesRetainedHandles(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires a root broker and non-root broker client")

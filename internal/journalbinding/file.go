@@ -22,6 +22,30 @@ func LoadFile(path string, verifier *Verifier) (*velav1.WorkerBootstrapBinding, 
 	if err != nil {
 		return nil, err
 	}
+	return parseBinding(wire, verifier)
+}
+
+// LoadNodePublication retains the Node-owned read-only publication contract;
+// it never falls back to private files after a permission or signature failure.
+func LoadNodePublication(bindingPath, verifierPath string, gid uint32) (*velav1.WorkerBootstrapBinding, *Verifier, error) {
+	keys, err := stageauthority.ReadNodePublishedVerifierKeyringFile(verifierPath, gid)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer stageauthority.ClearKeyring(keys)
+	verifier, err := NewVerifier(keys)
+	if err != nil {
+		return nil, nil, err
+	}
+	wire, err := securefile.ReadRootPublication(bindingPath, MaximumBytes, gid)
+	if err != nil {
+		return nil, nil, err
+	}
+	binding, err := parseBinding(wire, verifier)
+	return binding, verifier, err
+}
+
+func parseBinding(wire []byte, verifier *Verifier) (*velav1.WorkerBootstrapBinding, error) {
 	if err := strictjson.RejectDuplicateKeys(wire); err != nil {
 		return nil, err
 	}

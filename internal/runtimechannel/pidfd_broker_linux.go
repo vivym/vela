@@ -181,8 +181,13 @@ func sendPIDFDBrokerFrame(connection *net.UnixConn, frame []byte, rights []int) 
 	var sendErr error
 	var count int
 	if err := raw.Write(func(fd uintptr) bool {
-		count, sendErr = unix.SendmsgN(int(fd), frame, unix.UnixRights(rights...), nil, 0)
-		return true
+		for {
+			count, sendErr = unix.SendmsgN(int(fd), frame, unix.UnixRights(rights...), nil, 0)
+			if errors.Is(sendErr, unix.EINTR) {
+				continue
+			}
+			return !errors.Is(sendErr, unix.EAGAIN) && !errors.Is(sendErr, unix.EWOULDBLOCK)
+		}
 	}); err != nil {
 		return err
 	}
@@ -222,8 +227,15 @@ func readPIDFDBrokerRequest(connection *net.UnixConn) ([]byte, []int, error) {
 	var count, oobCount, flags int
 	var receiveErr error
 	if err := raw.Read(func(fd uintptr) bool {
-		count, oobCount, flags, _, receiveErr = unix.Recvmsg(int(fd), frame, oob, unix.MSG_CMSG_CLOEXEC)
-		return true
+		for {
+			count, oobCount, flags, _, receiveErr = unix.Recvmsg(int(fd), frame, oob, unix.MSG_CMSG_CLOEXEC)
+			if errors.Is(receiveErr, unix.EINTR) {
+				continue
+			}
+			// A connection can be accepted before its first packet arrives.
+			// Let Go's poller wait for readability instead of closing the peer.
+			return !errors.Is(receiveErr, unix.EAGAIN) && !errors.Is(receiveErr, unix.EWOULDBLOCK)
+		}
 	}); err != nil {
 		return nil, nil, err
 	}
