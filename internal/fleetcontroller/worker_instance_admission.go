@@ -3,6 +3,8 @@ package fleetcontroller
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -49,6 +51,9 @@ func newWorkerInstanceAdmissionValidator(
 			return nil, err
 		}
 		for _, bundle := range rollout.WorkerBundles {
+			if rollout.bundleWithdrawn(bundle.WorkerBundleID) {
+				continue
+			}
 			pods, err := materializeWorkerInstancePods(bundle)
 			if err != nil {
 				return nil, err
@@ -93,14 +98,16 @@ func (validator *WorkerInstancePodAdmissionValidator) ValidateProtectedPodCreate
 	if validator == nil {
 		return ErrProtectedResourceDrift
 	}
-	if ctx == nil || pod.UID != "" || len(pod.OwnerReferences) != 0 ||
+	// The API server assigns UID before invoking validating admission. It is
+	// server metadata, already excluded by the exact signed-template comparison.
+	if ctx == nil || len(pod.OwnerReferences) != 0 ||
 		pod.Labels[workerInstanceIDLabel] == "" ||
 		pod.Labels[workerIDLabel] != "" || pod.Labels[workerEpochLabel] != "" {
-		return ErrProtectedResourceDrift
+		return fmt.Errorf("protected Pod create metadata: uid_present=%t owner_references=%d: %w", pod.UID != "", len(pod.OwnerReferences), ErrProtectedResourceDrift)
 	}
 	desired, exists := validator.desiredPods[runtimeResourceName(pod.Namespace, pod.Name)]
-	if !exists || !workerInstancePodMatches(pod, desired) {
-		return ErrProtectedResourceDrift
+	if !exists || pod.Spec.NodeName != desired.Spec.NodeName || !slices.Equal(pod.Spec.SchedulingGates, desired.Spec.SchedulingGates) || !workerInstancePodMatches(pod, desired) {
+		return fmt.Errorf("protected Pod create template: known=%t gates_match=%t content_match=%t: %w", exists, slices.Equal(pod.Spec.SchedulingGates, desired.Spec.SchedulingGates), workerInstancePodMatches(pod, desired), ErrProtectedResourceDrift)
 	}
 	return nil
 }

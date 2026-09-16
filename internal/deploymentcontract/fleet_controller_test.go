@@ -86,7 +86,6 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 	}
 	roles := map[string]fleetRBACDocument{}
 	for _, document := range documents {
-		roles[document.Kind] = document
 		for _, rule := range document.Rules {
 			for _, value := range append(append([]string{}, rule.APIGroups...), append(rule.Resources, rule.Verbs...)...) {
 				if value == "*" {
@@ -94,6 +93,16 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 				}
 			}
 		}
+		// Node bootstrap bindings coexist in this manifest but do not grant
+		// authority to the Fleet Controller service account.
+		if document.Metadata.Name != "vela-fleet-controller" &&
+			document.Metadata.Name != "vela-fleet-controller-node-reader" {
+			continue
+		}
+		if _, exists := roles[document.Kind]; exists {
+			t.Fatalf("duplicate Fleet RBAC kind %s", document.Kind)
+		}
+		roles[document.Kind] = document
 		if strings.HasSuffix(document.Kind, "Binding") {
 			if len(document.Subjects) != 1 || document.Subjects[0].Kind != "ServiceAccount" ||
 				document.Subjects[0].Name != "vela-fleet-controller" ||

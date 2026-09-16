@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
@@ -25,6 +26,14 @@ type WorkerBundleActuator interface {
 type ResidencyPlanRollout struct {
 	ApprovedPlan  fleet.ApprovedResidencyPlan `json:"approved_plan"`
 	WorkerBundles []WorkerBundleActuation     `json:"worker_bundles"`
+	// Withdrawn bundles remain in the immutable approved plan, but are no
+	// longer created or accepted by create admission. This does not delete
+	// resources or authorize retirement; drain/fence and deletion use Registry.
+	WithdrawnWorkerBundleIDs []uuid.UUID `json:"withdrawn_worker_bundle_ids,omitempty"`
+}
+
+func (rollout ResidencyPlanRollout) bundleWithdrawn(id uuid.UUID) bool {
+	return slices.Contains(rollout.WithdrawnWorkerBundleIDs, id)
 }
 
 type residencyPlanRolloutInput struct {
@@ -86,6 +95,9 @@ func DecodeResidencyPlanRollouts(encoded []byte, namespace string) ([]ResidencyP
 			if bundle.Namespace != namespace {
 				return nil, errors.New("ResidencyPlan rollout namespace does not match Fleet namespace")
 			}
+			if rollout.bundleWithdrawn(bundle.WorkerBundleID) {
+				continue
+			}
 			if err := reserveWorkerBundleDevices(configuredDevices, bundle); err != nil {
 				return nil, fmt.Errorf("ResidencyPlan rollout input reuses device ownership across plans: %w", err)
 			}
@@ -118,6 +130,9 @@ func (controller *ResidencyPlanRolloutController) Reconcile(
 		Converged:       true,
 	}
 	for _, bundle := range rollout.WorkerBundles {
+		if rollout.bundleWithdrawn(bundle.WorkerBundleID) {
+			continue
+		}
 		actuation, err := controller.actuator.Actuate(ctx, bundle)
 		if err != nil {
 			return ResidencyPlanRolloutResult{}, fmt.Errorf(
@@ -143,6 +158,15 @@ func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 	plannedBundles := make(map[uuid.UUID]fleet.PlannedWorkerBundle, len(plan.WorkerBundles))
 	for _, bundle := range plan.WorkerBundles {
 		plannedBundles[bundle.ID] = bundle
+	}
+	withdrawn := make(map[uuid.UUID]struct{}, len(rollout.WithdrawnWorkerBundleIDs))
+	for _, id := range rollout.WithdrawnWorkerBundleIDs {
+		_, known := plannedBundles[id]
+		_, duplicate := withdrawn[id]
+		if !known || duplicate {
+			return errors.New("withdrawn WorkerBundle must identify one unique approved bundle")
+		}
+		withdrawn[id] = struct{}{}
 	}
 	plannedWorkers := make(map[uuid.UUID]fleet.PlannedWorkerInstance, len(plan.WorkerInstances))
 	for _, worker := range plan.WorkerInstances {

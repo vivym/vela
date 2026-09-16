@@ -62,6 +62,7 @@ func cloneResidencyPlanRollouts(rollouts []ResidencyPlanRollout) []ResidencyPlan
 	cloned := make([]ResidencyPlanRollout, len(rollouts))
 	for index, rollout := range rollouts {
 		cloned[index] = rollout
+		cloned[index].WithdrawnWorkerBundleIDs = append([]uuid.UUID(nil), rollout.WithdrawnWorkerBundleIDs...)
 		cloned[index].ApprovedPlan.CapacityPools = append(
 			[]fleet.PlannedCapacityPool(nil), rollout.ApprovedPlan.CapacityPools...,
 		)

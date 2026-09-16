@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontract"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -84,6 +86,8 @@ type WorkerBundleActuation struct {
 	InitImage                      string                    `json:"init_image"`
 	StageWorkerAgentImage          string                    `json:"stage_worker_agent_image"`
 	RuntimeImage                   string                    `json:"runtime_image"`
+	RuntimeLaunchProtocol          string                    `json:"runtime_launch_protocol,omitempty"`
+	ImagePullSecrets               []string                  `json:"image_pull_secrets,omitempty"`
 	StageWorkerConfigMap           string                    `json:"stage_worker_config_map"`
 	ModelRuntimeVerifierConfigMap  string                    `json:"model_runtime_verifier_config_map"`
 	StageWorkerControlTLSSecret    string                    `json:"stage_worker_control_tls_secret"`
@@ -520,6 +524,17 @@ func (actuator *WorkerInstanceActuator) Actuate(
 }
 
 func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
+	if bundle.RuntimeLaunchProtocol != "" && bundle.RuntimeLaunchProtocol != runtimelaunch.Protocol {
+		return errors.New("unsupported WorkerBundle runtime launch protocol")
+	}
+	if len(bundle.ImagePullSecrets) > 8 {
+		return errors.New("too many WorkerBundle image pull Secrets")
+	}
+	for index, name := range bundle.ImagePullSecrets {
+		if !validResourceName(name) || slices.Contains(bundle.ImagePullSecrets[:index], name) {
+			return errors.New("WorkerBundle image pull Secret names must be valid and unique")
+		}
+	}
 	if bundle.SchemaVersion != 2 || bundle.PlanRevisionID == uuid.Nil ||
 		bundle.WorkerBundleID == uuid.Nil || !validSHA256(bundle.RevisionDigest) ||
 		!validResourceName(bundle.Namespace) || !validPinnedImage(bundle.InitImage) ||
@@ -685,8 +700,7 @@ func validSingleCPUWorker(worker WorkerInstanceActuation) bool {
 }
 
 func workerMemberIdentityDigest(memberID uuid.UUID) string {
-	digest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
-	return hex.EncodeToString(digest[:])
+	return fleetcontract.WorkerMemberIdentityDigest(memberID)
 }
 
 func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
@@ -1093,9 +1107,9 @@ func materializeWorkerInstancePod(
 				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
 			InitContainers: []corev1.Container{
-				stageWorkerPrivateInitializer(bundle.InitImage, len(worker.Members) > 1),
+				stageWorkerPrivateInitializer(bundle.InitImage, len(worker.Members) > 1, bundle.RuntimeLaunchProtocol != runtimelaunch.Protocol),
 				modelRuntimePrivateInitializer(
-					bundle.InitImage, launchManifest, modelRuntimeDirectories(worker),
+					bundle.InitImage, launchManifest, modelRuntimeDirectories(worker), bundle.RuntimeLaunchProtocol != runtimelaunch.Protocol,
 				),
 			},
 			Containers: []corev1.Container{
@@ -1112,6 +1126,12 @@ func materializeWorkerInstancePod(
 				workerInstanceGPUClaimTemplateName(worker.ID, member.Key),
 			),
 		}}
+	}
+	if bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol {
+		configureKubernetesRuntimeStartup(&pod, member)
+	}
+	for _, name := range bundle.ImagePullSecrets {
+		pod.Spec.ImagePullSecrets = append(pod.Spec.ImagePullSecrets, corev1.LocalObjectReference{Name: name})
 	}
 	return pod, nil
 }
@@ -1320,6 +1340,21 @@ func workerInstanceVolumes(
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("2Mi"),
 		}}},
 	}
+	// The Kubernetes startup protocol is supervised from the host. Bind the
+	// Runtime socket to the per-member work directory so the Node Agent can
+	// observe the same inode from the host filesystem and from the original
+	// container root. The regular protocol keeps its bounded tmpfs socket.
+	if bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol {
+		for i := range volumes {
+			if volumes[i].Name != "model-runtime-socket" {
+				continue
+			}
+			volumes[i].VolumeSource = corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
+				Path: scratchPath + "/work", Type: valuePointer(corev1.HostPathDirectory),
+			}}
+			break
+		}
+	}
 	if member.ResourceClass == "GPU" {
 		volumes = append(volumes, corev1.Volume{
 			Name: "model-weights", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
@@ -1339,7 +1374,17 @@ func workerInstanceVolumes(
 	return volumes
 }
 
-func modelRuntimePrivateInitializer(image, launchManifest, directories string) corev1.Container {
+func modelRuntimePrivateInitializer(image, launchManifest, directories string, initializeScratch bool) corev1.Container {
+	prepareScratch, finalizeScratch := "", ""
+	if initializeScratch {
+		prepareScratch = `for directory in ${VELA_MODEL_RUNTIME_DIRECTORIES}; do
+  mkdir -p "${directory}"
+done
+`
+		finalizeScratch = `chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime-epochs
+chown -R 10001:10001 /var/lib/vela/stage-worker/scratch/model-runtime-epochs
+`
+	}
 	runAsNonRoot := false
 	runAsUser := int64(0)
 	runAsGroup := int64(0)
@@ -1349,18 +1394,14 @@ func modelRuntimePrivateInitializer(image, launchManifest, directories string) c
 		Name: "model-runtime-private-materialization", Image: image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{"/bin/sh", "-ec", `mkdir -p /private/authority
-for directory in ${VELA_MODEL_RUNTIME_DIRECTORIES}; do
-  mkdir -p "${directory}"
-done
-printf '%s' "${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}" > /private/launch.json
+` + prepareScratch + `printf '%s' "${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}" > /private/launch.json
 cp /projected/model-runtime-authority/verifier-keyring.json /private/authority/verifier-keyring.json
 test -f /private/launch.json
 test -f /private/authority/verifier-keyring.json
 chmod 0700 /private /private/authority
 chmod 0400 /private/launch.json /private/authority/verifier-keyring.json
-chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime-epochs
-chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-epochs
-`},
+chown -R 10001:10001 /private
+` + finalizeScratch},
 		Env: []corev1.EnvVar{
 			literalEnvironment("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON", launchManifest),
 			literalEnvironment("VELA_MODEL_RUNTIME_DIRECTORIES", directories),
@@ -1390,7 +1431,21 @@ chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-e
 	})
 }
 
-func stageWorkerPrivateInitializer(image string, multiMember bool) corev1.Container {
+func stageWorkerPrivateInitializer(image string, multiMember, initializeScratch bool) corev1.Container {
+	prepareScratch := ""
+	prepareSocket, finalizeSocket := "", ""
+	if initializeScratch {
+		prepareSocket = "mkdir -p /run/vela-model-runtime/private\n"
+		finalizeSocket = "chmod 0700 /run/vela-model-runtime /run/vela-model-runtime/private\nchown 10001:10001 /run/vela-model-runtime /run/vela-model-runtime/private\n"
+		prepareScratch = `mkdir -p /var/lib/vela/stage-worker/scratch/production-state
+mkdir -p /var/lib/vela/stage-worker/scratch/inputs
+mkdir -p /var/lib/vela/stage-worker/scratch/input-transfer-journal
+mkdir -p /var/lib/vela/stage-worker/scratch/outputs
+mkdir -p /var/lib/vela/stage-worker/scratch/materialization-journal
+chmod 0700 /var/lib/vela/stage-worker/scratch /var/lib/vela/stage-worker/scratch/*
+chown -R 10001:10001 /var/lib/vela/stage-worker/scratch
+`
+	}
 	runAsNonRoot := false
 	runAsUser := int64(0)
 	runAsGroup := int64(0)
@@ -1399,13 +1454,7 @@ func stageWorkerPrivateInitializer(image string, multiMember bool) corev1.Contai
 	container := withKubernetesContainerDefaults(corev1.Container{
 		Name: "stage-worker-private-materialization", Image: image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command: []string{"/bin/sh", "-ec", `mkdir -p /run/vela-model-runtime/private
-mkdir -p /var/lib/vela/stage-worker/scratch/production-state
-mkdir -p /var/lib/vela/stage-worker/scratch/inputs
-mkdir -p /var/lib/vela/stage-worker/scratch/input-transfer-journal
-mkdir -p /var/lib/vela/stage-worker/scratch/outputs
-mkdir -p /var/lib/vela/stage-worker/scratch/materialization-journal
-mkdir -p /private/control /private/authority /private/artifact
+		Command: []string{"/bin/sh", "-ec", prepareScratch + prepareSocket + `mkdir -p /private/control /private/authority /private/artifact
 cp /projected/control/ca.crt /private/control/ca.crt
 cp /projected/control/tls.crt /private/control/tls.crt
 cp /projected/control/tls.key /private/control/tls.key
@@ -1424,13 +1473,10 @@ if [ -d /projected/member-pki ]; then
   chmod 0700 /private/member /private/member/client /private/member/server
   chmod 0400 /private/member/client/* /private/member/server/*
 fi
-chmod 0700 /run/vela-model-runtime /run/vela-model-runtime/private
-chmod 0700 /var/lib/vela/stage-worker/scratch /var/lib/vela/stage-worker/scratch/*
 chmod 0700 /private /private/control /private/authority /private/artifact
 chmod 0400 /private/control/* /private/authority/* /private/artifact/*
-chown 10001:10001 /run/vela-model-runtime /run/vela-model-runtime/private
-chown -R 10001:10001 /var/lib/vela/stage-worker/scratch /private
-`},
+chown -R 10001:10001 /private
+` + finalizeSocket},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
 				corev1.ResourceCPU: "10m", corev1.ResourceMemory: "8Mi",
@@ -1543,7 +1589,11 @@ func mustEncodeCapacityVector(worker WorkerInstanceActuation) string {
 	}
 	encoded, err := json.Marshal(map[string]int64{
 		"active_stage_slots": int64(worker.CapacitySlots),
-		resourceKey:          int64(workerInstanceDeviceCount(worker)),
+		// Admission's Stage capacity gate consumes the canonical concurrency
+		// field. Keep the legacy resource counters for observability, but make
+		// the advertised worker capacity directly usable by the gate.
+		"concurrency": int64(worker.CapacitySlots),
+		resourceKey:   int64(workerInstanceDeviceCount(worker)),
 	})
 	if err != nil {
 		panic(err)
@@ -1568,8 +1618,15 @@ func cloneStringMap(values map[string]string) map[string]string {
 }
 
 func workerInstancePodMatches(live, desired corev1.Pod) bool {
+	for _, pod := range []*corev1.Pod{&live, &desired} {
+		// client-go's protobuf decoder may omit TypeMeta on a typed response.
+		if pod.APIVersion != "" && pod.APIVersion != "v1" || pod.Kind != "" && pod.Kind != "Pod" {
+			return false
+		}
+	}
 	normalize := func(pod corev1.Pod) corev1.Pod {
 		copy := *pod.DeepCopy()
+		copy.TypeMeta = metav1.TypeMeta{}
 		copy.ResourceVersion = ""
 		copy.Generation = 0
 		copy.UID = ""
@@ -1580,6 +1637,17 @@ func workerInstancePodMatches(live, desired corev1.Pod) bool {
 	}
 	normalizedLive := normalize(live)
 	normalizedDesired := normalize(desired)
+	if normalizedDesired.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
+		fleetcontract.RemovePodNetworkObservations(&normalizedLive)
+		fleetcontract.RemovePodNetworkObservations(&normalizedDesired)
+	}
+	if normalizedDesired.Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol &&
+		len(normalizedDesired.Spec.SchedulingGates) == 1 && normalizedDesired.Spec.SchedulingGates[0].Name == runtimelaunch.Gate &&
+		len(normalizedLive.Spec.SchedulingGates) == 0 {
+		// Removing this exact one-shot gate is Node's only startup mutation.
+		// The launch helper separately requires the gate before taking custody.
+		normalizedDesired.Spec.SchedulingGates = nil
+	}
 	if normalizedDesired.Spec.NodeName == "" &&
 		normalizedDesired.Spec.NodeSelector[corev1.LabelHostname] != "" &&
 		normalizedLive.Spec.NodeName == normalizedDesired.Spec.NodeSelector[corev1.LabelHostname] {

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontract"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -32,14 +34,18 @@ type ProtectedResourceCreateValidator interface {
 }
 
 type Config struct {
-	FleetUsername   string
-	CreateValidator ProtectedResourceCreateValidator
+	FleetUsername      string
+	NodeUsernamePrefix string
+	NetworkUsername    string
+	CreateValidator    ProtectedResourceCreateValidator
 }
 
 type Handler struct {
-	authorizer      MutationAuthorizer
-	fleetUsername   string
-	createValidator ProtectedResourceCreateValidator
+	authorizer         MutationAuthorizer
+	fleetUsername      string
+	nodeUsernamePrefix string
+	networkUsername    string
+	createValidator    ProtectedResourceCreateValidator
 }
 
 type admissionReview struct {
@@ -117,7 +123,9 @@ func NewHandler(authorizer MutationAuthorizer, config Config) (*Handler, error) 
 	}
 	return &Handler{
 		authorizer: authorizer, fleetUsername: config.FleetUsername,
-		createValidator: config.CreateValidator,
+		nodeUsernamePrefix: config.NodeUsernamePrefix,
+		networkUsername:    config.NetworkUsername,
+		createValidator:    config.CreateValidator,
 	}, nil
 }
 
@@ -151,6 +159,16 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	}
 	if !protected {
 		writeAdmissionReview(writer, review.Request.UID, true, "")
+		return
+	}
+	if handler.networkUsername != "" && review.Request.UserInfo.Username == handler.networkUsername {
+		allowed := authorizePodNetworkObservation(review.Request)
+		writeAdmissionReview(writer, review.Request.UID, allowed, "network service may only update observed sandbox and IP metadata")
+		return
+	}
+	if handler.nodeUsernamePrefix != "" && strings.HasPrefix(review.Request.UserInfo.Username, handler.nodeUsernamePrefix) {
+		allowed := handler.authorizeNodeStartupGate(request.Context(), review.Request)
+		writeAdmissionReview(writer, review.Request.UID, allowed, "Node may only release its exact approved startup gate")
 		return
 	}
 	if review.Request.UserInfo.Username != handler.fleetUsername {
@@ -188,6 +206,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 			}
 		}
 		if validationErr != nil {
+			slog.Warn("protected resource create rejected", "kind", resourceKind, "namespace", review.Request.Namespace, "name", review.Request.Name, "error", validationErr)
 			writeAdmissionReview(writer, review.Request.UID, false, "protected resource create shape is invalid")
 			return
 		}
@@ -209,6 +228,52 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	writeAdmissionReview(writer, review.Request.UID, true, "")
+}
+
+func authorizePodNetworkObservation(request *admissionRequest) bool {
+	if request.Operation != "UPDATE" || request.Kind.Kind != "Pod" || request.Kind.Group != "" || request.Kind.Version != "v1" {
+		return false
+	}
+	var old, current corev1.Pod
+	if json.Unmarshal(request.OldObject, &old) != nil || json.Unmarshal(request.Object, &current) != nil ||
+		old.UID == "" || old.UID != current.UID || old.Spec.NodeName == "" ||
+		old.Annotations[runtimelaunch.ProtocolAnnotation] != runtimelaunch.Protocol {
+		return false
+	}
+	fleetcontract.RemovePodNetworkObservations(&old)
+	fleetcontract.RemovePodNetworkObservations(&current)
+	old.ManagedFields, current.ManagedFields = nil, nil
+	return reflect.DeepEqual(old, current)
+}
+
+// Node's narrow bootstrap permission is separate from Fleet's retirement
+// authority. It cannot create/delete Pods, change images, or remove finalizers.
+func (handler *Handler) authorizeNodeStartupGate(ctx context.Context, request *admissionRequest) bool {
+	if request.Operation != "UPDATE" || request.Kind.Kind != "Pod" || request.Kind.Group != "" || request.Kind.Version != "v1" {
+		return false
+	}
+	var old, current corev1.Pod
+	if json.Unmarshal(request.OldObject, &old) != nil || json.Unmarshal(request.Object, &current) != nil {
+		return false
+	}
+	node := old.Spec.NodeSelector[corev1.LabelHostname]
+	if node == "" || request.UserInfo.Username != handler.nodeUsernamePrefix+node || old.UID == "" || current.UID != old.UID ||
+		old.DeletionTimestamp != nil || old.Spec.NodeName != "" ||
+		old.Annotations[runtimelaunch.ProtocolAnnotation] != runtimelaunch.Protocol || old.Spec.RestartPolicy != corev1.RestartPolicyNever ||
+		len(old.Spec.SchedulingGates) != 1 || old.Spec.SchedulingGates[0].Name != runtimelaunch.Gate || len(current.Spec.SchedulingGates) != 0 {
+		return false
+	}
+	// Validate the signed template shape. The existing Pod UID was bound above;
+	// create validation correctly rejects a server-assigned UID in its input.
+	template := *old.DeepCopy()
+	template.UID = ""
+	if err := handler.createValidator.ValidateProtectedPodCreate(ctx, template); err != nil {
+		return false
+	}
+	old.Spec.SchedulingGates = nil
+	old.ManagedFields, current.ManagedFields = nil, nil
+	old.Generation, current.Generation = 0, 0
+	return reflect.DeepEqual(old, current)
 }
 
 func admissionObject(request *admissionRequest) (objectMetadata, error) {
@@ -300,8 +365,10 @@ func protectedWorkerInstancePodMutationRequest(
 	}
 	digest := sha256.Sum256(encoded)
 	return fleet.MutationAuthorizationRequest{
-		RequestUID: request.UID, ActorIdentity: request.UserInfo.Username,
-		Operation: operation, KubernetesUID: object.Metadata.UID,
+		// FleetUsername is checked before this request is constructed. The
+		// authenticated Fleet RPC server supplies the durable audit identity.
+		RequestUID: request.UID,
+		Operation:  operation, KubernetesUID: object.Metadata.UID,
 		Namespace: object.Metadata.Namespace, Name: object.Metadata.Name,
 		WorkerInstanceID: workerInstanceID, WorkerInstanceEpoch: workerInstanceEpoch,
 		ResidencyPlanRevisionID: planID, WorkerBundleID: bundleID, WorkerMemberID: memberID,
@@ -389,6 +456,10 @@ func changesOnlyProtectionFinalizer(oldRaw, newRaw json.RawMessage) bool {
 	}
 	delete(oldMetadata, "finalizers")
 	delete(newMetadata, "finalizers")
+	// The API server updates field ownership while applying a finalizer patch.
+	// It is server bookkeeping, not a caller-controlled workload mutation.
+	delete(oldMetadata, "managedFields")
+	delete(newMetadata, "managedFields")
 	return reflect.DeepEqual(oldState, newState)
 }
 

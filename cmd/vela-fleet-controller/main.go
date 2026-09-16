@@ -173,8 +173,10 @@ func runWithContext(ctx context.Context, configuration config) error {
 	admissionHandler, err := fleetadmission.NewHandler(
 		maintenanceClient,
 		fleetadmission.Config{
-			FleetUsername:   configuration.kubernetesUsername,
-			CreateValidator: createValidator,
+			FleetUsername:      configuration.kubernetesUsername,
+			NodeUsernamePrefix: "system:serviceaccount:" + configuration.namespace + ":vela-node-",
+			NetworkUsername:    os.Getenv("VELA_FLEET_NETWORK_KUBERNETES_USERNAME"),
+			CreateValidator:    createValidator,
 		},
 	)
 	if err != nil {

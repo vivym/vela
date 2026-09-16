@@ -46,6 +46,47 @@ func TestResidencyPlanRolloutAppliesAuthorityBeforeActuation(t *testing.T) {
 	}
 }
 
+func TestWithdrawnBundleRetainsAuthorityWithoutRecreation(t *testing.T) {
+	rollout := h3ResidencyPlanRollout(t)
+	original, _ := json.Marshal(rollout.ApprovedPlan)
+	rollout.WithdrawnWorkerBundleIDs = []uuid.UUID{rollout.WorkerBundles[0].WorkerBundleID}
+	applier := &recordingResidencyPlanApplier{result: fleet.ActuationPlan{
+		PlanRevisionID: rollout.ApprovedPlan.ID, WorkerInstanceCount: len(rollout.ApprovedPlan.WorkerInstances),
+	}}
+	actuator := &recordingWorkerBundleActuator{}
+	controller, err := fleetcontroller.NewResidencyPlanRolloutController(applier, actuator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := controller.Reconcile(t.Context(), rollout)
+	if err != nil || !result.Converged || actuator.calls != 0 || applier.calls != 1 {
+		t.Fatalf("withdrawal recreated resources: %+v %v calls=%d", result, err, actuator.calls)
+	}
+	unchanged, _ := json.Marshal(rollout.ApprovedPlan)
+	if string(original) != string(unchanged) {
+		t.Fatal("withdrawal changed approved plan")
+	}
+	validator, err := fleetcontroller.NewWorkerInstancePodAdmissionValidator([]fleetcontroller.ResidencyPlanRollout{rollout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pods, _, err := fleetcontroller.MaterializeWorkerInstanceLaunchResources(rollout.WorkerBundles[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pod := range pods {
+		if err := validator.ValidateProtectedPodCreate(t.Context(), pod); err == nil {
+			t.Fatal("withdrawn Pod creation allowed")
+		}
+	}
+	for _, ids := range [][]uuid.UUID{{uuid.New()}, {rollout.WorkerBundles[0].WorkerBundleID, rollout.WorkerBundles[0].WorkerBundleID}} {
+		rollout.WithdrawnWorkerBundleIDs = ids
+		if err := fleetcontroller.ValidateResidencyPlanRollout(rollout); err == nil {
+			t.Fatal("invalid withdrawal accepted")
+		}
+	}
+}
+
 func TestResidencyPlanRolloutBindsEveryModelRuntimeRoute(t *testing.T) {
 	rollout := h3ResidencyPlanRollout(t)
 	if len(rollout.ApprovedPlan.CapacityPools) != 3 {
@@ -300,6 +341,14 @@ func TestDecodeResidencyPlanRolloutsRejectsGPUReusedAcrossPlans(t *testing.T) {
 	}
 	if _, err := fleetcontroller.DecodeResidencyPlanRollouts(encoded, "vela-system"); err == nil {
 		t.Fatal("ResidencyPlan rollout decoder accepted one GPU in multiple plans")
+	}
+	first.WithdrawnWorkerBundleIDs = []uuid.UUID{first.WorkerBundles[0].WorkerBundleID}
+	encoded, err = json.Marshal(map[string]any{"schema_version": 1, "rollouts": []fleetcontroller.ResidencyPlanRollout{first, second}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fleetcontroller.DecodeResidencyPlanRollouts(encoded, "vela-system"); err != nil {
+		t.Fatalf("withdrawn bundle prevented replacement plan: %v", err)
 	}
 }
 

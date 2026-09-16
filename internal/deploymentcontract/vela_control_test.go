@@ -390,9 +390,10 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 		t.Fatalf("vela-control Node Agent placeholder port = %#v", nodeAgentPort)
 	}
 	want := map[string]struct {
-		port            int
-		namespaceLabels map[string]string
-		podLabels       map[string]string
+		port                int
+		namespaceLabels     map[string]string
+		podLabels           map[string]string
+		additionalPodLabels []map[string]string
 	}{
 		"vela-control-allow-api": {
 			port:            8080,
@@ -405,9 +406,10 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-fleet-controller"},
 		},
 		"vela-control-allow-stage-worker": {
-			port:            8447,
-			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
-			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-stage-worker"},
+			port:                8447,
+			namespaceLabels:     map[string]string{"kubernetes.io/metadata.name": "vela-system"},
+			podLabels:           map[string]string{"app.kubernetes.io/name": "vela-stage-worker"},
+			additionalPodLabels: []map[string]string{{"app.kubernetes.io/name": "vela-worker-instance"}},
 		},
 		"vela-control-allow-finance": {
 			port:            8445,
@@ -426,12 +428,13 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 		},
 	}
 	for name, expected := range want {
+		expectedPods := append([]map[string]string{expected.podLabels}, expected.additionalPodLabels...)
 		policy, ok := policies[name]
 		if !ok || policy.Namespace != "vela-system" ||
 			!reflect.DeepEqual(policy.Spec.PodSelector.MatchLabels, map[string]string{"app.kubernetes.io/name": "vela-control"}) ||
 			!reflect.DeepEqual(policy.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}) ||
 			len(policy.Spec.Ingress) != 1 || len(policy.Spec.Ingress[0].Ports) != 1 ||
-			len(policy.Spec.Ingress[0].From) != 1 {
+			len(policy.Spec.Ingress[0].From) != len(expectedPods) {
 			t.Fatalf("vela-control ingress policy %q = %#v", name, policy)
 		}
 		port := policy.Spec.Ingress[0].Ports[0]
@@ -439,17 +442,20 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 			port.Port.IntValue() != expected.port {
 			t.Fatalf("vela-control ingress policy %q port = %#v", name, port)
 		}
-		peer := policy.Spec.Ingress[0].From[0]
-		if peer.IPBlock != nil || peer.NamespaceSelector == nil ||
-			!reflect.DeepEqual(peer.NamespaceSelector.MatchLabels, expected.namespaceLabels) {
-			t.Fatalf("vela-control ingress policy %q namespace peer = %#v", name, peer)
-		}
-		if expected.podLabels == nil {
-			if peer.PodSelector != nil {
+		for i, peer := range policy.Spec.Ingress[0].From {
+			if peer.IPBlock != nil || peer.NamespaceSelector == nil ||
+				len(peer.NamespaceSelector.MatchExpressions) != 0 ||
+				!reflect.DeepEqual(peer.NamespaceSelector.MatchLabels, expected.namespaceLabels) {
+				t.Fatalf("vela-control ingress policy %q namespace peer = %#v", name, peer)
+			}
+			if expectedPods[i] == nil {
+				if peer.PodSelector != nil {
+					t.Fatalf("vela-control ingress policy %q Pod peer = %#v", name, peer.PodSelector)
+				}
+			} else if peer.PodSelector == nil || len(peer.PodSelector.MatchExpressions) != 0 ||
+				!reflect.DeepEqual(peer.PodSelector.MatchLabels, expectedPods[i]) {
 				t.Fatalf("vela-control ingress policy %q Pod peer = %#v", name, peer.PodSelector)
 			}
-		} else if peer.PodSelector == nil || !reflect.DeepEqual(peer.PodSelector.MatchLabels, expected.podLabels) {
-			t.Fatalf("vela-control ingress policy %q Pod peer = %#v", name, peer.PodSelector)
 		}
 	}
 }

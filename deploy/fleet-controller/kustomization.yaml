@@ -4,6 +4,8 @@ namespace: vela-system
 resources:
   - namespace.yaml
   - service-account.yaml
+  - worker-service-account.yaml
+  - runtime-class.yaml
   - rbac.yaml
   - residency-plan-rollouts.yaml
   - deployment.yaml
