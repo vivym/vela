@@ -109,6 +109,20 @@ def main():
                                      "resources": {"claims": [{"name": "gpu"}]}}]}
         }
         (directory / "pod.json").write_text(json.dumps(pod, indent=2) + "\n")
+        service_account = f"minimax-h3-{worker['role']}-{worker['ordinal']}"
+        rbac = {
+            "apiVersion": "v1", "kind": "ServiceAccount",
+            "metadata": {"name": service_account, "namespace": "vela-system"},
+            "role": {"apiVersion": "rbac.authorization.k8s.io", "kind": "Role",
+                      "metadata": {"name": service_account, "namespace": "vela-system"},
+                      "rules": [{"apiGroups": [""], "resources": ["pods"], "verbs": ["get", "watch", "list"]},
+                                 {"apiGroups": ["resource.k8s.io"], "resources": ["resourceclaims"], "verbs": ["get", "watch"]}]},
+            "binding": {"apiVersion": "rbac.authorization.k8s.io", "kind": "RoleBinding",
+                         "metadata": {"name": service_account, "namespace": "vela-system"},
+                         "subjects": [{"kind": "ServiceAccount", "name": service_account, "namespace": "vela-system"}],
+                         "roleRef": {"apiGroup": "rbac.authorization.k8s.io", "kind": "Role", "name": service_account}}
+        }
+        (directory / "rbac.json").write_text(json.dumps(rbac, indent=2) + "\n")
 
 
 if __name__ == "__main__":
