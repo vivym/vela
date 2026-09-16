@@ -1,0 +1,12 @@
+{
+  "permanent_credential_regression": {
+    "red": "cannot scan Infinity into *time.Time",
+    "green": "TestPlatformProvisionedNonExpiringCredentialCanAuthenticateListAndRevoke PASS"
+  },
+  "finite_credential_and_rotation_integration": "PASS",
+  "http_nullable_expiry_projection": "PASS",
+  "identity_httpapi_control_unit_tests": "PASS",
+  "identity_httpapi_vet": "PASS",
+  "marslab_render_and_ffprobe_contract": "PASS",
+  "api_key_plaintext_in_git": false
+}

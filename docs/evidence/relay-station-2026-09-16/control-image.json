@@ -1,0 +1,8 @@
+{
+  "binary_sha256": "1109770d9e98a85fdfde6d813d257d506f8079082f28ac77ca98b5a531202d75",
+  "tag": "10.1.201.70:5005/vela-control:permanent-credential-1109770d9e98a85f",
+  "digests": [
+    "10.1.201.70:5005/vela-control@sha256:f12e249463984dd936364a0c06274e73ca76b02abded69f5933aa97cdad80b96"
+  ],
+  "bytes": 83351544
+}

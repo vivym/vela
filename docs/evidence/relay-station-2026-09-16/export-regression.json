@@ -1,0 +1,7 @@
+{
+  "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+  "charge_count": 1,
+  "total_amount_minor": 100,
+  "available_credit_minor": 9900,
+  "output_directory": "/opt/vela-cluster/relay-station-20260916/export-test-existing-charge"
+}

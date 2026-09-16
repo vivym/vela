@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "created_at_utc": "2026-09-16T09:34:38.066229+00:00",
+  "display_name": "relay-station",
+  "organization_id": "40f37967-d2e0-4028-a6ab-1c75eb243289",
+  "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+  "principal_id": "ec250b47-dedf-454e-99a2-bed71d804d07",
+  "credential_id": "3cf54270-5349-462b-b206-d57bcdb67ee2",
+  "currency": "CNY",
+  "contract_credit_limit_minor": 100000000,
+  "credit_limit_yuan": "1000000.00",
+  "cash_payment_recorded": false,
+  "expires_at": null,
+  "database_expiry": "infinity",
+  "scopes": [
+    "artifacts:read",
+    "jobs:cancel",
+    "jobs:read",
+    "jobs:submit"
+  ],
+  "queued_limit": 10,
+  "running_limit": 2,
+  "api_url": "https://10.1.201.70:30443/api",
+  "provisioning_authority": "User authorized a dedicated relay project, high credit, and a permanent API key; platform bootstrap transaction",
+  "credential_digest_storage": "HMAC-SHA256 only; no bearer stored in PostgreSQL"
+}

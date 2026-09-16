@@ -2,6 +2,9 @@
 
 Date: 2026-09-08
 
+Consumer API documentation: [视频生成 API 接入指南](api-integration.md) and
+[relay OpenAPI](api-integration.openapi.json).
+
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
 an ADR. `Partial` means at least one required production behavior remains. A

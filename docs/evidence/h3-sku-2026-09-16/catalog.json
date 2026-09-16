@@ -1,0 +1,50 @@
+{
+  "observed_at_utc": "2026-09-16T11:39:02.030177+00:00",
+  "database": {
+    "models": [
+      {
+        "id": "ef0ee53d-4dd7-5f64-9fb8-b9e5f5c4cfc5",
+        "stable_id": "minimax-h3-live-validation",
+        "state": "ACTIVE"
+      }
+    ],
+    "rates": [
+      {
+        "model": "minimax-h3-live-validation",
+        "model_state": "ACTIVE",
+        "preset": "fast",
+        "preset_state": "ACTIVE",
+        "service_class": "h3-internal-validation",
+        "service_state": "ACTIVE",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "output_state": "ACTIVE",
+        "rate_state": "ACTIVE",
+        "effective_at": "2026-09-15T18:19:14.7665+00:00",
+        "expires_at": null,
+        "unit_amount_minor": 100,
+        "currency": "CNY",
+        "rate_line_id": "a1b62885-852d-593a-98a0-d5bb734258a2",
+        "active_now": true
+      },
+      {
+        "model": "minimax-h3-live-validation",
+        "model_state": "ACTIVE",
+        "preset": "fast",
+        "preset_state": "ACTIVE",
+        "service_class": "standard",
+        "service_state": "ACTIVE",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "output_state": "ACTIVE",
+        "rate_state": "ACTIVE",
+        "effective_at": "2026-09-15T18:35:17.154808+00:00",
+        "expires_at": null,
+        "unit_amount_minor": 100,
+        "currency": "CNY",
+        "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+        "active_now": true
+      }
+    ],
+    "relay_jobs": 0,
+    "relay_charges": 0
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "original_cli": {
+    "model": "minimax-h3",
+    "generation_preset": "balanced",
+    "service_class": "standard",
+    "output_spec": "h3-native-av-1344x768-5s-24fps"
+  },
+  "cli_with_explicit_flags": {
+    "model": "minimax-h3-live-validation",
+    "generation_preset": "fast",
+    "service_class": "standard",
+    "output_spec": "h3-native-av-1344x768-5s-24fps"
+  },
+  "updated_document_matches_live_sku": true,
+  "user_files_edited": false,
+  "source_sha256": {
+    "vela_t2v.py": "37e174cd3af3b2408b8c7a29e1b3fdbaa819ebfc04152354120951b071b03f19",
+    "test_h3_sku.py": "8044407f5ff278f62f27faea06534cb891ea408c8ad33673da484309d3287d93"
+  }
+}

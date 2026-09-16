@@ -1,0 +1,1574 @@
+{
+  "components": {
+    "headers": {
+      "RetryAfter": {
+        "description": "Seconds before the client should retry Admission.",
+        "schema": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "parameters": {
+      "DeliveryId": {
+        "in": "path",
+        "name": "delivery_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "in": "header",
+        "name": "Idempotency-Key",
+        "required": true,
+        "schema": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "type": "string"
+        }
+      },
+      "JobId": {
+        "in": "path",
+        "name": "job_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "ListLimit": {
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "default": 100,
+          "format": "int32",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "ProjectId": {
+        "in": "path",
+        "name": "project_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "SubscriptionId": {
+        "in": "path",
+        "name": "subscription_id",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Request validation failed"
+      },
+      "Forbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Principal lacks the required Project scope"
+      },
+      "Unauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Credential is absent or invalid"
+      }
+    },
+    "schemas": {
+      "ArtifactAudio": {
+        "additionalProperties": false,
+        "properties": {
+          "channels": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "codec": {
+            "type": "string"
+          },
+          "duration_milliseconds": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sample_rate": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codec",
+          "sample_rate",
+          "channels",
+          "duration_milliseconds"
+        ],
+        "type": "object"
+      },
+      "ArtifactDownload": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "content_type": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "download_url": {
+            "format": "uri",
+            "type": "string"
+          },
+          "download_url_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "VIDEO",
+              "THUMBNAIL"
+            ],
+            "type": "string",
+            "x-enum-varnames": [
+              "VIDEO",
+              "THUMBNAIL"
+            ]
+          },
+          "media": {
+            "$ref": "#/components/schemas/ArtifactMedia"
+          },
+          "object_version_id": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ordinal": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "ordinal",
+          "object_version_id",
+          "size_bytes",
+          "sha256",
+          "content_type",
+          "download_url",
+          "download_url_expires_at"
+        ],
+        "type": "object"
+      },
+      "ArtifactMedia": {
+        "additionalProperties": false,
+        "description": "Measured complete video and audio facts; duration_milliseconds is the video stream duration. Requested duration is separate and does not imply trimming.",
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/ArtifactAudio"
+          },
+          "container_duration_milliseconds": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "duration_milliseconds": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "frame_count": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "frame_rate_milli": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "requested_duration_milliseconds": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "duration_milliseconds",
+          "frame_count",
+          "frame_rate_milli"
+        ],
+        "type": "object"
+      },
+      "ArtifactSet": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_set_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactDownload"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "committed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "retention_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_set_id",
+          "job_id",
+          "retention_expires_at",
+          "committed_at",
+          "artifacts"
+        ],
+        "type": "object"
+      },
+      "CancelDecision": {
+        "enum": [
+          "CANCELED",
+          "CANCELING",
+          "ALREADY_SUCCEEDED",
+          "ALREADY_FAILED"
+        ],
+        "type": "string"
+      },
+      "CancelResult": {
+        "additionalProperties": false,
+        "properties": {
+          "billable": {
+            "type": "boolean"
+          },
+          "cancellation_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "charge": {
+            "$ref": "#/components/schemas/Charge"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/CancelDecision"
+          },
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "job_version": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState"
+          }
+        },
+        "required": [
+          "cancellation_id",
+          "job_id",
+          "decision",
+          "state",
+          "job_version",
+          "billable",
+          "decided_at"
+        ],
+        "type": "object"
+      },
+      "Charge": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "charge_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "type": "string"
+          },
+          "posted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ChargeReason"
+          }
+        },
+        "required": [
+          "charge_id",
+          "amount_minor",
+          "currency",
+          "reason",
+          "posted_at"
+        ],
+        "type": "object"
+      },
+      "ChargeReason": {
+        "enum": [
+          "VISIBLE_COMPLETION",
+          "CUSTOMER_CANCELLATION"
+        ],
+        "type": "string"
+      },
+      "CreateWebhookSubscriptionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "format": "uri",
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "endpoint",
+          "event_types"
+        ],
+        "type": "object"
+      },
+      "CreatedWebhookSubscription": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endpoint": {
+            "format": "uri",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "project_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "secret_revision": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "signing_secret": {
+            "maxLength": 200,
+            "minLength": 16,
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WebhookSubscriptionState"
+          },
+          "subscription_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "project_id",
+          "endpoint",
+          "event_types",
+          "state",
+          "secret_revision",
+          "created_at",
+          "signing_secret"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ExecutionPhase": {
+        "enum": [
+          "QUEUED",
+          "PREPARING",
+          "GENERATING",
+          "FINALIZING",
+          "RETRY_WAIT"
+        ],
+        "type": "string"
+      },
+      "H3Condition": {
+        "additionalProperties": false,
+        "properties": {
+          "download_url": {
+            "format": "uri",
+            "maxLength": 16384,
+            "minLength": 1,
+            "type": "string"
+          },
+          "frame_index": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "role": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "maximum": 34359738368,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "start_time_seconds": {
+            "format": "double",
+            "minimum": 0,
+            "type": "number"
+          },
+          "type": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uri": {
+            "maxLength": 16384,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "type",
+          "uri",
+          "download_url",
+          "sha256",
+          "size_bytes"
+        ],
+        "type": "object"
+      },
+      "H3Request": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/H3Condition"
+            },
+            "maxItems": 64,
+            "type": "array"
+          },
+          "sampling": {
+            "$ref": "#/components/schemas/H3Sampling"
+          },
+          "seed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/H3Target"
+          },
+          "task": {
+            "enum": [
+              "t2va",
+              "ref2va",
+              "fl2va"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "H3Sampling": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_cond_noise_aug_for_inference": {
+            "format": "double",
+            "maximum": 1,
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "imgvid_cond_noise_aug_for_inference": {
+            "format": "double",
+            "maximum": 1,
+            "minimum": 0,
+            "nullable": true,
+            "type": "number"
+          },
+          "num_inference_steps": {
+            "maximum": 10000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "quality": {
+            "enum": [
+              "high",
+              "lossless"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "H3Target": {
+        "additionalProperties": false,
+        "properties": {
+          "aspect_ratio": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "duration_seconds": {
+            "exclusiveMinimum": 0,
+            "format": "double",
+            "type": "number"
+          },
+          "short_edge": {
+            "maximum": 768,
+            "minimum": 768,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Job": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts_started": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "estimated_finish_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "job_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "next_retry_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ExecutionPhase"
+          },
+          "phase_progress": {
+            "exclusiveMaximum": true,
+            "format": "double",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/PricingSnapshot"
+          },
+          "progress_updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState"
+          }
+        },
+        "required": [
+          "job_id",
+          "project_id",
+          "state",
+          "attempts_started",
+          "pricing",
+          "job_expires_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "JobState": {
+        "enum": [
+          "QUEUED",
+          "ASSIGNED",
+          "RUNNING",
+          "FINALIZING",
+          "RETRY_WAIT",
+          "CANCELING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELED"
+        ],
+        "type": "string"
+      },
+      "PricingSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "type": "string"
+          },
+          "quantity": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "quoted_amount_minor": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rate_card_revision_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "rate_line_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "unit_amount_minor": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rate_card_revision_id",
+          "rate_line_id",
+          "unit_amount_minor",
+          "quantity",
+          "quoted_amount_minor",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "RotatedWebhookSubscription": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endpoint": {
+            "format": "uri",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "previous_secret_valid_until": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "secret_revision": {
+            "format": "int32",
+            "minimum": 2,
+            "type": "integer"
+          },
+          "signing_secret": {
+            "maxLength": 200,
+            "minLength": 16,
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WebhookSubscriptionState"
+          },
+          "subscription_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "project_id",
+          "endpoint",
+          "event_types",
+          "state",
+          "secret_revision",
+          "created_at",
+          "signing_secret",
+          "previous_secret_valid_until"
+        ],
+        "type": "object"
+      },
+      "SubmitJobRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "x-go-type": "json.RawMessage"
+          },
+          "generation_count": {
+            "maximum": 16,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "generation_preset": {
+            "enum": [
+              "quality",
+              "balanced",
+              "fast"
+            ],
+            "type": "string"
+          },
+          "h3": {
+            "$ref": "#/components/schemas/H3Request"
+          },
+          "model": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "output_spec": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 20000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "service_class": {
+            "enum": [
+              "standard"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "generation_preset",
+          "service_class",
+          "output_spec",
+          "generation_count",
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "WebhookDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dead_lettered_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delivery_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/WebhookEventType"
+          },
+          "generation": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "job_version": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "last_attempt_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_http_status": {
+            "format": "int32",
+            "maximum": 599,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "retry_deadline_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WebhookDeliveryState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id",
+          "event_id",
+          "event_type",
+          "job_id",
+          "job_version",
+          "state",
+          "generation",
+          "attempts",
+          "retry_deadline_at",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "WebhookDeliveryList": {
+        "additionalProperties": false,
+        "properties": {
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "deliveries"
+        ],
+        "type": "object"
+      },
+      "WebhookDeliveryState": {
+        "enum": [
+          "PENDING",
+          "IN_FLIGHT",
+          "DELIVERED",
+          "DEAD_LETTER"
+        ],
+        "type": "string"
+      },
+      "WebhookEventType": {
+        "enum": [
+          "job.succeeded",
+          "job.failed",
+          "job.canceled"
+        ],
+        "type": "string"
+      },
+      "WebhookSubscription": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "disabled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endpoint": {
+            "format": "uri",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "project_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "secret_revision": {
+            "format": "int32",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WebhookSubscriptionState"
+          },
+          "subscription_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "project_id",
+          "endpoint",
+          "event_types",
+          "state",
+          "secret_revision",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "WebhookSubscriptionList": {
+        "additionalProperties": false,
+        "properties": {
+          "subscriptions": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookSubscription"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "subscriptions"
+        ],
+        "type": "object"
+      },
+      "WebhookSubscriptionState": {
+        "enum": [
+          "ACTIVE",
+          "DISABLED"
+        ],
+        "type": "string",
+        "x-enum-varnames": [
+          "ACTIVE",
+          "DISABLED"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "VelaCredential",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Project-scoped asynchronous AI generation API.",
+    "title": "Vela Video API - Relay Integration",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/v1/projects/{project_id}/jobs": {
+      "post": {
+        "operationId": "submitJob",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Job accepted durably"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Contract Credit Limit is insufficient"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Idempotency key was accepted with different content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Project queue limit is exhausted",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Compatible capacity is unavailable",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/RetryAfter"
+              }
+            }
+          }
+        },
+        "summary": "Submit a Job for durable Admission"
+      }
+    },
+    "/v1/projects/{project_id}/jobs/{job_id}": {
+      "get": {
+        "operationId": "getJob",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Current Job state"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Job is not visible in this Project"
+          }
+        },
+        "summary": "Get authoritative Project Job state"
+      }
+    },
+    "/v1/projects/{project_id}/jobs/{job_id}/artifacts": {
+      "get": {
+        "operationId": "getJobArtifacts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactSet"
+                }
+              }
+            },
+            "description": "Committed ArtifactSet and exact-version downloads"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "ArtifactSet is not visible or not currently accessible"
+          }
+        },
+        "summary": "Get the committed ArtifactSet with short-lived exact-version URLs"
+      }
+    },
+    "/v1/projects/{project_id}/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancelJob",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/JobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResult"
+                }
+              }
+            },
+            "description": "Cancellation committed or replayed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Job is not visible in this Project"
+          }
+        },
+        "summary": "Commit a Customer Cancellation decision"
+      }
+    },
+    "/v1/projects/{project_id}/webhook-subscriptions": {
+      "get": {
+        "operationId": "listWebhookSubscriptions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/ListLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscriptionList"
+                }
+              }
+            },
+            "description": "Project Webhook Subscriptions without signing secrets"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "summary": "List safe Project Webhook Subscription projections"
+      },
+      "post": {
+        "operationId": "createWebhookSubscription",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedWebhookSubscription"
+                }
+              }
+            },
+            "description": "Subscription created; the signing secret is returned once"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "summary": "Create a Project Webhook Subscription"
+      }
+    },
+    "/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries": {
+      "get": {
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SubscriptionId"
+          },
+          {
+            "$ref": "#/components/parameters/ListLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryList"
+                }
+              }
+            },
+            "description": "Webhook Deliveries without payloads, secrets, or claim tokens"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhook Subscription is not visible in this Project"
+          }
+        },
+        "summary": "List safe Webhook Delivery projections"
+      }
+    },
+    "/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay": {
+      "post": {
+        "operationId": "replayWebhookDelivery",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SubscriptionId"
+          },
+          {
+            "$ref": "#/components/parameters/DeliveryId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
+                }
+              }
+            },
+            "description": "Delivery returned to PENDING with a fresh retry window"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhook Delivery is not visible in this Project"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Delivery is nonterminal, disabled, or already replaying"
+          }
+        },
+        "summary": "Manually replay a terminal Webhook Delivery"
+      }
+    },
+    "/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable": {
+      "post": {
+        "operationId": "disableWebhookSubscription",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SubscriptionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSubscription"
+                }
+              }
+            },
+            "description": "Subscription disabled or replayed idempotently"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhook Subscription is not visible in this Project"
+          }
+        },
+        "summary": "Permanently disable a Webhook Subscription"
+      }
+    },
+    "/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret": {
+      "post": {
+        "operationId": "rotateWebhookSubscriptionSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "$ref": "#/components/parameters/SubscriptionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotatedWebhookSubscription"
+                }
+              }
+            },
+            "description": "Secret rotated with a bounded previous-secret overlap"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhook Subscription is not visible in this Project"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A secret overlap or another conflicting transition is active"
+          }
+        },
+        "summary": "Rotate a Webhook Subscription signing secret"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "Example only; replace with the supplied BASE_URL including its gateway prefix.",
+      "url": "https://vela-api.example.com/api"
+    }
+  ],
+  "x-vela-source": "api/openapi/vela.yaml",
+  "x-vela-source-sha256": "8c9aa0dc4f955ee46cf3fc76d0725da00b9ddf4c96828ffe35e0acdc1086c771"
+}

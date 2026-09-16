@@ -1,0 +1,50 @@
+{
+  "observed_at_utc": "2026-09-16T11:40:44.097551+00:00",
+  "request": {
+    "model": "minimax-h3",
+    "generation_preset": "fast",
+    "service_class": "standard",
+    "output_spec": "h3-native-av-1344x768-5s-24fps",
+    "generation_count": 1,
+    "prompt": "Test beach sunset probe",
+    "client_metadata": {
+      "probe": true
+    },
+    "h3": {
+      "task": "t2va",
+      "target": {
+        "short_edge": 768,
+        "aspect_ratio": "16:9",
+        "duration_seconds": 5
+      },
+      "sampling": {
+        "num_inference_steps": 20,
+        "quality": "lossless"
+      }
+    }
+  },
+  "responses": [
+    {
+      "node": "10.1.201.70",
+      "status": 400,
+      "code": "invalid_sku",
+      "message": "no ACTIVE certified Rate Card line matches the request",
+      "request_id": "a8f99626-9301-4610-a74e-d0e88de6de9d"
+    },
+    {
+      "node": "10.1.201.71",
+      "status": 400,
+      "code": "invalid_sku",
+      "message": "no ACTIVE certified Rate Card line matches the request",
+      "request_id": "c1af27cb-37c8-4062-83f2-5ee50d5d850b"
+    }
+  ],
+  "before": {
+    "jobs": 0,
+    "charges": 0
+  },
+  "after": {
+    "jobs": 0,
+    "charges": 0
+  }
+}

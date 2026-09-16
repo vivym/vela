@@ -1,0 +1,72 @@
+{
+  "observed_at_utc": "2026-09-16T11:41:50.605055+00:00",
+  "request_role": "vela_request",
+  "transaction": "rolled back; no job submitted",
+  "resolver": {
+    "scope": "jobs:submit",
+    "matches": [
+      {
+        "case": "probe_fast_original",
+        "model": "minimax-h3",
+        "preset": "fast",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "rate_lines": []
+      },
+      {
+        "case": "cli_default_original",
+        "model": "minimax-h3",
+        "preset": "balanced",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "rate_lines": []
+      },
+      {
+        "case": "cli_only_model_fixed",
+        "model": "minimax-h3-live-validation",
+        "preset": "balanced",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "rate_lines": []
+      },
+      {
+        "case": "documented_delivery",
+        "model": "minimax-h3-live-validation",
+        "preset": "fast",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "rate_lines": [
+          {
+            "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+            "unit_amount_minor": 100,
+            "currency": "CNY"
+          }
+        ]
+      },
+      {
+        "case": "quality_preset",
+        "model": "minimax-h3-live-validation",
+        "preset": "quality",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-5s-24fps",
+        "rate_lines": []
+      },
+      {
+        "case": "ten_seconds",
+        "model": "minimax-h3-live-validation",
+        "preset": "fast",
+        "service_class": "standard",
+        "output_spec": "h3-native-av-1344x768-10s-24fps",
+        "rate_lines": []
+      },
+      {
+        "case": "video_without_audio",
+        "model": "minimax-h3-live-validation",
+        "preset": "fast",
+        "service_class": "standard",
+        "output_spec": "h3-native-v-1344x768-5s-24fps",
+        "rate_lines": []
+      }
+    ]
+  }
+}

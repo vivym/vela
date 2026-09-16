@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "observed_at_utc": "2026-09-16T09:36:16.136973+00:00",
+  "checks": [
+    {
+      "gateway": "10.1.201.70",
+      "check": "anonymous_denied",
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "check": "permanent_key_authenticated",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "check": "tampered_key_denied",
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "check": "other_project_denied",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "check": "other_project_job_not_visible",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "check": "identity_administration_denied",
+      "status": 403,
+      "code": "forbidden"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "anonymous_denied",
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "permanent_key_authenticated",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "tampered_key_denied",
+      "status": 401,
+      "code": "unauthorized"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "other_project_denied",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "other_project_job_not_visible",
+      "status": 404,
+      "code": "not_found"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "check": "identity_administration_denied",
+      "status": 403,
+      "code": "forbidden"
+    }
+  ],
+  "database": {
+    "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+    "organization_id": "40f37967-d2e0-4028-a6ab-1c75eb243289",
+    "credit_limit_minor": 100000000,
+    "available_credit_minor": 100000000,
+    "reserved_minor": 0,
+    "unsettled_posted_minor": 0,
+    "expires_at": "infinity",
+    "revoked": false,
+    "scopes": [
+      "artifacts:read",
+      "jobs:cancel",
+      "jobs:read",
+      "jobs:submit"
+    ],
+    "job_count": 0,
+    "charge_count": 0,
+    "current_stage_authorized": true
+  },
+  "scope": "non-billable authentication, project isolation, administration denial, permanent expiry and account verification"
+}
