@@ -53,6 +53,38 @@ def main():
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result, indent=2) + "\n")
 
+    # Emit deterministic per-worker launch/evidence inputs next to the plan.
+    # The release publisher adds signatures, claims and Pod/RBAC objects later.
+    root = a.output.parent / "minimax-h3-workers"
+    for worker in workers:
+        directory = root / f"{worker['role']}-{worker['ordinal']}"
+        directory.mkdir(parents=True, exist_ok=True)
+        launch = {
+            "schema_version": 1,
+            "model": worker["model"],
+            "worker_instance_id": worker["worker_instance_id"],
+            "worker_member_id": worker["worker_member_id"],
+            "device_set_id": worker["device_set_id"],
+            "role": worker["role"],
+            "component": worker["component"],
+            "node": worker["node"],
+            "address": worker["address"],
+            "gpu_uuid": worker["gpu_uuid"],
+            "pci_bdf": worker["pci_bdf"],
+            "epoch": worker["epoch"],
+            "cache_manifest_sha256": worker["cache_manifest_sha256"],
+        }
+        evidence = {
+            "schema_version": 1,
+            "worker_instance_id": worker["worker_instance_id"],
+            "node_identity": worker["node"],
+            "component": worker["component"],
+            "readiness": "UNOBSERVED",
+            "device": {"gpu_uuid": worker["gpu_uuid"], "pci_bdf": worker["pci_bdf"]},
+        }
+        (directory / "launch.json").write_text(json.dumps(launch, indent=2) + "\n")
+        (directory / "evidence-template.json").write_text(json.dumps(evidence, indent=2) + "\n")
+
 
 if __name__ == "__main__":
     main()
