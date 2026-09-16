@@ -14,7 +14,7 @@
     "from": "now-3h",
     "to": "now"
   },
-  "description": "Three fixed NATS members, observed independently from both CPU nodes. 64 GiB is the release event-stream contract. Missing business stream or consumer is not healthy; stream presence does not prove exact configuration or Outbox replay.",
+  "description": "Three fixed NATS members, observed independently from both CPU nodes. 32 GiB is the revision 2 event-stream contract. Missing business stream or consumer is not healthy; stream presence does not prove exact configuration or Outbox replay.",
   "panels": [
     {
       "id": 1,
@@ -159,7 +159,7 @@
               },
               {
                 "color": "green",
-                "value": 68719476736
+                "value": 34359738368
               }
             ]
           }

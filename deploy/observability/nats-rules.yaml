@@ -28,12 +28,12 @@ spec:
             description: Restore the exporter on the unavailable CPU management node; check member coverage separately.
             runbook_url: docs/runbooks/observability-messaging.md
         - alert: VelaNATSFileQuotaBelowContract
-          expr: vela:nats_member_max_storage_bytes < 68719476736
+          expr: vela:nats_member_max_storage_bytes < 34359738368
           for: 5m
           labels: {severity: page}
           annotations:
-            summary: A NATS server cannot reserve the 64GiB business event stream
-            description: Resolve PVC and physical capacity before bootstrap. Keep the release stream contract and existing data intact.
+            summary: A NATS server cannot reserve the 32GiB business event stream
+            description: Check release contract revision 2 and available storage on every replica. Do not delete messages to clear the alert.
             runbook_url: docs/runbooks/observability-messaging.md
         - alert: VelaNATSEventStreamMissing
           expr: absent(jetstream_stream_total_bytes{job="nats-prometheus-exporter",stream_name="VELA_EVENTS"})

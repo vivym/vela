@@ -45,7 +45,7 @@ func TestRenderedJetStreamContractMatchesTypedReleaseAuthority(t *testing.T) {
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		t.Fatalf("rendered JetStream contract trailing JSON = %v", err)
 	}
-	if contract.Revision != 1 {
+	if contract.Revision != 2 {
 		t.Fatalf("rendered JetStream contract revision = %d", contract.Revision)
 	}
 	if err := eventstream.ValidateStreamConfig(contract.Stream); err != nil {

@@ -16,7 +16,7 @@ func TestReleaseContractUsesThreeReplicatedDurableExplicitAck(t *testing.T) {
 		!reflect.DeepEqual(stream.Subjects, []string{"vela.events.>"}) ||
 		stream.Retention != jetstream.LimitsPolicy ||
 		stream.MaxConsumers != 32 || stream.MaxMsgs != 1_000_000 ||
-		stream.MaxBytes != 64<<30 || stream.Discard != jetstream.DiscardOld ||
+		stream.MaxBytes != 32<<30 || stream.Discard != jetstream.DiscardOld ||
 		stream.MaxAge != 7*24*time.Hour || stream.MaxMsgsPerSubject != -1 ||
 		stream.MaxMsgSize != 1<<20 ||
 		stream.Storage != jetstream.FileStorage || stream.Replicas != 3 || stream.NoAck ||
@@ -24,7 +24,7 @@ func TestReleaseContractUsesThreeReplicatedDurableExplicitAck(t *testing.T) {
 		stream.AllowRollup || stream.AllowDirect || stream.MirrorDirect ||
 		!reflect.DeepEqual(stream.Metadata, map[string]string{
 			"vela.contract": "event-delivery",
-			"vela.revision": "1",
+			"vela.revision": "2",
 		}) {
 		t.Fatalf("release stream contract = %#v", stream)
 	}
@@ -60,7 +60,7 @@ func TestReleaseContractRejectsReliabilityDrift(t *testing.T) {
 		{name: "short duplicate window", field: "duplicate window", mutate: func(config *jetstream.StreamConfig) { config.Duplicates = 30 * time.Second }},
 		{name: "unbounded bytes", field: "limits", mutate: func(config *jetstream.StreamConfig) { config.MaxBytes = -1 }},
 		{name: "deletion allowed", field: "mutation guards", mutate: func(config *jetstream.StreamConfig) { config.DenyDelete = false }},
-		{name: "revision", field: "metadata", mutate: func(config *jetstream.StreamConfig) { config.Metadata["vela.revision"] = "2" }},
+		{name: "revision", field: "metadata", mutate: func(config *jetstream.StreamConfig) { config.Metadata["vela.revision"] = "1" }},
 		{name: "foreign metadata", field: "metadata", mutate: func(config *jetstream.StreamConfig) { config.Metadata["other.owner"] = "true" }},
 		{name: "per-subject limit", field: "extended contract", mutate: func(config *jetstream.StreamConfig) { config.MaxMsgsPerSubject = 1 }},
 		{name: "discard new per subject", field: "extended contract", mutate: func(config *jetstream.StreamConfig) { config.DiscardNewPerSubject = true }},

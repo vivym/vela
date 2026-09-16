@@ -43,11 +43,11 @@ case("member recovers", "VelaNATSMemberCoverageIncomplete",
 case("redundant exporters", "VelaNATSExporterRedundancyReduced", series("up"), [])
 case("one exporter host lost", "VelaNATSExporterRedundancyReduced", series("up", copies=1),
      [{"nats_member": f"nats-{i}"} for i in range(3)])
-for size in [39378487296, 68719476736, 77309411328]:
+for size in [32212254720, 34359738368, 39378487296]:
     case(f"server quota {size}", "VelaNATSFileQuotaBelowContract", series(metric, value=f"{size}+0x50"),
-         [{"nats_member": f"nats-{i}"} for i in range(3)] if size < 68719476736 else [])
+         [{"nats_member": f"nats-{i}"} for i in range(3)] if size < 34359738368 else [])
 case("one insufficient member", "VelaNATSFileQuotaBelowContract",
-     series(metric, (0, 1), value="77309411328+0x50") + series(metric, (2,), value="39378487296+0x50"),
+     series(metric, (0, 1), value="77309411328+0x50") + series(metric, (2,), value="32212254720+0x50"),
      [{"nats_member": "nats-2"}])
 stream = dict(stream_name="VELA_EVENTS")
 missing_stream = [dict(job=job, **stream)]

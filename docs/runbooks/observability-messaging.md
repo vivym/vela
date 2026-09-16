@@ -16,14 +16,19 @@ Inspect the existing runner PID and incremental receipt before any retry.
 The [2026-09-14 record](../stateful-recovery-validation-2026-09-14.md) passed,
 but does not test a whole-cluster loss or the PostgreSQL Outbox replay path.
 
-The business stream's 64GiB contract currently exceeds each server's automatic
-36.7GiB quota on a 50Gi PVC. Explicit server memory and file limits and adequate
-storage must be established before business bootstrap. Do not lower the
-stream contract or delete historical data to make capacity checks pass.
+The revision 2 business stream reserves 32GiB per replica, below the observed
+36.7GiB server quota on each 50Gi PVC. The original 64GiB revision could never
+be created on these volumes. PostgreSQL remains the authoritative replay
+source; JetStream keeps at most 7 days, one million messages or 32GiB,
+whichever limit is reached first. A retention ceiling does not promise a full
+seven-day history at every event rate. Before bootstrap, verify free file
+quota on all three servers. An existing revision 1 stream needs an explicit
+migration that checks retained bytes; this change does not automatically
+shrink or purge any existing stream.
 
 
 The `VelaNATS*` business alerts distinguish exporter/member coverage, reduced
-exporter redundancy, file quota below the 64GiB contract, missing/unobservable
+exporter redundancy, file quota below the 32GiB revision 2 contract, missing/unobservable
 `VELA_EVENTS` or `VELA_SCHEDULER`, incomplete stream replica coverage, conflicting
 metadata leaders, and sustained consumer backlog. Two exporter copies of the
 same NATS member count as one member. Zero messages in an existing stream is

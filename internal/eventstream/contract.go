@@ -24,7 +24,7 @@ func StreamConfig() jetstream.StreamConfig {
 		Retention:         jetstream.LimitsPolicy,
 		MaxConsumers:      32,
 		MaxMsgs:           1_000_000,
-		MaxBytes:          64 << 30,
+		MaxBytes:          32 << 30,
 		Discard:           jetstream.DiscardOld,
 		MaxAge:            7 * 24 * time.Hour,
 		MaxMsgsPerSubject: -1,
@@ -36,7 +36,7 @@ func StreamConfig() jetstream.StreamConfig {
 		DenyPurge:         true,
 		Metadata: map[string]string{
 			"vela.contract": "event-delivery",
-			"vela.revision": "1",
+			"vela.revision": "2",
 		},
 	}
 }

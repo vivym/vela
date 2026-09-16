@@ -3,5 +3,5 @@
   "podMemoryLimit": "8Gi",
   "fileStoreLimit": "unchanged",
   "streamContract": "jetstream-contract.json",
-  "note": "Explicit server memory ceiling. This does not satisfy the 64GiB file stream contract on the current 50Gi PVCs."
+  "note": "Explicit server memory ceiling. Stream contract revision 2 reserves 32GiB per replica, within the observed 36.7GiB file quota on 50Gi PVCs. Recheck live available quota before bootstrap."
 }

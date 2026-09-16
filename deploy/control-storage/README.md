@@ -210,8 +210,10 @@ the running NATS binary and creates an immutable server Secret with unchanged
 credentials. Client Secret references stay intact. It lowers a StatefulSet
 partition one ordinal at a time while checking all three members and the
 leader's replica-currency report. NATS 2.10.22 cannot hot-reload a dynamic memory
-limit. PVC capacity and the 64GiB stream contract remain unchanged; the current
-50Gi PVC capacity gap remains open.
+limit. PVC capacity stays at 50Gi. Release stream contract revision 2 uses
+32GiB per replica, within the observed automatic file quota. Bootstrap must
+verify live quota before creating the stream; existing streams are never
+automatically shrunk or purged.
 
 The Outbox credential may publish only `vela.events.>` and the exact
 `$JS.API.STREAM.INFO.VELA_EVENTS` request needed to reject contract drift; it may

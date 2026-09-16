@@ -1,5 +1,5 @@
 {
-  "revision": 1,
+  "revision": 2,
   "stream": {
     "name": "VELA_EVENTS",
     "subjects": [
@@ -8,7 +8,7 @@
     "retention": "limits",
     "max_consumers": 32,
     "max_msgs": 1000000,
-    "max_bytes": 68719476736,
+    "max_bytes": 34359738368,
     "discard": "old",
     "max_age": 604800000000000,
     "max_msgs_per_subject": -1,
@@ -20,7 +20,7 @@
     "deny_purge": true,
     "metadata": {
       "vela.contract": "event-delivery",
-      "vela.revision": "1"
+      "vela.revision": "2"
     }
   },
   "consumers": [
