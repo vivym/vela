@@ -1,6 +1,6 @@
 # The image contains the serving runtime only. Model weights stay on the GPU
 # worker's local PV and are never copied through the image or on each restart.
-FROM --platform=linux/amd64 vllm/vllm-openai:v0.10.1.1
+FROM --platform=linux/amd64 vllm/vllm-openai:v0.10.1.1@sha256:d731ee65c044ae0977421eed3d93f931d4b7d79614394184c939db35b8f28fc2
 
 COPY entrypoint.py /opt/vela/entrypoint.py
 COPY reranker_server.py /opt/vela/reranker_server.py

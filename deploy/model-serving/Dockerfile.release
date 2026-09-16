@@ -1,0 +1,8 @@
+# The 0.2.0 release reuses the already mirrored vLLM 0.10.1.1 runtime.
+# Dockerfile builds that runtime from the pinned upstream image if needed.
+# Both adapters below replace the old adapters inherited from this image.
+FROM --platform=linux/amd64 10.1.201.70:5005/llm-models/qwen3-model-worker:0.1.4@sha256:61d787ec85f10514187b5d5e0da7d84fda9065047f6d80d93b22125f2034497f
+
+COPY entrypoint.py /opt/vela/entrypoint.py
+COPY reranker_server.py /opt/vela/reranker_server.py
+RUN chmod 0555 /opt/vela/entrypoint.py

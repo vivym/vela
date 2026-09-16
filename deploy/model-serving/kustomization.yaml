@@ -5,3 +5,4 @@ resources:
   - local-model-pv.yaml
   - deployment.yaml
   - service.yaml
+  - network-policy.yaml

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Qwen3 embedding and reranker vLLM servers on one allocated GPU.
+"""Run Qwen3 embedding and reranker vLLM servers on two allocated GPUs.
 
 The parent process owns the pod lifecycle and exposes a small compatibility
 proxy on :envvar:`PROXY_PORT`. vLLM remains the implementation of both model
@@ -154,9 +154,19 @@ class MetricsProxy(BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    # Kubernetes allocates two GPUs to this Pod. Keep one independent vLLM
+    # allocator per card so embedding and reranking cannot contend for the
+    # same KV-cache arena.
+    embed_env = os.environ.copy()
+    embed_env["CUDA_VISIBLE_DEVICES"] = "0"
+    rerank_env = os.environ.copy()
+    rerank_env["CUDA_VISIBLE_DEVICES"] = "1"
     children = [
-        subprocess.Popen(vllm_args(EMBED_MODEL, "embed", EMBED_PORT, "qwen3-embedding-4b", EMBED_GPU_UTIL)),
-        subprocess.Popen(reranker_args()),
+        subprocess.Popen(
+            vllm_args(EMBED_MODEL, "embed", EMBED_PORT, "qwen3-embedding-4b", EMBED_GPU_UTIL),
+            env=embed_env,
+        ),
+        subprocess.Popen(reranker_args(), env=rerank_env),
     ]
     stopping = threading.Event()
 

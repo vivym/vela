@@ -1,0 +1,579 @@
+{
+  "fixture": {
+    "file": "ragflow-pdf-validation.pdf",
+    "sha256": "6822d9906bd42b334c33eeab0cdd50771b0f41eb026dec297a25f14d9cf2e946",
+    "pages": 4,
+    "native_text_chars": [
+      348,
+      213,
+      241,
+      0
+    ],
+    "scan_page": 4,
+    "scan_has_text_layer": false
+  },
+  "dataset_id": "732153aeb17911f1b7b605167d0e39b4",
+  "document_id": "61570bb6b17c11f1b7b605167d0e39b4",
+  "parser": "DeepDOC",
+  "chunk_token_num": 512,
+  "executor_device": "CPU",
+  "task_seconds": 101.85,
+  "phase_seconds": {
+    "ocr": 28.19,
+    "layout": 29.86,
+    "table": 41.59,
+    "text_merge": 0.11,
+    "embedding": 0.17,
+    "indexing": 0.17
+  },
+  "validation": {
+    "chunks": 4,
+    "pages_observed": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "content_checks": [
+      {
+        "name": "native_project_code",
+        "page": 1,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "native_chinese_owner",
+        "page": 1,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "native_date",
+        "page": 1,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "native_retention",
+        "page": 1,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "table_row_a",
+        "page": 2,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "table_row_b",
+        "page": 2,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "table_row_c",
+        "page": 2,
+        "passed": false,
+        "missing": [
+          "4"
+        ]
+      },
+      {
+        "name": "left_column",
+        "page": 3,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "right_column",
+        "page": 3,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "figure_caption",
+        "page": 3,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "ocr_receipt",
+        "page": 4,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "ocr_chinese_name",
+        "page": 4,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "ocr_chinese_phrase",
+        "page": 4,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "ocr_time",
+        "page": 4,
+        "passed": true,
+        "missing": []
+      },
+      {
+        "name": "ocr_amount",
+        "page": 4,
+        "passed": true,
+        "missing": []
+      }
+    ],
+    "content_passed": 14,
+    "content_total": 15,
+    "table_row_checks": [
+      {
+        "name": "table_row_a",
+        "html_row_preserved": true,
+        "matching_rows": [
+          [
+            "Cedar-A ",
+            "12 ",
+            "384",
+            "东区"
+          ]
+        ]
+      },
+      {
+        "name": "table_row_b",
+        "html_row_preserved": true,
+        "matching_rows": [
+          [
+            "Cedar-B ",
+            "8 ",
+            "256",
+            "西区"
+          ]
+        ]
+      },
+      {
+        "name": "table_row_c",
+        "html_row_preserved": false,
+        "matching_rows": []
+      }
+    ],
+    "column_marker_sequence": [
+      "B1",
+      "A1",
+      "A2",
+      "B2",
+      "A3",
+      "B3",
+      "B4",
+      "A4"
+    ],
+    "column_reading_order_passed": false
+  },
+  "retrieval": [
+    {
+      "question": "松鹤测试计划的负责人是谁？",
+      "missing": [],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "score": 0.6963459120103478,
+      "expected_table_row": null,
+      "retrieval_hit": true,
+      "top_chunk_id": "29a1a946cd833ef7",
+      "answer_evidence_passed": true
+    },
+    {
+      "question": "Cedar-B 有多少节点，每个节点内存是多少，位于哪个机房？",
+      "missing": [],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        2
+      ],
+      "score": 0.6995615663974372,
+      "expected_table_row": null,
+      "retrieval_hit": true,
+      "top_chunk_id": "a6cdd86bbbe1e98d",
+      "answer_evidence_passed": true
+    },
+    {
+      "question": "受理步骤中，检查文件格式之后要做什么？",
+      "missing": [],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "score": 0.6829038375439891,
+      "expected_table_row": null,
+      "retrieval_hit": true,
+      "top_chunk_id": "29a1a946cd833ef7",
+      "answer_evidence_passed": true
+    },
+    {
+      "question": "扫描页专用凭证的应急联系人是谁？",
+      "missing": [],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        4
+      ],
+      "score": 0.6986512860504946,
+      "expected_table_row": null,
+      "retrieval_hit": true,
+      "top_chunk_id": "dffce3e1d45d52f0",
+      "answer_evidence_passed": true
+    },
+    {
+      "question": "扫描凭证上的核对金额是多少？",
+      "missing": [],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        4
+      ],
+      "score": 0.6986512861507881,
+      "expected_table_row": null,
+      "retrieval_hit": true,
+      "top_chunk_id": "dffce3e1d45d52f0",
+      "answer_evidence_passed": true
+    },
+    {
+      "question": "Cedar-C 的节点数量是多少？",
+      "missing": [
+        "Cedar-C / 节点数量 / 4"
+      ],
+      "top_document": "ragflow-pdf-validation.pdf",
+      "pages": [
+        2
+      ],
+      "score": 0.6967732990923177,
+      "expected_table_row": [
+        "Cedar-C",
+        "4",
+        "128",
+        "南区"
+      ],
+      "retrieval_hit": true,
+      "top_chunk_id": "a6cdd86bbbe1e98d",
+      "answer_evidence_passed": false
+    }
+  ],
+  "parsed_chunks": [
+    {
+      "id": "29a1a946cd833ef7",
+      "content": "\nRAGFlow /PDF 解析验收\n01 原生文字与中英文混排\n检查目标：标题、中文正文、数字、日期和英文标识\n松鹤测试计划的编号是SH-2479。\n计划负责人是周青，生效日期为2026-09-16。\n本计划要求保留审计记录17 天。\nThe document owner is Zhou Qing. Project code: SH-2479.\nThe audit retention period is 17 days.\n本文是为PDF 解析验收专门编写的合成资料。\n第二页包含设备表格，第三页包含双栏步骤和流程图。\n第四页只有一张扫描图片，没有可复制的PDF 文字层。\n扫描页的专用事实不在其他页面重复，需要通过OCR 获取。\n02 结构化表格\n检查目标：行列对应关系、中文表头、英文设备名和数值\n表格注释：内存列为每节点的容量，单位是GiB。\n验收时应保留设备名称与对应行数值之间的关系。\nRAGFlow /PDF 解析验收\n03 双栏阅读顺序与流程图\n检查目标：栏内顺序、栏目边界，以及流程标签的保留\n右栏：审计步骤\n左栏：受理步骤\nB1 建立审计记录。\nA1 接收申请。 \nA2 检查文件格式。 \nB2 记录归档时间。\nA3 校验编号是否完整。 \nB3 通知申请人处理结果。\nB4 保存本次审核结论。\nA4 将合格文件提交归档。 \nRAGFIow/PDF解析验收\n04扫描页专用凭证\n本页最终以图片嵌入；验证时必须通过OCR恢复内容",
+      "positions": [
+        [
+          1,
+          46,
+          180,
+          33,
+          43
+        ],
+        [
+          1,
+          46,
+          292,
+          68,
+          85
+        ],
+        [
+          1,
+          45,
+          274,
+          110,
+          119
+        ],
+        [
+          1,
+          46,
+          219,
+          185,
+          196
+        ],
+        [
+          1,
+          46,
+          281,
+          217,
+          227
+        ],
+        [
+          1,
+          46,
+          212,
+          250,
+          260
+        ],
+        [
+          1,
+          45,
+          357,
+          281,
+          292
+        ],
+        [
+          1,
+          45,
+          240,
+          313,
+          325
+        ],
+        [
+          1,
+          46,
+          282,
+          378,
+          388
+        ],
+        [
+          1,
+          46,
+          324,
+          409,
+          419
+        ],
+        [
+          1,
+          46,
+          331,
+          441,
+          452
+        ],
+        [
+          1,
+          46,
+          357,
+          474,
+          484
+        ],
+        [
+          2,
+          46,
+          182,
+          67,
+          86
+        ],
+        [
+          2,
+          45,
+          294,
+          109,
+          118
+        ],
+        [
+          2,
+          46,
+          278,
+          475,
+          484
+        ],
+        [
+          2,
+          46,
+          278,
+          507,
+          516
+        ],
+        [
+          3,
+          45,
+          180,
+          31,
+          42
+        ],
+        [
+          3,
+          46,
+          291,
+          67,
+          85
+        ],
+        [
+          3,
+          45,
+          284,
+          109,
+          119
+        ],
+        [
+          3,
+          326,
+          422,
+          177,
+          191
+        ],
+        [
+          3,
+          46,
+          142,
+          178,
+          191
+        ],
+        [
+          3,
+          324,
+          411,
+          218,
+          229
+        ],
+        [
+          3,
+          45,
+          110,
+          219,
+          230
+        ],
+        [
+          3,
+          44,
+          132,
+          258,
+          269
+        ],
+        [
+          3,
+          325,
+          411,
+          260,
+          270
+        ],
+        [
+          3,
+          45,
+          153,
+          300,
+          310
+        ],
+        [
+          3,
+          325,
+          444,
+          300,
+          310
+        ],
+        [
+          3,
+          324,
+          433,
+          338,
+          350
+        ],
+        [
+          3,
+          46,
+          164,
+          340,
+          350
+        ],
+        [
+          4,
+          45,
+          180,
+          31,
+          42
+        ],
+        [
+          4,
+          46,
+          226,
+          67,
+          85
+        ],
+        [
+          4,
+          46,
+          281,
+          109,
+          119
+        ]
+      ],
+      "doc_type_kwd": "text"
+    },
+    {
+      "id": "a6cdd86bbbe1e98d",
+      "content": "<table><caption>表1 测试设备资源清单</caption>\n<tr><td  >设备名称</td><td  >节点数量</td><td  >内存（GiB）</td><td  >机房</td></tr>\n<tr><td  >Cedar-A </td><td  >12 </td><td  >384</td><td  >东区</td></tr>\n<tr><td  >Cedar-B </td><td  >8 </td><td  >256</td><td  >西区</td></tr>\n<tr><td  >Cedar-C </td><td></td><td  >128</td><td  >南区</td></tr>\n</table>",
+      "positions": [
+        [
+          2,
+          43,
+          551,
+          221,
+          434
+        ]
+      ],
+      "doc_type_kwd": "text"
+    },
+    {
+      "id": "c5aa9c85494743a7",
+      "content": "图注：文件从接收环节进入校验环节，再进入归档环节。\n图1 归档处理流程\n接收\n校验\n归档",
+      "positions": [
+        [
+          3,
+          42,
+          546,
+          548,
+          613
+        ]
+      ],
+      "doc_type_kwd": "text"
+    },
+    {
+      "id": "dffce3e1d45d52f0",
+      "content": "\n凭证编号：SCAN-7294\n应急联系人：林澄\n校验短语：蓝鲸松林\n每日巡检时间：06：35\n核对金额：1842.75元\n验收说明：以上字段均为虚构测试数据。",
+      "positions": [
+        [
+          4,
+          56,
+          218,
+          202,
+          215
+        ],
+        [
+          4,
+          58,
+          181,
+          262,
+          275
+        ],
+        [
+          4,
+          57,
+          196,
+          322,
+          335
+        ],
+        [
+          4,
+          56,
+          205,
+          382,
+          395
+        ],
+        [
+          4,
+          56,
+          211,
+          442,
+          455
+        ],
+        [
+          4,
+          56,
+          262,
+          505,
+          515
+        ]
+      ],
+      "doc_type_kwd": "text"
+    }
+  ]
+}

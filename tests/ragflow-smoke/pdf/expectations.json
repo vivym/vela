@@ -1,0 +1,183 @@
+{
+  "filename": "ragflow-pdf-validation.pdf",
+  "sha256": "6822d9906bd42b334c33eeab0cdd50771b0f41eb026dec297a25f14d9cf2e946",
+  "checks": [
+    {
+      "name": "native_project_code",
+      "page": 1,
+      "tokens": [
+        "SH-2479"
+      ]
+    },
+    {
+      "name": "native_chinese_owner",
+      "page": 1,
+      "tokens": [
+        "周青"
+      ]
+    },
+    {
+      "name": "native_date",
+      "page": 1,
+      "tokens": [
+        "2026-09-16"
+      ]
+    },
+    {
+      "name": "native_retention",
+      "page": 1,
+      "tokens": [
+        "17",
+        "天"
+      ]
+    },
+    {
+      "name": "table_row_a",
+      "page": 2,
+      "tokens": [
+        "Cedar-A",
+        "12",
+        "384",
+        "东区"
+      ]
+    },
+    {
+      "name": "table_row_b",
+      "page": 2,
+      "tokens": [
+        "Cedar-B",
+        "8",
+        "256",
+        "西区"
+      ]
+    },
+    {
+      "name": "table_row_c",
+      "page": 2,
+      "tokens": [
+        "Cedar-C",
+        "4",
+        "128",
+        "南区"
+      ]
+    },
+    {
+      "name": "left_column",
+      "page": 3,
+      "tokens": [
+        "A1",
+        "A2",
+        "A3",
+        "A4"
+      ]
+    },
+    {
+      "name": "right_column",
+      "page": 3,
+      "tokens": [
+        "B1",
+        "B2",
+        "B3",
+        "B4"
+      ]
+    },
+    {
+      "name": "figure_caption",
+      "page": 3,
+      "tokens": [
+        "接收",
+        "校验",
+        "归档"
+      ]
+    },
+    {
+      "name": "ocr_receipt",
+      "page": 4,
+      "tokens": [
+        "SCAN-7294"
+      ]
+    },
+    {
+      "name": "ocr_chinese_name",
+      "page": 4,
+      "tokens": [
+        "林澄"
+      ]
+    },
+    {
+      "name": "ocr_chinese_phrase",
+      "page": 4,
+      "tokens": [
+        "蓝鲸松林"
+      ]
+    },
+    {
+      "name": "ocr_time",
+      "page": 4,
+      "tokens": [
+        "06:35"
+      ]
+    },
+    {
+      "name": "ocr_amount",
+      "page": 4,
+      "tokens": [
+        "1842.75"
+      ]
+    }
+  ],
+  "retrieval": [
+    {
+      "question": "松鹤测试计划的负责人是谁？",
+      "expected_tokens": [
+        "周青"
+      ],
+      "page": 1
+    },
+    {
+      "question": "Cedar-B 有多少节点，每个节点内存是多少，位于哪个机房？",
+      "expected_tokens": [
+        "Cedar-B",
+        "8",
+        "256",
+        "西区"
+      ],
+      "page": 2
+    },
+    {
+      "question": "受理步骤中，检查文件格式之后要做什么？",
+      "expected_tokens": [
+        "A3",
+        "校验编号"
+      ],
+      "page": 3
+    },
+    {
+      "question": "扫描页专用凭证的应急联系人是谁？",
+      "expected_tokens": [
+        "林澄"
+      ],
+      "page": 4
+    },
+    {
+      "question": "扫描凭证上的核对金额是多少？",
+      "expected_tokens": [
+        "1842.75"
+      ],
+      "page": 4
+    },
+    {
+      "question": "Cedar-C 的节点数量是多少？",
+      "expected_tokens": [
+        "Cedar-C"
+      ],
+      "expected_table_row": [
+        "Cedar-C",
+        "4",
+        "128",
+        "南区"
+      ],
+      "page": 2
+    }
+  ]
+}
