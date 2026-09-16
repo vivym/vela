@@ -70,7 +70,7 @@
 
 ## 入口、权限与监控
 
-- APISIX 已配置为统一入口：企业 DNS 需将 `ragflow.marslab.ic` 指向 `.70/.71` 的本地 Nginx 80/443；Nginx 再转发到本机 APISIX `30443`，使用现有私有 CA。HTTP 自动 308 到 HTTPS；根路径代理 `ragflow-lab` Web/API，上传上限 128 MiB，流式读写超时 3600 秒，阻断 `/api/v1/admin`。现有 APISIX 限流为每个 APISIX 实例按其看到的 `remote_addr` 计数 120 requests/min；经过 Nginx/NodePort 后可能是共享的节点来源，不能等同于每个终端用户的独立额度。客户端仍需配置企业内部 DNS/hosts 并信任 `vela-gateway-ca`。
+- APISIX 已配置为统一入口：企业 DNS 需将 `ragflow.marslab.ic` 指向 `.70/.71` 的本地 Nginx 80/443；Nginx 再转发到本机 APISIX `30443`。HTTP 自动 308 到 HTTPS；根路径代理 `ragflow-lab` Web/API，上传上限 128 MiB，流式读写超时 3600 秒，阻断 `/api/v1/admin`。2026-09-16 已移除误伤静态资源和业务 API 的全站 `120 requests/min` 限流，见[修复记录](ragflow-rate-limit-fix-2026-09-16.md)。APISIX 看到的来源仍可能是代理节点，后续分类限流须先解决可信来源或身份识别。标准 443 入口当前使用 `MARSLAB Root CA` 签发的证书；Nginx 到 APISIX 的上游校验仍使用 Vela CA，见[证书对齐记录](ragflow-nginx-certificate-alignment-2026-09-16.md)。
 - 独立 hostname 的 `/` 同时承载静态文件、`/v1`、`/api`，避免未经验证的 `/ragflow` 子路径改写。TLS 证书加入该 hostname，由客户端信任私有 CA。
 - 只公开 Web/业务 API，MySQL、Valkey、Infinity、S3 和管理接口均为 ClusterIP。上游 nginx 会代理 `/api/v1/admin`，即使不暴露 9381 也必须阻断或单独限制该路径。
 - 默认关闭代码沙箱：官方 Compose 沙箱需要 privileged 和 Docker socket，与当前集群边界不符。MCP/管理端按需要另开，首轮不纳入验收。

@@ -6,6 +6,20 @@ src=$(cd -- "$(dirname -- "$0")" && pwd)
 backup=/root/vela-backups/nginx-ragflow-sync-$(date +%Y%m%d-%H%M%S)
 site=/etc/nginx/conf.d/ragflow.marslab.ic.conf
 [[ $EUID == 0 ]] || { echo 'Run as root' >&2; exit 1; }
+# Frontend TLS uses the separately provisioned MARSLAB certificate. The sync
+# service below maintains the Vela CA used to verify the APISIX upstream.
+frontend=/etc/nginx/ssl/ragflow.marslab.ic
+[[ -s "$frontend/wildcard.marslab.ic.crt" && -s "$frontend/wildcard.marslab.ic.key" ]] || {
+  echo 'Provision the MARSLAB frontend certificate and matching private key first' >&2
+  exit 1
+}
+openssl x509 -in "$frontend/wildcard.marslab.ic.crt" -checkend 300 -noout >/dev/null
+openssl x509 -in "$frontend/wildcard.marslab.ic.crt" -checkhost ragflow.marslab.ic -noout >/dev/null
+cmp -s <(openssl x509 -in "$frontend/wildcard.marslab.ic.crt" -pubkey -noout) \
+    <(openssl pkey -in "$frontend/wildcard.marslab.ic.key" -pubout 2>/dev/null) || {
+  echo 'MARSLAB frontend certificate/key mismatch' >&2
+  exit 1
+}
 nginx -t
 install -d -m 700 "$backup"
 cp -a /etc/nginx "$backup/nginx"

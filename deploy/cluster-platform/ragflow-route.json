@@ -9,13 +9,6 @@
       "header_name": "X-Request-ID",
       "include_in_response": true
     },
-    "limit-count": {
-      "count": 120,
-      "time_window": 60,
-      "rejected_code": 429,
-      "key": "remote_addr",
-      "policy": "local"
-    },
     "client-control": {
       "max_body_size": 134217728
     },
