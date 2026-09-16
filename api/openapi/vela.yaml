@@ -3514,6 +3514,8 @@ components:
         expires_at:
           type: string
           format: date-time
+          nullable: true
+          description: Null for platform-provisioned credentials with no automatic expiry.
         created_at:
           type: string
           format: date-time
@@ -3551,6 +3553,8 @@ components:
         expires_at:
           type: string
           format: date-time
+          nullable: true
+          description: Null for platform-provisioned credentials with no automatic expiry.
         created_at:
           type: string
           format: date-time

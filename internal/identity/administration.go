@@ -39,9 +39,10 @@ type Credential struct {
 	ProjectID          uuid.UUID
 	ServicePrincipalID uuid.UUID
 	Scopes             []string
-	ExpiresAt          time.Time
-	CreatedAt          time.Time
-	RevokedAt          *time.Time
+	// Nil means a platform-provisioned credential with no automatic expiry.
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+	RevokedAt *time.Time
 }
 
 type IssueCredentialRequest struct {
@@ -994,6 +995,7 @@ func scanServicePrincipal(row credentialScanner) (ServicePrincipal, error) {
 
 func scanCredential(row credentialScanner) (Credential, error) {
 	var credential Credential
+	var expiresAt pgtype.Timestamptz
 	var revokedAt pgtype.Timestamptz
 	err := row.Scan(
 		&credential.ID,
@@ -1001,10 +1003,20 @@ func scanCredential(row credentialScanner) (Credential, error) {
 		&credential.ProjectID,
 		&credential.ServicePrincipalID,
 		&credential.Scopes,
-		&credential.ExpiresAt,
+		&expiresAt,
 		&credential.CreatedAt,
 		&revokedAt,
 	)
+	if err != nil {
+		return Credential{}, err
+	}
+	if !expiresAt.Valid || expiresAt.InfinityModifier == pgtype.NegativeInfinity {
+		return Credential{}, errors.New("invalid Service Credential expiry")
+	}
+	if expiresAt.InfinityModifier == pgtype.Finite {
+		value := expiresAt.Time
+		credential.ExpiresAt = &value
+	}
 	if revokedAt.Valid {
 		value := revokedAt.Time
 		credential.RevokedAt = &value

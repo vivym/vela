@@ -129,6 +129,14 @@ The returned bearer form remains `vla_<credential-id>.<base64url-secret>`, with
 clears temporary secret material where possible. List, revoke, disable, audit,
 log, and error paths expose neither the bearer value nor its digest.
 
+Platform provisioning may explicitly authorize a non-expiring Credential using
+PostgreSQL `expires_at = 'infinity'`. Since 2026-09-16 the management projection
+represents this as `expires_at: null`, so listing and revoking it remain valid.
+The ordinary Human ProjectAdmin issue API still requires a finite expiry within
+366 days; no Service Principal receives credential-administration permissions.
+Authentication, permanent revocation and Service Principal disablement apply to
+non-expiring Credentials in the same way as finite Credentials.
+
 The allowed Service scopes are `jobs:submit`, `jobs:read`, `jobs:cancel`,
 `artifacts:read`, `webhooks:manage`, and `webhooks:read`. Duplicates, unknown
 scopes, empty sets, and Human administration permissions are rejected in both
