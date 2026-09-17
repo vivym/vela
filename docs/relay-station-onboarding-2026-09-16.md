@@ -17,7 +17,7 @@ API Key 不自动过期，可由管理员撤销。创建及鉴权检查未产生
 | 创建后已占用 / 已消费未结算 | `0 / 0` |
 | 自动过期 | 无；数据库为 `infinity`，管理 API 返回 `expires_at: null` |
 | 权限 | `jobs:submit`、`jobs:read`、`jobs:cancel`、`artifacts:read` |
-| 排队 / 运行上限 | `10 / 2`；实际执行仍受可用模型容量限制 |
+| 排队 / 运行上限 | `10 / 8`（2026-09-17 提升）；实际执行仍受可用模型容量限制 |
 
 金额是后付费合同额度，不是收到现金的记录。可用额度 = 合同额度 − 已预留额度 −
 已产生但未结算的 Charge。正常失败任务释放预留；收费规则以 Job 固定报价及最终
@@ -35,13 +35,17 @@ Charge 为准。结算通过财务核销流程回写，不删除历史 Charge �
 
 ## 当前可调用的 H3 组合
 
-2026-09-16 线上 SKU 匹配函数复核：以下 `model` 和 `generation_preset` 必须原样使用。
-`minimax-h3`、`balanced`、`quality`、10 秒与纯视频规格目前均不匹配已开通的
-`standard` Rate Card。排查记录见 [SKU 匹配诊断](h3-sku-diagnosis-2026-09-16.md)。
+2026-09-17 已为本项目开通正式名称 `minimax-h3`，配置为独立的
+1 Encoder、8 DiT、2 Decoder，旧名称 `minimax-h3-live-validation` 的路由保留。
+新模型已通过真实 API、完整音视频/缩略图下载、唯一计费、幂等重放及执行后容量恢复
+验收，见[独立部署与验收](minimax-h3-independent-deployment-2026-09-17.md)。
+现有永久 Key 无须更换；建议新调用使用下方正式名称。
+`balanced`、`quality`、10 秒与纯视频规格仍未在本次发布开通。
+历史 SKU 问题见 [SKU 匹配诊断](h3-sku-diagnosis-2026-09-16.md)。
 
 ```json
 {
-  "model": "minimax-h3-live-validation",
+  "model": "minimax-h3",
   "generation_preset": "fast",
   "service_class": "standard",
   "output_spec": "h3-native-av-1344x768-5s-24fps",
@@ -108,8 +112,10 @@ Control 已滚动发布两个副本，镜像：
 
 现场 `.70/.71` 两个网关共 12 项检查通过：永久 Key 鉴权成功，匿名/篡改 Key 被拒绝，
 其他项目及其 Job 不可见，身份管理接口拒绝中转 Key。没有为检查创建新付费任务。
-当前 H3 运行环境仍沿用先前的验证配置，容量、故障切换和长期稳定性边界见
-[H3 验收报告](h3-api-repair-2026-09-16.md)。
+上述 Control 镜像和 schema 为 2026-09-16 的历史部署记录，不是当前全量清单。
+2026-09-17 的新模型发布、容量及验收边界见
+[独立部署与验收](minimax-h3-independent-deployment-2026-09-17.md)；8 个运行额度不等于
+已完成 8 并发吞吐压测。旧模型历史证据见 [H3 验收报告](h3-api-repair-2026-09-16.md)。
 
 证据：[创建回执](evidence/relay-station-2026-09-16/provisioning.json)、
 [现场检查](evidence/relay-station-2026-09-16/verification.json)、
