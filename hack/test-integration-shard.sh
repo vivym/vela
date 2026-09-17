@@ -80,7 +80,7 @@ while IFS=' ' read -r package test_pattern; do
 		-f "${script_dir}/summarize-integration-shard.awk" "${expected}" "${log}"; then
 		status=1
 	fi
-	if (( status != 0 )); then
+	if [ "${status}" -ne 0 ]; then
 		cat "${log}" >&2
 	fi
 	package_index=$((package_index + 1))

@@ -84,3 +84,44 @@ func TestIntegrationShardsRejectInvalidIndices(t *testing.T) {
 		})
 	}
 }
+
+func TestIntegrationShardsPreserveFailureDiagnostics(t *testing.T) {
+	directory := t.TempDir()
+	const fakeGo = `#!/bin/sh
+set -eu
+case "$1" in
+list)
+  if [ "$2" = -tags=integration ]; then
+    printf '%s\n' 'example/internal/integration suite_test.go '
+  fi
+  ;;
+test)
+  if [ "$4" = -list ]; then
+    printf '%s\n' TestDatabaseFailure
+  else
+    printf '%s\n' '=== RUN   TestDatabaseFailure' '    database_test.go:10: expected one durable charge, got zero' '--- FAIL: TestDatabaseFailure (0.01s)' 'FAIL'
+    exit 1
+  fi
+  ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(directory, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	shell := "sh"
+	if dash, err := exec.LookPath("dash"); err == nil {
+		shell = dash
+	}
+	command := exec.Command(shell, "./test-integration-shard.sh", "0", "1")
+	command.Env = append(os.Environ(), "PATH="+directory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatalf("failed test accepted: %s", output)
+	}
+	if !strings.Contains(string(output), "expected one durable charge, got zero") || !strings.Contains(string(output), "FAIL=1") {
+		t.Fatalf("missing test failure diagnostics: %s", output)
+	}
+	if strings.Contains(string(output), "status: not found") {
+		t.Fatalf("non-POSIX shell conditional: %s", output)
+	}
+}
