@@ -3963,6 +3963,9 @@ func toAPIJob(job admission.Job) api.Job {
 			Currency:           job.PricingSnapshot.Currency,
 		},
 	}
+	if job.Model != "" {
+		view.Model = &job.Model
+	}
 	if job.Phase != nil {
 		phase := api.ExecutionPhase(*job.Phase)
 		view.Phase = &phase

@@ -43,6 +43,7 @@ const getJob = `-- name: GetJob :one
 SELECT
     j.id,
     j.project_id,
+    rts.model,
     j.state,
     j.execution_phase,
     j.pricing_rate_card_revision_id,
@@ -75,6 +76,7 @@ type GetJobParams struct {
 type GetJobRow struct {
 	ID                        uuid.UUID          `db:"id" json:"id"`
 	ProjectID                 uuid.UUID          `db:"project_id" json:"project_id"`
+	Model                     string             `db:"model" json:"model"`
 	State                     JobState           `db:"state" json:"state"`
 	ExecutionPhase            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
 	PricingRateCardRevisionID uuid.UUID          `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
@@ -98,6 +100,7 @@ func (q *Queries) GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, erro
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
+		&i.Model,
 		&i.State,
 		&i.ExecutionPhase,
 		&i.PricingRateCardRevisionID,
@@ -476,6 +479,117 @@ func (q *Queries) InstantiateAdmittedStageGraph(ctx context.Context, arg Instant
 		&i.StageRunCount,
 	)
 	return i, err
+}
+
+const listJobs = `-- name: ListJobs :many
+SELECT
+    j.id,
+    j.project_id,
+    rts.model,
+    j.state,
+    j.execution_phase,
+    j.pricing_rate_card_revision_id,
+    j.pricing_rate_line_id,
+    j.pricing_unit_amount_minor,
+    j.pricing_quantity,
+    j.pricing_quoted_amount_minor,
+    j.pricing_currency,
+    rts.attempts_started,
+    rts.next_retry_at,
+    ap.phase_progress,
+    ap.estimated_finish_at,
+    ap.progress_updated_at,
+    j.job_expires_at,
+    j.created_at
+FROM jobs AS j
+JOIN vela_request_job_runtime AS rts ON rts.job_id = j.id
+LEFT JOIN vela_request_job_progress AS ap ON ap.job_id = j.id
+WHERE j.organization_id = $1
+  AND j.project_id = $2
+  AND (NOT $3::boolean OR j.state IN ('QUEUED', 'ASSIGNED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT', 'CANCELING'))
+  AND ($4::text = '' OR j.state = NULLIF($4::text, '')::job_state)
+  AND ($5::timestamptz IS NULL
+       OR (j.created_at, j.id) < ($5::timestamptz, $6::uuid))
+ORDER BY j.created_at DESC, j.id DESC
+LIMIT $7::integer
+`
+
+type ListJobsParams struct {
+	OrganizationID  uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID       uuid.UUID          `db:"project_id" json:"project_id"`
+	Active          bool               `db:"active" json:"active"`
+	StateFilter     string             `db:"state_filter" json:"state_filter"`
+	BeforeCreatedAt pgtype.Timestamptz `db:"before_created_at" json:"before_created_at"`
+	BeforeID        uuid.UUID          `db:"before_id" json:"before_id"`
+	PageSize        int32              `db:"page_size" json:"page_size"`
+}
+
+type ListJobsRow struct {
+	ID                        uuid.UUID          `db:"id" json:"id"`
+	ProjectID                 uuid.UUID          `db:"project_id" json:"project_id"`
+	Model                     string             `db:"model" json:"model"`
+	State                     JobState           `db:"state" json:"state"`
+	ExecutionPhase            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
+	PricingRateCardRevisionID uuid.UUID          `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
+	PricingRateLineID         uuid.UUID          `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
+	PricingUnitAmountMinor    int64              `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
+	PricingQuantity           int32              `db:"pricing_quantity" json:"pricing_quantity"`
+	PricingQuotedAmountMinor  int64              `db:"pricing_quoted_amount_minor" json:"pricing_quoted_amount_minor"`
+	PricingCurrency           string             `db:"pricing_currency" json:"pricing_currency"`
+	AttemptsStarted           int32              `db:"attempts_started" json:"attempts_started"`
+	NextRetryAt               pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+	PhaseProgress             *float64           `db:"phase_progress" json:"phase_progress"`
+	EstimatedFinishAt         pgtype.Timestamptz `db:"estimated_finish_at" json:"estimated_finish_at"`
+	ProgressUpdatedAt         pgtype.Timestamptz `db:"progress_updated_at" json:"progress_updated_at"`
+	JobExpiresAt              pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error) {
+	rows, err := q.db.Query(ctx, listJobs,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.Active,
+		arg.StateFilter,
+		arg.BeforeCreatedAt,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListJobsRow{}
+	for rows.Next() {
+		var i ListJobsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Model,
+			&i.State,
+			&i.ExecutionPhase,
+			&i.PricingRateCardRevisionID,
+			&i.PricingRateLineID,
+			&i.PricingUnitAmountMinor,
+			&i.PricingQuantity,
+			&i.PricingQuotedAmountMinor,
+			&i.PricingCurrency,
+			&i.AttemptsStarted,
+			&i.NextRetryAt,
+			&i.PhaseProgress,
+			&i.EstimatedFinishAt,
+			&i.ProgressUpdatedAt,
+			&i.JobExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockCreditAccount = `-- name: LockCreditAccount :one

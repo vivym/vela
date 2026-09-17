@@ -79,6 +79,7 @@ const (
 )
 
 type Job struct {
+	Model             string
 	ID                uuid.UUID
 	ProjectID         uuid.UUID
 	State             JobState
@@ -732,6 +733,7 @@ func jobFromGetRow(row store.GetJobRow) (Job, error) {
 	}
 	return Job{
 		ID:                row.ID,
+		Model:             row.Model,
 		ProjectID:         row.ProjectID,
 		State:             JobState(row.State),
 		Phase:             row.ExecutionPhase,

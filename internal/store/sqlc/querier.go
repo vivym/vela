@@ -43,6 +43,7 @@ type Querier interface {
 	IsArtifactMultipartUploadRecorded(ctx context.Context, arg IsArtifactMultipartUploadRecordedParams) (bool, error)
 	ListCommittedArtifactSetItems(ctx context.Context, artifactSetID uuid.UUID) ([]ListCommittedArtifactSetItemsRow, error)
 	ListCompletionArtifactsForUpdate(ctx context.Context, arg ListCompletionArtifactsForUpdateParams) ([]ListCompletionArtifactsForUpdateRow, error)
+	ListJobs(ctx context.Context, arg ListJobsParams) ([]ListJobsRow, error)
 	ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error)
 	ListStageGraphFinalizationClaimOutputs(ctx context.Context, claimID uuid.UUID) ([]ListStageGraphFinalizationClaimOutputsRow, error)
 	ListStageGraphFinalizationOutputs(ctx context.Context, attemptID uuid.UUID) ([]ListStageGraphFinalizationOutputsRow, error)

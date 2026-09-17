@@ -5580,6 +5580,11 @@ type ModelRuntimeEpochRegistration struct {
 	DeviceSubsetDigest      []byte             `db:"device_subset_digest" json:"device_subset_digest"`
 }
 
+type ModelStageRoute struct {
+	ModelRevisionID   uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
+	CutoverRevisionID uuid.UUID `db:"cutover_revision_id" json:"cutover_revision_id"`
+}
+
 type NonContentAttemptRoot struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -6211,24 +6216,25 @@ type SloMeasurementReport struct {
 }
 
 type StageAllocation struct {
-	ID                  uuid.UUID            `db:"id" json:"id"`
-	AttemptID           uuid.UUID            `db:"attempt_id" json:"attempt_id"`
-	StageRunID          uuid.UUID            `db:"stage_run_id" json:"stage_run_id"`
-	StageAttemptID      uuid.UUID            `db:"stage_attempt_id" json:"stage_attempt_id"`
-	WorkerInstanceID    uuid.UUID            `db:"worker_instance_id" json:"worker_instance_id"`
-	WorkerInstanceEpoch int64                `db:"worker_instance_epoch" json:"worker_instance_epoch"`
-	CapacityPoolID      uuid.UUID            `db:"capacity_pool_id" json:"capacity_pool_id"`
-	DeviceSetDigest     []byte               `db:"device_set_digest" json:"device_set_digest"`
-	MembershipDigest    []byte               `db:"membership_digest" json:"membership_digest"`
-	ModelResidencyID    uuid.UUID            `db:"model_residency_id" json:"model_residency_id"`
-	ModelRuntimeEpoch   int64                `db:"model_runtime_epoch" json:"model_runtime_epoch"`
-	CapacityVector      []byte               `db:"capacity_vector" json:"capacity_vector"`
-	State               StageAllocationState `db:"state" json:"state"`
-	AllocatedAt         pgtype.Timestamptz   `db:"allocated_at" json:"allocated_at"`
-	ReleasedAt          pgtype.Timestamptz   `db:"released_at" json:"released_at"`
-	ReleaseReason       *string              `db:"release_reason" json:"release_reason"`
-	CreatedAt           pgtype.Timestamptz   `db:"created_at" json:"created_at"`
-	ExecutionSequence   *int64               `db:"execution_sequence" json:"execution_sequence"`
+	ID                          uuid.UUID            `db:"id" json:"id"`
+	AttemptID                   uuid.UUID            `db:"attempt_id" json:"attempt_id"`
+	StageRunID                  uuid.UUID            `db:"stage_run_id" json:"stage_run_id"`
+	StageAttemptID              uuid.UUID            `db:"stage_attempt_id" json:"stage_attempt_id"`
+	WorkerInstanceID            uuid.UUID            `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch         int64                `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	CapacityPoolID              uuid.UUID            `db:"capacity_pool_id" json:"capacity_pool_id"`
+	DeviceSetDigest             []byte               `db:"device_set_digest" json:"device_set_digest"`
+	MembershipDigest            []byte               `db:"membership_digest" json:"membership_digest"`
+	ModelResidencyID            uuid.UUID            `db:"model_residency_id" json:"model_residency_id"`
+	ModelRuntimeEpoch           int64                `db:"model_runtime_epoch" json:"model_runtime_epoch"`
+	CapacityVector              []byte               `db:"capacity_vector" json:"capacity_vector"`
+	State                       StageAllocationState `db:"state" json:"state"`
+	AllocatedAt                 pgtype.Timestamptz   `db:"allocated_at" json:"allocated_at"`
+	ReleasedAt                  pgtype.Timestamptz   `db:"released_at" json:"released_at"`
+	ReleaseReason               *string              `db:"release_reason" json:"release_reason"`
+	CreatedAt                   pgtype.Timestamptz   `db:"created_at" json:"created_at"`
+	ExecutionSequence           *int64               `db:"execution_sequence" json:"execution_sequence"`
+	CapacityObservationSequence *int64               `db:"capacity_observation_sequence" json:"capacity_observation_sequence"`
 }
 
 type StageArtifact struct {
@@ -7124,6 +7130,7 @@ type VelaRequestJobRuntime struct {
 	JobID           uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptsStarted int32              `db:"attempts_started" json:"attempts_started"`
 	NextRetryAt     pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+	Model           string             `db:"model" json:"model"`
 }
 
 type VisibleCompletion struct {
@@ -7259,6 +7266,23 @@ type WorkerBootstrapManifest struct {
 	LayoutDigest   []byte             `db:"layout_digest" json:"layout_digest"`
 	Manifest       []byte             `db:"manifest" json:"manifest"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type WorkerBootstrapPodMutationAuthorization struct {
+	RequestUid              string                 `db:"request_uid" json:"request_uid"`
+	ActorIdentity           string                 `db:"actor_identity" json:"actor_identity"`
+	Operation               FleetMutationOperation `db:"operation" json:"operation"`
+	KubernetesUid           string                 `db:"kubernetes_uid" json:"kubernetes_uid"`
+	Namespace               string                 `db:"namespace" json:"namespace"`
+	Name                    string                 `db:"name" json:"name"`
+	WorkerInstanceID        uuid.UUID              `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch     int64                  `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	ResidencyPlanRevisionID uuid.UUID              `db:"residency_plan_revision_id" json:"residency_plan_revision_id"`
+	WorkerBundleID          uuid.UUID              `db:"worker_bundle_id" json:"worker_bundle_id"`
+	WorkerMemberID          uuid.UUID              `db:"worker_member_id" json:"worker_member_id"`
+	RequestDigest           []byte                 `db:"request_digest" json:"request_digest"`
+	AuthorizedAt            pgtype.Timestamptz     `db:"authorized_at" json:"authorized_at"`
+	BootstrapRequestID      uuid.UUID              `db:"bootstrap_request_id" json:"bootstrap_request_id"`
 }
 
 type WorkerBootstrapReceipt struct {

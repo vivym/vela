@@ -292,6 +292,7 @@ INSERT INTO outbox_events (
 SELECT
     j.id,
     j.project_id,
+    rts.model,
     j.state,
     j.execution_phase,
     j.pricing_rate_card_revision_id,
@@ -313,3 +314,35 @@ LEFT JOIN vela_request_job_progress AS ap ON ap.job_id = j.id
 WHERE j.organization_id = sqlc.arg(organization_id)
   AND j.project_id = sqlc.arg(project_id)
   AND j.id = sqlc.arg(job_id);
+
+-- name: ListJobs :many
+SELECT
+    j.id,
+    j.project_id,
+    rts.model,
+    j.state,
+    j.execution_phase,
+    j.pricing_rate_card_revision_id,
+    j.pricing_rate_line_id,
+    j.pricing_unit_amount_minor,
+    j.pricing_quantity,
+    j.pricing_quoted_amount_minor,
+    j.pricing_currency,
+    rts.attempts_started,
+    rts.next_retry_at,
+    ap.phase_progress,
+    ap.estimated_finish_at,
+    ap.progress_updated_at,
+    j.job_expires_at,
+    j.created_at
+FROM jobs AS j
+JOIN vela_request_job_runtime AS rts ON rts.job_id = j.id
+LEFT JOIN vela_request_job_progress AS ap ON ap.job_id = j.id
+WHERE j.organization_id = sqlc.arg(organization_id)
+  AND j.project_id = sqlc.arg(project_id)
+  AND (NOT sqlc.arg(active)::boolean OR j.state IN ('QUEUED', 'ASSIGNED', 'RUNNING', 'FINALIZING', 'RETRY_WAIT', 'CANCELING'))
+  AND (sqlc.arg(state_filter)::text = '' OR j.state = NULLIF(sqlc.arg(state_filter)::text, '')::job_state)
+  AND (sqlc.narg(before_created_at)::timestamptz IS NULL
+       OR (j.created_at, j.id) < (sqlc.narg(before_created_at)::timestamptz, sqlc.arg(before_id)::uuid))
+ORDER BY j.created_at DESC, j.id DESC
+LIMIT sqlc.arg(page_size)::integer;
