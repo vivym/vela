@@ -1,0 +1,10 @@
+{
+  "scope": "internal-canary-native-component-warmup",
+  "qualification_sha256": "3e93aec2b6f291529ce0cf5ded0dc9d148d4c0ea8e35ecf549ada58de3fc1a40",
+  "mapping": {
+    "a76f4458-dc4b-5b85-bf8c-d91718bfdd5b": "7d3c87ec-b38a-52c7-b30c-e1c43cffd748",
+    "9dd2a189-c71d-5389-b823-9555ca40c619": "70e0f8dc-d89a-56e4-a23a-cca287d3b7fe",
+    "8efa26ac-4b30-5f3a-bab9-6c16c6f01b0d": "150b15fb-1d97-50fa-acdf-3ae2af5a598a"
+  },
+  "production_gates": false
+}

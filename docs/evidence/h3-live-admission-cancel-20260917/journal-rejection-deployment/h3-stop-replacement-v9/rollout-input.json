@@ -1,0 +1,153 @@
+{
+  "approved_plan": {
+    "schema_version": 1,
+    "id": "fe830cb6-c72a-5692-bf5c-b95451b2d066",
+    "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr",
+    "revision": 1,
+    "content_digest": "",
+    "approval_evidence_digest": "052d84f86294fbbc7b4124267b3c9261f7dc9c86ae971919221bef106d7605b4",
+    "approved_at": "2026-09-17T06:48:11.161457+00:00",
+    "approved_by": "platform-admin/h3-stop-recovery",
+    "capacity_pools": [
+      {
+        "id": "6e29253a-cbe9-5470-a203-df14031cc649",
+        "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr",
+        "stage_profile_revision_id": "3ea0fd46-d737-5b0e-8090-a74c416c92ba",
+        "resource_class": "GPU",
+        "security_class": "INTERNAL",
+        "region": "marslab",
+        "max_ready_queue_depth": 32
+      }
+    ],
+    "worker_bundles": [
+      {
+        "id": "e3d5fdc4-e154-51f5-97eb-2bfae69209fa",
+        "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr",
+        "desired_generation": 1,
+        "layout_digest": ""
+      }
+    ],
+    "worker_instances": [
+      {
+        "id": "389dc4bf-7909-5d06-8b80-9a9ce7d6d53b",
+        "worker_profile_revision_id": "91aec273-513c-5e09-895e-85812ef5db33",
+        "capacity_pool_id": "6e29253a-cbe9-5470-a203-df14031cc649",
+        "worker_bundle_id": "e3d5fdc4-e154-51f5-97eb-2bfae69209fa",
+        "desired_member_count": 1,
+        "desired_device_count": 1,
+        "model_runtime_routes": [
+          {
+            "model_residency_id": "6e3c1000-04e0-5241-a00c-60d09a10b33e",
+            "capacity_pool_id": "6e29253a-cbe9-5470-a203-df14031cc649",
+            "stage_profile_revision_id": "3ea0fd46-d737-5b0e-8090-a74c416c92ba"
+          }
+        ]
+      }
+    ]
+  },
+  "worker_bundles": [
+    {
+      "schema_version": 2,
+      "plan_revision_id": "fe830cb6-c72a-5692-bf5c-b95451b2d066",
+      "worker_bundle_id": "e3d5fdc4-e154-51f5-97eb-2bfae69209fa",
+      "revision_digest": "",
+      "namespace": "vela-system",
+      "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+      "stage_worker_agent_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:d359d649bc076a8cf24d9048307413ebb834954163cce2f678a463bdecf0d5a4",
+      "runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+      "runtime_launch_protocol": "kubernetes-pidfd-v1",
+      "image_pull_secrets": [
+        "vela-release-pull-v1"
+      ],
+      "stage_worker_config_map": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr",
+      "model_runtime_verifier_config_map": "vela-h3-runtime-verifier-20260916-repair23",
+      "stage_worker_control_tls_secret": "vela-worker-tls-086dc9ab-c985-5ef9-9f30-97ff8f8917ce",
+      "stage_worker_authority_secret": "vela-h3-stage-authority-20260916-repair23",
+      "artifact_store_credentials_secret": "vela-h3-artifacts-20260916-repair23",
+      "artifact_store_ca_secret": "vela-h3-artifact-ca-20260916-repair23",
+      "worker_instances": [
+        {
+          "id": "389dc4bf-7909-5d06-8b80-9a9ce7d6d53b",
+          "instance_epoch": 1,
+          "worker_profile_revision_id": "91aec273-513c-5e09-895e-85812ef5db33",
+          "capacity_pool_id": "6e29253a-cbe9-5470-a203-df14031cc649",
+          "role": "dit",
+          "capacity_slots": 1,
+          "device_set_digest": "021f993f1173a54179c4b45d51db7101108eaa80481392687841d24ce8173209",
+          "membership_digest": "c2e00f09db82dd53d575a4dc6912a3c411d4e90219978236916d3679a58cfae1",
+          "model_runtimes": [
+            {
+              "model_residency_id": "6e3c1000-04e0-5241-a00c-60d09a10b33e",
+              "capacity_pool_id": "6e29253a-cbe9-5470-a203-df14031cc649",
+              "stage_profile_revision_id": "3ea0fd46-d737-5b0e-8090-a74c416c92ba",
+              "model_runtime_epoch_floor": 1,
+              "component": "DIT",
+              "model_component_revision": "h3-live-dit-20260916",
+              "runtime_identity": "h3-live-dit-20260916",
+              "command": [
+                "/opt/venv/bin/python",
+                "-B",
+                "-m",
+                "fast_h3.vela.driver",
+                "--component",
+                "DIT",
+                "--runtime-factory",
+                "fast_h3.vela.h3_runtime:create_runtime"
+              ],
+              "environment": [
+                "HOME=/var/lib/vela/stage-worker/scratch",
+                "PYTHONDONTWRITEBYTECODE=1",
+                "TMPDIR=/var/lib/vela/stage-worker/scratch",
+                "PYTHONPATH=/opt/fast-h3/src:/opt/fast-h3/sglang/python",
+                "PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin",
+                "XDG_CACHE_HOME=/var/lib/vela/stage-worker/scratch/cache",
+                "TRITON_CACHE_DIR=/var/lib/vela/stage-worker/scratch/triton-cache",
+                "TORCHINDUCTOR_CACHE_DIR=/var/lib/vela/stage-worker/scratch/torch-cache",
+                "CUDA_CACHE_PATH=/var/lib/vela/stage-worker/scratch/cuda-cache",
+                "CUDA_VISIBLE_DEVICES=GPU-9c30be22-01e2-4ed0-6657-d6357832784e",
+                "NVIDIA_VISIBLE_DEVICES=GPU-9c30be22-01e2-4ed0-6657-d6357832784e",
+                "HF_HUB_OFFLINE=1",
+                "TRANSFORMERS_OFFLINE=1",
+                "FAST_H3_MODEL_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3",
+                "FAST_H3_MODEL_VARIANT=fl2va",
+                "FAST_H3_DIT_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3-int8-v5-convrot-hardened/transformer",
+                "FAST_H3_ENCODER_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-encoder-int8",
+                "FAST_H3_ADALN_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-adaln-table-hardened/steps20.safetensors",
+                "FAST_H3_ARTIFACT_ROOT=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+                "FAST_H3_MODEL_MANIFEST_PATH=/opt/fast-h3/deploy/k8s/h3-disaggregated/node19-model-manifest-v5.json",
+                "FAST_H3_MODEL_MANIFEST_SHA256=6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0",
+                "FAST_H3_MASTER_PORT=29683",
+                "FAST_H3_WARMUP_SPEC_PATH=/var/lib/vela/models/qualification/h3-kube-r3/DIT.json",
+                "OMP_NUM_THREADS=8",
+                "TOKENIZERS_PARALLELISM=false"
+              ],
+              "initialization_timeout": "40m",
+              "shutdown_timeout": "2m"
+            }
+          ],
+          "members": [
+            {
+              "id": "086dc9ab-c985-5ef9-9f30-97ff8f8917ce",
+              "member_epoch": 1,
+              "key": "member-0",
+              "node_identity": "server-23",
+              "resource_class": "GPU",
+              "identity_digest": "6121e8ca3c990cab0dfb8e18191c595381b1adf9aa35fac07be1f67479b81369",
+              "device_subset_digest": "c692f685556a32f4a3f1422b0c81e607c2707e1276b19b3e064eca71a17814f0",
+              "device_count": 1,
+              "device_constraints": [
+                {
+                  "device_id": "4e7bb24a-b8ac-5d12-9176-0477cc1cf52b",
+                  "device_epoch": 1,
+                  "resource_class": "GPU",
+                  "gpu_uuid": "GPU-9c30be22-01e2-4ed0-6657-d6357832784e",
+                  "pci_bdf": "0000:25:00.0"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

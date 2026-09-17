@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "id": "1f99c6ef-96d0-5588-915c-a479bca5aa4e",
+  "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er",
+  "revision": 1,
+  "content_digest": "b3fa0240f894df44a653ed28875ca206719d54006dcd068a28e50b4f4bed9b5b",
+  "approval_evidence_digest": "052d84f86294fbbc7b4124267b3c9261f7dc9c86ae971919221bef106d7605b4",
+  "approved_at": "2026-09-17T07:23:23.972355Z",
+  "approved_by": "platform-admin/h3-stop-recovery",
+  "capacity_pools": [
+    {
+      "id": "9a3a83cc-51bb-5b04-963f-d28f0c39246c",
+      "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er",
+      "stage_profile_revision_id": "3ea0fd46-d737-5b0e-8090-a74c416c92ba",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 32
+    }
+  ],
+  "worker_bundles": [
+    {
+      "id": "7fd51422-eb85-5190-891e-de2fc1f0e109",
+      "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er",
+      "desired_generation": 1,
+      "layout_digest": "33f6286ff45a85450e9c896747f7bbbf77b72022f3d2af4e770732c0569af70d"
+    }
+  ],
+  "worker_instances": [
+    {
+      "id": "38834b91-8a69-5196-9765-bd9ea13cd224",
+      "worker_profile_revision_id": "91aec273-513c-5e09-895e-85812ef5db33",
+      "capacity_pool_id": "9a3a83cc-51bb-5b04-963f-d28f0c39246c",
+      "worker_bundle_id": "7fd51422-eb85-5190-891e-de2fc1f0e109",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "2316629a-e714-5b0a-a9cb-85d90d706dc7",
+          "capacity_pool_id": "9a3a83cc-51bb-5b04-963f-d28f0c39246c",
+          "stage_profile_revision_id": "3ea0fd46-d737-5b0e-8090-a74c416c92ba"
+        }
+      ]
+    }
+  ]
+}

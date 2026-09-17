@@ -1,0 +1,12 @@
+{
+  "graph": "4ba3ec80-1835-5e96-973d-e6d2ea390b34",
+  "profile": "c6b939f2-b94a-51cf-bfc8-be8547a5fc39",
+  "cutover": "3f1d0456-bf08-5965-9293-0d7411b00d1d",
+  "rate_card": "3ed820f5-22c8-5b38-927f-6e8dfe9f60b2",
+  "stage_profile_mapping": {
+    "3ea0fd46-d737-5b0e-8090-a74c416c92ba": "a76f4458-dc4b-5b85-bf8c-d91718bfdd5b",
+    "1837e5e8-00b8-5813-aa31-b4debe70a2d2": "9dd2a189-c71d-5389-b823-9555ca40c619",
+    "9e4b4acb-0033-590d-b547-849f31af9fd0": "8efa26ac-4b30-5f3a-bab9-6c16c6f01b0d"
+  },
+  "qualification_sha256": "99b13748d3a623807e43699beef05b020e27aef193cc9ca4afa3f471e3fc10d2"
+}

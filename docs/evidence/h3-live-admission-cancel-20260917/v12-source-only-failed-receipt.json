@@ -1,0 +1,66 @@
+{
+  "passed": false,
+  "checks": [
+    "dit_running_beyond_idle_capacity_ttl",
+    "second_submission_202_while_dit_busy",
+    "cancellation_reached_terminal"
+  ],
+  "runtime_before": {
+    "21a69f91-7ad3-5dcb-9800-0f1c7448a75d": {
+      "pod_uid": "9fcf67f3-cb8b-4f3f-b0ec-3bdbab571aeb",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://77c67fdf684c87ec90b11c3643e2f9f788c7b5a43db35140b2c9eafa32bc68dc",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://d9bdc8edc72afc0d0f0f6c1bdbe838838ec5ccb0956d4bcb3989d94b8a44d5fc",
+          "restart_count": 0
+        }
+      }
+    },
+    "4f6995c2-f538-5b2d-af6d-d0e30a107894": {
+      "pod_uid": "9365edd0-c9bb-4843-8c6c-be93bc48d56e",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://899f02f8bdde4a666542ef4fd3bb32aa19c469c85220078b72b9632fe22ee0fe",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://39418b0ab552bbcb26b78c4be0bd34655b5b5598c697a9b403078854cc2439c2",
+          "restart_count": 0
+        }
+      }
+    },
+    "d6bb2ff0-11e3-564e-985e-0cbfc4d7680a": {
+      "pod_uid": "e8a46f17-e696-43be-a527-b278611ae994",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://e5aba9405fd029079aa914293a016cbc2313f913ed31cb5f886778c73be876bf",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://39e30ac1e179a7b7e0fed306f3db86bbc468499896f7b9f5bd2fef46241c4ef9",
+          "restart_count": 0
+        }
+      }
+    }
+  },
+  "cancel": {
+    "billable": true,
+    "cancellation_id": "e12525f3-1e40-43fd-b437-ced4d41d4eae",
+    "charge": {
+      "amount_minor": 100,
+      "charge_id": "a7717e3a-9f99-42d8-9ece-bb80e9f43c24",
+      "currency": "CNY",
+      "posted_at": "2026-09-17T08:55:19.138441Z",
+      "reason": "CUSTOMER_CANCELLATION"
+    },
+    "decided_at": "2026-09-17T08:55:19.138441Z",
+    "decision": "CANCELING",
+    "job_id": "d14a504c-f565-4b53-bb8f-bc4b23c7d86f",
+    "job_version": 4,
+    "state": "CANCELING"
+  },
+  "error": "(503, {'code': 'capacity_unavailable', 'message': 'no complete READY Stage capacity path is available'})"
+}

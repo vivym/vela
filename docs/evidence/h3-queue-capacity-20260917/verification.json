@@ -1,0 +1,101 @@
+{
+  "boundary_transaction": "BEGIN\nSET\nSET\nDO\nSET CONSTRAINTS\nROLLBACK\n",
+  "rollback_dry_run": "BEGIN\nSET\nSET\nDO\nROLLBACK\n",
+  "projects": [
+    {
+      "id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+      "display_name": "Real GPU H3 API acceptance",
+      "queued_limit": 4,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 1,
+      "running_count": 0
+    },
+    {
+      "id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "display_name": "minimax-h3 independent release acceptance",
+      "queued_limit": 16,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 2,
+      "running_count": 0
+    },
+    {
+      "id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "display_name": "relay-station",
+      "queued_limit": 64,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 8,
+      "running_count": 0
+    }
+  ],
+  "pool_bounds": [
+    {
+      "id": "1897eadf-e7fa-5202-a1a6-b9f2d19aefb9",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "44667230-d304-59fb-8904-b532670125e0",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "86f09634-b032-5553-a91d-cde54aa1ab71",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "9c067716-aa83-56c5-a6ae-326ef4923bdf",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "b9d37710-3c1f-5956-98bc-72d056f72bb3",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "bc3fa694-b650-55d2-b286-5de7b4305492",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "e3efefc3-72c5-5fe4-8152-da18f0131e15",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "e40935a4-11da-53b0-86d7-7423db5a7872",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "f130d310-e2f2-5d21-9b78-dee099c245c2",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "fb6983bd-a32a-5dd1-88d0-e6509c354950",
+      "max_ready_queue_depth": 128
+    }
+  ],
+  "nonterminal_jobs": [],
+  "plan_replay_preserves_pool_tuning": true,
+  "gateway_probes": [
+    {
+      "gateway": "10.1.201.70",
+      "http_status": 200,
+      "response_keys": [
+        "jobs"
+      ]
+    },
+    {
+      "gateway": "10.1.201.71",
+      "http_status": 200,
+      "response_keys": [
+        "jobs"
+      ]
+    }
+  ],
+  "observed_at": "2026-09-17T11:09:31.781008+00:00",
+  "created_jobs": 0,
+  "created_charges": 0,
+  "passed": true
+}

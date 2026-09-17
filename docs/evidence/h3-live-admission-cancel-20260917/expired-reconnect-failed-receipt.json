@@ -1,0 +1,66 @@
+{
+  "passed": false,
+  "checks": [
+    "dit_running_beyond_idle_capacity_ttl",
+    "second_submission_202_while_dit_busy",
+    "cancellation_reached_terminal"
+  ],
+  "runtime_before": {
+    "38834b91-8a69-5196-9765-bd9ea13cd224": {
+      "pod_uid": "166892ab-70ff-4db8-9e7c-9871b3f890fd",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://440af650eb2eacd73f593a1e483e5fc5413fa5a642e5ea7a723f31ea8f8ffac7",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://6679d7c99625d2d7b9df5bd863cc2ffe4b88867720f9042ec550412b6e8d0924",
+          "restart_count": 0
+        }
+      }
+    },
+    "59a87417-fbe8-5abc-886b-4fe92bbd79c9": {
+      "pod_uid": "9e6f8d7c-190d-4a77-9ffb-578ef5cd1a6c",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://e12fd37f26565226262ddacaaaaa9e8c26467bbd1451b1894ebe979c90420813",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://f70ef7fa500bc4f1066b73eb6d5327567aafa7f7f3921ce15c472744c5c93111",
+          "restart_count": 0
+        }
+      }
+    },
+    "39f211eb-31fc-5d5d-9297-bf84f7d7495c": {
+      "pod_uid": "aeb8a346-ca2d-4890-b2d3-33d27b28db33",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://599581a607f32524a02fd5c69837044997aac0d73ae0be7d4408a63cd8ccb4c2",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://2496a6a3d80c5c3079a8942e2f10679bd7e6f6a59d490807e943a454693829e1",
+          "restart_count": 0
+        }
+      }
+    }
+  },
+  "cancel": {
+    "billable": true,
+    "cancellation_id": "ae149656-0ca7-4e16-a4fa-4d739407f01a",
+    "charge": {
+      "amount_minor": 100,
+      "charge_id": "6c82fe6e-4ea0-464c-a9ca-4fdb4d5e9ff6",
+      "currency": "CNY",
+      "posted_at": "2026-09-17T07:48:31.492387Z",
+      "reason": "CUSTOMER_CANCELLATION"
+    },
+    "decided_at": "2026-09-17T07:48:31.492387Z",
+    "decision": "CANCELING",
+    "job_id": "6915e7ba-f1c6-41b4-b7dc-7ef67e53ec11",
+    "job_version": 4,
+    "state": "CANCELING"
+  },
+  "error": "(500, {'code': 'internal_error', 'message': 'request could not be completed'})"
+}

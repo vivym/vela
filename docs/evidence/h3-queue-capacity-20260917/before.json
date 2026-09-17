@@ -1,0 +1,273 @@
+{
+  "observed_at": "2026-09-17T11:04:32.309814+00:00",
+  "projects": [
+    {
+      "id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "display_name": "Real GPU H3 API acceptance",
+      "queued_limit": 4,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 1,
+      "running_count": 0
+    },
+    {
+      "id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "display_name": "minimax-h3 independent release acceptance",
+      "queued_limit": 16,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 2,
+      "running_count": 0
+    },
+    {
+      "id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "organization_id": "40f37967-d2e0-4028-a6ab-1c75eb243289",
+      "display_name": "relay-station",
+      "queued_limit": 10,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 8,
+      "running_count": 0
+    }
+  ],
+  "nonterminal": [],
+  "service_classes": [
+    {
+      "id": "cd42483b-97c0-5a36-8e43-23e5fbafc91c",
+      "stable_id": "h3-internal-validation",
+      "revision": 1,
+      "state": "ACTIVE",
+      "queue_retry_allowance_seconds": 3600,
+      "max_attempts": 1,
+      "max_total_compute_multiplier_milli": 1000,
+      "max_finalization_seconds_per_attempt": 600,
+      "retry_backoff_policy": {
+        "kind": "exponential",
+        "max_seconds": 300,
+        "initial_seconds": 30
+      },
+      "retryable_failure_classes": [
+        "WORKER_LOST",
+        "TRANSIENT_BACKEND"
+      ],
+      "circuit_breaker_policy": {
+        "scope": "internal-validation",
+        "policy_revision": "h3-internal-20260916",
+        "latency_budget_is_not_measured_p95": true
+      },
+      "created_at": "2026-09-15T18:19:14.715304+00:00",
+      "queue_weight": 1,
+      "max_queue_wait_before_protection_seconds": 1800,
+      "max_aging_credit_seconds": 900,
+      "max_expiry_urgency_credit_seconds": 900,
+      "max_retry_risk_penalty_seconds": 0,
+      "circuit_fingerprint_window_seconds": 3600,
+      "circuit_min_distinct_healthy_workers": 2
+    },
+    {
+      "id": "ff87a237-8ad0-5e79-b142-958aea8a6e47",
+      "stable_id": "standard",
+      "revision": 1,
+      "state": "ACTIVE",
+      "queue_retry_allowance_seconds": 3600,
+      "max_attempts": 1,
+      "max_total_compute_multiplier_milli": 1000,
+      "max_finalization_seconds_per_attempt": 600,
+      "retry_backoff_policy": {
+        "kind": "exponential",
+        "max_seconds": 300,
+        "initial_seconds": 30
+      },
+      "retryable_failure_classes": [
+        "WORKER_LOST",
+        "TRANSIENT_BACKEND"
+      ],
+      "circuit_breaker_policy": {
+        "scope": "internal-validation",
+        "policy_revision": "h3-internal-20260916",
+        "latency_budget_is_not_measured_p95": true
+      },
+      "created_at": "2026-09-15T18:35:17.151286+00:00",
+      "queue_weight": 1,
+      "max_queue_wait_before_protection_seconds": 1800,
+      "max_aging_credit_seconds": 900,
+      "max_expiry_urgency_credit_seconds": 900,
+      "max_retry_risk_penalty_seconds": 0,
+      "circuit_fingerprint_window_seconds": 3600,
+      "circuit_min_distinct_healthy_workers": 2
+    }
+  ],
+  "routes": [
+    {
+      "model": "minimax-h3",
+      "cutover": "9f979515-1341-5cd2-99eb-479ee595069c",
+      "execution_graph_revision_id": "50c61fd1-2ce9-5c08-ac4b-ed7622da979e",
+      "execution_profile_revision_id": "fe5e0591-a10f-5ecd-bcca-b352684e1d65",
+      "reserved_storage_bytes": 34359738368,
+      "scope": "INTERNAL"
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "cutover": "9eee563b-c970-5ef7-a594-3745967f5a12",
+      "execution_graph_revision_id": "5d4cb1ef-1b7d-5ce0-a131-d020037ccf3f",
+      "execution_profile_revision_id": "0e6715a4-7ed5-57db-b609-cbc37b4dd86f",
+      "reserved_storage_bytes": 34359738368,
+      "scope": "INTERNAL"
+    }
+  ],
+  "current_pools": [
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "id": "bc3fa694-b650-55d2-b286-5de7b4305492",
+      "stable_id": "minimax-h3-dit-v5-skew-v7-exact-v8-profiles-v9",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 8
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "encoder",
+      "id": "9c067716-aa83-56c5-a6ae-326ef4923bdf",
+      "stable_id": "minimax-h3-encoder-v5-skew-v7-exact-v8-profiles-v9",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "id": "86f09634-b032-5553-a91d-cde54aa1ab71",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "id": "b9d37710-3c1f-5956-98bc-72d056f72bb3",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er-cf-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "id": "e3efefc3-72c5-5fe4-8152-da18f0131e15",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "id": "f130d310-e2f2-5d21-9b78-dee099c245c2",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "vae",
+      "id": "44667230-d304-59fb-8904-b532670125e0",
+      "stable_id": "minimax-h3-decoder-v5-skew-v7-exact-v8-profiles-v9",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 2
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "dit",
+      "id": "fb6983bd-a32a-5dd1-88d0-e6509c354950",
+      "stable_id": "h3-live-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf-qr-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "encoder",
+      "id": "1897eadf-e7fa-5202-a1a6-b9f2d19aefb9",
+      "stable_id": "h3-live-encoder-repair23-stop0917-skew-skew-skew-jr-er-cf-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "id": "86f09634-b032-5553-a91d-cde54aa1ab71",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "id": "b9d37710-3c1f-5956-98bc-72d056f72bb3",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er-cf-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "id": "e3efefc3-72c5-5fe4-8152-da18f0131e15",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "id": "f130d310-e2f2-5d21-9b78-dee099c245c2",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 0
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "vae",
+      "id": "e40935a4-11da-53b0-86d7-7423db5a7872",
+      "stable_id": "h3-live-vae-repair23-stop0917-skew-skew-skew-jr-er-cf-cf",
+      "max_ready_queue_depth": 32,
+      "queue_depth": 0,
+      "ready_workers": 1
+    }
+  ],
+  "job_lifetime": [
+    {
+      "stable_id": "minimax-h3-live-validation",
+      "min_lifetime": "02:09:59.913129",
+      "max_lifetime": "02:09:59.939368"
+    }
+  ]
+}

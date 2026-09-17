@@ -1,0 +1,83 @@
+{
+  "checked_at": "2026-09-17T06:21:19.744818+00:00",
+  "routes": [
+    {
+      "stable_id": "minimax-h3-live-validation",
+      "model_revision_id": "ef0ee53d-4dd7-5f64-9fb8-b9e5f5c4cfc5",
+      "cutover_revision_id": "04f71e48-a926-524b-b6d6-ecc1fbfe67bc"
+    },
+    {
+      "stable_id": "minimax-h3",
+      "model_revision_id": "217c75f1-2f5e-547f-be1d-4e117da9e7e2",
+      "cutover_revision_id": "9f979515-1341-5cd2-99eb-479ee595069c"
+    }
+  ],
+  "catalog": {
+    "graph": "90e2b650-1af0-50df-98aa-732b80e4eb70",
+    "profile": "e2bdbad3-0b68-5d21-84cf-1f26ba90a4e2",
+    "cutover": "04f71e48-a926-524b-b6d6-ecc1fbfe67bc",
+    "rate_card": "5d9f5ce5-51ac-5552-9b29-16608ba1cd11",
+    "stage_profile_mapping": {
+      "c4734fae-5bca-5769-b16b-f316ee5256e8": "3ea0fd46-d737-5b0e-8090-a74c416c92ba",
+      "60069f40-f5f4-5991-9757-1aeae80046a6": "1837e5e8-00b8-5813-aa31-b4debe70a2d2",
+      "be1b3f90-1959-51ba-a58d-ba1407d5bac5": "9e4b4acb-0033-590d-b547-849f31af9fd0",
+      "d721bc73-e338-52ee-9d5c-0f1f8c0774be": "d50be43d-9312-559b-ad15-4c343b09c15c"
+    },
+    "qualification_sha256": "bf20095e137dc52627b053aab4cf6633e19b41fa0adf86fe495ecbcc1ef16c39"
+  },
+  "unchanged_price_lines": 1,
+  "autostart_services": [
+    {
+      "ip": "10.1.201.12",
+      "unit": "vela-h3-dit.service",
+      "state": "MainPID=4010210\nActiveState=active\nUnitFileState=enabled\n"
+    },
+    {
+      "ip": "10.1.201.11",
+      "unit": "vela-h3-aux.service",
+      "state": "MainPID=4048881\nActiveState=active\nUnitFileState=enabled\n"
+    },
+    {
+      "ip": "10.1.201.11",
+      "unit": "vela-h3-thumbnail.service",
+      "state": "MainPID=4049265\nActiveState=active\nUnitFileState=enabled\n"
+    }
+  ],
+  "qualification": {
+    "sha256": "bf20095e137dc52627b053aab4cf6633e19b41fa0adf86fe495ecbcc1ef16c39",
+    "scope": "internal-canary-native-component-warmup",
+    "residencies": [
+      {
+        "id": "9f4e20ce-9644-5f9f-8a1c-1a8a94277301",
+        "runtime_image_digest": "sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+        "state": "READY",
+        "warmup_evidence_digest": "\\x7e04f8fc5e87d96c7fc01fbcd1f2eae2be5483e482d9beaadf922cb691afe184",
+        "canary_evidence_digest": "\\x7e04f8fc5e87d96c7fc01fbcd1f2eae2be5483e482d9beaadf922cb691afe184"
+      },
+      {
+        "id": "201ff8ba-c47a-5f33-b189-62d3ed531aa2",
+        "runtime_image_digest": "sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+        "state": "READY",
+        "warmup_evidence_digest": "\\x5bc57d8bbc8c67975b27a2c7a5ea4f7807166c0446cfc5019dcfb668c43bdd16",
+        "canary_evidence_digest": "\\x5bc57d8bbc8c67975b27a2c7a5ea4f7807166c0446cfc5019dcfb668c43bdd16"
+      },
+      {
+        "id": "2a07d4f2-172d-5ae6-909c-b20767902bfd",
+        "runtime_image_digest": "sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+        "state": "READY",
+        "warmup_evidence_digest": "\\x965a6202437570fc4a03a2319f59ef6ff06f29ef0484d0334d7cb8db4bc50eae",
+        "canary_evidence_digest": "\\x965a6202437570fc4a03a2319f59ef6ff06f29ef0484d0334d7cb8db4bc50eae"
+      },
+      {
+        "id": "db7df640-ac67-5735-b5bc-830db458581a",
+        "runtime_image_digest": "sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+        "state": "READY",
+        "warmup_evidence_digest": "\\x45ebe0f5e9d557be5fb445224b5f8520686622e516e61444923d0f047a3d5157",
+        "canary_evidence_digest": "\\x45ebe0f5e9d557be5fb445224b5f8520686622e516e61444923d0f047a3d5157"
+      }
+    ],
+    "limits": [
+      "Native component initialization/warmup only; composed API, cancellation recovery, billing and production gates are not proven by this receipt."
+    ]
+  }
+}

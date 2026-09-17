@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "id": "86d48449-de39-55b1-98b9-4013569cf533",
+  "stable_id": "h3-live-aux-stop-recovery-20260917-skew-skew-skew-jr-er",
+  "revision": 1,
+  "content_digest": "dbccc578cdd263f2875cca3fc6338f44982735fa09056f741a05fff7972bf13d",
+  "approval_evidence_digest": "11371bd40b5b8a1f7602b359cbdc92e4cf49bdcc933bb6838e7df77e2b339c0e",
+  "approved_at": "2026-09-17T07:23:23.974666Z",
+  "approved_by": "platform-admin/h3-stop-recovery",
+  "capacity_pools": [
+    {
+      "id": "7209c4f1-9450-5713-8fe9-5807fd32280f",
+      "stable_id": "h3-live-encoder-repair23-stop0917-skew-skew-skew-jr-er",
+      "stage_profile_revision_id": "1837e5e8-00b8-5813-aa31-b4debe70a2d2",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 32
+    },
+    {
+      "id": "7d5ac0ac-3bd1-540f-bc42-bbe65a655ab3",
+      "stable_id": "h3-live-vae-repair23-stop0917-skew-skew-skew-jr-er",
+      "stage_profile_revision_id": "9e4b4acb-0033-590d-b547-849f31af9fd0",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 32
+    },
+    {
+      "id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er",
+      "stage_profile_revision_id": "d50be43d-9312-559b-ad15-4c343b09c15c",
+      "resource_class": "CPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 32
+    }
+  ],
+  "worker_bundles": [
+    {
+      "id": "a2de122b-6ecd-5cc5-a92d-bd0659b13a7d",
+      "stable_id": "h3-live-aux-repair23-stop0917-skew-skew-skew-jr-er",
+      "desired_generation": 1,
+      "layout_digest": "ad431a8d6e43746d024aa620d3230e37a5ccb4708f31c74d12ad43da8d6532d3"
+    },
+    {
+      "id": "6dc62405-c90f-50bf-ad26-9776fec32a23",
+      "stable_id": "h3-live-thumbnail-repair23-stop0917-skew-skew-skew-jr-er",
+      "desired_generation": 1,
+      "layout_digest": "4879cb24d29a4e617686886997eaa894b94f38bf623befba08c3e596200d14d5"
+    }
+  ],
+  "worker_instances": [
+    {
+      "id": "59a87417-fbe8-5abc-886b-4fe92bbd79c9",
+      "worker_profile_revision_id": "b9885fa3-7e26-5bec-b09f-bfe65eeaebbb",
+      "capacity_pool_id": "7209c4f1-9450-5713-8fe9-5807fd32280f",
+      "worker_bundle_id": "a2de122b-6ecd-5cc5-a92d-bd0659b13a7d",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "ac611aa0-592b-56a1-9a2d-c2e4ecb10e8f",
+          "capacity_pool_id": "7209c4f1-9450-5713-8fe9-5807fd32280f",
+          "stage_profile_revision_id": "1837e5e8-00b8-5813-aa31-b4debe70a2d2"
+        },
+        {
+          "model_residency_id": "eaa0e27b-53ad-57dc-a253-f8ec14eecd32",
+          "capacity_pool_id": "7d5ac0ac-3bd1-540f-bc42-bbe65a655ab3",
+          "stage_profile_revision_id": "9e4b4acb-0033-590d-b547-849f31af9fd0"
+        }
+      ]
+    },
+    {
+      "id": "39f211eb-31fc-5d5d-9297-bf84f7d7495c",
+      "worker_profile_revision_id": "706bd2e4-d647-5a0c-b516-8451c2bbccd8",
+      "capacity_pool_id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+      "worker_bundle_id": "6dc62405-c90f-50bf-ad26-9776fec32a23",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "c1c86d52-4cba-55fa-847b-2d38dbff8bc0",
+          "capacity_pool_id": "6a3f4470-efa2-51c1-8058-785b0b8587b5",
+          "stage_profile_revision_id": "d50be43d-9312-559b-ad15-4c343b09c15c"
+        }
+      ]
+    }
+  ]
+}

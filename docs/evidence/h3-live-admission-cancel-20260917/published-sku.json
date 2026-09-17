@@ -1,0 +1,12 @@
+[
+  {
+    "model": "minimax-h3-live-validation",
+    "preset": "fast",
+    "service_class": "standard",
+    "output_spec": "h3-native-av-1344x768-5s-24fps",
+    "unit_amount_minor": 100,
+    "currency": "CNY",
+    "execution_profile_revision_id": "e2bdbad3-0b68-5d21-84cf-1f26ba90a4e2",
+    "cutover_revision_id": "04f71e48-a926-524b-b6d6-ecc1fbfe67bc"
+  }
+]

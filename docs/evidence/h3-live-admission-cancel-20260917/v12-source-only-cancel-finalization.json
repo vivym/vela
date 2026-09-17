@@ -1,0 +1,7 @@
+{
+  "base_runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+  "file": "src/fast_h3/vela/driver.py",
+  "before_sha256": "98debb07dbabc14456d648a82145f69ee4c977bf22d77b2ee8dc074ad1f67508",
+  "after_sha256": "ada158d7bd604b4bf76e43b7cc8b3654cc333d0d39398e949cefe38d657fd877",
+  "patched_runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a"
+}

@@ -1,0 +1,3882 @@
+{
+  "at": "2026-09-17T08:50:31.696528+00:00",
+  "limits": [
+    "Native component initialization/warmup only; composed API, cancellation recovery, billing and production gates are not proven by this receipt."
+  ],
+  "logs": [
+    {
+      "bytes": 17590,
+      "pod": "wi-21a69f917ad35dcb98000f1c7448a75d-ba3790e0",
+      "sha256": "cb179b6a6c1cf24657efacd0f0c4a42c3aa0b3c47497e74f586fbe5ae40f51c4"
+    },
+    {
+      "bytes": 27113,
+      "pod": "wi-4f6995c2f5385b2daf6dd0e30a107894-ba3790e0",
+      "sha256": "6ac0f37f4f56c108b36af892721cb69b655828f794b688eeab3db074a3df1966"
+    },
+    {
+      "bytes": 0,
+      "pod": "wi-d6bb2ff011e3564e985e0cbfc4d7680a-ba3790e0",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "pods": [
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "cni.projectcalico.org/containerID": "e9c5ed45a81e23318b5713046305e3db4207a4701f26c279bdd44a041633cb39",
+          "cni.projectcalico.org/podIP": "10.42.5.39/32",
+          "cni.projectcalico.org/podIPs": "10.42.5.39/32",
+          "vela.ai/actuation-revision": "8ed7a62fe17b2cd9fe7c2b551a308f52e01d2ac572966e6e649716cf1d2f3e30",
+          "vela.ai/device-constraints": "[{\"device_id\":\"4e7bb24a-b8ac-5d12-9176-0477cc1cf52b\",\"device_epoch\":1,\"resource_class\":\"GPU\",\"gpu_uuid\":\"GPU-9c30be22-01e2-4ed0-6657-d6357832784e\",\"pci_bdf\":\"0000:25:00.0\"}]",
+          "vela.ai/fleet-controller-owned": "true",
+          "vela.ai/runtime-launch-protocol": "kubernetes-pidfd-v1"
+        },
+        "creationTimestamp": "2026-09-17T08:42:05Z",
+        "finalizers": [
+          "fleet.vela.ai/drain-protection"
+        ],
+        "generation": 2,
+        "labels": {
+          "app.kubernetes.io/name": "vela-worker-instance",
+          "app.kubernetes.io/part-of": "vela",
+          "vela.ai/capacity-pool-id": "957fd0c3-83f9-5cb6-a735-7cf21a181900",
+          "vela.ai/fleet-protected": "true",
+          "vela.ai/residency-plan-revision-id": "a35a4c3e-1c78-5fca-a679-564f50d46dbe",
+          "vela.ai/worker-bundle-id": "c333f78e-8a65-5fa7-899d-8448d79a2a7d",
+          "vela.ai/worker-instance-epoch": "1",
+          "vela.ai/worker-instance-id": "21a69f91-7ad3-5dcb-9800-0f1c7448a75d",
+          "vela.ai/worker-member-id": "6a4fb0af-ef8f-5731-907d-b0196f986238",
+          "vela.ai/worker-member-key": "member-0",
+          "vela.ai/worker-profile-revision-id": "91aec273-513c-5e09-895e-85812ef5db33",
+          "vela.ai/worker-role": "dit"
+        },
+        "name": "wi-21a69f917ad35dcb98000f1c7448a75d-ba3790e0",
+        "namespace": "vela-system",
+        "resourceVersion": "4313687",
+        "uid": "9fcf67f3-cb8b-4f3f-b0ec-3bdbab571aeb"
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "worker"
+            ],
+            "command": [
+              "/usr/local/bin/vela-runtime-entrypoint"
+            ],
+            "env": [
+              {
+                "name": "VELA_WORKER_INSTANCE_ID",
+                "value": "21a69f91-7ad3-5dcb-9800-0f1c7448a75d"
+              },
+              {
+                "name": "VELA_WORKER_INSTANCE_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_ID",
+                "value": "6a4fb0af-ef8f-5731-907d-b0196f986238"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_KEY",
+                "value": "member-0"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_DEVICES_JSON",
+                "value": "[{\"device_id\":\"4e7bb24a-b8ac-5d12-9176-0477cc1cf52b\",\"device_epoch\":1}]"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON",
+                "value": "{\"active_stage_slots\":1,\"concurrency\":1,\"gpu_count\":1}"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MEMBERS_JSON",
+                "value": "[{\"worker_member_id\":\"6a4fb0af-ef8f-5731-907d-b0196f986238\",\"member_epoch\":1,\"identity_digest\":\"bffed441aea4af4a6150336f1852a2e5d7eef3ecc5a44e497ee91cc57a896773\"}]"
+              },
+              {
+                "name": "VELA_WORKER_NODE_IDENTITY",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "spec.nodeName"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_ADDRESS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-address",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_SERVER_NAME",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-server-name",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_TLS_CERT_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.crt"
+              },
+              {
+                "name": "VELA_WORKER_TLS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.key"
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/control/ca.crt"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_SOCKET",
+                "value": "/run/vela-model-runtime/private/runtime.sock"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_EXPECTED_UID",
+                "value": "10001"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_STARTUP_TIMEOUT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "model-runtime-startup-timeout",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_SCRATCH_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/production-state"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/inputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/input-transfer-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_OUTPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/outputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/materialization-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE",
+                "value": "/etc/vela-stage-worker/private/authority/keyring.json"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/access-key-id"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/secret-access-key"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/ca.crt"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "authority-active-key-id",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CONNECTOR_REVISION_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "connector-revision-id",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "capacity-ttl",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_HEARTBEAT_INTERVAL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "heartbeat-interval",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MINIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-minimum",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MAXIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-maximum",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "materialization-journal-limit",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ENDPOINT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-endpoint",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_REGION",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-region",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_BUCKET",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-bucket",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_PATH_STYLE",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-path-style",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SIGNED_GET_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-signed-get-ttl",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_RETRY",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-retry",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-consumed-resource-units",
+                    "name": "vela-h3-worker-dit-stop-recovery-20260917-v2-v3-v4-skew-skew-skew-skew-jr-er-qr-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_SOCKET",
+                "value": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238/worker-journal.sock"
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET",
+                "value": "/run/vela-pidfd-broker/broker.sock"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE",
+                "value": "/etc/vela-model-runtime/private/launch.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY",
+                "value": "/var/lib/vela/stage-worker/scratch/worker-admission"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS",
+                "value": "32"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_FILE",
+                "value": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238/worker-bootstrap/binding.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE",
+                "value": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238/worker-bootstrap/verifier.json"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-agent",
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              }
+            ]
+          },
+          {
+            "env": [
+              {
+                "name": "KUBERNETES_SERVICE_HOST"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT_HTTPS"
+              },
+              {
+                "name": "KUBERNETES_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PROTO"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_ADDR"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime",
+            "resources": {
+              "claims": [
+                {
+                  "name": "gpu"
+                }
+              ],
+              "limits": {
+                "cpu": "16",
+                "memory": "128Gi"
+              },
+              "requests": {
+                "cpu": "4",
+                "memory": "32Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/models",
+                "name": "model-weights",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true
+              }
+            ],
+            "workingDir": "/"
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": false,
+        "imagePullSecrets": [
+          {
+            "name": "vela-release-pull-v1"
+          }
+        ],
+        "initContainers": [
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/control /private/authority /private/artifact\ncp /projected/control/ca.crt /private/control/ca.crt\ncp /projected/control/tls.crt /private/control/tls.crt\ncp /projected/control/tls.key /private/control/tls.key\ncp /projected/authority/keyring.json /private/authority/keyring.json\ncp /projected/artifact-credentials/access-key-id /private/artifact/access-key-id\ncp /projected/artifact-credentials/secret-access-key /private/artifact/secret-access-key\ncp /projected/artifact-ca/ca.crt /private/artifact/ca.crt\nif [ -d /projected/member-pki ]; then\n  mkdir -p /private/member/client /private/member/server\n  cp /projected/member-pki/client.crt /private/member/client/tls.crt\n  cp /projected/member-pki/client.key /private/member/client/tls.key\n  cp /projected/member-pki/server-ca.crt /private/member/client/ca.crt\n  cp /projected/member-pki/server.crt /private/member/server/tls.crt\n  cp /projected/member-pki/server.key /private/member/server/tls.key\n  cp /projected/member-pki/client-ca.crt /private/member/server/ca.crt\n  chmod 0700 /private/member /private/member/client /private/member/server\n  chmod 0400 /private/member/client/* /private/member/server/*\nfi\nchmod 0700 /private /private/control /private/authority /private/artifact\nchmod 0400 /private/control/* /private/authority/* /private/artifact/*\nchown -R 10001:10001 /private\n"
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/authority\nprintf '%s' \"${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}\" > /private/launch.json\ncp /projected/model-runtime-authority/verifier-keyring.json /private/authority/verifier-keyring.json\ntest -f /private/launch.json\ntest -f /private/authority/verifier-keyring.json\nchmod 0700 /private /private/authority\nchmod 0400 /private/launch.json /private/authority/verifier-keyring.json\nchown -R 10001:10001 /private\n"
+            ],
+            "env": [
+              {
+                "name": "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON",
+                "value": "{\"schema_version\":2,\"worker_profile_revision_id\":\"91aec273-513c-5e09-895e-85812ef5db33\",\"worker_role\":\"dit\",\"capacity_slots\":1,\"worker_instance_id\":\"21a69f91-7ad3-5dcb-9800-0f1c7448a75d\",\"worker_instance_epoch\":1,\"worker_member_id\":\"6a4fb0af-ef8f-5731-907d-b0196f986238\",\"worker_member_epoch\":1,\"device_set_digest\":\"021f993f1173a54179c4b45d51db7101108eaa80481392687841d24ce8173209\",\"membership_digest\":\"c2e00f09db82dd53d575a4dc6912a3c411d4e90219978236916d3679a58cfae1\",\"devices\":[{\"id\":\"4e7bb24a-b8ac-5d12-9176-0477cc1cf52b\",\"epoch\":1}],\"members\":[{\"id\":\"6a4fb0af-ef8f-5731-907d-b0196f986238\",\"epoch\":1,\"identity_digest\":\"bffed441aea4af4a6150336f1852a2e5d7eef3ecc5a44e497ee91cc57a896773\",\"device_subset_digest\":\"c692f685556a32f4a3f1422b0c81e607c2707e1276b19b3e064eca71a17814f0\"}],\"local_devices\":[{\"device_id\":\"4e7bb24a-b8ac-5d12-9176-0477cc1cf52b\",\"device_epoch\":1,\"resource_class\":\"GPU\",\"gpu_uuid\":\"GPU-9c30be22-01e2-4ed0-6657-d6357832784e\",\"pci_bdf\":\"0000:25:00.0\"}],\"runtimes\":[{\"model_residency_id\":\"88fd8eaa-6f3b-5026-8455-11dcec50529e\",\"runtime_identity\":\"h3-live-dit-20260916\",\"stage_profile_revision_id\":\"a76f4458-dc4b-5b85-bf8c-d91718bfdd5b\",\"model_runtime_epoch_floor\":1,\"component\":\"DIT\",\"model_component_revision\":\"h3-live-dit-20260916\",\"runtime_image_digest\":\"65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a\",\"command\":[\"/opt/venv/bin/python\",\"-B\",\"-m\",\"fast_h3.vela.driver\",\"--component\",\"DIT\",\"--runtime-factory\",\"fast_h3.vela.h3_runtime:create_runtime\"],\"environment\":[\"HOME=/var/lib/vela/stage-worker/scratch\",\"PYTHONDONTWRITEBYTECODE=1\",\"TMPDIR=/var/lib/vela/stage-worker/scratch\",\"PYTHONPATH=/opt/fast-h3/src:/opt/fast-h3/sglang/python\",\"PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin\",\"XDG_CACHE_HOME=/var/lib/vela/stage-worker/scratch/cache\",\"TRITON_CACHE_DIR=/var/lib/vela/stage-worker/scratch/triton-cache\",\"TORCHINDUCTOR_CACHE_DIR=/var/lib/vela/stage-worker/scratch/torch-cache\",\"CUDA_CACHE_PATH=/var/lib/vela/stage-worker/scratch/cuda-cache\",\"CUDA_VISIBLE_DEVICES=GPU-9c30be22-01e2-4ed0-6657-d6357832784e\",\"NVIDIA_VISIBLE_DEVICES=GPU-9c30be22-01e2-4ed0-6657-d6357832784e\",\"HF_HUB_OFFLINE=1\",\"TRANSFORMERS_OFFLINE=1\",\"FAST_H3_MODEL_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3\",\"FAST_H3_MODEL_VARIANT=fl2va\",\"FAST_H3_DIT_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3-int8-v5-convrot-hardened/transformer\",\"FAST_H3_ENCODER_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-encoder-int8\",\"FAST_H3_ADALN_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-adaln-table-hardened/steps20.safetensors\",\"FAST_H3_ARTIFACT_ROOT=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1\",\"FAST_H3_MODEL_MANIFEST_PATH=/opt/fast-h3/deploy/k8s/h3-disaggregated/node19-model-manifest-v5.json\",\"FAST_H3_MODEL_MANIFEST_SHA256=6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0\",\"FAST_H3_MASTER_PORT=29683\",\"FAST_H3_WARMUP_SPEC_PATH=/var/lib/vela/models/qualification/h3-kube-r3/DIT.json\",\"OMP_NUM_THREADS=8\",\"TOKENIZERS_PARALLELISM=false\"],\"scratch_root\":\"/var/lib/vela/stage-worker/scratch\",\"input_root\":\"/var/lib/vela/stage-worker/scratch/inputs\",\"output_root\":\"/var/lib/vela/stage-worker/scratch/outputs\",\"initialization_timeout\":\"40m\",\"shutdown_timeout\":\"2m\"}]}"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_DIRECTORIES",
+                "value": "/var/lib/vela/stage-worker/scratch/model-runtime-epochs /var/lib/vela/stage-worker/scratch/inputs /var/lib/vela/stage-worker/scratch/outputs"
+              }
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "nodeName": "server-23",
+        "nodeSelector": {
+          "kubernetes.io/hostname": "server-23"
+        },
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "resourceClaims": [
+          {
+            "name": "gpu",
+            "resourceClaimTemplateName": "wi-21a69f917ad35dcb98000f1c7448a75d-ba3790e0-gpu"
+          }
+        ],
+        "restartPolicy": "Never",
+        "runtimeClassName": "vela-runc",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+          "fsGroup": 10001,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 10001,
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccount": "vela-worker",
+        "serviceAccountName": "vela-worker",
+        "shareProcessNamespace": false,
+        "terminationGracePeriodSeconds": 150,
+        "tolerations": [
+          {
+            "effect": "NoSchedule",
+            "key": "vela.ai/h3",
+            "operator": "Equal",
+            "value": "true"
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/not-ready",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/unreachable",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          }
+        ],
+        "volumes": [
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/21a69f91-7ad3-5dcb-9800-0f1c7448a75d/member-0/work",
+              "type": "Directory"
+            },
+            "name": "model-runtime-socket"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/21a69f91-7ad3-5dcb-9800-0f1c7448a75d/member-0/work",
+              "type": "Directory"
+            },
+            "name": "scratch"
+          },
+          {
+            "configMap": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "verifier-keyring.json",
+                  "path": "verifier-keyring.json"
+                }
+              ],
+              "name": "vela-h3-runtime-verifier-20260916-repair23"
+            },
+            "name": "model-runtime-verifier-projected"
+          },
+          {
+            "name": "stage-worker-control-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                },
+                {
+                  "key": "6a4fb0af-ef8f-5731-907d-b0196f986238.tls.crt",
+                  "path": "tls.crt"
+                },
+                {
+                  "key": "6a4fb0af-ef8f-5731-907d-b0196f986238.tls.key",
+                  "path": "tls.key"
+                }
+              ],
+              "secretName": "vela-worker-tls-6a4fb0af-ef8f-5731-907d-b0196f986238"
+            }
+          },
+          {
+            "name": "stage-worker-authority-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "keyring.json",
+                  "path": "keyring.json"
+                }
+              ],
+              "secretName": "vela-h3-stage-authority-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-credentials-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "access-key-id",
+                  "path": "access-key-id"
+                },
+                {
+                  "key": "secret-access-key",
+                  "path": "secret-access-key"
+                }
+              ],
+              "secretName": "vela-h3-artifacts-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-ca-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                }
+              ],
+              "secretName": "vela-h3-artifact-ca-20260916-repair23"
+            }
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "1Mi"
+            },
+            "name": "stage-worker-private"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Mi"
+            },
+            "name": "model-runtime-private"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/models",
+              "type": "Directory"
+            },
+            "name": "model-weights"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238",
+              "type": "Directory"
+            },
+            "name": "node-startup"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238/runtime-bootstrap",
+              "type": "Directory"
+            },
+            "name": "node-bootstrap"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238/launch",
+              "type": "Directory"
+            },
+            "name": "node-launch"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela-pidfd-broker",
+              "type": "Directory"
+            },
+            "name": "pidfd-broker"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/21a69f91-7ad3-5dcb-9800-0f1c7448a75d/member-0/provision/scratch/worker-admission",
+              "type": "Directory"
+            },
+            "name": "durable-worker-admission"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/21a69f91-7ad3-5dcb-9800-0f1c7448a75d/member-0/provision/scratch/inputs",
+              "type": "Directory"
+            },
+            "name": "durable-inputs"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/21a69f91-7ad3-5dcb-9800-0f1c7448a75d/member-0/provision/scratch/outputs",
+              "type": "Directory"
+            },
+            "name": "durable-outputs"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Gi"
+            },
+            "name": "h3-shared-memory"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:42:24Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodReadyToStartContainers"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:42:25Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Initialized"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:42:27Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Ready"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:42:27Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "ContainersReady"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:42:23Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodScheduled"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "4",
+              "memory": "32Gi"
+            },
+            "containerID": "containerd://77c67fdf684c87ec90b11c3643e2f9f788c7b5a43db35140b2c9eafa32bc68dc",
+            "image": "sha256:c88b7954ae6f644067d32ce812c8c5e82db3c45d4a005aa84b0e8cf2596729b3",
+            "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+            "lastState": {},
+            "name": "model-runtime",
+            "ready": true,
+            "resources": {
+              "claims": [
+                {
+                  "name": "gpu"
+                }
+              ],
+              "limits": {
+                "cpu": "16",
+                "memory": "128Gi"
+              },
+              "requests": {
+                "cpu": "4",
+                "memory": "32Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:42:26Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001,
+                  44,
+                  993
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/models",
+                "name": "model-weights",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "1",
+              "memory": "1Gi"
+            },
+            "containerID": "containerd://d9bdc8edc72afc0d0f0f6c1bdbe838838ec5ccb0956d4bcb3989d94b8a44d5fc",
+            "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+            "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "lastState": {},
+            "name": "stage-worker-agent",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:42:26Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/6a4fb0af-ef8f-5731-907d-b0196f986238",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          }
+        ],
+        "hostIP": "10.1.201.12",
+        "hostIPs": [
+          {
+            "ip": "10.1.201.12"
+          }
+        ],
+        "initContainerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://f7ec60b35598122944f294ad2589aaff09e47e6aefba40669af48fbfcb23656c",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "stage-worker-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://f7ec60b35598122944f294ad2589aaff09e47e6aefba40669af48fbfcb23656c",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:42:24Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:42:24Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://2679465919c01cc703053fcb295221edb3fcc175936398063d707414aec99155",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "model-runtime-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://2679465919c01cc703053fcb295221edb3fcc175936398063d707414aec99155",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:42:25Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:42:25Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "observedGeneration": 2,
+        "phase": "Running",
+        "podIP": "10.42.5.39",
+        "podIPs": [
+          {
+            "ip": "10.42.5.39"
+          }
+        ],
+        "qosClass": "Burstable",
+        "resourceClaimStatuses": [
+          {
+            "name": "gpu",
+            "resourceClaimName": "wi-21a69f917ad35dcb98000f1c7448a75d-ba3790e0-gpu-2gzqp"
+          }
+        ],
+        "startTime": "2026-09-17T08:42:23Z"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "cni.projectcalico.org/containerID": "2624dfae1e41e728bb14217e53adfd8c6781de27d13924683e94fc6c1aa060f2",
+          "cni.projectcalico.org/podIP": "10.42.3.72/32",
+          "cni.projectcalico.org/podIPs": "10.42.3.72/32",
+          "vela.ai/actuation-revision": "2e77ab750457373311d0f2074e1d8836cfbfd7b636525f44de381f28d2048345",
+          "vela.ai/device-constraints": "[{\"device_id\":\"4b401f32-4b21-5453-9b96-f9cd60c66691\",\"device_epoch\":1,\"resource_class\":\"GPU\",\"gpu_uuid\":\"GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"pci_bdf\":\"0000:01:00.0\"}]",
+          "vela.ai/fleet-controller-owned": "true",
+          "vela.ai/runtime-launch-protocol": "kubernetes-pidfd-v1"
+        },
+        "creationTimestamp": "2026-09-17T08:42:06Z",
+        "finalizers": [
+          "fleet.vela.ai/drain-protection"
+        ],
+        "generation": 2,
+        "labels": {
+          "app.kubernetes.io/name": "vela-worker-instance",
+          "app.kubernetes.io/part-of": "vela",
+          "vela.ai/capacity-pool-id": "246e5d94-76a5-5a12-aa91-f06e678d77b7",
+          "vela.ai/fleet-protected": "true",
+          "vela.ai/residency-plan-revision-id": "cd2d3210-cab9-5e3e-bb89-2d26a68cca7b",
+          "vela.ai/worker-bundle-id": "6511e232-616d-524c-b690-d17f9a01b600",
+          "vela.ai/worker-instance-epoch": "1",
+          "vela.ai/worker-instance-id": "4f6995c2-f538-5b2d-af6d-d0e30a107894",
+          "vela.ai/worker-member-id": "61dd0f39-74a2-51cd-b41d-9d289ea5e601",
+          "vela.ai/worker-member-key": "member-0",
+          "vela.ai/worker-profile-revision-id": "b9885fa3-7e26-5bec-b09f-bfe65eeaebbb",
+          "vela.ai/worker-role": "aux"
+        },
+        "name": "wi-4f6995c2f5385b2daf6dd0e30a107894-ba3790e0",
+        "namespace": "vela-system",
+        "resourceVersion": "4315594",
+        "uid": "9365edd0-c9bb-4843-8c6c-be93bc48d56e"
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "worker"
+            ],
+            "command": [
+              "/usr/local/bin/vela-runtime-entrypoint"
+            ],
+            "env": [
+              {
+                "name": "VELA_WORKER_INSTANCE_ID",
+                "value": "4f6995c2-f538-5b2d-af6d-d0e30a107894"
+              },
+              {
+                "name": "VELA_WORKER_INSTANCE_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_ID",
+                "value": "61dd0f39-74a2-51cd-b41d-9d289ea5e601"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_KEY",
+                "value": "member-0"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_DEVICES_JSON",
+                "value": "[{\"device_id\":\"4b401f32-4b21-5453-9b96-f9cd60c66691\",\"device_epoch\":1}]"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON",
+                "value": "{\"active_stage_slots\":1,\"concurrency\":1,\"gpu_count\":1}"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MEMBERS_JSON",
+                "value": "[{\"worker_member_id\":\"61dd0f39-74a2-51cd-b41d-9d289ea5e601\",\"member_epoch\":1,\"identity_digest\":\"43c4547b556f8de93dc1c282847dff2cdaf30b65a95cecf49265740bfd817f56\"}]"
+              },
+              {
+                "name": "VELA_WORKER_NODE_IDENTITY",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "spec.nodeName"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_ADDRESS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-address",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_SERVER_NAME",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-server-name",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_TLS_CERT_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.crt"
+              },
+              {
+                "name": "VELA_WORKER_TLS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.key"
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/control/ca.crt"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_SOCKET",
+                "value": "/run/vela-model-runtime/private/runtime.sock"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_EXPECTED_UID",
+                "value": "10001"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_STARTUP_TIMEOUT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "model-runtime-startup-timeout",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_SCRATCH_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/production-state"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/inputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/input-transfer-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_OUTPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/outputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/materialization-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE",
+                "value": "/etc/vela-stage-worker/private/authority/keyring.json"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/access-key-id"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/secret-access-key"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/ca.crt"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "authority-active-key-id",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CONNECTOR_REVISION_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "connector-revision-id",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "capacity-ttl",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_HEARTBEAT_INTERVAL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "heartbeat-interval",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MINIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-minimum",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MAXIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-maximum",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "materialization-journal-limit",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ENDPOINT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-endpoint",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_REGION",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-region",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_BUCKET",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-bucket",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_PATH_STYLE",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-path-style",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SIGNED_GET_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-signed-get-ttl",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_RETRY",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-retry",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-consumed-resource-units",
+                    "name": "vela-h3-aux-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_SOCKET",
+                "value": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601/worker-journal.sock"
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET",
+                "value": "/run/vela-pidfd-broker/broker.sock"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE",
+                "value": "/etc/vela-model-runtime/private/launch.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY",
+                "value": "/var/lib/vela/stage-worker/scratch/worker-admission"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS",
+                "value": "32"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_FILE",
+                "value": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601/worker-bootstrap/binding.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE",
+                "value": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601/worker-bootstrap/verifier.json"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-agent",
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              }
+            ]
+          },
+          {
+            "env": [
+              {
+                "name": "KUBERNETES_SERVICE_HOST"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT_HTTPS"
+              },
+              {
+                "name": "KUBERNETES_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PROTO"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_ADDR"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime",
+            "resources": {
+              "claims": [
+                {
+                  "name": "gpu"
+                }
+              ],
+              "limits": {
+                "cpu": "16",
+                "memory": "128Gi"
+              },
+              "requests": {
+                "cpu": "4",
+                "memory": "32Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/models",
+                "name": "model-weights",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true
+              }
+            ],
+            "workingDir": "/"
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": false,
+        "imagePullSecrets": [
+          {
+            "name": "vela-release-pull-v1"
+          }
+        ],
+        "initContainers": [
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/control /private/authority /private/artifact\ncp /projected/control/ca.crt /private/control/ca.crt\ncp /projected/control/tls.crt /private/control/tls.crt\ncp /projected/control/tls.key /private/control/tls.key\ncp /projected/authority/keyring.json /private/authority/keyring.json\ncp /projected/artifact-credentials/access-key-id /private/artifact/access-key-id\ncp /projected/artifact-credentials/secret-access-key /private/artifact/secret-access-key\ncp /projected/artifact-ca/ca.crt /private/artifact/ca.crt\nif [ -d /projected/member-pki ]; then\n  mkdir -p /private/member/client /private/member/server\n  cp /projected/member-pki/client.crt /private/member/client/tls.crt\n  cp /projected/member-pki/client.key /private/member/client/tls.key\n  cp /projected/member-pki/server-ca.crt /private/member/client/ca.crt\n  cp /projected/member-pki/server.crt /private/member/server/tls.crt\n  cp /projected/member-pki/server.key /private/member/server/tls.key\n  cp /projected/member-pki/client-ca.crt /private/member/server/ca.crt\n  chmod 0700 /private/member /private/member/client /private/member/server\n  chmod 0400 /private/member/client/* /private/member/server/*\nfi\nchmod 0700 /private /private/control /private/authority /private/artifact\nchmod 0400 /private/control/* /private/authority/* /private/artifact/*\nchown -R 10001:10001 /private\n"
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/authority\nprintf '%s' \"${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}\" > /private/launch.json\ncp /projected/model-runtime-authority/verifier-keyring.json /private/authority/verifier-keyring.json\ntest -f /private/launch.json\ntest -f /private/authority/verifier-keyring.json\nchmod 0700 /private /private/authority\nchmod 0400 /private/launch.json /private/authority/verifier-keyring.json\nchown -R 10001:10001 /private\n"
+            ],
+            "env": [
+              {
+                "name": "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON",
+                "value": "{\"schema_version\":2,\"worker_profile_revision_id\":\"b9885fa3-7e26-5bec-b09f-bfe65eeaebbb\",\"worker_role\":\"aux\",\"capacity_slots\":1,\"shared_slot_exception\":\"H3_AUX_ENCODER_VAE\",\"worker_instance_id\":\"4f6995c2-f538-5b2d-af6d-d0e30a107894\",\"worker_instance_epoch\":1,\"worker_member_id\":\"61dd0f39-74a2-51cd-b41d-9d289ea5e601\",\"worker_member_epoch\":1,\"device_set_digest\":\"e66dd4f0b6a22ec3b53fa456031f32794abcd325827dded8f03d57ca50b227b8\",\"membership_digest\":\"2815aeaa44ff54ade656062daab6466425cabdce00becfff444b817963007be8\",\"devices\":[{\"id\":\"4b401f32-4b21-5453-9b96-f9cd60c66691\",\"epoch\":1}],\"members\":[{\"id\":\"61dd0f39-74a2-51cd-b41d-9d289ea5e601\",\"epoch\":1,\"identity_digest\":\"43c4547b556f8de93dc1c282847dff2cdaf30b65a95cecf49265740bfd817f56\",\"device_subset_digest\":\"751235d07e36ad41c876883e4b1822db87af5aefe24e69aae8f721e39a7922f3\"}],\"local_devices\":[{\"device_id\":\"4b401f32-4b21-5453-9b96-f9cd60c66691\",\"device_epoch\":1,\"resource_class\":\"GPU\",\"gpu_uuid\":\"GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"pci_bdf\":\"0000:01:00.0\"}],\"runtimes\":[{\"model_residency_id\":\"09fedac4-2d08-5eea-8a29-dd59a95ac8eb\",\"runtime_identity\":\"h3-live-encoder-20260916\",\"stage_profile_revision_id\":\"9dd2a189-c71d-5389-b823-9555ca40c619\",\"model_runtime_epoch_floor\":1,\"component\":\"ENCODER\",\"model_component_revision\":\"h3-live-encoder-20260916\",\"runtime_image_digest\":\"65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a\",\"command\":[\"/opt/venv/bin/python\",\"-B\",\"-m\",\"fast_h3.vela.driver\",\"--component\",\"ENCODER\",\"--runtime-factory\",\"fast_h3.vela.h3_runtime:create_runtime\"],\"environment\":[\"HOME=/var/lib/vela/stage-worker/scratch\",\"PYTHONDONTWRITEBYTECODE=1\",\"TMPDIR=/var/lib/vela/stage-worker/scratch\",\"PYTHONPATH=/opt/fast-h3/src:/opt/fast-h3/sglang/python\",\"PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin\",\"XDG_CACHE_HOME=/var/lib/vela/stage-worker/scratch/cache\",\"TRITON_CACHE_DIR=/var/lib/vela/stage-worker/scratch/triton-cache\",\"TORCHINDUCTOR_CACHE_DIR=/var/lib/vela/stage-worker/scratch/torch-cache\",\"CUDA_CACHE_PATH=/var/lib/vela/stage-worker/scratch/cuda-cache\",\"CUDA_VISIBLE_DEVICES=GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"NVIDIA_VISIBLE_DEVICES=GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"HF_HUB_OFFLINE=1\",\"TRANSFORMERS_OFFLINE=1\",\"FAST_H3_MODEL_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3\",\"FAST_H3_MODEL_VARIANT=fl2va\",\"FAST_H3_DIT_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3-int8-v5-convrot-hardened/transformer\",\"FAST_H3_ENCODER_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-encoder-int8\",\"FAST_H3_ADALN_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-adaln-table-hardened/steps20.safetensors\",\"FAST_H3_ARTIFACT_ROOT=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1\",\"FAST_H3_MODEL_MANIFEST_PATH=/opt/fast-h3/deploy/k8s/h3-disaggregated/node19-model-manifest-v5.json\",\"FAST_H3_MODEL_MANIFEST_SHA256=6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0\",\"FAST_H3_MASTER_PORT=29681\",\"FAST_H3_WARMUP_SPEC_PATH=/var/lib/vela/models/qualification/h3-kube-r3/ENCODER.json\",\"OMP_NUM_THREADS=8\",\"TOKENIZERS_PARALLELISM=false\"],\"scratch_root\":\"/var/lib/vela/stage-worker/scratch\",\"input_root\":\"/var/lib/vela/stage-worker/scratch/inputs\",\"output_root\":\"/var/lib/vela/stage-worker/scratch/outputs\",\"initialization_timeout\":\"40m\",\"shutdown_timeout\":\"2m\"},{\"model_residency_id\":\"ea85f5b0-99b1-57d1-acee-acbb7adbbd59\",\"runtime_identity\":\"h3-live-vae-20260916\",\"stage_profile_revision_id\":\"8efa26ac-4b30-5f3a-bab9-6c16c6f01b0d\",\"model_runtime_epoch_floor\":1,\"component\":\"VAE_DECODER\",\"model_component_revision\":\"h3-live-vae_decoder-20260916\",\"runtime_image_digest\":\"65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a\",\"command\":[\"/opt/venv/bin/python\",\"-B\",\"-m\",\"fast_h3.vela.driver\",\"--component\",\"VAE_DECODER\",\"--runtime-factory\",\"fast_h3.vela.h3_runtime:create_runtime\"],\"environment\":[\"HOME=/var/lib/vela/stage-worker/scratch\",\"PYTHONDONTWRITEBYTECODE=1\",\"TMPDIR=/var/lib/vela/stage-worker/scratch\",\"PYTHONPATH=/opt/fast-h3/src:/opt/fast-h3/sglang/python\",\"PATH=/opt/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin\",\"XDG_CACHE_HOME=/var/lib/vela/stage-worker/scratch/cache\",\"TRITON_CACHE_DIR=/var/lib/vela/stage-worker/scratch/triton-cache\",\"TORCHINDUCTOR_CACHE_DIR=/var/lib/vela/stage-worker/scratch/torch-cache\",\"CUDA_CACHE_PATH=/var/lib/vela/stage-worker/scratch/cuda-cache\",\"CUDA_VISIBLE_DEVICES=GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"NVIDIA_VISIBLE_DEVICES=GPU-c08137e5-6932-a25d-27d3-03506fbf924c\",\"HF_HUB_OFFLINE=1\",\"TRANSFORMERS_OFFLINE=1\",\"FAST_H3_MODEL_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3\",\"FAST_H3_MODEL_VARIANT=fl2va\",\"FAST_H3_DIT_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMaxAI/MiniMax-H3-int8-v5-convrot-hardened/transformer\",\"FAST_H3_ENCODER_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-encoder-int8\",\"FAST_H3_ADALN_PATH=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1/MiniMax-H3-adaln-table-hardened/steps20.safetensors\",\"FAST_H3_ARTIFACT_ROOT=/var/lib/vela/models/dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1\",\"FAST_H3_MODEL_MANIFEST_PATH=/opt/fast-h3/deploy/k8s/h3-disaggregated/node19-model-manifest-v5.json\",\"FAST_H3_MODEL_MANIFEST_SHA256=6eac1f04b601ebfd5d9cf54a130d9c3b7e5a13549fa1a8517bea2730657a28c0\",\"FAST_H3_MASTER_PORT=29682\",\"FAST_H3_WARMUP_SPEC_PATH=/var/lib/vela/models/qualification/h3-kube-r3/VAE_DECODER.json\",\"OMP_NUM_THREADS=8\",\"TOKENIZERS_PARALLELISM=false\"],\"scratch_root\":\"/var/lib/vela/stage-worker/scratch\",\"input_root\":\"/var/lib/vela/stage-worker/scratch/inputs\",\"output_root\":\"/var/lib/vela/stage-worker/scratch/outputs\",\"initialization_timeout\":\"40m\",\"shutdown_timeout\":\"2m\"}]}"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_DIRECTORIES",
+                "value": "/var/lib/vela/stage-worker/scratch/model-runtime-epochs /var/lib/vela/stage-worker/scratch/inputs /var/lib/vela/stage-worker/scratch/outputs"
+              }
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "nodeName": "server-22",
+        "nodeSelector": {
+          "kubernetes.io/hostname": "server-22"
+        },
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "resourceClaims": [
+          {
+            "name": "gpu",
+            "resourceClaimTemplateName": "wi-4f6995c2f5385b2daf6dd0e30a107894-ba3790e0-gpu"
+          }
+        ],
+        "restartPolicy": "Never",
+        "runtimeClassName": "vela-runc",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+          "fsGroup": 10001,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 10001,
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccount": "vela-worker",
+        "serviceAccountName": "vela-worker",
+        "shareProcessNamespace": false,
+        "terminationGracePeriodSeconds": 150,
+        "tolerations": [
+          {
+            "effect": "NoSchedule",
+            "key": "vela.ai/h3",
+            "operator": "Equal",
+            "value": "true"
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/not-ready",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/unreachable",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          }
+        ],
+        "volumes": [
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/4f6995c2-f538-5b2d-af6d-d0e30a107894/member-0/work",
+              "type": "Directory"
+            },
+            "name": "model-runtime-socket"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/4f6995c2-f538-5b2d-af6d-d0e30a107894/member-0/work",
+              "type": "Directory"
+            },
+            "name": "scratch"
+          },
+          {
+            "configMap": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "verifier-keyring.json",
+                  "path": "verifier-keyring.json"
+                }
+              ],
+              "name": "vela-h3-runtime-verifier-20260916-repair23"
+            },
+            "name": "model-runtime-verifier-projected"
+          },
+          {
+            "name": "stage-worker-control-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                },
+                {
+                  "key": "61dd0f39-74a2-51cd-b41d-9d289ea5e601.tls.crt",
+                  "path": "tls.crt"
+                },
+                {
+                  "key": "61dd0f39-74a2-51cd-b41d-9d289ea5e601.tls.key",
+                  "path": "tls.key"
+                }
+              ],
+              "secretName": "vela-worker-tls-61dd0f39-74a2-51cd-b41d-9d289ea5e601"
+            }
+          },
+          {
+            "name": "stage-worker-authority-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "keyring.json",
+                  "path": "keyring.json"
+                }
+              ],
+              "secretName": "vela-h3-stage-authority-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-credentials-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "access-key-id",
+                  "path": "access-key-id"
+                },
+                {
+                  "key": "secret-access-key",
+                  "path": "secret-access-key"
+                }
+              ],
+              "secretName": "vela-h3-artifacts-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-ca-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                }
+              ],
+              "secretName": "vela-h3-artifact-ca-20260916-repair23"
+            }
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "1Mi"
+            },
+            "name": "stage-worker-private"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Mi"
+            },
+            "name": "model-runtime-private"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/models",
+              "type": "Directory"
+            },
+            "name": "model-weights"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601",
+              "type": "Directory"
+            },
+            "name": "node-startup"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601/runtime-bootstrap",
+              "type": "Directory"
+            },
+            "name": "node-bootstrap"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601/launch",
+              "type": "Directory"
+            },
+            "name": "node-launch"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela-pidfd-broker",
+              "type": "Directory"
+            },
+            "name": "pidfd-broker"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/4f6995c2-f538-5b2d-af6d-d0e30a107894/member-0/provision/scratch/worker-admission",
+              "type": "Directory"
+            },
+            "name": "durable-worker-admission"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/4f6995c2-f538-5b2d-af6d-d0e30a107894/member-0/provision/scratch/inputs",
+              "type": "Directory"
+            },
+            "name": "durable-inputs"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/4f6995c2-f538-5b2d-af6d-d0e30a107894/member-0/provision/scratch/outputs",
+              "type": "Directory"
+            },
+            "name": "durable-outputs"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Gi"
+            },
+            "name": "h3-shared-memory"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:52Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodReadyToStartContainers"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:53Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Initialized"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:54Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Ready"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:54Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "ContainersReady"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:51Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodScheduled"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "4",
+              "memory": "32Gi"
+            },
+            "containerID": "containerd://899f02f8bdde4a666542ef4fd3bb32aa19c469c85220078b72b9632fe22ee0fe",
+            "image": "sha256:c88b7954ae6f644067d32ce812c8c5e82db3c45d4a005aa84b0e8cf2596729b3",
+            "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+            "lastState": {},
+            "name": "model-runtime",
+            "ready": true,
+            "resources": {
+              "claims": [
+                {
+                  "name": "gpu"
+                }
+              ],
+              "limits": {
+                "cpu": "16",
+                "memory": "128Gi"
+              },
+              "requests": {
+                "cpu": "4",
+                "memory": "32Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:44:54Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/models",
+                "name": "model-weights",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "1",
+              "memory": "1Gi"
+            },
+            "containerID": "containerd://39418b0ab552bbcb26b78c4be0bd34655b5b5598c697a9b403078854cc2439c2",
+            "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+            "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "lastState": {},
+            "name": "stage-worker-agent",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:44:53Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/61dd0f39-74a2-51cd-b41d-9d289ea5e601",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          }
+        ],
+        "hostIP": "10.1.201.11",
+        "hostIPs": [
+          {
+            "ip": "10.1.201.11"
+          }
+        ],
+        "initContainerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://93f358dfdd2701f0b732beb18b8e0efbe1b8b4094b1070692c4a502add439966",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "stage-worker-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://93f358dfdd2701f0b732beb18b8e0efbe1b8b4094b1070692c4a502add439966",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:44:52Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:44:52Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://f450511952dc4fbce1baa0c03f66e5022a3206220183a0c0c793affaea655577",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "model-runtime-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://f450511952dc4fbce1baa0c03f66e5022a3206220183a0c0c793affaea655577",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:44:53Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:44:53Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "observedGeneration": 2,
+        "phase": "Running",
+        "podIP": "10.42.3.72",
+        "podIPs": [
+          {
+            "ip": "10.42.3.72"
+          }
+        ],
+        "qosClass": "Burstable",
+        "resourceClaimStatuses": [
+          {
+            "name": "gpu",
+            "resourceClaimName": "wi-4f6995c2f5385b2daf6dd0e30a107894-ba3790e0-gpu-xzrpx"
+          }
+        ],
+        "startTime": "2026-09-17T08:44:51Z"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "Pod",
+      "metadata": {
+        "annotations": {
+          "cni.projectcalico.org/containerID": "15a674ba11b05f71cfa2354a693613347e25c1369b304216eb2fecc8c370dcb4",
+          "cni.projectcalico.org/podIP": "10.42.3.71/32",
+          "cni.projectcalico.org/podIPs": "10.42.3.71/32",
+          "vela.ai/actuation-revision": "6e81088863bca72d4955d92eee7b8f44e022073a63e04f75c6c94cbe594d238c",
+          "vela.ai/device-constraints": "[{\"device_id\":\"651fad8f-ed4f-5dfd-b6c5-f97c4dfca2f9\",\"device_epoch\":1,\"resource_class\":\"CPU\"}]",
+          "vela.ai/fleet-controller-owned": "true",
+          "vela.ai/runtime-launch-protocol": "kubernetes-pidfd-v1"
+        },
+        "creationTimestamp": "2026-09-17T08:42:07Z",
+        "finalizers": [
+          "fleet.vela.ai/drain-protection"
+        ],
+        "generation": 2,
+        "labels": {
+          "app.kubernetes.io/name": "vela-worker-instance",
+          "app.kubernetes.io/part-of": "vela",
+          "vela.ai/capacity-pool-id": "86f09634-b032-5553-a91d-cde54aa1ab71",
+          "vela.ai/fleet-protected": "true",
+          "vela.ai/residency-plan-revision-id": "cd2d3210-cab9-5e3e-bb89-2d26a68cca7b",
+          "vela.ai/worker-bundle-id": "e26aec1e-576f-5f44-a45e-9ca743ca5266",
+          "vela.ai/worker-instance-epoch": "1",
+          "vela.ai/worker-instance-id": "d6bb2ff0-11e3-564e-985e-0cbfc4d7680a",
+          "vela.ai/worker-member-id": "066ba626-fa6c-59e7-a209-043f471ec8bb",
+          "vela.ai/worker-member-key": "member-0",
+          "vela.ai/worker-profile-revision-id": "706bd2e4-d647-5a0c-b516-8451c2bbccd8",
+          "vela.ai/worker-role": "cpu-thumbnail"
+        },
+        "name": "wi-d6bb2ff011e3564e985e0cbfc4d7680a-ba3790e0",
+        "namespace": "vela-system",
+        "resourceVersion": "4315596",
+        "uid": "e8a46f17-e696-43be-a527-b278611ae994"
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "args": [
+              "worker"
+            ],
+            "command": [
+              "/usr/local/bin/vela-runtime-entrypoint"
+            ],
+            "env": [
+              {
+                "name": "VELA_WORKER_INSTANCE_ID",
+                "value": "d6bb2ff0-11e3-564e-985e-0cbfc4d7680a"
+              },
+              {
+                "name": "VELA_WORKER_INSTANCE_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_ID",
+                "value": "066ba626-fa6c-59e7-a209-043f471ec8bb"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_EPOCH",
+                "value": "1"
+              },
+              {
+                "name": "VELA_WORKER_MEMBER_KEY",
+                "value": "member-0"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_DEVICES_JSON",
+                "value": "[{\"device_id\":\"651fad8f-ed4f-5dfd-b6c5-f97c4dfca2f9\",\"device_epoch\":1}]"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON",
+                "value": "{\"active_stage_slots\":1,\"concurrency\":1,\"cpu_slot_count\":1}"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MEMBERS_JSON",
+                "value": "[{\"worker_member_id\":\"066ba626-fa6c-59e7-a209-043f471ec8bb\",\"member_epoch\":1,\"identity_digest\":\"daff77b37d70aba234795d5e0462f88f8cfd7b7fa3434f621c100569d770f376\"}]"
+              },
+              {
+                "name": "VELA_WORKER_NODE_IDENTITY",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "spec.nodeName"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_ADDRESS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-address",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_SERVER_NAME",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "control-server-name",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_TLS_CERT_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.crt"
+              },
+              {
+                "name": "VELA_WORKER_TLS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/control/tls.key"
+              },
+              {
+                "name": "VELA_WORKER_CONTROL_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/control/ca.crt"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_SOCKET",
+                "value": "/run/vela-model-runtime/private/runtime.sock"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_EXPECTED_UID",
+                "value": "10001"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_STARTUP_TIMEOUT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "model-runtime-startup-timeout",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_SCRATCH_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/production-state"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/inputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/input-transfer-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_OUTPUT_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/outputs"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT",
+                "value": "/var/lib/vela/stage-worker/scratch/materialization-journal"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE",
+                "value": "/etc/vela-stage-worker/private/authority/keyring.json"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/access-key-id"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/secret-access-key"
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_CA_FILE",
+                "value": "/etc/vela-stage-worker/private/artifact/ca.crt"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "authority-active-key-id",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CONNECTOR_REVISION_ID",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "connector-revision-id",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_CAPACITY_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "capacity-ttl",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_HEARTBEAT_INTERVAL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "heartbeat-interval",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MINIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-minimum",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_RETRY_MAXIMUM",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "retry-maximum",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "materialization-journal-limit",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_ENDPOINT",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-endpoint",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_REGION",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-region",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_BUCKET",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-bucket",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_PATH_STYLE",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-path-style",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_ARTIFACT_S3_SIGNED_GET_TTL",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "artifact-s3-signed-get-ttl",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_RETRY",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-retry",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS",
+                "valueFrom": {
+                  "configMapKeyRef": {
+                    "key": "source-loss-consumed-resource-units",
+                    "name": "vela-h3-cpu-thumbnail-stop0917-skew-skew-skew-jr-er-cf"
+                  }
+                }
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_SOCKET",
+                "value": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb/worker-journal.sock"
+              },
+              {
+                "name": "VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET",
+                "value": "/run/vela-pidfd-broker/broker.sock"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE",
+                "value": "/etc/vela-model-runtime/private/launch.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY",
+                "value": "/var/lib/vela/stage-worker/scratch/worker-admission"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS",
+                "value": "32"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_FILE",
+                "value": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb/worker-bootstrap/binding.json"
+              },
+              {
+                "name": "VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE",
+                "value": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb/worker-bootstrap/verifier.json"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-agent",
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              }
+            ]
+          },
+          {
+            "env": [
+              {
+                "name": "KUBERNETES_SERVICE_HOST"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT"
+              },
+              {
+                "name": "KUBERNETES_SERVICE_PORT_HTTPS"
+              },
+              {
+                "name": "KUBERNETES_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PROTO"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_PORT"
+              },
+              {
+                "name": "KUBERNETES_PORT_443_TCP_ADDR"
+              }
+            ],
+            "image": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime",
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "4Gi"
+              },
+              "requests": {
+                "cpu": "2",
+                "memory": "4Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true
+              }
+            ],
+            "workingDir": "/"
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": false,
+        "imagePullSecrets": [
+          {
+            "name": "vela-release-pull-v1"
+          }
+        ],
+        "initContainers": [
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/control /private/authority /private/artifact\ncp /projected/control/ca.crt /private/control/ca.crt\ncp /projected/control/tls.crt /private/control/tls.crt\ncp /projected/control/tls.key /private/control/tls.key\ncp /projected/authority/keyring.json /private/authority/keyring.json\ncp /projected/artifact-credentials/access-key-id /private/artifact/access-key-id\ncp /projected/artifact-credentials/secret-access-key /private/artifact/secret-access-key\ncp /projected/artifact-ca/ca.crt /private/artifact/ca.crt\nif [ -d /projected/member-pki ]; then\n  mkdir -p /private/member/client /private/member/server\n  cp /projected/member-pki/client.crt /private/member/client/tls.crt\n  cp /projected/member-pki/client.key /private/member/client/tls.key\n  cp /projected/member-pki/server-ca.crt /private/member/client/ca.crt\n  cp /projected/member-pki/server.crt /private/member/server/tls.crt\n  cp /projected/member-pki/server.key /private/member/server/tls.key\n  cp /projected/member-pki/client-ca.crt /private/member/server/ca.crt\n  chmod 0700 /private/member /private/member/client /private/member/server\n  chmod 0400 /private/member/client/* /private/member/server/*\nfi\nchmod 0700 /private /private/control /private/authority /private/artifact\nchmod 0400 /private/control/* /private/authority/* /private/artifact/*\nchown -R 10001:10001 /private\n"
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "stage-worker-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "command": [
+              "/bin/sh",
+              "-ec",
+              "mkdir -p /private/authority\nprintf '%s' \"${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}\" > /private/launch.json\ncp /projected/model-runtime-authority/verifier-keyring.json /private/authority/verifier-keyring.json\ntest -f /private/launch.json\ntest -f /private/authority/verifier-keyring.json\nchmod 0700 /private /private/authority\nchmod 0400 /private/launch.json /private/authority/verifier-keyring.json\nchown -R 10001:10001 /private\n"
+            ],
+            "env": [
+              {
+                "name": "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON",
+                "value": "{\"schema_version\":2,\"worker_profile_revision_id\":\"706bd2e4-d647-5a0c-b516-8451c2bbccd8\",\"worker_role\":\"cpu-thumbnail\",\"capacity_slots\":1,\"worker_instance_id\":\"d6bb2ff0-11e3-564e-985e-0cbfc4d7680a\",\"worker_instance_epoch\":1,\"worker_member_id\":\"066ba626-fa6c-59e7-a209-043f471ec8bb\",\"worker_member_epoch\":1,\"device_set_digest\":\"5308c0a0133f4f09b23f1f6acd3713118e96e1139df56a4ce57d87fdced2c760\",\"membership_digest\":\"020c2168b615e734560f6dc22036cff2d527b45c5e85096bd3fd187d8d931cf3\",\"devices\":[{\"id\":\"651fad8f-ed4f-5dfd-b6c5-f97c4dfca2f9\",\"epoch\":1}],\"members\":[{\"id\":\"066ba626-fa6c-59e7-a209-043f471ec8bb\",\"epoch\":1,\"identity_digest\":\"daff77b37d70aba234795d5e0462f88f8cfd7b7fa3434f621c100569d770f376\",\"device_subset_digest\":\"8b0cd93bfc00037a45923c0b9207609269cb2e9d6bb1d7081454918415e8b0be\"}],\"local_devices\":[{\"device_id\":\"651fad8f-ed4f-5dfd-b6c5-f97c4dfca2f9\",\"device_epoch\":1,\"resource_class\":\"CPU\"}],\"runtimes\":[{\"model_residency_id\":\"ad40e84d-a073-52a8-832b-3578f6c0d37c\",\"runtime_identity\":\"h3-live-thumbnail-20260916\",\"stage_profile_revision_id\":\"d50be43d-9312-559b-ad15-4c343b09c15c\",\"model_runtime_epoch_floor\":1,\"component\":\"CPU_MEDIA\",\"model_component_revision\":\"h3-live-cpu_media-20260916\",\"runtime_image_digest\":\"455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280\",\"command\":[\"/opt/venv/bin/python\",\"-B\",\"-m\",\"fast_h3.vela.driver\",\"--component\",\"CPU_MEDIA\",\"--runtime-factory\",\"fast_h3.vela.cpu_thumbnail:create_runtime\"],\"environment\":[\"HOME=/var/lib/vela/stage-worker/scratch\",\"PYTHONDONTWRITEBYTECODE=1\",\"TMPDIR=/var/lib/vela/stage-worker/scratch\",\"PYTHONPATH=/opt/vela-cpu-media\",\"PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin\"],\"scratch_root\":\"/var/lib/vela/stage-worker/scratch\",\"input_root\":\"/var/lib/vela/stage-worker/scratch/inputs\",\"output_root\":\"/var/lib/vela/stage-worker/scratch/outputs\",\"initialization_timeout\":\"40m\",\"shutdown_timeout\":\"2m\"}]}"
+              },
+              {
+                "name": "VELA_MODEL_RUNTIME_DIRECTORIES",
+                "value": "/var/lib/vela/stage-worker/scratch/model-runtime-epochs /var/lib/vela/stage-worker/scratch/inputs /var/lib/vela/stage-worker/scratch/outputs"
+              }
+            ],
+            "image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "model-runtime-private-materialization",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "add": [
+                  "CHOWN",
+                  "DAC_OVERRIDE",
+                  "FOWNER"
+                ],
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true,
+              "runAsGroup": 0,
+              "runAsNonRoot": false,
+              "runAsUser": 0
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "nodeName": "server-22",
+        "nodeSelector": {
+          "kubernetes.io/hostname": "server-22"
+        },
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Never",
+        "runtimeClassName": "vela-runc",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+          "fsGroup": 10001,
+          "fsGroupChangePolicy": "OnRootMismatch",
+          "runAsGroup": 10001,
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "serviceAccount": "vela-worker",
+        "serviceAccountName": "vela-worker",
+        "shareProcessNamespace": false,
+        "terminationGracePeriodSeconds": 150,
+        "tolerations": [
+          {
+            "effect": "NoSchedule",
+            "key": "vela.ai/h3",
+            "operator": "Equal",
+            "value": "true"
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/not-ready",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          },
+          {
+            "effect": "NoExecute",
+            "key": "node.kubernetes.io/unreachable",
+            "operator": "Exists",
+            "tolerationSeconds": 300
+          }
+        ],
+        "volumes": [
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/member-0/work",
+              "type": "Directory"
+            },
+            "name": "model-runtime-socket"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/member-0/work",
+              "type": "Directory"
+            },
+            "name": "scratch"
+          },
+          {
+            "configMap": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "verifier-keyring.json",
+                  "path": "verifier-keyring.json"
+                }
+              ],
+              "name": "vela-h3-runtime-verifier-20260916-repair23"
+            },
+            "name": "model-runtime-verifier-projected"
+          },
+          {
+            "name": "stage-worker-control-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                },
+                {
+                  "key": "066ba626-fa6c-59e7-a209-043f471ec8bb.tls.crt",
+                  "path": "tls.crt"
+                },
+                {
+                  "key": "066ba626-fa6c-59e7-a209-043f471ec8bb.tls.key",
+                  "path": "tls.key"
+                }
+              ],
+              "secretName": "vela-worker-tls-066ba626-fa6c-59e7-a209-043f471ec8bb"
+            }
+          },
+          {
+            "name": "stage-worker-authority-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "keyring.json",
+                  "path": "keyring.json"
+                }
+              ],
+              "secretName": "vela-h3-stage-authority-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-credentials-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "access-key-id",
+                  "path": "access-key-id"
+                },
+                {
+                  "key": "secret-access-key",
+                  "path": "secret-access-key"
+                }
+              ],
+              "secretName": "vela-h3-artifacts-20260916-repair23"
+            }
+          },
+          {
+            "name": "artifact-store-ca-projected",
+            "secret": {
+              "defaultMode": 256,
+              "items": [
+                {
+                  "key": "ca.crt",
+                  "path": "ca.crt"
+                }
+              ],
+              "secretName": "vela-h3-artifact-ca-20260916-repair23"
+            }
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "1Mi"
+            },
+            "name": "stage-worker-private"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Mi"
+            },
+            "name": "model-runtime-private"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb",
+              "type": "Directory"
+            },
+            "name": "node-startup"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb/runtime-bootstrap",
+              "type": "Directory"
+            },
+            "name": "node-bootstrap"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb/launch",
+              "type": "Directory"
+            },
+            "name": "node-launch"
+          },
+          {
+            "hostPath": {
+              "path": "/run/vela-pidfd-broker",
+              "type": "Directory"
+            },
+            "name": "pidfd-broker"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/member-0/provision/scratch/worker-admission",
+              "type": "Directory"
+            },
+            "name": "durable-worker-admission"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/member-0/provision/scratch/inputs",
+              "type": "Directory"
+            },
+            "name": "durable-inputs"
+          },
+          {
+            "hostPath": {
+              "path": "/var/lib/vela/worker-instances/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/member-0/provision/scratch/outputs",
+              "type": "Directory"
+            },
+            "name": "durable-outputs"
+          },
+          {
+            "emptyDir": {
+              "medium": "Memory",
+              "sizeLimit": "2Gi"
+            },
+            "name": "h3-shared-memory"
+          }
+        ]
+      },
+      "status": {
+        "conditions": [
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:51Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodReadyToStartContainers"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:53Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Initialized"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:54Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "Ready"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:54Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "ContainersReady"
+          },
+          {
+            "lastProbeTime": null,
+            "lastTransitionTime": "2026-09-17T08:44:50Z",
+            "observedGeneration": 2,
+            "status": "True",
+            "type": "PodScheduled"
+          }
+        ],
+        "containerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "2",
+              "memory": "4Gi"
+            },
+            "containerID": "containerd://e5aba9405fd029079aa914293a016cbc2313f913ed31cb5f886778c73be876bf",
+            "image": "sha256:a1fccdfdbf4ce1b919072b9511c36cc526eb4a32b71763a77733bd37647ca57e",
+            "imageID": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+            "lastState": {},
+            "name": "model-runtime",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "4Gi"
+              },
+              "requests": {
+                "cpu": "2",
+                "memory": "4Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:44:54Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/dev/shm",
+                "name": "h3-shared-memory"
+              },
+              {
+                "mountPath": "/run/vela-node",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-model-runtime-bootstrap",
+                "name": "node-bootstrap",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "1",
+              "memory": "1Gi"
+            },
+            "containerID": "containerd://39e30ac1e179a7b7e0fed306f3db86bbc468499896f7b9f5bd2fef46241c4ef9",
+            "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+            "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+            "lastState": {},
+            "name": "stage-worker-agent",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "2Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "1Gi"
+              }
+            },
+            "restartCount": 0,
+            "started": true,
+            "state": {
+              "running": {
+                "startedAt": "2026-09-17T08:44:53Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 10001,
+                "supplementalGroups": [
+                  10001
+                ],
+                "uid": 10001
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/run/vela-model-runtime/private",
+                "name": "model-runtime-socket"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch",
+                "name": "scratch"
+              },
+              {
+                "mountPath": "/etc/vela-stage-worker/private",
+                "name": "stage-worker-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/inputs",
+                "name": "durable-inputs"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/outputs",
+                "name": "durable-outputs"
+              },
+              {
+                "mountPath": "/run/vela-launch",
+                "name": "node-launch",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/run/vela-pidfd-broker",
+                "name": "pidfd-broker",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/var/lib/vela/stage-worker/scratch/worker-admission",
+                "name": "durable-worker-admission"
+              },
+              {
+                "mountPath": "/run/vela/w/066ba626-fa6c-59e7-a209-043f471ec8bb",
+                "name": "node-startup",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/etc/vela-model-runtime/private",
+                "name": "model-runtime-private",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              }
+            ]
+          }
+        ],
+        "hostIP": "10.1.201.11",
+        "hostIPs": [
+          {
+            "ip": "10.1.201.11"
+          }
+        ],
+        "initContainerStatuses": [
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://3e85ba685026a167b856a6956155416770df2d927c1c91f59e825d81aa657b6a",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "stage-worker-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://3e85ba685026a167b856a6956155416770df2d927c1c91f59e825d81aa657b6a",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:44:52Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:44:51Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/control",
+                "name": "stage-worker-control-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/authority",
+                "name": "stage-worker-authority-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-credentials",
+                "name": "artifact-store-credentials-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/projected/artifact-ca",
+                "name": "artifact-store-ca-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "stage-worker-private"
+              }
+            ]
+          },
+          {
+            "allocatedResources": {
+              "cpu": "10m",
+              "memory": "8Mi"
+            },
+            "containerID": "containerd://af14481713081054df832a319dace3f90881bfb2f637d4eb2bf1bd0e10adfdf9",
+            "image": "sha256:db287cb6be81219cd18c1d82b70908f5d33eb028568b456f78eedff2ff2930e4",
+            "imageID": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+            "lastState": {},
+            "name": "model-runtime-private-materialization",
+            "ready": true,
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "16Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "8Mi"
+              }
+            },
+            "restartCount": 0,
+            "started": false,
+            "state": {
+              "terminated": {
+                "containerID": "containerd://af14481713081054df832a319dace3f90881bfb2f637d4eb2bf1bd0e10adfdf9",
+                "exitCode": 0,
+                "finishedAt": "2026-09-17T08:44:53Z",
+                "reason": "Completed",
+                "startedAt": "2026-09-17T08:44:53Z"
+              }
+            },
+            "user": {
+              "linux": {
+                "gid": 0,
+                "supplementalGroups": [
+                  0,
+                  10,
+                  10001
+                ],
+                "uid": 0
+              }
+            },
+            "volumeMounts": [
+              {
+                "mountPath": "/projected/model-runtime-authority",
+                "name": "model-runtime-verifier-projected",
+                "readOnly": true,
+                "recursiveReadOnly": "Disabled"
+              },
+              {
+                "mountPath": "/private",
+                "name": "model-runtime-private"
+              }
+            ]
+          }
+        ],
+        "observedGeneration": 2,
+        "phase": "Running",
+        "podIP": "10.42.3.71",
+        "podIPs": [
+          {
+            "ip": "10.42.3.71"
+          }
+        ],
+        "qosClass": "Burstable",
+        "startTime": "2026-09-17T08:44:51Z"
+      }
+    }
+  ],
+  "residencies": [
+    {
+      "canary_evidence_digest": "\\x568c39e3ccdb6e1ef30c92a94bf26c6ed6dbed252851e1b95c5b093f989013ca",
+      "id": "ad40e84d-a073-52a8-832b-3578f6c0d37c",
+      "model_component_revision": "h3-live-cpu_media-20260916",
+      "model_runtime_epoch": 2,
+      "observed_at": "2026-09-17T08:45:00.526005+00:00",
+      "observed_by": "stage-worker-runtime-barrier/066ba626-fa6c-59e7-a209-043f471ec8bb",
+      "ready_at": "2026-09-17T08:45:00.526005+00:00",
+      "released_at": null,
+      "runtime_identity": "h3-live-thumbnail-20260916",
+      "runtime_image_digest": "sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+      "state": "READY",
+      "warmup_evidence_digest": "\\x568c39e3ccdb6e1ef30c92a94bf26c6ed6dbed252851e1b95c5b093f989013ca",
+      "worker_instance_epoch": 1,
+      "worker_instance_id": "d6bb2ff0-11e3-564e-985e-0cbfc4d7680a"
+    },
+    {
+      "canary_evidence_digest": "\\x7e04f8fc5e87d96c7fc01fbcd1f2eae2be5483e482d9beaadf922cb691afe184",
+      "id": "09fedac4-2d08-5eea-8a29-dd59a95ac8eb",
+      "model_component_revision": "h3-live-encoder-20260916",
+      "model_runtime_epoch": 2,
+      "observed_at": "2026-09-17T08:46:58.103099+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIy/8684d5b9-3fea-5862-b997-614a70dc798c",
+      "ready_at": "2026-09-17T08:46:58.103099+00:00",
+      "released_at": null,
+      "runtime_identity": "h3-live-encoder-20260916",
+      "runtime_image_digest": "sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+      "state": "READY",
+      "warmup_evidence_digest": "\\x7e04f8fc5e87d96c7fc01fbcd1f2eae2be5483e482d9beaadf922cb691afe184",
+      "worker_instance_epoch": 1,
+      "worker_instance_id": "4f6995c2-f538-5b2d-af6d-d0e30a107894"
+    },
+    {
+      "canary_evidence_digest": "\\x5bc57d8bbc8c67975b27a2c7a5ea4f7807166c0446cfc5019dcfb668c43bdd16",
+      "id": "ea85f5b0-99b1-57d1-acee-acbb7adbbd59",
+      "model_component_revision": "h3-live-vae_decoder-20260916",
+      "model_runtime_epoch": 2,
+      "observed_at": "2026-09-17T08:46:58.103099+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIy/8684d5b9-3fea-5862-b997-614a70dc798c",
+      "ready_at": "2026-09-17T08:46:58.103099+00:00",
+      "released_at": null,
+      "runtime_identity": "h3-live-vae-20260916",
+      "runtime_image_digest": "sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+      "state": "READY",
+      "warmup_evidence_digest": "\\x5bc57d8bbc8c67975b27a2c7a5ea4f7807166c0446cfc5019dcfb668c43bdd16",
+      "worker_instance_epoch": 1,
+      "worker_instance_id": "4f6995c2-f538-5b2d-af6d-d0e30a107894"
+    },
+    {
+      "canary_evidence_digest": "\\x45ebe0f5e9d557be5fb445224b5f8520686622e516e61444923d0f047a3d5157",
+      "id": "88fd8eaa-6f3b-5026-8455-11dcec50529e",
+      "model_component_revision": "h3-live-dit-20260916",
+      "model_runtime_epoch": 2,
+      "observed_at": "2026-09-17T08:50:30.498322+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIz/248d3e39-5bc2-55ac-b6d4-f72bf0a9790a",
+      "ready_at": "2026-09-17T08:50:30.498322+00:00",
+      "released_at": null,
+      "runtime_identity": "h3-live-dit-20260916",
+      "runtime_image_digest": "sha256:65851beb15a10e1b58606b2fa40099ddfa07088be87230a30ec6614bb0a2d41a",
+      "state": "READY",
+      "warmup_evidence_digest": "\\x45ebe0f5e9d557be5fb445224b5f8520686622e516e61444923d0f047a3d5157",
+      "worker_instance_epoch": 1,
+      "worker_instance_id": "21a69f91-7ad3-5dcb-9800-0f1c7448a75d"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "internal-canary-native-component-warmup",
+  "workers": [
+    {
+      "capacity_pool_id": "957fd0c3-83f9-5cb6-a735-7cf21a181900",
+      "control_session_epoch": 1,
+      "control_session_id": null,
+      "created_at": "2026-09-17T08:42:04.491128+00:00",
+      "desired_device_count": 1,
+      "desired_member_count": 1,
+      "device_set_digest": "\\x021f993f1173a54179c4b45d51db7101108eaa80481392687841d24ce8173209",
+      "device_set_id": "6c6954df-18dd-5ed6-ac39-845ac641bc19",
+      "id": "21a69f91-7ad3-5dcb-9800-0f1c7448a75d",
+      "instance_epoch": 1,
+      "lifecycle_state": "READY",
+      "membership_digest": "\\xc2e00f09db82dd53d575a4dc6912a3c411d4e90219978236916d3679a58cfae1",
+      "observed_at": "2026-09-17T08:50:30.498322+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIz/248d3e39-5bc2-55ac-b6d4-f72bf0a9790a",
+      "reachability_state": "CONNECTED",
+      "residency_plan_revision_id": "a35a4c3e-1c78-5fca-a679-564f50d46dbe",
+      "worker_bundle_id": "c333f78e-8a65-5fa7-899d-8448d79a2a7d",
+      "worker_profile_revision_id": "91aec273-513c-5e09-895e-85812ef5db33"
+    },
+    {
+      "capacity_pool_id": "246e5d94-76a5-5a12-aa91-f06e678d77b7",
+      "control_session_epoch": 2,
+      "control_session_id": "stage-worker-control/4f6995c2-f538-5b2d-af6d-d0e30a107894/2",
+      "created_at": "2026-09-17T08:42:05.491757+00:00",
+      "desired_device_count": 1,
+      "desired_member_count": 1,
+      "device_set_digest": "\\xe66dd4f0b6a22ec3b53fa456031f32794abcd325827dded8f03d57ca50b227b8",
+      "device_set_id": "c6082afa-9bef-58bc-ae2a-11935a37463a",
+      "id": "4f6995c2-f538-5b2d-af6d-d0e30a107894",
+      "instance_epoch": 1,
+      "lifecycle_state": "READY",
+      "membership_digest": "\\x2815aeaa44ff54ade656062daab6466425cabdce00becfff444b817963007be8",
+      "observed_at": "2026-09-17T08:50:30.23431+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIy/8684d5b9-3fea-5862-b997-614a70dc798c",
+      "reachability_state": "CONNECTED",
+      "residency_plan_revision_id": "cd2d3210-cab9-5e3e-bb89-2d26a68cca7b",
+      "worker_bundle_id": "6511e232-616d-524c-b690-d17f9a01b600",
+      "worker_profile_revision_id": "b9885fa3-7e26-5bec-b09f-bfe65eeaebbb"
+    },
+    {
+      "capacity_pool_id": "86f09634-b032-5553-a91d-cde54aa1ab71",
+      "control_session_epoch": 2,
+      "control_session_id": "stage-worker-control/d6bb2ff0-11e3-564e-985e-0cbfc4d7680a/2",
+      "created_at": "2026-09-17T08:42:05.492199+00:00",
+      "desired_device_count": 1,
+      "desired_member_count": 1,
+      "device_set_digest": "\\x5308c0a0133f4f09b23f1f6acd3713118e96e1139df56a4ce57d87fdced2c760",
+      "device_set_id": "8188076b-118c-574b-b94e-1794e0fbdf4a",
+      "id": "d6bb2ff0-11e3-564e-985e-0cbfc4d7680a",
+      "instance_epoch": 1,
+      "lifecycle_state": "READY",
+      "membership_digest": "\\x020c2168b615e734560f6dc22036cff2d527b45c5e85096bd3fd187d8d931cf3",
+      "observed_at": "2026-09-17T08:50:28.855162+00:00",
+      "observed_by": "node-agent/c2VydmVyLTIy/8684d5b9-3fea-5862-b997-614a70dc798c",
+      "reachability_state": "CONNECTED",
+      "residency_plan_revision_id": "cd2d3210-cab9-5e3e-bb89-2d26a68cca7b",
+      "worker_bundle_id": "e26aec1e-576f-5f44-a45e-9ca743ca5266",
+      "worker_profile_revision_id": "706bd2e4-d647-5a0c-b516-8451c2bbccd8"
+    }
+  ]
+}

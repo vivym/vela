@@ -1,0 +1,85 @@
+{
+  "passed": true,
+  "job": {
+    "attempts_started": 1,
+    "created_at": "2026-09-17T07:02:45.487356Z",
+    "job_expires_at": "2026-09-17T09:12:45.40889Z",
+    "job_id": "dfbb5eaa-63bd-4ac1-8835-c74de4c95b59",
+    "model": "minimax-h3-live-validation",
+    "pricing": {
+      "currency": "CNY",
+      "quantity": 1,
+      "quoted_amount_minor": 100,
+      "rate_card_revision_id": "3ed820f5-22c8-5b38-927f-6e8dfe9f60b2",
+      "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+      "unit_amount_minor": 100
+    },
+    "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+    "state": "SUCCEEDED"
+  },
+  "billing": {
+    "job_id": "dfbb5eaa-63bd-4ac1-8835-c74de4c95b59",
+    "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+    "state": "SUCCEEDED",
+    "billable_started_at": "2026-09-17T07:06:16.550455+00:00",
+    "charge_count": 1,
+    "charge": {
+      "id": "90fe21ea-4850-43fa-b40e-308f030dfedc",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+      "job_id": "dfbb5eaa-63bd-4ac1-8835-c74de4c95b59",
+      "credit_reservation_id": "f0f766ad-de2d-4fd5-9895-ced4cb994f01",
+      "cancellation_id": null,
+      "reason": "VISIBLE_COMPLETION",
+      "amount_minor": 100,
+      "currency": "CNY",
+      "state": "POSTED",
+      "posted_at": "2026-09-17T07:45:56.203799+00:00",
+      "created_at": "2026-09-17T07:45:56.226881+00:00",
+      "artifact_set_id": "7e126b6d-c070-4eb8-9fe7-a834d088e91d"
+    },
+    "visible_completion_count": 1,
+    "artifact_set_count": 1,
+    "artifact_set_id": "7e126b6d-c070-4eb8-9fe7-a834d088e91d",
+    "idempotency_count": 1,
+    "reservation_state": "CONSUMED",
+    "reservation_amount_minor": 100,
+    "account_reserved_minor": 100,
+    "sum_reserved_minor": 100
+  },
+  "artifacts": [
+    {
+      "artifact_id": "57598717-b5c3-50ea-a281-8000952984c5",
+      "content_type": "video/mp4",
+      "download_url_expires_at": "2026-09-17T08:02:15.299005514Z",
+      "kind": "VIDEO",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      },
+      "object_version_id": "046de3a9-009f-4d06-a80c-44e524842107",
+      "ordinal": 0,
+      "sha256": "3968660fe5280ec73a06e0de130ce14f98f29f52518f541cf9520869a3fb1524",
+      "size_bytes": 953352
+    },
+    {
+      "artifact_id": "72b7c1ab-2a90-5ef9-9ffe-c6384ba259ae",
+      "content_type": "image/webp",
+      "download_url_expires_at": "2026-09-17T08:02:15.299679331Z",
+      "kind": "THUMBNAIL",
+      "object_version_id": "b042ae18-263d-4c78-82b7-9afa14b343fd",
+      "ordinal": 0,
+      "sha256": "8bff8d7f0605e0a8c99e8b4d13108bcf90f849302c801e47ae8f5712018c547f",
+      "size_bytes": 6558
+    }
+  ]
+}

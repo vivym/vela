@@ -6,6 +6,10 @@
 本部署仍处于 INTERNAL 发布范围，不代表九项
 Production Gates、吞吐 SLA 或故障注入验证全部完成。
 
+2026-09-17 19:15 复核：GPU 实例尚未同步 live-validation 后续的完整取消/重连恢复
+修复，详见[两模型修复同步核查](h3-model-fix-parity-2026-09-17.md)。以下验收是
+当时发布版本的证据，不代表后续修复已经自动覆盖正式模型。
+
 ## 实例与本地缓存
 
 | 角色 | Kubernetes Node | IP |

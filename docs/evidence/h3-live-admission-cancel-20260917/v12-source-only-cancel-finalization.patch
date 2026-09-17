@@ -1,0 +1,38 @@
+--- a/src/fast_h3/vela/driver.py
++++ b/src/fast_h3/vela/driver.py
+@@ -214,6 +214,16 @@
+             _discard_staging_output(active.execution.staging_path)
+             return
+         active.state = "CANCELING"
++        # The terminal control path may no longer issue execution Status RPCs.
++        # Queue completion on the existing single worker after execute returns;
++        # bounded inspection/drain channels never join CUDA or clean files.
++        self.executor.submit(self._finish_cancelled_execution, active)
++
++    def _finish_cancelled_execution(self, active: _ActiveExecution) -> None:
++        with self.gate:
++            if active.state == "CANCELING":
++                self._refresh(active)
++                self.publish_snapshot()
+ 
+     def seal(self, identity: StageIdentity) -> dict[str, Any]:
+         active = self._require_active(identity)
+@@ -517,7 +527,6 @@
+                 )
+                 response = _response(request_id, output=output)
+             elif operation == "shutdown":
+-                session.shutdown()
+                 response = _response(request_id, acknowledged=True)
+                 terminate = True
+             else:
+@@ -531,6 +540,10 @@
+         finally:
+             session.publish_snapshot()
+             session.gate.release()
++        if terminate:
++            # Pending cancellation finalization acquires the command gate.
++            # Join it only after the gate has been released.
++            session.shutdown()
+         history[request_id] = (request, response)
+         if len(history) > 256:
+             del history[min(history)]

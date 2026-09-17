@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "at": "2026-09-17T10:33:27.440830+00:00",
+  "routes": [
+    {
+      "model_revision_id": "217c75f1-2f5e-547f-be1d-4e117da9e7e2",
+      "cutover_revision_id": "9f979515-1341-5cd2-99eb-479ee595069c"
+    },
+    {
+      "model_revision_id": "ef0ee53d-4dd7-5f64-9fb8-b9e5f5c4cfc5",
+      "cutover_revision_id": "9eee563b-c970-5ef7-a594-3745967f5a12"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "7d3c87ec-b38a-52c7-b30c-e1c43cffd748",
+      "state": "CERTIFIED",
+      "runtime_image_digest": "sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+    },
+    {
+      "id": "70e0f8dc-d89a-56e4-a23a-cca287d3b7fe",
+      "state": "CERTIFIED",
+      "runtime_image_digest": "sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+    },
+    {
+      "id": "150b15fb-1d97-50fa-acdf-3ae2af5a598a",
+      "state": "CERTIFIED",
+      "runtime_image_digest": "sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+    }
+  ],
+  "checks": [
+    "existing_model_route_updated",
+    "other_model_routes_preserved",
+    "all_rate_lines_and_prices_preserved",
+    "existing_authorized_projects_preserved",
+    "exact_runtime_stage_profiles_certified"
+  ]
+}

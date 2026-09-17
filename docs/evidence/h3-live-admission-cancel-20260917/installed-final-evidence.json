@@ -1,0 +1,414 @@
+{
+  "captured_at": "2026-09-17T10:55:40.576755+00:00",
+  "jobs": {
+    "first": "e815ea93-c004-4685-bce3-f1273e2279fa",
+    "second": "5624781f-5439-47b5-8b02-0644fe75edb4",
+    "third": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27"
+  },
+  "receipt": {
+    "passed": true,
+    "checks": [
+      "dit_running_beyond_idle_capacity_ttl",
+      "second_submission_202_while_dit_busy",
+      "cancellation_reached_terminal",
+      "post_cancel_submission_202_without_restart",
+      "second_complete_av_and_one_charge",
+      "third_complete_av_and_one_charge",
+      "identical_container_ids_and_restart_counts"
+    ],
+    "runtime_before": {
+      "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83": {
+        "pod_uid": "a5774bf8-91e7-4964-9a7c-815a0654f0f9",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://5a2096568745fce32c39b039b8fb1d852af2ba2eed37e0ac9fe10205c63cda15",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://6c446784d2f3c0379b2a9388e092366e2b39eb99aea995d23f1c69477162a351",
+            "restart_count": 0
+          }
+        }
+      },
+      "734acfb8-90b2-5122-9b2b-47a94a97361f": {
+        "pod_uid": "cb668e75-4de6-4244-a5c0-1ba663cca4c6",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://fe22e14bb543c64d61d8bd06b081d9e7386af083980dc836aff45bb88edc43d8",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://979bb245546425123f84eadd962cc30df795d89990a769f195f36a5ac249470f",
+            "restart_count": 0
+          }
+        }
+      },
+      "979d6984-9d1f-5e5f-be19-732d18824d42": {
+        "pod_uid": "c5b4773b-1c07-479c-a8d8-d8d22c728d3f",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://cbbbdb889e20a9a2dde870b7776d6551c3c380e3a73dd8e353c1b5d3535ab1cf",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://bcc342f6bcbc3e56c2a8bea455c51537d73606b7786015955c4b092ff6de2cfd",
+            "restart_count": 0
+          }
+        }
+      }
+    },
+    "cancel": {
+      "billable": true,
+      "cancellation_id": "416e81bd-c8f0-4db5-a01c-5d256d1de44d",
+      "charge": {
+        "amount_minor": 100,
+        "charge_id": "3f8e6db9-07f6-444e-8738-42f6fade308d",
+        "currency": "CNY",
+        "posted_at": "2026-09-17T10:36:27.598054Z",
+        "reason": "CUSTOMER_CANCELLATION"
+      },
+      "decided_at": "2026-09-17T10:36:27.598054Z",
+      "decision": "CANCELING",
+      "job_id": "e815ea93-c004-4685-bce3-f1273e2279fa",
+      "job_version": 4,
+      "state": "CANCELING"
+    },
+    "second": {
+      "job": {
+        "attempts_started": 1,
+        "created_at": "2026-09-17T10:36:27.45884Z",
+        "job_expires_at": "2026-09-17T12:46:27.372969Z",
+        "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+        "model": "minimax-h3-live-validation",
+        "pricing": {
+          "currency": "CNY",
+          "quantity": 1,
+          "quoted_amount_minor": 100,
+          "rate_card_revision_id": "3ed820f5-22c8-5b38-927f-6e8dfe9f60b2",
+          "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+          "unit_amount_minor": 100
+        },
+        "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+        "state": "SUCCEEDED"
+      },
+      "billing": {
+        "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+        "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+        "state": "SUCCEEDED",
+        "billable_started_at": "2026-09-17T10:36:31.194669+00:00",
+        "charge_count": 1,
+        "charge": {
+          "id": "874aea68-7452-4662-8e34-7f002608c05c",
+          "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+          "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+          "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+          "credit_reservation_id": "66d48b6e-0f43-42b0-89b0-802b80d960ae",
+          "cancellation_id": null,
+          "reason": "VISIBLE_COMPLETION",
+          "amount_minor": 100,
+          "currency": "CNY",
+          "state": "POSTED",
+          "posted_at": "2026-09-17T10:46:19.494011+00:00",
+          "created_at": "2026-09-17T10:46:19.556811+00:00",
+          "artifact_set_id": "7d3ebc69-7ae8-43ab-9720-c5db839295e1"
+        },
+        "visible_completion_count": 1,
+        "artifact_set_count": 1,
+        "artifact_set_id": "7d3ebc69-7ae8-43ab-9720-c5db839295e1",
+        "idempotency_count": 1,
+        "reservation_state": "CONSUMED",
+        "reservation_amount_minor": 100,
+        "account_reserved_minor": 100,
+        "sum_reserved_minor": 100
+      },
+      "artifacts": [
+        {
+          "artifact_id": "589d80be-1579-5414-9c8d-7588210d0ec4",
+          "content_type": "video/mp4",
+          "download_url_expires_at": "2026-09-17T11:01:21.567492084Z",
+          "kind": "VIDEO",
+          "media": {
+            "audio": {
+              "channels": 2,
+              "codec": "aac",
+              "duration_milliseconds": 5175,
+              "sample_rate": 32000
+            },
+            "container_duration_milliseconds": 5175,
+            "duration_milliseconds": 5167,
+            "frame_count": 124,
+            "frame_rate_milli": 24000,
+            "requested_duration_milliseconds": 5000
+          },
+          "object_version_id": "600c609e-3b9c-4027-ab2a-6e4a8c204517",
+          "ordinal": 0,
+          "sha256": "ef61a4154a6bc62370faf734f149f4cd642df99b2a7baf42778bf6d6ad197ea7",
+          "size_bytes": 2954927
+        },
+        {
+          "artifact_id": "de5fbb8c-2698-5134-b085-4b79784a4ad9",
+          "content_type": "image/webp",
+          "download_url_expires_at": "2026-09-17T11:01:21.568270905Z",
+          "kind": "THUMBNAIL",
+          "object_version_id": "3212a405-e2ec-4a01-9d1a-75ee00992abd",
+          "ordinal": 0,
+          "sha256": "490c89d008d832626ee15c4267e852b4e0a1e82b37f99514eaf018311bbae60d",
+          "size_bytes": 12452
+        }
+      ]
+    },
+    "third": {
+      "job": {
+        "attempts_started": 1,
+        "created_at": "2026-09-17T10:38:17.153919Z",
+        "job_expires_at": "2026-09-17T12:48:17.093287Z",
+        "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+        "model": "minimax-h3-live-validation",
+        "pricing": {
+          "currency": "CNY",
+          "quantity": 1,
+          "quoted_amount_minor": 100,
+          "rate_card_revision_id": "3ed820f5-22c8-5b38-927f-6e8dfe9f60b2",
+          "rate_line_id": "166a7e2c-f880-5046-be06-c11e06a233f7",
+          "unit_amount_minor": 100
+        },
+        "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+        "state": "SUCCEEDED"
+      },
+      "billing": {
+        "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+        "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+        "state": "SUCCEEDED",
+        "billable_started_at": "2026-09-17T10:46:25.182622+00:00",
+        "charge_count": 1,
+        "charge": {
+          "id": "a52e8f13-f259-4e93-b8f5-c73de0b3523e",
+          "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+          "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+          "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+          "credit_reservation_id": "7cd1b487-695c-408c-a384-841cbd4d4769",
+          "cancellation_id": null,
+          "reason": "VISIBLE_COMPLETION",
+          "amount_minor": 100,
+          "currency": "CNY",
+          "state": "POSTED",
+          "posted_at": "2026-09-17T10:54:09.361291+00:00",
+          "created_at": "2026-09-17T10:54:09.379498+00:00",
+          "artifact_set_id": "f94c9a1c-e6dd-47ca-840e-e03a560732a6"
+        },
+        "visible_completion_count": 1,
+        "artifact_set_count": 1,
+        "artifact_set_id": "f94c9a1c-e6dd-47ca-840e-e03a560732a6",
+        "idempotency_count": 1,
+        "reservation_state": "CONSUMED",
+        "reservation_amount_minor": 100,
+        "account_reserved_minor": 0,
+        "sum_reserved_minor": 0
+      },
+      "artifacts": [
+        {
+          "artifact_id": "f3ff4866-5643-59fe-8669-bfacf3840ee8",
+          "content_type": "video/mp4",
+          "download_url_expires_at": "2026-09-17T11:09:11.461619986Z",
+          "kind": "VIDEO",
+          "media": {
+            "audio": {
+              "channels": 2,
+              "codec": "aac",
+              "duration_milliseconds": 5175,
+              "sample_rate": 32000
+            },
+            "container_duration_milliseconds": 5175,
+            "duration_milliseconds": 5167,
+            "frame_count": 124,
+            "frame_rate_milli": 24000,
+            "requested_duration_milliseconds": 5000
+          },
+          "object_version_id": "35149417-a22d-46c2-88ee-f30c93c9d874",
+          "ordinal": 0,
+          "sha256": "b99e2e56ec60a5eb360d51966e34b3e7a65791eab83545c551cc4428198368e8",
+          "size_bytes": 3475020
+        },
+        {
+          "artifact_id": "ed41ba83-6b5e-5dc6-b344-e5ec479257b3",
+          "content_type": "image/webp",
+          "download_url_expires_at": "2026-09-17T11:09:11.462150982Z",
+          "kind": "THUMBNAIL",
+          "object_version_id": "e431917e-3c5f-41f5-a889-cb621a9b9051",
+          "ordinal": 0,
+          "sha256": "5b410e65b2a3aff53c5f92e77c3bedf85c4a492df57bce8de51336a2603a6942",
+          "size_bytes": 15968
+        }
+      ]
+    },
+    "canceled_billing": {
+      "job_id": "e815ea93-c004-4685-bce3-f1273e2279fa",
+      "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+      "state": "CANCELED",
+      "billable_started_at": "2026-09-17T10:33:49.440853+00:00",
+      "charge_count": 1,
+      "charge": {
+        "id": "3f8e6db9-07f6-444e-8738-42f6fade308d",
+        "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+        "project_id": "94721677-3d9d-45ae-9f7d-b56035d6ca10",
+        "job_id": "e815ea93-c004-4685-bce3-f1273e2279fa",
+        "credit_reservation_id": "9e2c88ae-af96-4632-8e9f-71248a32b1aa",
+        "cancellation_id": "416e81bd-c8f0-4db5-a01c-5d256d1de44d",
+        "reason": "CUSTOMER_CANCELLATION",
+        "amount_minor": 100,
+        "currency": "CNY",
+        "state": "POSTED",
+        "posted_at": "2026-09-17T10:36:27.598054+00:00",
+        "created_at": "2026-09-17T10:36:27.633941+00:00",
+        "artifact_set_id": null
+      },
+      "visible_completion_count": 0,
+      "artifact_set_count": 0,
+      "artifact_set_id": null,
+      "idempotency_count": 1,
+      "reservation_state": "CONSUMED",
+      "reservation_amount_minor": 100,
+      "account_reserved_minor": 0,
+      "sum_reserved_minor": 0
+    },
+    "runtime_after": {
+      "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83": {
+        "pod_uid": "a5774bf8-91e7-4964-9a7c-815a0654f0f9",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://5a2096568745fce32c39b039b8fb1d852af2ba2eed37e0ac9fe10205c63cda15",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://6c446784d2f3c0379b2a9388e092366e2b39eb99aea995d23f1c69477162a351",
+            "restart_count": 0
+          }
+        }
+      },
+      "734acfb8-90b2-5122-9b2b-47a94a97361f": {
+        "pod_uid": "cb668e75-4de6-4244-a5c0-1ba663cca4c6",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://fe22e14bb543c64d61d8bd06b081d9e7386af083980dc836aff45bb88edc43d8",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://979bb245546425123f84eadd962cc30df795d89990a769f195f36a5ac249470f",
+            "restart_count": 0
+          }
+        }
+      },
+      "979d6984-9d1f-5e5f-be19-732d18824d42": {
+        "pod_uid": "c5b4773b-1c07-479c-a8d8-d8d22c728d3f",
+        "containers": {
+          "model-runtime": {
+            "id": "containerd://cbbbdb889e20a9a2dde870b7776d6551c3c380e3a73dd8e353c1b5d3535ab1cf",
+            "restart_count": 0
+          },
+          "stage-worker-agent": {
+            "id": "containerd://bcc342f6bcbc3e56c2a8bea455c51537d73606b7786015955c4b092ff6de2cfd",
+            "restart_count": 0
+          }
+        }
+      }
+    }
+  },
+  "media_files": [
+    {
+      "job": "second",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/second/complete-video.mp4",
+      "bytes": 2954927,
+      "sha256": "ef61a4154a6bc62370faf734f149f4cd642df99b2a7baf42778bf6d6ad197ea7"
+    },
+    {
+      "job": "second",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/second/ffprobe.json",
+      "bytes": 3494,
+      "sha256": "058a39d9bd2493c91cd1be621449ad1cdfcc497e42f742c8b946ccf404dd8493"
+    },
+    {
+      "job": "second",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/second/thumbnail.webp",
+      "bytes": 12452,
+      "sha256": "490c89d008d832626ee15c4267e852b4e0a1e82b37f99514eaf018311bbae60d"
+    },
+    {
+      "job": "third",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/third/complete-video.mp4",
+      "bytes": 3475020,
+      "sha256": "b99e2e56ec60a5eb360d51966e34b3e7a65791eab83545c551cc4428198368e8"
+    },
+    {
+      "job": "third",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/third/ffprobe.json",
+      "bytes": 3493,
+      "sha256": "e6988ec1039f0ad51be0ea2563b88421a714c541770db4811a4a581a49810443"
+    },
+    {
+      "job": "third",
+      "file": "/opt/vela-cluster/h3-busy-cancel-installed-finalizer-20260917/third/thumbnail.webp",
+      "bytes": 15968,
+      "sha256": "5b410e65b2a3aff53c5f92e77c3bedf85c4a492df57bce8de51336a2603a6942"
+    }
+  ],
+  "final_workers": {
+    "workers": [
+      {
+        "id": "734acfb8-90b2-5122-9b2b-47a94a97361f",
+        "lifecycle_state": "READY",
+        "reachability_state": "CONNECTED",
+        "instance_epoch": 1,
+        "control_session_epoch": 2
+      },
+      {
+        "id": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83",
+        "lifecycle_state": "READY",
+        "reachability_state": "CONNECTED",
+        "instance_epoch": 1,
+        "control_session_epoch": 2
+      },
+      {
+        "id": "979d6984-9d1f-5e5f-be19-732d18824d42",
+        "lifecycle_state": "READY",
+        "reachability_state": "CONNECTED",
+        "instance_epoch": 1,
+        "control_session_epoch": 2
+      }
+    ],
+    "active_allocations": [],
+    "verified_job_worker_assignments": [
+      {
+        "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+        "worker_instance_id": "734acfb8-90b2-5122-9b2b-47a94a97361f"
+      },
+      {
+        "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+        "worker_instance_id": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83"
+      },
+      {
+        "job_id": "e815ea93-c004-4685-bce3-f1273e2279fa",
+        "worker_instance_id": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83"
+      },
+      {
+        "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+        "worker_instance_id": "734acfb8-90b2-5122-9b2b-47a94a97361f"
+      },
+      {
+        "job_id": "5624781f-5439-47b5-8b02-0644fe75edb4",
+        "worker_instance_id": "979d6984-9d1f-5e5f-be19-732d18824d42"
+      },
+      {
+        "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+        "worker_instance_id": "979d6984-9d1f-5e5f-be19-732d18824d42"
+      },
+      {
+        "job_id": "b60fad60-fd7e-4746-abbb-cb7d10bfcd27",
+        "worker_instance_id": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83"
+      },
+      {
+        "job_id": "e815ea93-c004-4685-bce3-f1273e2279fa",
+        "worker_instance_id": "734acfb8-90b2-5122-9b2b-47a94a97361f"
+      }
+    ]
+  }
+}

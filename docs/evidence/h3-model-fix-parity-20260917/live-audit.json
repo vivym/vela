@@ -1,0 +1,520 @@
+{
+  "at": "2026-09-17T11:15:26.113064+00:00",
+  "workers": [
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "14de3c84-15e4-56c9-9b89-88e058fe2615",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-14de3c8415e456c99b8988e058fe2615-ba3790e0",
+          "node": "server-28",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "2ce82c6f-bf39-56a9-9de5-54de4ee92b0e",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-2ce82c6fbf3956a99de554de4ee92b0e-ba3790e0",
+          "node": "server-10",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "319a50df-405b-5ae1-a7e2-70f949e6b2e8",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-319a50df405b5ae1a7e270f949e6b2e8-ba3790e0",
+          "node": "server-39",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "80d53c66-a72f-5623-8b8d-20797ff27737",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-80d53c66a72f56238b8d20797ff27737-ba3790e0",
+          "node": "server-41",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "8d37eaa4-df4b-590d-807f-83e762293528",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-8d37eaa4df4b590d807f83e762293528-ba3790e0",
+          "node": "server-34",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "addf4317-b3c9-5eaa-9ae4-f54398244290",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-addf4317b3c95eaa9ae4f54398244290-ba3790e0",
+          "node": "server-38",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "b609845e-9eda-5389-83d1-d988e207468e",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-b609845e9eda538983d1d988e207468e-ba3790e0",
+          "node": "server-14",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "dit",
+      "worker": "ea3a8715-ae15-5d07-b3ea-1c5db1d56c91",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-ea3a8715ae155d07b3ea1c5db1d56c91-ba3790e0",
+          "node": "server-42",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "encoder",
+      "worker": "afcd5ae7-4109-5433-894e-00ebe5f9dd7e",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-afcd5ae741095433894e00ebe5f9dd7e-ba3790e0",
+          "node": "server-31",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "thumbnail",
+      "worker": "979d6984-9d1f-5e5f-be19-732d18824d42",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-979d69849d1f5e5fbe19732d18824d42-ba3790e0",
+          "node": "server-22",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:a1fccdfdbf4ce1b919072b9511c36cc526eb4a32b71763a77733bd37647ca57e",
+              "imageID": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "vae",
+      "worker": "536a2044-250d-54ee-864f-a34c5b66b66c",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-536a2044250d54ee864fa34c5b66b66c-ba3790e0",
+          "node": "server-33",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3",
+      "stage_key": "vae",
+      "worker": "71db0659-bd51-57f0-a4f5-ecabdd5803ac",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-71db0659bd5157f0a4f5ecabdd5803ac-ba3790e0",
+          "node": "server-29",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:1adab16552bb23f62f5971255982db1d75a948d33ab89949a16fe490da60170f",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:5bbb3a6306849da82f649703b241b757207b393dc558e09ef035ac0f8ad4e6ff",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:2a1e0cabbc34311c5eed690a89a647eff670f99c84dd0bf0fd6521f3553eb822",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "dit",
+      "worker": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-f8ff3c79f0945cf89ea3b37f6cf55b83-ba3790e0",
+          "node": "server-23",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:52a41466207146c739969e822838085474f5d7ca4b3a3300c8bd95fc79cccffc",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "encoder",
+      "worker": "734acfb8-90b2-5122-9b2b-47a94a97361f",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-734acfb890b251229b2b47a94a97361f-ba3790e0",
+          "node": "server-22",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:52a41466207146c739969e822838085474f5d7ca4b3a3300c8bd95fc79cccffc",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "thumbnail",
+      "worker": "979d6984-9d1f-5e5f-be19-732d18824d42",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-979d69849d1f5e5fbe19732d18824d42-ba3790e0",
+          "node": "server-22",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:a1fccdfdbf4ce1b919072b9511c36cc526eb4a32b71763a77733bd37647ca57e",
+              "imageID": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "stage_key": "vae",
+      "worker": "734acfb8-90b2-5122-9b2b-47a94a97361f",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED",
+      "pods": [
+        {
+          "name": "wi-734acfb890b251229b2b47a94a97361f-ba3790e0",
+          "node": "server-22",
+          "phase": "Running",
+          "containers": [
+            {
+              "name": "model-runtime",
+              "image": "sha256:52a41466207146c739969e822838085474f5d7ca4b3a3300c8bd95fc79cccffc",
+              "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+              "ready": true,
+              "restarts": 0
+            },
+            {
+              "name": "stage-worker-agent",
+              "image": "sha256:6e9bcea0ce35f10496483335e62e4f0773ab1af01fe767b0d700d796fd8914c3",
+              "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+              "ready": true,
+              "restarts": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "control": [
+    {
+      "pod": "vela-control-5f484bd66-84vlm",
+      "images": [
+        "10.1.201.70:5005/vela-control@sha256:d3be381e273ec2b6dceaec4d5529c3fb6b050ce7a081f7b599d9e0d303c0ba33"
+      ]
+    },
+    {
+      "pod": "vela-control-5f484bd66-tfc45",
+      "images": [
+        "10.1.201.70:5005/vela-control@sha256:d3be381e273ec2b6dceaec4d5529c3fb6b050ce7a081f7b599d9e0d303c0ba33"
+      ]
+    }
+  ],
+  "busy_admission_function_sha256": "2cf2c34d9f350660e92a07ca4c507e66fbd024616a5aaa9c913d99df25fab968",
+  "busy_admission_live_allocation_support": true,
+  "nonterminal_jobs": [],
+  "driver_probes": [
+    {
+      "model": "minimax-h3",
+      "pod": "wi-14de3c8415e456c99b8988e058fe2615-ba3790e0",
+      "imported_file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+      "sha256": "664ab4c73ddd6dd3863c8449d6dff929ed196e98fbc0ed56bec4559d36cd17f6",
+      "has_cancel_finalizer": false,
+      "schedules_cancel_finalizer": false
+    },
+    {
+      "model": "minimax-h3-live-validation",
+      "pod": "wi-f8ff3c79f0945cf89ea3b37f6cf55b83-ba3790e0",
+      "imported_file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+      "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e",
+      "has_cancel_finalizer": true,
+      "schedules_cancel_finalizer": true
+    }
+  ]
+}

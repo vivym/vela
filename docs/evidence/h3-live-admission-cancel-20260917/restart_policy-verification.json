@@ -1,0 +1,17 @@
+{
+  "at": "2026-09-17T06:19:09.096750+00:00",
+  "nodes": [
+    {
+      "ip": "10.1.201.12",
+      "path": "/etc/needrestart/conf.d/99-vela-controlled-restart.conf",
+      "content": "# Vela runtime startup owns process custody; restart only through a planned Fleet rollout.\n$nrconf{override_rc}->{qr(^vela-.*\\.service$)} = 0;\n",
+      "verified": "Vela planned-restart policy verified"
+    },
+    {
+      "ip": "10.1.201.11",
+      "path": "/etc/needrestart/conf.d/99-vela-controlled-restart.conf",
+      "content": "# Vela runtime startup owns process custody; restart only through a planned Fleet rollout.\n$nrconf{override_rc}->{qr(^vela-.*\\.service$)} = 0;\n",
+      "verified": "Vela planned-restart policy verified"
+    }
+  ]
+}

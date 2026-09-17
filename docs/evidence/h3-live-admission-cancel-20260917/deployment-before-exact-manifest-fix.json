@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "model": "minimax-h3-live-validation",
+  "node_agent_binary_sha256": "064d64b9d74d6b1299d02418c632bb200a5e345a0ea09bf005871dfb331f911c",
+  "source_head": "3dbf515d04910dc818477d786a57265bf3b1186d",
+  "source_dirty": true,
+  "host_reboot": false,
+  "images": {
+    "vela-control": {
+      "image": "10.1.201.70:5005/vela-control@sha256:89d808880bca5604ac04f9f9e12b32be22e72493e2586654e0dbfe6361ce20bd"
+    },
+    "vela-stage-worker-agent": {
+      "image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8"
+    },
+    "vela-h3-stage-runtime": {
+      "image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:7189270d4e009f63a7aa15b4a372d71de328c13fa759bfbcd4872d1fb5737aea"
+    },
+    "vela-h3-cpu-thumbnail": {
+      "image": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:f2dc8a5be13f8a9c0c7bcd29a8b20bdab46a5f8a513f2c2eb0f7255faf23aef9"
+    }
+  },
+  "workers": [
+    {
+      "id": "93187097-5eb0-5b8a-b73f-6cb7e074588d",
+      "role": "dit",
+      "member_ids": [
+        "9ae1a176-14e1-517e-96b3-3f14bcd34123"
+      ],
+      "bundle_id": "c50f04ed-3821-54a2-a263-3eedac630617",
+      "approved_plan_id": "e00f5b0a-dca9-5f9f-bf02-7aac59b63469",
+      "worker_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+      "runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:7189270d4e009f63a7aa15b4a372d71de328c13fa759bfbcd4872d1fb5737aea"
+    },
+    {
+      "id": "999f554d-0aac-5d59-858b-5d54166a4c39",
+      "role": "aux",
+      "member_ids": [
+        "e71ea254-e8ef-557f-8c87-d45c9de5fdeb"
+      ],
+      "bundle_id": "bd6b8006-e40b-534b-bc7a-ad98f3dd5d30",
+      "approved_plan_id": "333806f9-8d56-5f31-b75f-118cabf43156",
+      "worker_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+      "runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:7189270d4e009f63a7aa15b4a372d71de328c13fa759bfbcd4872d1fb5737aea"
+    },
+    {
+      "id": "c35c463e-d832-5ff8-bec8-36cd2265674a",
+      "role": "cpu-thumbnail",
+      "member_ids": [
+        "482c680a-07ea-5c33-b5eb-c76fd2b89760"
+      ],
+      "bundle_id": "45ea019e-8746-582c-8901-43c8400d5e31",
+      "approved_plan_id": "333806f9-8d56-5f31-b75f-118cabf43156",
+      "worker_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:2422e76ac483182a12a2a6161fb15157e1e1f564b5eb8d08e818e742156a3ac8",
+      "runtime_image": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:f2dc8a5be13f8a9c0c7bcd29a8b20bdab46a5f8a513f2c2eb0f7255faf23aef9"
+    }
+  ]
+}

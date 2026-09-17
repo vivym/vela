@@ -1,0 +1,32 @@
+FFF.
+======================================================================
+FAIL: test_cancel_drains_without_status_after_real_writer_completion (__main__.CancelDrainContract.test_cancel_drains_without_status_after_real_writer_completion) (finished_before_cancel=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/viv/projs/vela/hack/h3_cancel_drain_contract_test.py", line 65, in test_cancel_drains_without_status_after_real_writer_completion
+    self.assertTrue(session.drain(query), 'completed cancellation still requires an execution status call')
+AssertionError: False is not true : completed cancellation still requires an execution status call
+
+======================================================================
+FAIL: test_cancel_drains_without_status_after_real_writer_completion (__main__.CancelDrainContract.test_cancel_drains_without_status_after_real_writer_completion) (finished_before_cancel=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/viv/projs/vela/hack/h3_cancel_drain_contract_test.py", line 65, in test_cancel_drains_without_status_after_real_writer_completion
+    self.assertTrue(session.drain(query), 'completed cancellation still requires an execution status call')
+AssertionError: False is not true : completed cancellation still requires an execution status call
+
+======================================================================
+FAIL: test_cancel_writer_failure_does_not_claim_drain (__main__.CancelDrainContract.test_cancel_writer_failure_does_not_claim_drain)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/viv/projs/vela/hack/h3_cancel_drain_contract_test.py", line 97, in test_cancel_writer_failure_does_not_claim_drain
+    self.assertEqual(active.state, 'FAILED')
+AssertionError: 'CANCELING' != 'FAILED'
+- CANCELING
++ FAILED
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+FAILED (failures=3)

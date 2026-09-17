@@ -1,0 +1,95 @@
+{
+  "scope": "minimax-h3-live-validation",
+  "status": "published and verified; see installed-final-evidence.json and installed-publication-verification.json",
+  "namespace": "vela-system",
+  "roles": [
+    {
+      "role": "dit",
+      "worker_instance_id": "f8ff3c79-f094-5cf8-9ea3-b37f6cf55b83",
+      "plan_revision_id": "0c0f8eab-e08c-5861-87c6-5c6d55032bea",
+      "worker_bundle_id": "94cb9582-66a3-5b96-8f0d-5152e8433891",
+      "node_identity": "server-23",
+      "worker_member_id": "d97d9d3b-cf3e-5082-bbfa-333cd10a6f96",
+      "runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+      "stage_worker_agent_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+      "config_map": "vela-h3-installed-finalizer-dit-0917",
+      "secret_references": {
+        "stage_worker_control_tls_secret": "vela-worker-tls-d97d9d3b-cf3e-5082-bbfa-333cd10a6f96",
+        "stage_worker_authority_secret": "vela-h3-stage-authority-20260916-repair23",
+        "artifact_store_credentials_secret": "vela-h3-artifacts-20260916-repair23",
+        "artifact_store_ca_secret": "vela-h3-artifact-ca-20260916-repair23"
+      },
+      "runtime_profiles": [
+        {
+          "component": "DIT",
+          "model_residency_id": "42d07504-0b6c-5e07-a6d9-451bcaedc266",
+          "stage_profile_revision_id": "7d3c87ec-b38a-52c7-b30c-e1c43cffd748",
+          "model_component_revision": "h3-live-dit-20260916"
+        }
+      ]
+    },
+    {
+      "role": "aux",
+      "worker_instance_id": "734acfb8-90b2-5122-9b2b-47a94a97361f",
+      "plan_revision_id": "56a039df-0de0-58cf-b448-0f58183cf31f",
+      "worker_bundle_id": "42172373-8a8d-5ec2-87aa-748729e0b81c",
+      "node_identity": "server-22",
+      "worker_member_id": "8bfbd65a-01a6-552a-87d8-3788e6db17fe",
+      "runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+      "stage_worker_agent_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+      "config_map": "vela-h3-installed-finalizer-aux-0917",
+      "secret_references": {
+        "stage_worker_control_tls_secret": "vela-worker-tls-8bfbd65a-01a6-552a-87d8-3788e6db17fe",
+        "stage_worker_authority_secret": "vela-h3-stage-authority-20260916-repair23",
+        "artifact_store_credentials_secret": "vela-h3-artifacts-20260916-repair23",
+        "artifact_store_ca_secret": "vela-h3-artifact-ca-20260916-repair23"
+      },
+      "runtime_profiles": [
+        {
+          "component": "ENCODER",
+          "model_residency_id": "efe2628f-2fa9-5a43-82b0-f41daac1d67d",
+          "stage_profile_revision_id": "70e0f8dc-d89a-56e4-a23a-cca287d3b7fe",
+          "model_component_revision": "h3-live-encoder-20260916"
+        },
+        {
+          "component": "VAE_DECODER",
+          "model_residency_id": "13c98d80-fc05-596e-8d31-28b6919fbcbe",
+          "stage_profile_revision_id": "150b15fb-1d97-50fa-acdf-3ae2af5a598a",
+          "model_component_revision": "h3-live-vae_decoder-20260916"
+        }
+      ]
+    },
+    {
+      "role": "cpu-thumbnail",
+      "worker_instance_id": "979d6984-9d1f-5e5f-be19-732d18824d42",
+      "plan_revision_id": "56a039df-0de0-58cf-b448-0f58183cf31f",
+      "worker_bundle_id": "2a22a4a9-8aa9-53d9-a0ba-707fb72cce73",
+      "node_identity": "server-22",
+      "worker_member_id": "7ece5cfa-07bd-527c-83d3-99aa8d204d1d",
+      "runtime_image": "10.1.201.70:5005/vela-h3-cpu-thumbnail@sha256:455e06129ee7665e18019e873b36d30efd622b61d9bf7865ad6d46ecfa047280",
+      "stage_worker_agent_image": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2",
+      "config_map": "vela-h3-installed-finalizer-cpu-thumbnail-0917",
+      "secret_references": {
+        "stage_worker_control_tls_secret": "vela-worker-tls-7ece5cfa-07bd-527c-83d3-99aa8d204d1d",
+        "stage_worker_authority_secret": "vela-h3-stage-authority-20260916-repair23",
+        "artifact_store_credentials_secret": "vela-h3-artifacts-20260916-repair23",
+        "artifact_store_ca_secret": "vela-h3-artifact-ca-20260916-repair23"
+      },
+      "runtime_profiles": [
+        {
+          "component": "CPU_MEDIA",
+          "model_residency_id": "db9a4fcf-2735-52ad-bd1c-d7630efb68d6",
+          "stage_profile_revision_id": "d50be43d-9312-559b-ad15-4c343b09c15c",
+          "model_component_revision": "h3-live-cpu_media-20260916"
+        }
+      ]
+    }
+  ],
+  "secrets": "References only. Private keys stay on the management node and in Kubernetes Secrets.",
+  "evidence": [
+    "installed-final-evidence.json",
+    "installed-supplemental-verification.json",
+    "installed-publication-verification.json",
+    "installed-catalog_verification.json"
+  ]
+}

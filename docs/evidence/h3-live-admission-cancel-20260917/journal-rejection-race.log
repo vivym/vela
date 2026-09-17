@@ -1,0 +1,3 @@
+ok  	github.com/vivym/vela/internal/modelruntime	148.475s
+ok  	github.com/vivym/vela/internal/stageworkeragent	124.046s
+ok  	github.com/vivym/vela/internal/stageworkermembertransport	16.361s
