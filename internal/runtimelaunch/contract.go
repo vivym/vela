@@ -2,6 +2,9 @@
 // paths shared by Fleet, Node and the container's pre-exec process.
 package runtimelaunch
 
+// AssignmentMaxRecords is shared by bootstrap and the rendered Worker journal.
+const AssignmentMaxRecords = 32
+
 const (
 	Entrypoint         = "/usr/local/bin/vela-runtime-entrypoint"
 	Runtime            = "/usr/local/bin/vela-model-runtime"

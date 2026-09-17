@@ -23,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 )
@@ -484,5 +485,41 @@ func mustDo(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestKubernetesBootstrapRejectsJournalLimitDifferentFromRenderedWorker(t *testing.T) {
+	for _, limit := range []int{4, 32, 64} {
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			config, _ := bootstrapFixture(t)
+			config.Bundle.RuntimeLaunchProtocol = runtimelaunch.Protocol
+			var err error
+			config.Bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(config.Bundle)
+			mustDo(t, err)
+			config.MaxRecords = limit
+			pods, _, err := fleetcontroller.MaterializeWorkerInstanceLaunchResources(config.Bundle)
+			mustDo(t, err)
+			rendered := ""
+			for _, c := range pods[0].Spec.Containers {
+				if c.Name == "stage-worker-agent" {
+					for _, env := range c.Env {
+						if env.Name == "VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS" {
+							rendered = env.Value
+						}
+					}
+				}
+			}
+			if rendered == "" {
+				t.Fatal("missing rendered journal limit")
+			}
+			_, err = bind(config)
+			matches := fmt.Sprint(limit) == rendered
+			if (err == nil) != matches {
+				t.Fatalf("limit=%d rendered=%s bind error=%v", limit, rendered, err)
+			}
+			if !matches && !strings.Contains(err.Error(), "journal record limit") {
+				t.Fatalf("wrong rejection: %v", err)
+			}
+		})
 	}
 }

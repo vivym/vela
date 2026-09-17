@@ -18,6 +18,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/runtimelaunch"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	"github.com/vivym/vela/internal/workerjournal"
@@ -208,6 +209,10 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 }
 
 func bind(config Config) (preparation, error) {
+	if config.Bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol && config.MaxRecords != runtimelaunch.AssignmentMaxRecords {
+		return preparation{}, fmt.Errorf("Kubernetes worker journal record limit must be %d", runtimelaunch.AssignmentMaxRecords)
+	}
+
 	if config.Validator == nil || config.MaxRecords < 1 || config.MaxRecords > 64 ||
 		strings.TrimSpace(config.ActorIdentity) != config.ActorIdentity || config.ActorIdentity == "" ||
 		len(config.ActorIdentity) > 500 || !utf8.ValidString(config.ActorIdentity) || strings.ContainsAny(config.ActorIdentity, "\x00\r\n") ||

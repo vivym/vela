@@ -32,7 +32,7 @@ var runtimeStartupBrokerSystemdV1 = map[string]map[string]string{
 		"Restart":                 "on-failure",
 		"RestartSec":              "2s",
 		"UMask":                   "0077",
-		"RuntimeDirectory":        "vela",
+		"RuntimeDirectory":        "vela-pidfd-broker",
 		"RuntimeDirectoryMode":    "0755",
 		"ProtectHome":             "true",
 		"PrivateTmp":              "true",

@@ -306,6 +306,7 @@ func TestProvisionProcessHelper(t *testing.T) {
 func TestKubernetesProvisionRetainsNodeJournalCustody(t *testing.T) {
 	config, directory, registry := provisionFixture(t)
 	config.Bundle.RuntimeLaunchProtocol = runtimelaunch.Protocol
+	config.MaxRecords = runtimelaunch.AssignmentMaxRecords
 	var err error
 	config.Bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(config.Bundle)
 	mustDo(t, err)

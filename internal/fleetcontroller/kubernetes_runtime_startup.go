@@ -1,6 +1,7 @@
 package fleetcontroller
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/vivym/vela/internal/runtimelaunch"
@@ -111,7 +112,7 @@ func configureKubernetesRuntimeStartup(pod *corev1.Pod, member WorkerMemberActua
 				literalEnvironment("VELA_WORKER_JOURNAL_PIDFD_BROKER_SOCKET", runtimelaunch.BrokerSocket),
 				literalEnvironment("VELA_STAGE_WORKER_LAUNCH_MANIFEST_FILE", modelRuntimeLaunchManifest),
 				literalEnvironment("VELA_STAGE_WORKER_ASSIGNMENT_STATE_DIRECTORY", stageWorkerScratchRoot+"/worker-admission"),
-				literalEnvironment("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", "32"),
+				literalEnvironment("VELA_STAGE_WORKER_ASSIGNMENT_MAX_RECORDS", strconv.Itoa(runtimelaunch.AssignmentMaxRecords)),
 				literalEnvironment("VELA_STAGE_WORKER_JOURNAL_BINDING_FILE", root+"/worker-bootstrap/binding.json"),
 				literalEnvironment("VELA_STAGE_WORKER_JOURNAL_BINDING_VERIFIER_KEYRING_FILE", root+"/worker-bootstrap/verifier.json"))
 		}
