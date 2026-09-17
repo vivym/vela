@@ -197,7 +197,7 @@ func TestRuntimeStartupCompositionNodeRestartDoesNotReissueAuthority(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer recovered.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(recovered.Close)
 	reservationConfig.RuntimeOwner = nil
 	if retry, retryErr := recovered.ReserveRemote(t.Context(), reservationConfig); retryErr == nil || retryErr != ErrRuntimeStartupRecorded || retry.OperationID != uuid.Nil || registry.calls != 1 {
 		t.Fatalf("Node restart reissued startup authority: retry=%+v err=%v calls=%d record=%+v", retry, retryErr, registry.calls, record)
@@ -280,7 +280,7 @@ func TestRuntimeStartupCompositionReceiptRejectsAuthorityGaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer orchestration.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(orchestration.Close)
 	wire, err := orchestration.coordinator.HandleBackendStartupWithCaller(t.Context(), fixture.caller, fixture.request)
 	if err != nil {
 		t.Fatalf("backend Permit through composition failed: %v", err)
@@ -379,7 +379,7 @@ func TestRuntimeStartupAuthorityCompositionFailureMatrix(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer replacement.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(replacement.Close)
 		authority, err := NewRuntimeStartupAuthority(RuntimeStartupAuthorityConfig{
 			Ledger: ledger, Plan: fixture.plan, Pods: reservationConfig.Pods, Observer: reservationConfig.Observer,
 			Custody: custody, Journal: reservationConfig.Journal, WorkerOwner: peers.worker.owner,
@@ -436,7 +436,7 @@ func TestRuntimeStartupAuthorityCompositionFailureMatrix(t *testing.T) {
 		if orchestration == nil {
 			t.Fatal("observer loss returned no orchestration")
 		}
-		defer orchestration.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(orchestration.Close)
 		if err := orchestration.ServeCaller(t.Context()); err == nil {
 			t.Fatal("observer loss produced a Permit")
 		}

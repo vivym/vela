@@ -75,7 +75,7 @@ func (publication *RuntimeBootstrapPublication) Remove(ctx context.Context, dire
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(directory.Close)
 	if err := runtimePublicationNames(directory, []string{runtimeBootstrapRecordName, runtimeBootstrapFilename}); err != nil {
 		return err
 	}

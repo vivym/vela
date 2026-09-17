@@ -154,7 +154,7 @@ func handleCustody(uid, gid uint32, targetPID int) error {
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
 		return errors.New("custody endpoint is not Unix")

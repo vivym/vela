@@ -101,7 +101,7 @@ func (authorizer *FileAuthorizer) Authorize(ctx context.Context, request Request
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer directoryFile.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(directoryFile.Close)
 	if err := directoryFile.Sync(); err != nil {
 		return time.Time{}, err
 	}

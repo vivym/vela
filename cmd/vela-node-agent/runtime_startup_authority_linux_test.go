@@ -122,7 +122,7 @@ func TestLoadRuntimeContainerObserverRequiresEnabledTrustedSocket(t *testing.T) 
 	if observer, err := loadRuntimeContainerObserver(context.Background(), configuration); err == nil || observer != nil {
 		t.Fatalf("missing CRI socket result observer=%v error=%v", observer, err)
 	}
-	if observer, err := loadRuntimeContainerObserver(nil, configuration); err == nil || observer != nil || !errors.Is(err, nodeagent.ErrRuntimeObserverCustody) {
+	if observer, err := loadRuntimeContainerObserver(nil, configuration); err == nil || observer != nil || !errors.Is(err, nodeagent.ErrRuntimeObserverCustody) { //nolint:staticcheck // SA1012: explicitly test rejection of a nil context.
 		t.Fatalf("nil context CRI observer result observer=%v error=%v", observer, err)
 	}
 }
@@ -134,7 +134,7 @@ func TestReceiveRuntimeStartupCallerRequiresTrustedAssembly(t *testing.T) {
 }
 
 func TestRuntimeStartupLifecycleRejectsNilContext(t *testing.T) {
-	if err := (&runtimeStartupLifecycle{}).Shutdown(nil); !errors.Is(err, nodeagent.ErrRuntimeCallerIdentity) {
+	if err := (&runtimeStartupLifecycle{}).Shutdown(nil); !errors.Is(err, nodeagent.ErrRuntimeCallerIdentity) { //nolint:staticcheck // SA1012: explicitly test rejection of a nil context.
 		t.Fatalf("nil lifecycle context error = %v", err)
 	}
 	if err := (*runtimeStartupLifecycle)(nil).Shutdown(context.Background()); err != nil {
@@ -323,7 +323,7 @@ func TestRuntimeStartupGateRecordsHelperFailuresAndCleansResources(t *testing.T)
 }
 
 func TestServeRuntimeStartupCompositionRejectsIncompleteLifecycle(t *testing.T) {
-	if receipt, err := serveRuntimeStartupComposition(nil, nil); receipt != (nodeagent.RuntimeStartupCompositionReceipt{}) || !errors.Is(err, nodeagent.ErrRuntimeStartupAuthority) {
+	if receipt, err := serveRuntimeStartupComposition(nil, nil); receipt != (nodeagent.RuntimeStartupCompositionReceipt{}) || !errors.Is(err, nodeagent.ErrRuntimeStartupAuthority) { //nolint:staticcheck // SA1012: explicitly test rejection of a nil context.
 		t.Fatalf("nil composition result receipt=%+v err=%v", receipt, err)
 	}
 	if receipt, err := serveRuntimeStartupComposition(context.Background(), &runtimeStartupLifecycle{}); receipt != (nodeagent.RuntimeStartupCompositionReceipt{}) || !errors.Is(err, nodeagent.ErrRuntimeStartupAuthority) {
@@ -400,7 +400,7 @@ func TestComposeRuntimeStartupAuthorityFailsClosedBeforeLauncherWithoutFleetKey(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer socket.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(socket.Close)
 	called := false
 	launcher := runtimeStartupLauncherFunc(func(context.Context, *nodeagent.RuntimeLaunchPlan, string) (runtimeStartupLaunch, error) {
 		called = true
@@ -456,7 +456,7 @@ func TestListenRuntimeStartupSocketOwnsProtectedPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create trusted startup socket directory: %v", err)
 	}
-	defer os.RemoveAll(root)
+	defer func(path string) { _ = os.RemoveAll(path) }(root)
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatalf("protect startup socket directory: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestListenRuntimeStartupSocketPublishesRuntimeGID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("publish runtime GID socket: %v", err)
 	}
-	defer socket.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(socket.Close)
 	info, err := os.Stat(configuration.runtimeStartupSocket)
 	if err != nil {
 		t.Fatal(err)

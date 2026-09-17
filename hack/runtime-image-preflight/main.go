@@ -32,7 +32,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	defer observer.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(observer.Close)
 	launch, err := observer.InspectLaunch(ctx, *manifest)
 	if err != nil {
 		fail(err)

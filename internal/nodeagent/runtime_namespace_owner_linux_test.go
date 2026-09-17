@@ -32,7 +32,7 @@ func TestRuntimeNamespaceOwnerFromPIDFDRejectsWrongCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	pidfd := os.NewFile(uintptr(fd), "wrong-credentials-pidfd")
-	defer pidfd.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(pidfd.Close)
 	owner, err := observer.RetainNamespaceOwnerFromPIDFD(t.Context(), cri.target, pidfd, wrong)
 	if owner != nil || !errors.Is(err, ErrRuntimeNamespaceOwnerLost) {
 		t.Fatalf("pidfd owner accepted credentials that differ from /proc identity: owner=%v err=%v", owner != nil, err)

@@ -31,7 +31,7 @@ func ValidateRuntimeWorkerOwnerPIDFD(ctx context.Context, caller *RuntimeCaller,
 		return ErrRuntimeNamespaceOwnerLost
 	}
 	if err := runtimechannel.SameLiveProcess(int(caller.pidfd.Fd()), int(workerPIDFD.Fd())); err == nil {
-		return errors.Join(ErrRuntimeNamespaceOwnerLost, errors.New("Runtime and Worker owner must be different original processes"))
+		return errors.Join(ErrRuntimeNamespaceOwnerLost, errors.New("runtime and Worker owner must be different original processes"))
 	}
 	return context.Cause(ctx)
 }

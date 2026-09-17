@@ -14,7 +14,7 @@ func TestSameLiveProcessReportsPidfdFilesystem(t *testing.T) {
 	if err != nil {
 		t.Skipf("pidfd_open unavailable: %v", err)
 	}
-	defer unix.Close(fd)
+	defer func(fd int) { _ = unix.Close(fd) }(fd)
 	class, err := ClassifyPIDFD(fd)
 	if err != nil {
 		t.Fatalf("classify pidfd: %v", err)
@@ -38,17 +38,17 @@ func TestSameLiveProcessRejectsDifferentLegacyPIDFD(t *testing.T) {
 	if err != nil {
 		t.Skipf("pidfd_open unavailable: %v", err)
 	}
-	defer unix.Close(self)
+	defer func(fd int) { _ = unix.Close(fd) }(self)
 	child, err := os.StartProcess("/bin/sh", []string{"sh", "-c", "sleep 2"}, &os.ProcAttr{})
 	if err != nil {
 		t.Fatalf("start child: %v", err)
 	}
-	defer child.Kill()
+	defer func(cleanup func() error) { _ = cleanup() }(child.Kill)
 	other, err := unix.PidfdOpen(child.Pid, 0)
 	if err != nil {
 		t.Fatalf("open child pidfd: %v", err)
 	}
-	defer unix.Close(other)
+	defer func(fd int) { _ = unix.Close(fd) }(other)
 	if err := SameLiveProcess(self, other); err == nil {
 		t.Fatal("different pidfds were accepted as the same process")
 	}

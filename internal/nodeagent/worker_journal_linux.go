@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	ErrWorkerJournalIdentity = errors.New("Worker journal caller identity is not authorized")
-	ErrWorkerJournalClosed   = errors.New("Worker journal endpoint is closed")
+	ErrWorkerJournalIdentity = errors.New("worker journal caller identity is not authorized")
+	ErrWorkerJournalClosed   = errors.New("worker journal endpoint is closed")
 )
 
 // WorkerJournalEndpoint is the Node-owned authority for the two journals used
@@ -204,7 +204,7 @@ func (endpoint *WorkerJournalEndpoint) handleMaterialization(ctx context.Context
 			pageSize = 1
 		}
 		if request.Offset > len(encoded) {
-			return workerjournalwire.Response{}, errors.New("Worker materialization list offset is invalid")
+			return workerjournalwire.Response{}, errors.New("worker materialization list offset is invalid")
 		}
 		end := request.Offset + pageSize
 		if end > len(encoded) {
@@ -215,7 +215,7 @@ func (endpoint *WorkerJournalEndpoint) handleMaterialization(ctx context.Context
 		if len(page) == 1 && len(page[0]) > workerJournalChunkBytes {
 			chunkOffset := request.ChunkOffset
 			if chunkOffset > len(page[0]) {
-				return workerjournalwire.Response{}, errors.New("Worker materialization record chunk offset is invalid")
+				return workerjournalwire.Response{}, errors.New("worker materialization record chunk offset is invalid")
 			}
 			chunkEnd := chunkOffset + workerJournalChunkBytes
 			if chunkEnd > len(page[0]) {
@@ -232,15 +232,15 @@ func (endpoint *WorkerJournalEndpoint) handleMaterialization(ctx context.Context
 		}
 		record, err := stageworkeragent.DecodePendingMaterialization(recordWire)
 		if err != nil || record.ID != request.ID || record.ConfirmedDisposition == "" {
-			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is invalid")
+			return workerjournalwire.Response{}, errors.New("worker materialization deletion proof is invalid")
 		}
 		current, currentErr := endpoint.currentMaterialization(ctx, request.ID)
 		if currentErr != nil || current == nil {
-			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is stale")
+			return workerjournalwire.Response{}, errors.New("worker materialization deletion proof is stale")
 		}
 		currentWire, encodeErr := stageworkeragent.EncodePendingMaterialization(*current)
 		if encodeErr != nil || !bytes.Equal(currentWire, recordWire) {
-			return workerjournalwire.Response{}, errors.New("Worker materialization deletion proof is stale")
+			return workerjournalwire.Response{}, errors.New("worker materialization deletion proof is stale")
 		}
 		return workerjournalwire.Response{}, endpoint.materialization.Delete(ctx, request.ID)
 	default:
@@ -265,21 +265,21 @@ func (endpoint *WorkerJournalEndpoint) acceptMaterializationChunk(requestID stri
 	upload := endpoint.uploads[requestID]
 	if upload == nil {
 		if request.ChunkOffset != 0 {
-			return nil, false, errors.New("Worker materialization chunk sequence is invalid")
+			return nil, false, errors.New("worker materialization chunk sequence is invalid")
 		}
 		if len(endpoint.uploads) >= workerJournalMaximumUploads {
-			return nil, false, errors.New("Worker materialization chunk uploads are full")
+			return nil, false, errors.New("worker materialization chunk uploads are full")
 		}
 		upload = &materializationUpload{operation: request.Operation, id: request.ID, total: request.ChunkTotal, digest: digest, deadline: now.Add(2 * time.Minute)}
 		endpoint.uploads[requestID] = upload
 	}
 	if time.Now().After(upload.deadline) || upload.operation != request.Operation || upload.id != request.ID || upload.total != request.ChunkTotal || upload.digest != digest || upload.next != request.ChunkOffset {
 		delete(endpoint.uploads, requestID)
-		return nil, false, errors.New("Worker materialization chunk sequence is invalid")
+		return nil, false, errors.New("worker materialization chunk sequence is invalid")
 	}
 	if upload.next+len(request.Record) > upload.total || upload.total > 4<<20 {
 		delete(endpoint.uploads, requestID)
-		return nil, false, errors.New("Worker materialization chunk size is invalid")
+		return nil, false, errors.New("worker materialization chunk size is invalid")
 	}
 	upload.data = append(upload.data, request.Record...)
 	upload.next += len(request.Record)
@@ -288,7 +288,7 @@ func (endpoint *WorkerJournalEndpoint) acceptMaterializationChunk(requestID stri
 	}
 	if upload.next != upload.total || sha256.Sum256(upload.data) != upload.digest {
 		delete(endpoint.uploads, requestID)
-		return nil, false, errors.New("Worker materialization chunk digest is invalid")
+		return nil, false, errors.New("worker materialization chunk digest is invalid")
 	}
 	data := append([]byte(nil), upload.data...)
 	delete(endpoint.uploads, requestID)

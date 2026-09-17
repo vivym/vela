@@ -446,12 +446,12 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 	}
 	authorizationKeyWire, err := securefile.Read(configuration.runtimePolicyAuthorizationPublicKeyFile, ed25519.PublicKeySize, true)
 	if err != nil || len(authorizationKeyWire) != ed25519.PublicKeySize {
-		return nil, errors.New("Fleet authorization public key is unavailable")
+		return nil, errors.New("fleet authorization public key is unavailable")
 	}
 	authorizationPublicKey := ed25519.PublicKey(authorizationKeyWire)
 	policyAuthorizationPublisher := func(ctx context.Context, wire []byte) error {
 		if len(wire) == 0 {
-			return errors.New("Fleet policy authorization is missing")
+			return errors.New("fleet policy authorization is missing")
 		}
 		return runtimepolicy.PublishAuthorizationWire(ctx, configuration.runtimePolicyAuthorizationDirectory, wire, authorizationPublicKey, time.Now().UTC())
 	}
@@ -843,16 +843,16 @@ func startWorkerJournalService(ctx context.Context, configuration config, resour
 	}
 	binding := resources.plan.RegistryBinding()
 	if binding == nil || binding.GetPair() == nil {
-		return errors.New("Worker journal service requires verified Registry journal binding")
+		return errors.New("worker journal service requires verified Registry journal binding")
 	}
 	journalID, err := uuid.Parse(binding.GetPair().GetWorkerJournalId())
 	if err != nil || journalID == uuid.Nil || len(binding.GetPair().GetWorkerScope()) != 32 {
-		return errors.New("Worker journal service binding identity is invalid")
+		return errors.New("worker journal service binding identity is invalid")
 	}
 	var scope [32]byte
 	copy(scope[:], binding.GetPair().GetWorkerScope())
 	if scope == ([32]byte{}) {
-		return errors.New("Worker journal service binding scope is empty")
+		return errors.New("worker journal service binding scope is empty")
 	}
 	expectedPod := resources.plan.ExpectedPod()
 	if expectedPod == nil ||

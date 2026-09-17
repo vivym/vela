@@ -12,7 +12,7 @@ func newRuntimeJournalWriter(configuration config, launch *durableWorkerLaunch) 
 		filepath.Clean(configuration.workerJournalSocket) != configuration.workerJournalSocket ||
 		!filepath.IsAbs(configuration.workerJournalPIDFDBrokerSocket) ||
 		filepath.Clean(configuration.workerJournalPIDFDBrokerSocket) != configuration.workerJournalPIDFDBrokerSocket {
-		return nil, errors.New("Runtime journal writer requires verified Node-owned journal transport")
+		return nil, errors.New("runtime journal writer requires verified Node-owned journal transport")
 	}
 	identity, err := runtimeJournalIdentity(launch.admission.RegistryBinding)
 	if err != nil {

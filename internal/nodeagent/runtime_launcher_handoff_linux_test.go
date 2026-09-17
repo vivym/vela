@@ -19,7 +19,7 @@ func TestValidateRuntimeWorkerOwnerPIDFDRejectsMissingHandles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(file.Close)
 	if err := ValidateRuntimeWorkerOwnerPIDFD(context.Background(), &RuntimeCaller{}, file); err == nil {
 		t.Fatal("invalid pidfd unexpectedly accepted")
 	}
@@ -44,7 +44,7 @@ func TestValidateRuntimeWorkerOwnerPIDFDRejectsSameProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	duplicate := os.NewFile(uintptr(duplicateFD), "duplicate-worker-pidfd")
-	defer duplicate.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(duplicate.Close)
 	if err := ValidateRuntimeWorkerOwnerPIDFD(context.Background(), &RuntimeCaller{pidfd: pidfd}, duplicate); err == nil {
 		t.Fatal("same process was accepted as both Runtime and Worker owner")
 	}

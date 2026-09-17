@@ -74,7 +74,7 @@ func TestWorkerJournalRPCPreActivationAndMutation(t *testing.T) {
 		t.Fatal("child did not provide original pidfd")
 	}
 	worker := os.NewFile(uintptr(workerPID), "worker-journal-owner")
-	defer worker.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(worker.Close)
 	endpoint := &WorkerJournalEndpoint{input: input, worker: worker, identity: identity, uploads: make(map[string]*materializationUpload)}
 	server, err := NewJournalServerForHandler(endpoint, JournalServerConfig{Credentials: []RuntimeCallerCredentials{{UID: 65532, GID: 65532}}, MaxConcurrent: 2, ExchangeTimeout: 10 * time.Second})
 	if err != nil {

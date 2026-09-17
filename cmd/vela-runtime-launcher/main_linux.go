@@ -90,7 +90,6 @@ type productionWorkload struct {
 	// observerChild is retained until the observer process is started. The
 	// custody socketpair is created before any target executable starts.
 	observerChild *os.File
-	observerDir   string
 	initIDs       []string
 	offers        []*pidfdOffer
 	volumeRoot    string
@@ -145,7 +144,7 @@ func run() (resultErr error) {
 	if control == nil {
 		return errors.New("runtime launcher control fd is unavailable")
 	}
-	defer control.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(control.Close)
 	packet, err := recvFrame(startupCtx, fd)
 	if err != nil {
 		return fmt.Errorf("receive runtime launcher request: %w", err)
@@ -190,15 +189,13 @@ func run() (resultErr error) {
 	// that keeps the CRI workload and observer tied to this invocation.
 	_ = workload.observerEnd.Close()
 	workload.observerEnd = nil
-	for {
-		if _, err := recvFrame(ctx, fd); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, unix.ECONNRESET) || errors.Is(err, unix.ENOTCONN) {
-				return nil
-			}
-			return fmt.Errorf("runtime launcher control channel: %w", err)
+	if _, err := recvFrame(ctx, fd); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, unix.ECONNRESET) || errors.Is(err, unix.ENOTCONN) {
+			return nil
 		}
-		return errors.New("runtime launcher received an unexpected second request")
+		return fmt.Errorf("runtime launcher control channel: %w", err)
 	}
+	return errors.New("runtime launcher received an unexpected second request")
 }
 
 func runtimeLauncherStartupTimeout() (time.Duration, error) {
@@ -748,7 +745,7 @@ func requiredContainers(pod *corev1.Pod) (*corev1.Container, *corev1.Container, 
 	if pod == nil || len(pod.Spec.EphemeralContainers) != 0 || pod.Spec.HostNetwork || pod.Spec.HostPID || pod.Spec.HostIPC || (pod.Spec.ShareProcessNamespace != nil && *pod.Spec.ShareProcessNamespace) || len(pod.Spec.HostAliases) != 0 || pod.Spec.DNSConfig != nil {
 		return nil, nil, errors.New("signed Pod uses unsupported workload fields")
 	}
-	if security := pod.Spec.SecurityContext; security != nil && (security.SELinuxOptions != nil || len(security.SupplementalGroups) != 0 || security.Sysctls != nil && len(security.Sysctls) != 0 || security.WindowsOptions != nil || security.AppArmorProfile != nil || security.SupplementalGroupsPolicy != nil) {
+	if security := pod.Spec.SecurityContext; security != nil && (security.SELinuxOptions != nil || len(security.SupplementalGroups) != 0 || len(security.Sysctls) != 0 || security.WindowsOptions != nil || security.AppArmorProfile != nil || security.SupplementalGroupsPolicy != nil) {
 		return nil, nil, errors.New("signed Pod security context uses unsupported fields")
 	}
 	if err := validatePodSecurityContext(pod); err != nil {
@@ -855,13 +852,13 @@ func productionCredentials(pod corev1.Pod, runtimeContainer, workerContainer cor
 		if container.SecurityContext != nil {
 			if container.SecurityContext.RunAsUser != nil {
 				if uid != 0 && uid != *container.SecurityContext.RunAsUser {
-					return 0, 0, errors.New("Runtime and Worker UIDs differ")
+					return 0, 0, errors.New("runtime and Worker UIDs differ")
 				}
 				uid = *container.SecurityContext.RunAsUser
 			}
 			if container.SecurityContext.RunAsGroup != nil {
 				if gid != 0 && gid != *container.SecurityContext.RunAsGroup {
-					return 0, 0, errors.New("Runtime and Worker GIDs differ")
+					return 0, 0, errors.New("runtime and Worker GIDs differ")
 				}
 				gid = *container.SecurityContext.RunAsGroup
 			}
@@ -938,7 +935,7 @@ func (workload *productionWorkload) productionMounts(ctx context.Context, pod *c
 
 func productionRuntimeBootstrapPath(container *corev1.Container) (string, error) {
 	if container == nil {
-		return "", errors.New("Runtime container is nil")
+		return "", errors.New("runtime container is nil")
 	}
 	command := append([]string(nil), container.Command...)
 	if len(command) == 0 {
@@ -946,7 +943,7 @@ func productionRuntimeBootstrapPath(container *corev1.Container) (string, error)
 	}
 	argv := append(command, container.Args...)
 	if len(argv) != 4 || argv[0] != "/usr/local/bin/vela-model-runtime" || argv[1] != "serve-remote" || argv[2] != "--bootstrap-file" || !canonicalAbsolute(argv[3]) {
-		return "", errors.New("Runtime bootstrap argv is invalid")
+		return "", errors.New("runtime bootstrap argv is invalid")
 	}
 	return argv[3], nil
 }
@@ -1181,7 +1178,7 @@ func (workload *productionWorkload) resolveEnvValue(ctx context.Context, pod *co
 			if ref.Optional != nil && *ref.Optional {
 				return "", false, nil
 			}
-			return "", false, fmt.Errorf("Secret %q key %q is missing", ref.Name, ref.Key)
+			return "", false, fmt.Errorf("secret %q key %q is missing", ref.Name, ref.Key)
 		}
 		return string(value), true, nil
 	}
@@ -1214,7 +1211,7 @@ func fieldValue(pod *corev1.Pod, path string) (string, error) {
 
 func validEnvPrefix(value string) bool {
 	for index, character := range value {
-		if !(character == '_' || character == '.' || character == '-' || character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z' || index > 0 && character >= '0' && character <= '9') {
+		if character != '_' && character != '.' && character != '-' && (character < 'A' || character > 'Z') && (character < 'a' || character > 'z') && (index == 0 || character < '0' || character > '9') {
 			return false
 		}
 	}
@@ -1241,7 +1238,7 @@ func materializeConfigMap(ctx context.Context, kube kubernetes.Interface, namesp
 
 func materializeSecret(ctx context.Context, kube kubernetes.Interface, namespace string, source *corev1.SecretVolumeSource, directory string, uid, gid uint32) error {
 	if source == nil || source.SecretName == "" {
-		return errors.New("Secret volume source is invalid")
+		return errors.New("secret volume source is invalid")
 	}
 	secret, err := kube.CoreV1().Secrets(namespace).Get(ctx, source.SecretName, metav1.GetOptions{})
 	if err != nil {
@@ -1287,9 +1284,7 @@ func materializeDownwardAPI(pod *corev1.Pod, source *corev1.DownwardAPIVolumeSou
 	}
 	entries := make(map[string][]byte, len(source.Items))
 	items := make([]corev1.DownwardAPIVolumeFile, 0, len(source.Items))
-	for _, item := range source.Items {
-		items = append(items, item)
-	}
+	items = append(items, source.Items...)
 	for _, item := range items {
 		if item.FieldRef == nil {
 			return errors.New("DownwardAPI resourceFieldRef is unsupported")
@@ -1684,7 +1679,7 @@ func (offer *pidfdOffer) accept(ctx context.Context, tasks tasksapi.TasksClient,
 	if err != nil {
 		return nil, errors.Join(err, context.Cause(ctx))
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	if err := connection.SetDeadline(deadline); err != nil {
 		return nil, err
 	}
@@ -1704,7 +1699,7 @@ func (offer *pidfdOffer) accept(ctx context.Context, tasks tasksapi.TasksClient,
 		}
 	})
 	if peerFD >= 0 {
-		defer unix.Close(peerFD)
+		defer func(fd int) { _ = unix.Close(fd) }(peerFD)
 	}
 	if err != nil || peerErr != nil || peer == nil || peer.Uid != offer.uid || peer.Gid != offer.gid {
 		return nil, runtimechannel.ErrIdentity
@@ -1713,7 +1708,7 @@ func (offer *pidfdOffer) accept(ctx context.Context, tasks tasksapi.TasksClient,
 	if err != nil {
 		return nil, errors.Join(err, context.Cause(ctx))
 	}
-	defer unix.Close(senderFD)
+	defer func(fd int) { _ = unix.Close(fd) }(senderFD)
 	file := os.NewFile(uintptr(offeredFD), "runtime-self-pidfd")
 	if !bytes.Equal(packet, []byte(pidfdOfferFrame)) || sender != *peer {
 		_ = file.Close()

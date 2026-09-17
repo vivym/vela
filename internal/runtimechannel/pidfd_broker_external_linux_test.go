@@ -69,7 +69,7 @@ func TestPIDFDBrokerExternalClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(self)
+	defer func(fd int) { _ = unix.Close(fd) }(self)
 	first, second := self, self
 	if mode == "nested-same" {
 		first = 3
@@ -96,7 +96,7 @@ func TestPIDFDBrokerExternalClient(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer unix.Close(second)
+		defer func(fd int) { _ = unix.Close(fd) }(second)
 	}
 	err = ComparePIDFDsWithBroker(context.Background(), os.Getenv("VELA_PIDFD_BROKER_EXTERNAL_SOCKET"), first, second)
 	if mode == "wrong-gid" {

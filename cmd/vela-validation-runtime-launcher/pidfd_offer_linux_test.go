@@ -56,7 +56,7 @@ func TestValidationPIDFDOfferHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	var descriptor *os.File
 	var child *exec.Cmd
 	if mode == "different-process" {
@@ -74,7 +74,7 @@ func TestValidationPIDFDOfferHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	defer descriptor.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(descriptor.Close)
 	if _, _, err := connection.WriteMsgUnix([]byte(pidfdOfferFrame), unix.UnixRights(int(descriptor.Fd())), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestValidationPIDFDOfferBindsKernelSenderToTask(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer offer.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(offer.Close)
 			mode := scenario
 			if scenario == "wrong-task" || scenario == "wrong-uid" {
 				mode = "self"
@@ -154,7 +154,7 @@ func TestValidationPIDFDOfferBindsKernelSenderToTask(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer file.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(file.Close)
 			if err := runtimechannel.SameLiveProcess(original, int(file.Fd())); err != nil {
 				t.Fatalf("offered pidfd differs from original child handle: %v", err)
 			}
@@ -181,7 +181,7 @@ func TestValidationPIDFDOfferCanceledAccept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer offer.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(offer.Close)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	started := time.Now()

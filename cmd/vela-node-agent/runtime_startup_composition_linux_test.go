@@ -50,7 +50,7 @@ func TestComposeRuntimeStartupAuthorityPropagatesHelperFaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer socket.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(socket.Close)
 	resources := &runtimeStartupResources{plan: &nodeagent.RuntimeLaunchPlan{}, observer: &nodeagent.RuntimeContainerObserver{}, socket: socket}
 	originalPolicy := runtimeStartupPolicyFactory
 	runtimeStartupPolicyFactory = func(string, string) (nodeagent.RuntimeStartupAuthorizationPolicy, error) {
@@ -101,7 +101,7 @@ func TestComposeRuntimeStartupAuthorityFailsClosedOnPolicyIssuerLoss(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer socket.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(socket.Close)
 	resources := &runtimeStartupResources{plan: &nodeagent.RuntimeLaunchPlan{}, observer: &nodeagent.RuntimeContainerObserver{}, socket: socket}
 	originalPolicy := runtimeStartupPolicyFactory
 	runtimeStartupPolicyFactory = func(string, string) (nodeagent.RuntimeStartupAuthorizationPolicy, error) {

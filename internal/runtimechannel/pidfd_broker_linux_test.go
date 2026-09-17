@@ -25,17 +25,17 @@ func TestPIDFDBrokerWaitsForFirstPacketAndHonorsDeadline(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer listener.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(listener.Close)
 			client, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: path, Net: "unixpacket"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer client.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(client.Close)
 			server, err := listener.AcceptUnix()
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer server.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(server.Close)
 			if err := server.SetReadDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
 				t.Fatal(err)
 			}
@@ -51,7 +51,7 @@ func TestPIDFDBrokerWaitsForFirstPacketAndHonorsDeadline(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer unix.Close(pidfd)
+				defer func(fd int) { _ = unix.Close(fd) }(pidfd)
 				frame := make([]byte, pidFDBrokerFrame)
 				copy(frame, pidFDBrokerProtocol)
 				if err := sendPIDFDBrokerFrame(client, frame, []int{pidfd, pidfd}); err != nil {
@@ -110,7 +110,7 @@ func TestPIDFDBrokerComparesRetainedHandles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(listener.Close)
 	const runtimeGID = 65532
 	if err := os.Chown(socketPath, 0, runtimeGID); err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestPIDFDBrokerClientHelper(t *testing.T) {
 	if err != nil {
 		t.Skipf("pidfd_open unavailable: %v", err)
 	}
-	defer unix.Close(self)
+	defer func(fd int) { _ = unix.Close(fd) }(self)
 	second := self
 	first := self
 	if mode == "nested-same" {
@@ -227,7 +227,7 @@ func TestPIDFDBrokerClientHelper(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer unix.Close(second)
+		defer func(fd int) { _ = unix.Close(fd) }(second)
 	}
 	if mode == "nested-same" {
 		if err := SameLiveProcess(first, second); err != nil && !errors.Is(err, ErrPIDFDIdentityUnavailable) {

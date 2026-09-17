@@ -52,13 +52,13 @@ func runWithExec(args []string, execProgram func(string, []string, []string) err
 	if err != nil {
 		return err
 	}
-	defer unix.Close(fd)
+	defer func(fd int) { _ = unix.Close(fd) }(fd)
 	path := runtimelaunch.OfferRoot + "/" + args[0] + "-offer/pidfd.sock"
 	connection, err := net.DialTimeout("unixpacket", path, 15*time.Second)
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	if err := connection.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		return err
 	}

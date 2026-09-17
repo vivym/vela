@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,7 +89,7 @@ func PublishAuthorization(ctx context.Context, directory string, authorization A
 	if err != nil {
 		return err
 	}
-	defer directoryFile.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(directoryFile.Close)
 	if err := directoryFile.Sync(); err != nil {
 		return err
 	}
@@ -119,16 +118,4 @@ func PublishAuthorizationWire(ctx context.Context, directory string, wire []byte
 		return err
 	}
 	return PublishAuthorization(ctx, directory, authorization)
-}
-
-func trustedRootDirectory(directory string) error {
-	info, err := os.Stat(directory)
-	if err != nil {
-		return err
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != 0 || info.Mode().Perm()&0o022 != 0 {
-		return errors.New("runtime policy directory is not root-owned and non-writable")
-	}
-	return nil
 }

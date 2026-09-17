@@ -29,7 +29,7 @@ func waitRuntimeStartupWithReporting(ctx context.Context, configuration config, 
 	if err != nil {
 		return err
 	}
-	defer epochs.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(epochs.Close)
 	var probe nodeagent.WorkerInstanceDeviceProbe
 	if len(templates[0].Evidence.DeviceSet.Devices) == 1 && templates[0].Evidence.DeviceSet.Devices[0].Kind == "CPU" {
 		probe = &nodeagent.CPUDeviceProbe{NodeIdentity: configuration.nodeIdentity, OnlineCPUsPath: "/sys/devices/system/cpu/online", Epochs: epochs}
@@ -49,7 +49,7 @@ func waitRuntimeStartupWithReporting(ctx context.Context, configuration config, 
 	if err != nil {
 		return err
 	}
-	defer fleetClient.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(fleetClient.Close)
 	reporter, err := nodeagent.NewWorkerInstanceEvidenceReporter(probe, fleetClient, epochs, configuration.workerInstanceEvidenceTTL, time.Now)
 	if err != nil {
 		return err

@@ -46,7 +46,7 @@ func TestRemoveStaleSocketRefusesLiveListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(listener.Close)
 	if err := removeStaleSocket(path); err == nil || !strings.Contains(err.Error(), "refusing to replace") {
 		t.Fatalf("live listener was not protected: %v", err)
 	}

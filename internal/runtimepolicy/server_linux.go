@@ -88,7 +88,7 @@ func (server *Server) Serve(ctx context.Context) error {
 }
 
 func (server *Server) handle(ctx context.Context, connection *net.UnixConn, now func() time.Time) error {
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	if err := connection.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		return err
 	}

@@ -98,7 +98,7 @@ func (offer *pidfdOfferListener) accept(ctx context.Context, tasks tasksapi.Task
 	if err != nil {
 		return nil, errors.Join(err, context.Cause(ctx))
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	if err := connection.SetDeadline(deadline); err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func (offer *pidfdOfferListener) receive(ctx context.Context, connection *net.Un
 		}
 	})
 	if peerFD >= 0 {
-		defer unix.Close(peerFD)
+		defer func(fd int) { _ = unix.Close(fd) }(peerFD)
 	}
 	if err != nil || peerErr != nil || peer == nil || peer.Uid != offer.uid || peer.Gid != offer.gid || peer.Pid <= 0 {
 		return nil, errors.Join(runtimechannel.ErrIdentity, err, peerErr)
@@ -131,7 +131,7 @@ func (offer *pidfdOfferListener) receive(ctx context.Context, connection *net.Un
 	if err != nil {
 		return nil, errors.Join(err, context.Cause(ctx))
 	}
-	defer unix.Close(senderFD)
+	defer func(fd int) { _ = unix.Close(fd) }(senderFD)
 	file := os.NewFile(uintptr(offeredFD), "validation-self-offered-pidfd")
 	failed := true
 	defer func() {
@@ -193,12 +193,12 @@ func runPIDFDOffer(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open self pidfd before exec: %w", err)
 	}
-	defer unix.Close(fd)
+	defer func(fd int) { _ = unix.Close(fd) }(fd)
 	connection, err := net.DialTimeout("unixpacket", args[1], 15*time.Second)
 	if err != nil {
 		return fmt.Errorf("connect pidfd offer socket: %w", err)
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	if err := connection.SetWriteDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		return err
 	}

@@ -81,12 +81,12 @@ func TestRuntimeReadinessReporterRequiresCurrentEvidence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(directory)
+			defer func(path string) { _ = os.RemoveAll(path) }(directory)
 			epochs, err := NewFileWorkerInstanceEpochStore(FileWorkerInstanceEpochStoreConfig{Directory: filepath.Join(directory, "epochs"), NodeIdentity: member.NodeIdentity, BootIDPath: "/proc/sys/kernel/random/boot_id"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer epochs.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(epochs.Close)
 			probe := &CPUDeviceProbe{NodeIdentity: member.NodeIdentity, OnlineCPUsPath: "/sys/devices/system/cpu/online", Epochs: epochs}
 			deviceID, nodeID := member.DeviceConstraints[0].DeviceID, uuid.New()
 			attested, err := probe.AttestWorkerInstanceDevices(t.Context(), []ExpectedWorkerDevice{{Kind: "CPU", DeviceID: deviceID, ComputeNodeID: nodeID, NodeIdentity: member.NodeIdentity}})
@@ -171,7 +171,7 @@ func TestRuntimeReadinessReporterRequiresCurrentEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := &RuntimeNamespaceOwner{pidfd: os.NewFile(uintptr(duplicate), "original"), owner: RuntimeContainerCallerObservation{Process: RuntimeCallerObservation{HostPID: int32(command.Process.Pid), UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), BootID: uuid.MustParse(boot)}}}
-			defer owner.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(owner.Close)
 			registry := &readinessRecordingRegistry{}
 			reporter, err := NewWorkerInstanceEvidenceReporter(probe, registry, epochs, time.Minute, time.Now)
 			if err != nil {

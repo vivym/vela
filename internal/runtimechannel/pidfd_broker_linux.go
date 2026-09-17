@@ -115,7 +115,7 @@ func ServePIDFDBroker(ctx context.Context, listener *net.UnixListener, runtimeGI
 }
 
 func servePIDFDBrokerConnection(ctx context.Context, connection *net.UnixConn, runtimeGID uint32) error {
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	peer, err := pidFDBrokerPeer(connection)
 	if err != nil || peer.Uid == 0 || peer.Gid != runtimeGID {
 		return errors.Join(ErrIdentity, err)

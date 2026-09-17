@@ -140,6 +140,6 @@ func (cache *FileReplyCache) Store(ctx context.Context, request Request, reply R
 	if err != nil {
 		return err
 	}
-	defer directoryFile.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(directoryFile.Close)
 	return directoryFile.Sync()
 }

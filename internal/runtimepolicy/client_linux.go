@@ -61,7 +61,7 @@ func (client *Client) Issue(ctx context.Context, request Request) (Reply, error)
 	if err != nil {
 		return Reply{}, err
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	unixConnection, ok := connection.(*net.UnixConn)
 	if !ok {
 		return Reply{}, errors.New("runtime policy issuer transport is not Unix")

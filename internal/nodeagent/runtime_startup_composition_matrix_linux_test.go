@@ -31,7 +31,7 @@ func TestRuntimeStartupCompositionDriver(t *testing.T) {
 		if orchestration == nil || record.OperationID == uuid.Nil {
 			t.Fatalf("composition did not create one operation: orchestration=%v record=%+v", orchestration != nil, record)
 		}
-		defer orchestration.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(orchestration.Close)
 
 		// Use the orchestration's authenticated server path, including the
 		// caller reply, rather than calling the coordinator directly.
@@ -127,7 +127,7 @@ func TestRuntimeStartupCompositionDriver(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer recovered.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(recovered.Close)
 		if _, err := recovered.ReserveRemote(t.Context(), reservationConfig); !errors.Is(err, ErrRuntimeStartupRecorded) && !errors.Is(err, modelruntime.ErrBackendStartupDenied) {
 			t.Fatalf("Node restart reissued startup authority: %v", err)
 		}
@@ -159,7 +159,7 @@ func TestRuntimeStartupCompositionDriver(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer replacement.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(replacement.Close)
 		orchestration, record, err := authority.Prepare(t.Context(), replacement)
 		if err == nil || orchestration != nil || record.OperationID != uuid.Nil {
 			t.Fatalf("caller replacement was accepted: orchestration=%v record=%+v err=%v", orchestration != nil, record, err)
@@ -176,7 +176,7 @@ func TestRuntimeStartupCompositionDriver(t *testing.T) {
 		}
 		orchestration, record, err := authority.Prepare(t.Context(), fixture.caller)
 		if err == nil && orchestration != nil {
-			defer orchestration.Close()
+			defer func(cleanup func() error) { _ = cleanup() }(orchestration.Close)
 			if err := orchestration.ServeCaller(t.Context()); err == nil {
 				t.Fatal("observer loss produced a Permit")
 			}

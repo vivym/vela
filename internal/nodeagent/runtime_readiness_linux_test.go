@@ -25,7 +25,7 @@ func TestRuntimeReadinessSocketRequiresOriginalProcess(t *testing.T) {
 		if err := os.Chmod(os.Getenv("VELA_READINESS_SOCKET"), 0600); err != nil {
 			panic(err)
 		}
-		defer listener.Close()
+		defer func(cleanup func() error) { _ = cleanup() }(listener.Close)
 		fmt.Println("listening")
 		for {
 			conn, err := listener.Accept()
@@ -39,7 +39,7 @@ func TestRuntimeReadinessSocketRequiresOriginalProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(directory)
+	defer func(path string) { _ = os.RemoveAll(path) }(directory)
 	path := filepath.Join(directory, "runtime.sock")
 	start := func() (*exec.Cmd, int) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestRuntimeReadinessSocketRequiresOriginalProcess$")
@@ -76,7 +76,7 @@ func TestRuntimeReadinessSocketRequiresOriginalProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := &RuntimeNamespaceOwner{pidfd: os.NewFile(uintptr(duplicate), "original"), owner: RuntimeContainerCallerObservation{Process: RuntimeCallerObservation{HostPID: int32(original.Process.Pid), UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), BootID: uuid.MustParse(boot)}}}
-	defer owner.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(owner.Close)
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	conn, err := owner.connectReadiness(ctx, path)

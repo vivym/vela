@@ -41,7 +41,7 @@ func TestServerSignsOnlyApprovedRequest(t *testing.T) {
 	go func() { done <- server.Serve(ctx) }()
 	connection, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: path, Net: "unixpacket"})
 	require.NoError(t, err)
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	request := Request{Version: ProtocolVersion, OperationID: uuid.New(), JournalID: uuid.New(), RequestDigest: [32]byte{8}, ReservationDigest: [32]byte{9}}
 	wire, err := json.Marshal(request)
 	require.NoError(t, err)

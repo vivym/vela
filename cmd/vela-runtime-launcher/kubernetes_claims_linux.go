@@ -22,7 +22,7 @@ func (w *productionWorkload) validateKubernetesClaims(ctx context.Context, pod *
 	if len(pod.Spec.ResourceClaims) != 1 || pod.Spec.ResourceClaims[0].Name != "gpu" ||
 		len(pod.Status.ResourceClaimStatuses) != 1 || pod.Status.ResourceClaimStatuses[0].Name != "gpu" ||
 		pod.Status.ResourceClaimStatuses[0].ResourceClaimName == nil {
-		return errors.New("Pod lacks its exact generated GPU ResourceClaim")
+		return errors.New("pod lacks its exact generated GPU ResourceClaim")
 	}
 	claim, err := w.kube.ResourceV1().ResourceClaims(pod.Namespace).Get(ctx, *pod.Status.ResourceClaimStatuses[0].ResourceClaimName, metav1.GetOptions{})
 	if err != nil {

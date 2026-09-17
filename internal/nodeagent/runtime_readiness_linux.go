@@ -48,7 +48,7 @@ func (reporter *RuntimeWorkerEvidenceReporter) Report(ctx context.Context, templ
 	if err != nil {
 		return fleet.WorkerInstanceDecision{}, err
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	client := velav1.NewModelRuntimeServiceClient(connection)
 	identities, err := stageworkeragent.DiscoverRuntimeIdentities(ctx, client, stageworkeragent.RuntimeIdentityExpectation{WorkerInstanceID: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch, WorkerMemberID: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch, RegistryBinding: reporter.Plan.RegistryBinding(), RegistryVerifier: reporter.RegistryVerifier})
 	if err != nil {
@@ -170,12 +170,12 @@ func (owner *RuntimeNamespaceOwner) connectReadiness(ctx context.Context, path s
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(root.Close)
 	fd, err := unix.Openat2(int(root.Fd()), filepath.Dir(path), &unix.OpenHow{Flags: unix.O_PATH | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_IN_ROOT | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_MAGICLINKS})
 	if err != nil {
 		return nil, err
 	}
-	defer unix.Close(fd)
+	defer func(fd int) { _ = unix.Close(fd) }(fd)
 	var before unix.Stat_t
 	if err := unix.Fstatat(fd, filepath.Base(path), &before, unix.AT_SYMLINK_NOFOLLOW); err != nil || before.Uid != owner.owner.Process.UID || before.Mode&unix.S_IFMT != unix.S_IFSOCK || before.Mode&0o777 != 0o600 {
 		return nil, errors.Join(ErrRuntimeCallerIdentity, err)
@@ -206,7 +206,7 @@ func (owner *RuntimeNamespaceOwner) connectReadiness(ctx context.Context, path s
 			peerErr = e
 			return
 		}
-		defer unix.Close(pidfd)
+		defer func(fd int) { _ = unix.Close(fd) }(pidfd)
 		peerErr = runtimechannel.SameLiveProcess(int(owner.pidfd.Fd()), pidfd)
 	})
 	var after unix.Stat_t

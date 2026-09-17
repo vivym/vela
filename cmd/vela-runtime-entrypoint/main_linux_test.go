@@ -48,7 +48,7 @@ func TestEntrypointTransfersOriginalHandleBeforeApprovedExec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(listener.Close)
 	if err := os.Chown(path, 0, 10001); err != nil {
 		t.Fatal(err)
 	}
@@ -81,19 +81,19 @@ func TestEntrypointTransfersOriginalHandleBeforeApprovedExec(t *testing.T) {
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(pidfd)
+	defer func(fd int) { _ = unix.Close(fd) }(pidfd)
 	t.Cleanup(func() { _ = command.Process.Kill() })
 	connection, err := listener.AcceptUnix()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	packet, sender, senderFD, offeredFD, err := runtimechannel.ReadProcessOffer(connection, len("vela-runtime-pidfd-v1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(senderFD)
-	defer unix.Close(offeredFD)
+	defer func(fd int) { _ = unix.Close(fd) }(senderFD)
+	defer func(fd int) { _ = unix.Close(fd) }(offeredFD)
 	if string(packet) != "vela-runtime-pidfd-v1" || sender.Uid != 10001 || sender.Gid != 10001 {
 		t.Fatal("wrong process handoff")
 	}

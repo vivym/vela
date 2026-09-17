@@ -154,7 +154,7 @@ func run(ctx context.Context, fd int) (runErr error) {
 	if control == nil {
 		return errors.New("validation launcher control fd is unavailable")
 	}
-	defer control.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(control.Close)
 	stopControl := context.AfterFunc(ctx, func() { _ = control.Close() })
 	defer stopControl()
 	packet, err := recvFrame(ctx, fd)
@@ -449,7 +449,7 @@ func launchWorkload(ctx context.Context, startupSocket string, pod *corev1.Pod) 
 	}
 	workerJournalDirectory := filepath.Dir(workerJournalSocket)
 	if workerJournalDirectory == "/" || filepath.Dir(workerJournalDirectory) == "/" {
-		return nil, errors.New("Worker journal socket parent directory is too broad")
+		return nil, errors.New("worker journal socket parent directory is too broad")
 	}
 	if err := os.MkdirAll(workerJournalDirectory, 0o755); err != nil {
 		return nil, fmt.Errorf("create Worker journal socket directory: %w", err)

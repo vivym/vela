@@ -132,7 +132,7 @@ func (ledger *RuntimeStartupLedger) reserveRemote(ctx context.Context, config Ru
 	}
 	if config.PolicyAuthorizationPublisher != nil {
 		if len(reservation.PolicyAuthorization) == 0 {
-			return RuntimeStartupReservationRecord{}, errors.New("Fleet reservation did not include policy authorization")
+			return RuntimeStartupReservationRecord{}, errors.New("fleet reservation did not include policy authorization")
 		}
 		if err := config.PolicyAuthorizationPublisher(ctx, reservation.PolicyAuthorization); err != nil {
 			return RuntimeStartupReservationRecord{}, fmt.Errorf("publish Fleet policy authorization: %w", err)

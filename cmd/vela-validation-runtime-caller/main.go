@@ -30,7 +30,7 @@ func main() {
 	if err != nil {
 		fatal(fmt.Sprintf("connect validation startup socket: %v", err))
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	challenge := make([]byte, len(callerProtocol)+32)
 	if _, err := io.ReadFull(connection, challenge); err != nil {
 		fatal(fmt.Sprintf("read validation startup challenge: %v", err))

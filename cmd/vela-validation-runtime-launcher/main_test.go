@@ -85,8 +85,8 @@ func TestRecvFrameStopsWhenContextIsCanceled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(fds[0])
-	defer unix.Close(fds[1])
+	defer func(fd int) { _ = unix.Close(fd) }(fds[0])
+	defer func(fd int) { _ = unix.Close(fd) }(fds[1])
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	started := time.Now()
@@ -104,7 +104,7 @@ func TestRecvFrameReturnsEOFOnPeerClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(fds[0])
+	defer func(fd int) { _ = unix.Close(fd) }(fds[0])
 	peer := os.NewFile(uintptr(fds[1]), "validation-launcher-test-peer")
 	if err := peer.Close(); err != nil {
 		t.Fatal(err)

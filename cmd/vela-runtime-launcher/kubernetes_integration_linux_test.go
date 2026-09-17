@@ -49,7 +49,7 @@ func TestKubernetesLaunchOriginalPidfds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(w.Close)
 	for _, fd := range []*os.File{w.runtimeFD, w.workerFD, w.observerFD} {
 		if fd == nil || runtimechannel.SameLiveProcess(int(fd.Fd()), int(fd.Fd())) != nil {
 			t.Fatal("handoff did not retain live original processes")
@@ -59,18 +59,18 @@ func TestKubernetesLaunchOriginalPidfds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer connection.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(connection.Close)
 	creator, err := unix.PidfdOpen(os.Getpid(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	creatorFile := os.NewFile(uintptr(creator), "test-creator")
-	defer creatorFile.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(creatorFile.Close)
 	custody, err := nodeagent.ReceiveRuntimeObserverCustodyFromCreator(ctx, connection.(*net.UnixConn), w.observerFD, creatorFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer custody.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(custody.Close)
 	if err := custody.Start(ctx); err != nil {
 		t.Fatal(err)
 	}

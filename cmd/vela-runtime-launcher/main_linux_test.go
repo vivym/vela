@@ -135,8 +135,8 @@ func TestProductionObserverSocketpairIsCreatedWithCloseOnExec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer node.Close()
-	defer child.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(node.Close)
+	defer func(cleanup func() error) { _ = cleanup() }(child.Close)
 	for _, file := range []*os.File{node, child} {
 		flags, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
 		if err != nil || flags&unix.FD_CLOEXEC == 0 {

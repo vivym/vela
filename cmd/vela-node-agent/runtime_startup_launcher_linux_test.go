@@ -104,13 +104,13 @@ func TestRuntimeLauncherControlReceivesSCMRights(t *testing.T) {
 	}
 	parent := os.NewFile(uintptr(fds[0]), "launcher-control-test")
 	child := os.NewFile(uintptr(fds[1]), "launcher-control-test-peer")
-	defer parent.Close()
-	defer child.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(parent.Close)
+	defer func(cleanup func() error) { _ = cleanup() }(child.Close)
 	pidfd, err := unix.PidfdOpen(unix.Getpid(), 0)
 	if err != nil {
 		t.Skipf("pidfd unavailable: %v", err)
 	}
-	defer unix.Close(pidfd)
+	defer func(fd int) { _ = unix.Close(fd) }(pidfd)
 	go func() {
 		_ = unix.Sendmsg(int(child.Fd()), []byte(`{"version":1}`), unix.UnixRights(pidfd), nil, 0)
 	}()
@@ -149,8 +149,8 @@ func TestRuntimeLauncherReceiveSurvivesThreadSignals(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := os.NewFile(uintptr(fds[0]), "interrupted-launcher-control")
-	defer parent.Close()
-	defer unix.Close(fds[1])
+	defer func(cleanup func() error) { _ = cleanup() }(parent.Close)
+	defer func(fd int) { _ = unix.Close(fd) }(fds[1])
 	tid := unix.Gettid()
 	done := make(chan error, 1)
 	go func() {

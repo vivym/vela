@@ -29,12 +29,12 @@ import (
 func launchKubernetesWorkload(ctx context.Context, startupSocket string, desired *corev1.Pod) (_ *productionWorkload, retErr error) {
 	member, err := uuid.Parse(desired.Labels[fleetcontract.WorkerMemberIDLabel])
 	if err != nil || member == uuid.Nil || member.String() != desired.Labels[fleetcontract.WorkerMemberIDLabel] {
-		return nil, errors.New("Kubernetes startup requires a canonical signed member identity")
+		return nil, errors.New("kubernetes startup requires a canonical signed member identity")
 	}
 	root := runtimelaunch.MemberRoot(member.String())
 	if startupSocket != root+"/startup.sock" || desired.UID != "" || desired.Spec.RestartPolicy != corev1.RestartPolicyNever ||
 		len(desired.Spec.SchedulingGates) != 1 || desired.Spec.SchedulingGates[0].Name != runtimelaunch.Gate {
-		return nil, errors.New("Kubernetes startup requires a gated signed template and exact member socket")
+		return nil, errors.New("kubernetes startup requires a gated signed template and exact member socket")
 	}
 	runtimeContainer, workerContainer, err := requiredContainers(desired)
 	if err != nil {
@@ -112,10 +112,10 @@ func launchKubernetesWorkload(ctx context.Context, startupSocket string, desired
 			return nil, err
 		}
 		if current.UID != live.UID || current.DeletionTimestamp != nil || !fleetcontroller.WorkerInstancePodMatches(*current, *desired) {
-			return nil, errors.New("Kubernetes startup Pod changed after gate release")
+			return nil, errors.New("kubernetes startup Pod changed after gate release")
 		}
 		if current.Status.Phase == corev1.PodFailed || current.Status.Phase == corev1.PodSucceeded {
-			return nil, errors.New("Kubernetes startup Pod terminated before handoff")
+			return nil, errors.New("kubernetes startup Pod terminated before handoff")
 		}
 		ready, err := w.kubernetesTargets(ctx, current)
 		if err != nil {
@@ -159,7 +159,7 @@ func (w *productionWorkload) kubernetesTargets(ctx context.Context, pod *corev1.
 		return false, nil
 	}
 	if pod.Spec.NodeName != pod.Spec.NodeSelector[corev1.LabelHostname] {
-		return false, errors.New("Pod scheduled outside the signed node")
+		return false, errors.New("pod scheduled outside the signed node")
 	}
 	var targets []nodeagent.RuntimeContainerTarget
 	for _, name := range []string{"model-runtime", "stage-worker-agent"} {
@@ -180,15 +180,15 @@ func (w *productionWorkload) kubernetesTargets(ctx context.Context, pod *corev1.
 		}
 		id, ok := strings.CutPrefix(found.ContainerID, "containerd://")
 		if !ok {
-			return false, errors.New("Kubernetes container is not a containerd task")
+			return false, errors.New("kubernetes container is not a containerd task")
 		}
 		listed, err := w.runtime.ListContainers(ctx, &runtimev1.ListContainersRequest{Filter: &runtimev1.ContainerFilter{Id: id}})
 		if err != nil || len(listed.GetContainers()) != 1 {
-			return false, errors.Join(errors.New("Kubernetes container CRI lookup mismatch"), err)
+			return false, errors.Join(errors.New("kubernetes container CRI lookup mismatch"), err)
 		}
 		item := listed.Containers[0]
 		if item.Id != id || item.GetMetadata().GetName() != name || item.GetMetadata().GetAttempt() != 0 || item.State != runtimev1.ContainerState_CONTAINER_RUNNING || item.Labels["io.kubernetes.pod.uid"] != string(pod.UID) {
-			return false, errors.New("Kubernetes and CRI container identities differ")
+			return false, errors.New("kubernetes and CRI container identities differ")
 		}
 		target := nodeagent.RuntimeContainerTarget{ContainerID: id, SandboxID: item.PodSandboxId,
 			PodUID: uuidMust(string(pod.UID)), PodNamespace: pod.Namespace, PodName: pod.Name, ContainerName: name}
@@ -198,7 +198,7 @@ func (w *productionWorkload) kubernetesTargets(ctx context.Context, pod *corev1.
 		targets = append(targets, target)
 	}
 	if targets[0].SandboxID != targets[1].SandboxID {
-		return false, errors.New("Runtime and Worker belong to different sandboxes")
+		return false, errors.New("runtime and Worker belong to different sandboxes")
 	}
 	w.target, w.worker = targets[0], targets[1]
 	return true, nil
@@ -210,7 +210,7 @@ func (w *productionWorkload) stopKubernetesWorkload() error {
 		if fd == nil {
 			// A wrapper not yet handed off has a bounded self-exit timeout. Do
 			// not claim its cleanup or recover a handle from a numeric PID.
-			result = errors.Join(result, errors.New("Kubernetes handoff incomplete; wrapper exit requires reconciliation"))
+			result = errors.Join(result, errors.New("kubernetes handoff incomplete; wrapper exit requires reconciliation"))
 			continue
 		}
 		if err := unix.PidfdSendSignal(int(fd.Fd()), unix.SIGKILL, nil, 0); err != nil && !errors.Is(err, unix.ESRCH) {

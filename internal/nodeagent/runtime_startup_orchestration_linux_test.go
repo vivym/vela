@@ -38,7 +38,7 @@ func TestRuntimeStartupOrchestrationExposesImmutableExpectedRequest(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer orchestration.Close()
+	defer func(cleanup func() error) { _ = cleanup() }(orchestration.Close)
 	got, err := orchestration.ExpectedBackendStartupRequest()
 	if err != nil || got != expected {
 		t.Fatalf("expected request changed at orchestration boundary: got=%+v want=%+v err=%v", got, expected, err)
