@@ -13,6 +13,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontract"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const fleetUsername = "system:serviceaccount:vela-system:vela-fleet-controller"
@@ -100,6 +101,52 @@ func TestWorkerInstancePodDeleteRequiresExactRegistryAuthorization(t *testing.T)
 		request.WorkerMemberID.String() != "40000000-0000-0000-0000-000000000001" ||
 		len(request.RequestDigest) != 32 {
 		t.Fatalf("WorkerInstance Pod authorization request=%#v", request)
+	}
+}
+
+func TestWorkerInstancePodRepeatDeleteAfterFinalizerRemoval(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		deleting      bool
+		actor         string
+		registryErr   error
+		invalidEpoch  bool
+		allowed       bool
+		callsRegistry bool
+	}{
+		{name: "authorized terminating Pod", deleting: true, actor: fleetUsername, allowed: true, callsRegistry: true},
+		{name: "nonterminating finalizer drift", actor: fleetUsername},
+		{name: "non Fleet actor", deleting: true, actor: "system:serviceaccount:kube-system:generic-garbage-collector"},
+		{name: "Registry rejects retirement", deleting: true, actor: fleetUsername, registryErr: errors.New("Worker is not fenced"), callsRegistry: true},
+		{name: "invalid authority", deleting: true, actor: fleetUsername, invalidEpoch: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			authorizer := &recordingAuthorizer{err: tc.registryErr}
+			handler, err := NewHandler(authorizer, Config{FleetUsername: fleetUsername, CreateValidator: exactPodValidator{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			pod := workerInstancePod(true)
+			pod.Finalizers = nil
+			pod.Status.Phase = corev1.PodFailed
+			if tc.deleting {
+				ts := metav1.Now()
+				pod.DeletionTimestamp = &ts
+			}
+			if tc.invalidEpoch {
+				pod.Labels[fleetcontract.WorkerInstanceEpochLabel] = "invalid"
+			}
+			response := serveAdmission(t, handler, review("repeat-delete", "DELETE", tc.actor, pod, nil))
+			if response.Response.Allowed != tc.allowed {
+				t.Fatalf("allowed=%v want=%v status=%#v", response.Response.Allowed, tc.allowed, response.Response.Status)
+			}
+			if (authorizer.request.RequestUID != "") != tc.callsRegistry {
+				t.Fatalf("unexpected Registry authorization: %#v", authorizer.request)
+			}
+			if tc.callsRegistry && (authorizer.request.KubernetesUID != string(pod.UID) || authorizer.request.Operation != fleet.MutationDelete || authorizer.request.WorkerInstanceEpoch != 7 || len(authorizer.request.RequestDigest) != 32) {
+				t.Fatalf("incorrect authority: %#v", authorizer.request)
+			}
+		})
 	}
 }
 

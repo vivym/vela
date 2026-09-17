@@ -445,6 +445,24 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			backoff = nextBackoff(backoff, agent.retryMaximum)
 			continue
 		}
+		if pending, err := agent.stream.hasUnretiredClosedAdmission(ctx, uuid.Nil); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		} else if pending {
+			// CLOSED excludes execution reentry but is not proof of drain.
+			// Read durable state so this fence also survives process restart.
+			if err := agent.wait(ctx, backoff); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			backoff = nextBackoff(backoff, agent.retryMaximum)
+			continue
+		}
+
 		discovery, err := agent.Discover(ctx, 0)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -498,6 +516,18 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 				return nil
 			}
 			if result.GPUReleased {
+				continue
+			}
+			stageRunID, parseErr := uuid.Parse(discovery.Assignment.GetAuthority().GetStageRunId())
+			if parseErr != nil {
+				return err
+			}
+			pending, recoveryErr := agent.stream.hasUnretiredClosedAdmission(ctx, stageRunID)
+			if recoveryErr != nil {
+				return errors.Join(err, recoveryErr)
+			}
+			if pending {
+				agent.observeRetry("recover-stopped-assignment", err)
 				continue
 			}
 			return err

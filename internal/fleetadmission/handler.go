@@ -16,6 +16,7 @@ import (
 	"github.com/vivym/vela/internal/fleetcontract"
 	"github.com/vivym/vela/internal/runtimelaunch"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const maximumReviewBytes = 2 << 20
@@ -80,11 +81,12 @@ type objectMetadata struct {
 	APIVersion string `json:"apiVersion"`
 	Kind       string `json:"kind"`
 	Metadata   struct {
-		UID        string            `json:"uid"`
-		Namespace  string            `json:"namespace"`
-		Name       string            `json:"name"`
-		Labels     map[string]string `json:"labels"`
-		Finalizers []string          `json:"finalizers"`
+		UID               string            `json:"uid"`
+		Namespace         string            `json:"namespace"`
+		Name              string            `json:"name"`
+		Labels            map[string]string `json:"labels"`
+		Finalizers        []string          `json:"finalizers"`
+		DeletionTimestamp *metav1.Time      `json:"deletionTimestamp,omitempty"`
 	} `json:"metadata"`
 }
 
@@ -321,7 +323,11 @@ func protectedWorkerInstancePodMutationRequest(
 	operation := fleet.MutationDelete
 	switch request.Operation {
 	case "DELETE":
-		if !hasFinalizer(object.Metadata.Finalizers, fleetcontract.ProtectionFinalizer) {
+		// Kubernetes may retain a terminating Pod after authorized finalizer removal
+		// until its grace period completes. Permit the Fleet actor to retry DELETE;
+		// the exact Registry retirement authorization below is still required.
+		if !hasFinalizer(object.Metadata.Finalizers, fleetcontract.ProtectionFinalizer) &&
+			(object.Metadata.DeletionTimestamp == nil || object.Metadata.DeletionTimestamp.IsZero()) {
 			return fleet.MutationAuthorizationRequest{}, errors.New("WorkerInstance Pod protection finalizer is absent")
 		}
 	case "UPDATE":

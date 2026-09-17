@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageartifact"
+	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -1548,4 +1550,173 @@ func runtimeIdentityFromAuthority(authority *velav1.StageAuthority) *velav1.Mode
 
 func duration(value time.Duration) *durationpb.Duration {
 	return durationpb.New(value)
+}
+
+// A Stop closes execution admission before backend drain is proven. Production
+// must enter authenticated terminal recovery, retaining the slot while history
+// is unavailable, instead of exiting on the next monitoring iteration.
+func TestProductionAgentRetainsStoppedAssignmentUntilTerminalRecovery(t *testing.T) {
+	for _, phase := range []string{"monitor", "start", "inputs", "restart", "invalid-id", "missing-authority"} {
+		for _, retire := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/retire=%t", phase, retire), func(t *testing.T) {
+				f := terminalMaterializationFixture(t)
+				if phase == "inputs" {
+					payload := sha256.Sum256([]byte("input"))
+					f.assignment.ExecutionSpec.RootInputs = []*velav1.StageRootInputMaterial{{ConditionIndex: 0, Uri: "vela://uploads/reference", Sha256: payload[:], SizeBytes: 5}}
+					f.assignment.RootInputFetches = []*velav1.StageRootInputFetch{{ConditionIndex: 0, Sha256: payload[:], DownloadUrl: "https://input.invalid/reference"}}
+					digest, err := stageauthority.ExecutionSpecDigest(f.assignment.ExecutionSpec)
+					if err != nil {
+						t.Fatal(err)
+					}
+					f.assignment.Authority.ExecutionSpecDigest = digest[:]
+					f.sign(t, f.assignment)
+					authorityDigest, err := stageauthority.Digest(f.assignment.Authority)
+					if err != nil {
+						t.Fatal(err)
+					}
+					f.disposition.OriginalAuthorityDigest = authorityDigest[:]
+					f.signDisposition(t)
+				}
+				gate := f.open(t)
+				if phase == "restart" {
+					completeAdmissionInputs(t, beginAdmission(t, gate, f.assignment, f.acquireID))
+					if err := gate.CloseExecution(t.Context(), f.assignment.Authority); err != nil {
+						t.Fatal(err)
+					}
+					if err := gate.Close(); err != nil {
+						t.Fatal(err)
+					}
+					gate = f.open(t)
+				}
+				group := startFloorCollectorRuntimes(t, f, t.TempDir(), true, false)
+				defer group.close()
+				for _, backend := range group.activeBackends {
+					backend.stopOnCancel.Store(true)
+				}
+				retirementScratch(t, f)
+				_, validator := terminalMaterializationRecord(t, f, "sealed")
+				journal := terminalRecoveryJournal(t)
+				config := terminalMaterializationConfig(t, f, gate, journal, validator, &noTerminalMaterializationIO{})
+				authority := f.assignment.Authority
+				control := &stopDuringStartControl{productionExecutionControl: &productionExecutionControl{
+					materializingStreamControl: newMaterializingStreamControl(t, authority),
+					identity:                   runtimeIdentityFromAuthority(authority), assignment: f.assignment,
+					commands: make(chan *velav1.StageWorkerControlServiceConnectResponse),
+				}}
+				config.Control = control
+				resolver := &stoppedInputResolver{}
+				if phase == "inputs" {
+					config.InputResolver = resolver
+				}
+				if phase == "invalid-id" || phase == "missing-authority" {
+					control.assignment = proto.Clone(f.assignment).(*velav1.StageAssignment)
+					if phase == "invalid-id" {
+						control.assignment.Authority.StageRunId = "invalid"
+					} else {
+						control.assignment.Authority = nil
+					}
+				}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				historyCalls := 0
+				stream := automaticTerminalStream(t, config, terminalHistoryReaderFunc(func(context.Context, *stageauthority.Validator, *velav1.StageAuthority, string, uuid.UUID) (*stageauthority.VerifiedTerminalDisposition, error) {
+					historyCalls++
+					if historyCalls == 2 {
+						if retire {
+							return fixtureTerminalResponse(t, f), nil
+						}
+						cancel()
+					}
+					return nil, nil // No authenticated disposition: do not claim release.
+				}))
+				stopped := phase == "restart"
+				stop := func() {
+					stopped = true
+					if _, err := stream.HandleStop(ctx, &velav1.StopStage{Authority: authority, Reason: velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if phase == "start" {
+					control.stop = stop
+				}
+				resolver.stop = stop
+				if phase == "restart" {
+					control.assignment = nil
+				}
+				waits := 0
+				production, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+					RetryObserver: func(operation string, err error) { t.Logf("%s: %v", operation, err) },
+					Control:       control, Runtime: &readinessRuntime{identity: control.identity}, Stream: stream,
+					RuntimeIdentity: control.identity, Devices: authority.Devices, Members: authority.Members,
+					CapacityVector: authority.CapacityVector, CapacityTTL: 2 * time.Minute,
+					HeartbeatInterval: 10 * time.Second, RetryMinimum: time.Millisecond, RetryMaximum: time.Second,
+					ObservationSequenceSource: &capacitySequenceSource{values: []int64{41, 42, 43, 44, 45}},
+					Now:                       func() time.Time { return time.Unix(0, f.clock.Load()) },
+					Wait: func(_ context.Context, delay time.Duration) error {
+						waits++
+						if waits > 15 {
+							cancel()
+						}
+						if control.acquireCalls > 1 || (phase == "restart" && control.acquireCalls == 1) {
+							cancel()
+						}
+						if delay == 10*time.Second && !stopped {
+							stop()
+						}
+						return nil
+					},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if phase == "invalid-id" || phase == "missing-authority" {
+					if err := production.Run(ctx); err == nil {
+						t.Fatal("malformed assignment was accepted")
+					}
+					if historyCalls != 0 || control.acquireCalls != 1 {
+						t.Fatal("malformed assignment entered recovery")
+					}
+					return
+				}
+				if err := production.Run(ctx); err != nil {
+					t.Fatalf("stopped assignment killed the Worker: %v", err)
+				}
+				expectedAcquires := 1
+				if retire {
+					expectedAcquires = 2
+				}
+				if phase == "restart" {
+					expectedAcquires--
+				}
+				if !stopped || historyCalls != 2 || control.acquireCalls != expectedAcquires || control.commitCalls != 0 {
+					t.Fatalf("stopped=%t history=%d acquire=%d commit=%d", stopped, historyCalls, control.acquireCalls, control.commitCalls)
+				}
+				if retire {
+					state, err := gate.Snapshot(context.Background())
+					if err != nil || len(state.Retirements) != 1 || state.Retirements[0].Phase != stageworkeragent.TerminalRetirementRetired {
+						t.Fatalf("retirement not proven: %+v, %v", state, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+type stopDuringStartControl struct {
+	*productionExecutionControl
+	stop func()
+}
+
+func (control *stopDuringStartControl) Exchange(ctx context.Context, request *velav1.StageWorkerControlServiceConnectRequest) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if request.GetStartStage() != nil && control.stop != nil {
+		control.stop()
+	}
+	return control.productionExecutionControl.Exchange(ctx, request)
+}
+
+type stoppedInputResolver struct{ stop func() }
+
+func (resolver *stoppedInputResolver) Resolve(ctx context.Context, _ *velav1.StageAssignment) error {
+	resolver.stop()
+	return ctx.Err()
 }

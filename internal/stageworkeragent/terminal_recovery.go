@@ -182,3 +182,36 @@ func (gate *FileAssignmentAdmission) terminalRecoveryCandidates(ctx context.Cont
 	})
 	return candidates, nil
 }
+
+// hasUnretiredClosedAdmission fences new Acquire until terminal recovery proves
+// retirement. Normal sealed-output recovery runs first and may finish the
+// materialization; CLOSED alone still cannot prove that its writers drained.
+// A zero StageRun ID checks all retained records during startup/reconnect.
+func (agent *StreamAgent) hasUnretiredClosedAdmission(ctx context.Context, stageRunID uuid.UUID) (bool, error) {
+	if agent.terminalHistory == nil || agent.admission == nil {
+		return false, nil
+	}
+	snapshot, err := agent.admission.Snapshot(ctx)
+	if err != nil {
+		return false, err
+	}
+	records := snapshot.Pending
+	if snapshot.Latest != nil {
+		records = append(records, *snapshot.Latest)
+	}
+	for _, record := range records {
+		id, err := uuid.Parse(record.Latest.GetStageRunId())
+		if err != nil {
+			return false, err
+		}
+		if record.Phase != AssignmentClosed || (stageRunID != uuid.Nil && stageRunID != id) {
+			continue
+		}
+		if !slices.ContainsFunc(snapshot.Retirements, func(retirement TerminalRetirementSnapshot) bool {
+			return retirement.StageRunID == id && retirement.Phase == TerminalRetirementRetired
+		}) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
