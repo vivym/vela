@@ -1,0 +1,1946 @@
+{
+  "passed": true,
+  "started_at": "2026-09-17T15:14:53.670579+00:00",
+  "scope": "external-h3-job-api",
+  "dns": {
+    "error": "[Errno -2] Name or service not known"
+  },
+  "checks": [
+    {
+      "name": "success_submit",
+      "gateway": "10.1.201.70",
+      "status": 202,
+      "passed": true,
+      "request_id": "09e805fa-331f-42eb-85a3-99f4e0ab0201",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.253
+    },
+    {
+      "name": "pending_artifacts_unavailable",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "7380b84e-748a-453e-8563-5a73f12e9fb3",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.045,
+      "error_code": "not_found"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "08109374-81b1-43ff-bd26-7e24435833b1",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "46c1d356-f712-4147-ae41-72537eb9a680",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.021,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "2aa5027f-072d-43ef-b282-b4614c570430",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.023,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "2750e707-3d85-4f1a-b494-c7349888bbf9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "a57da03c-f9e3-4b78-8274-01b69cc06cf1",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.023,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "e7778681-cc5b-4e66-8235-ef8f36d80b01",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_submit_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "d18385a4-844a-488e-af58-520a68183111",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_cancel_denied",
+      "gateway": "10.1.201.70",
+      "status": 401,
+      "passed": true,
+      "request_id": "be6c4b38-dd5e-4970-92e4-925909e670c9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.70",
+      "status": 403,
+      "passed": true,
+      "request_id": "17cfaff5-5426-43e9-af53-124a6661f8aa",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.021,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "278f4187-5549-4740-9cff-09365be95e47",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "not_found"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "2ef2861e-d5f3-4ef6-a999-4f0ccf376814",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.027,
+      "error_code": "not_found"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.70",
+      "status": 403,
+      "passed": true,
+      "request_id": "a9c2f28f-ce5b-47de-8966-eef718d1bc23",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.027,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "cross_project_submit_denied",
+      "gateway": "10.1.201.70",
+      "status": 403,
+      "passed": true,
+      "request_id": "31440c9e-1180-4ed1-b65f-4cfba3b64b7e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "peer_jobs_read",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "85a265bb-a0bf-4127-9d99-f6e2cd10868e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.048
+    },
+    {
+      "name": "list",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "c6e46b8a-58dc-4546-95e4-08fd1f5e4e64",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "list?active=true",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "126c1fd3-c3f3-45f4-873a-24d5515c04ef",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "active_detail",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "08f996e6-546e-4ec6-b7c0-dda4b14590d0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.041
+    },
+    {
+      "name": "list?state=QUEUED",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "03ca3168-2c11-4330-ac4c-09b9567f40ea",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042
+    },
+    {
+      "name": "list?state=RUNNING",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "8ff71390-3883-4681-938e-22d7755dded5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "list?state=SUCCEEDED",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "9aee06bb-3fa6-4029-ad83-b754d4abaed2",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "list?state=CANCELED",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "8348a6cf-1795-4177-89a3-fee3372f42af",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034
+    },
+    {
+      "name": "list?active=false&limit=100",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "8ea3c6b8-6d38-483f-8b7d-ea67794b939a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "invalid_list?limit=0",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "d372ee6e-68f7-47b8-afef-6a70b0eedd43",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?limit=101",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "a31556e7-6b17-4e62-a9c2-64d11bae57ac",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.028,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?limit=abc",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "74e349d3-6efb-4966-80a6-7b2ef7a6f48b",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?cursor=bad",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "3eb12ba6-685c-4315-b33a-9c27e9bee1bf",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.023,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?state=INVALID",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "a902911a-f33c-4799-8e9d-8b2c87a53e0d",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?active=maybe",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "2c77cb7f-9401-4cdd-a3d8-67f2657dbb71",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?active=true&state=SUCCEEDED",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "07137740-d507-470a-9583-afc15ad9b649",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.027,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "9a18a6f8-6fc1-4b50-bbae-a8d4a2d240db",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033,
+      "error_code": "not_found"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "16b766d2-df79-4f43-a008-c85e046448b7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042,
+      "error_code": "not_found"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "16a93324-71b9-4310-a378-e00a2eca3643",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.041,
+      "error_code": "not_found"
+    },
+    {
+      "name": "wrong_project_job_hidden",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "98fa2cfa-6823-42f9-bda6-80517e0068ce",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033,
+      "error_code": "not_found"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "5918faf0-f2c4-4f58-a3dc-1546843f6a85",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.043
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "23551a1a-b111-4fad-a895-bfc5b19f1e7e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "cursor_filter_binding",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "015cae58-5009-44b8-bf78-de7970bf2d04",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "f9a03384-a743-4662-bc11-e7d03e61f724",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.047
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "3305d50b-2677-4702-825d-71d0cbd785b0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.032
+    },
+    {
+      "name": "cursor_filter_binding",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "4e5bbc81-eef6-4390-9b42-21e56a8271d3",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "b78e392e-1e31-49a8-9bf7-1a17163add1e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "d8a2886b-6071-4633-b271-54a61aae7971",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.03
+    },
+    {
+      "name": "unknown_model",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "2d4886c3-d684-453d-b54e-452d22b5171c",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.046,
+      "error_code": "invalid_sku"
+    },
+    {
+      "name": "unknown_sku",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "341adaef-d5e2-4ad6-a927-501c16734152",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.045,
+      "error_code": "invalid_sku"
+    },
+    {
+      "name": "empty_prompt",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "7ddd33c1-d1ea-412f-902c-4edb9619f739",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_count",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "2b1aa385-2c6e-46e6-bc9e-bce7544df3e7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "unsupported_service",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "8ac131bf-7e0d-457f-b3d2-c8c24a2037c6",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "missing_sampling",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "8715dedb-d8fa-47d5-ae88-7a9f6f413ae4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "missing_idempotency_key",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "e1e8b90d-4ff8-4a17-96b6-e04c3e4736eb",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.028,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_idempotency_key",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "73bf0f34-b165-495b-bc86-207044091776",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "malformed_json",
+      "gateway": "10.1.201.70",
+      "status": 400,
+      "passed": true,
+      "request_id": "a484b4ef-8843-4d94-9dda-8adc6a9ca421",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.021,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "accepted_replay",
+      "gateway": "10.1.201.70",
+      "status": 202,
+      "passed": true,
+      "request_id": "4a5a2251-0bdc-4a82-a38b-eb9bfee1f5f2",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.041
+    },
+    {
+      "name": "changed_request_conflict",
+      "gateway": "10.1.201.70",
+      "status": 409,
+      "passed": true,
+      "request_id": "0a20770c-f616-404f-bd0a-aab6c72c9782",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.032,
+      "error_code": "idempotency_conflict"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "a99b3604-3029-476a-8759-378d771f3508",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "a394eeba-b913-4271-8d77-fd75cd019350",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "fe6bf070-acd1-4b9b-a24b-350c52528e4b",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.028,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "262349b4-482f-4e36-aca6-ab2e66cc05c8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "1186179f-6a32-45d9-b2c0-5d339566930e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.023,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "invalid_credential_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "58e3f477-df0b-490c-b8b7-330f3a556b2b",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_submit_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "948bb4f7-2b27-4d2d-b34f-2233c067505f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "anonymous_cancel_denied",
+      "gateway": "10.1.201.71",
+      "status": 401,
+      "passed": true,
+      "request_id": "be62f765-ecec-410a-a371-3db856ce69af",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "unauthorized"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.71",
+      "status": 403,
+      "passed": true,
+      "request_id": "9b73ea32-f3f5-4659-bb92-a7259f35bdae",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.028,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "0a689a62-0510-412d-b0a2-38c395a6abb9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.023,
+      "error_code": "not_found"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "aeb966a1-b12a-4a85-93b9-df9e80c9fcfb",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "not_found"
+    },
+    {
+      "name": "cross_project_denied",
+      "gateway": "10.1.201.71",
+      "status": 403,
+      "passed": true,
+      "request_id": "95468d49-2c04-4658-b791-2167b7baa6e5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.031,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "cross_project_submit_denied",
+      "gateway": "10.1.201.71",
+      "status": 403,
+      "passed": true,
+      "request_id": "43f1bfdc-b5ec-4eff-b054-c7379155e8a5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "forbidden"
+    },
+    {
+      "name": "peer_jobs_read",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "d5d8f970-7790-4680-9e8a-993bcf080188",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.052
+    },
+    {
+      "name": "list",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "891097fe-d8e2-4f73-8f9c-7ebac3f54488",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.045
+    },
+    {
+      "name": "list?active=true",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "8884cb13-a983-45c5-9923-2d0ae1308449",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "active_detail",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "ccb3bb00-3a88-4332-85aa-f96226b5bc97",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042
+    },
+    {
+      "name": "list?state=QUEUED",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "d7f9bcb5-76c0-4d4f-9dd4-b9323896144f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "list?state=RUNNING",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "076db912-a668-4d5c-bd9e-7730fb6efbb8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "list?state=SUCCEEDED",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "c6ccfe43-2a01-4f6f-8441-a7f35430df69",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "list?state=CANCELED",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "8c26592a-e7a7-432c-9195-4f6f8d7c0cff",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "list?active=false&limit=100",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "be394fdb-2cf0-4f80-a0bd-627c07759866",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "invalid_list?limit=0",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "8ee8fac1-f5b9-4c77-9a93-ff61c210c68a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.019,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?limit=101",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "37102e83-f6df-4229-bdb6-8f6a8c986ea0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?limit=abc",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "5e4b8bed-1e64-4846-9ec0-4a78160b7965",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.02,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?cursor=bad",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "a56940d8-6040-4eda-8ded-0ee3c82d6b0a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.027,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?state=INVALID",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "6e432095-8076-4997-a320-38d5af3345f7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?active=maybe",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "f8af0666-6d53-42f6-87b4-add3302b7890",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.026,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_list?active=true&state=SUCCEEDED",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "6df8be34-fd9a-4f48-a234-8d74f4dca8a4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "b7445b0a-ed06-438a-9e92-fc18d5579a20",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.029,
+      "error_code": "not_found"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "2008fb88-c94f-4490-b8f5-473b3b3915d8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.028,
+      "error_code": "not_found"
+    },
+    {
+      "name": "unknown_job",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "ef0827e8-b911-4141-b6e6-d1ae8f24a9d0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035,
+      "error_code": "not_found"
+    },
+    {
+      "name": "wrong_project_job_hidden",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "e1393e47-8a16-415b-838d-2d9b3a03ffa4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.032,
+      "error_code": "not_found"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "503b1c3a-cd91-401b-8119-e6b82946e1f2",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.046
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "dbc8dec0-e0a5-4211-b196-dae2648267e5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.069
+    },
+    {
+      "name": "cursor_filter_binding",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "6f9f4d6a-dc55-4c39-a8e7-5a0c560f4b8a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.02,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "5b33f6c0-a10d-465f-a96b-6a8d3485eb00",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.043
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "2b65a972-6f70-4dbb-a937-639babbdc35f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "cursor_filter_binding",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "1f115b8b-ffaf-4246-bece-7e2f4ec11715",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.022,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "terminal_pagination",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "6264bc2f-a231-4663-98f8-75c5cd4448a5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.045
+    },
+    {
+      "name": "terminal_detail_matches_list",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "4a869379-f3d3-40ae-8f2d-79ec597fcf24",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "unknown_model",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "cb864578-b456-4ade-99d5-6592cd8a62e0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.046,
+      "error_code": "invalid_sku"
+    },
+    {
+      "name": "unknown_sku",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "0a2a5d73-7ed5-4cc8-938c-d25498376737",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.049,
+      "error_code": "invalid_sku"
+    },
+    {
+      "name": "empty_prompt",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "97d32f0d-abbb-4016-821e-3d27ca298b33",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.029,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_count",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "f4f497f1-360c-4c0f-a0a9-5788be00a725",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.024,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "unsupported_service",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "41dc5dce-e862-4875-9b7a-168e4f595cd4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.027,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "missing_sampling",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "c9822756-cea6-4423-8f51-b7f0b6c06bd7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "missing_idempotency_key",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "1ff9d5a0-2b6b-4c1a-8697-2b1d2eabe595",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.025,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "invalid_idempotency_key",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "338e3f64-205e-4187-9ed9-585fd1d8ecc5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.02,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "malformed_json",
+      "gateway": "10.1.201.71",
+      "status": 400,
+      "passed": true,
+      "request_id": "7a641aed-85bb-4274-86c7-fe7d7ad7ad54",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.03,
+      "error_code": "invalid_request"
+    },
+    {
+      "name": "accepted_replay",
+      "gateway": "10.1.201.71",
+      "status": 202,
+      "passed": true,
+      "request_id": "afe71ad5-7c3d-477f-9400-5736e6b39966",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "changed_request_conflict",
+      "gateway": "10.1.201.71",
+      "status": 409,
+      "passed": true,
+      "request_id": "992fb675-c007-4b6a-92ae-49f54fd27c76",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.031,
+      "error_code": "idempotency_conflict"
+    },
+    {
+      "name": "cancel_submit",
+      "gateway": "10.1.201.71",
+      "status": 202,
+      "passed": true,
+      "request_id": "2359adcc-3d60-416c-93cc-93dde1c8ff53",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.195
+    },
+    {
+      "name": "cancel_job_progress",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "40a7ae17-7b1e-47bb-a6de-6c976d6b0ad5",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.044
+    },
+    {
+      "name": "cancel_job_progress",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "56099358-e279-491d-b450-50162b3bf506",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "running_cancel",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "40f00199-8fde-4b54-862a-d12c12d822d8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.064
+    },
+    {
+      "name": "cancel_replay",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "ff55db0d-d24e-41b1-897a-0f01297cc823",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.046
+    },
+    {
+      "name": "canceled_artifacts_unavailable",
+      "gateway": "10.1.201.70",
+      "status": 404,
+      "passed": true,
+      "request_id": "f144849b-f190-491a-8e4b-73674ca2b4b7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.03,
+      "error_code": "not_found"
+    },
+    {
+      "name": "cancel_replay",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "268d2763-9a96-4be0-8040-1604c6db1f29",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042
+    },
+    {
+      "name": "canceled_artifacts_unavailable",
+      "gateway": "10.1.201.71",
+      "status": 404,
+      "passed": true,
+      "request_id": "550e7e54-7173-4692-a5a2-a0046bea41e7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.047,
+      "error_code": "not_found"
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "11dfe23a-d11d-438e-8f88-2a633c9831a0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "df899c75-7723-431c-9268-59c558350ab4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.051
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "daf2c483-985c-4cbe-9d63-889aa66a2aec",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "ea905982-87ee-435e-91c5-868419d87075",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "6ce9299e-93f2-4146-b641-3393ed65ccf9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "92dd88f9-a1b9-4f55-b43f-f12afd0c2cd3",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.044
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "398737e2-35f0-4ffc-9370-6a03443c40c3",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.032
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "04ce1288-9a6d-4fb1-9f4f-abb2cc711351",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "b491eb13-70e8-4d08-8cae-3733bb4e4bac",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "b88ac166-4620-473e-b196-16129270e3f7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "28d4365c-c30b-4510-b0ce-c7caf14862c8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.043
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "0bc48fe6-c3aa-4737-aa41-d43e02e03464",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "e30e820f-ceaf-4837-924a-db4f7be8661c",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.041
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "48793249-c564-4c15-9005-1187ef2ee64e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "ddc74299-b167-4574-91b9-a422d988ad66",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "e1e2277f-543c-4647-8305-6921375e6509",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "abd7f017-f596-49f4-afc6-84904144ec27",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "5ae5e3cd-8eaf-4787-9c2f-532681f694e7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "5c125e75-a573-470c-a77a-c4b550fdb8e8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "665db042-8b04-4908-9270-151662ee9ad4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "e29e242f-119c-409c-8f4b-ca0e6034eb9e",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "24e9f74f-735b-4740-95e1-879786d994e8",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "3412f2b7-3f5b-44fe-b53d-4e52dcbbb12a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "26d54c30-a6a9-4447-8217-b9a292728364",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "e0bd8da9-6058-4226-b77e-49b08e2346e0",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "74d78dba-b076-4862-a0a9-72689d30bf6d",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "a44220f3-b2b8-483e-9f54-a78982a00120",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.049
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "83d27ba4-4bd8-4db5-9426-eba15f0626c9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "b823959c-ee7f-4438-93bb-242705fdcef9",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "61733072-b4b1-47e5-9ba6-5cc873b7eea3",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.047
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "c902f03b-e9c0-43db-a49b-366f941f7f47",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "3ffccf79-191f-4a2d-84a6-8dc2c7ecf083",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "2d8a4e51-6210-4c42-8183-2316990e6b9a",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "270eef78-7613-4425-88c3-251cd6eaf9bb",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "00bc3641-608e-48c5-8141-d2120f9a7d59",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.046
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "d988098d-ac45-46e2-ab80-d136eadff960",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "15e6dcad-8b25-4919-a746-f0a64edfa1d7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "82c17dfb-6b0c-4a52-95ef-2e1f5eb3021f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.038
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "0fb2d9ae-9a41-4664-8451-6e7bde805a42",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "3a1772e8-ad7c-454e-be6a-3be2bb532f92",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "a9b72151-033e-4592-8680-dd9e0b05ce46",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "5eea821d-bf60-4709-8215-5c52589337c6",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.03
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "a35776d7-8545-430c-8a5a-b28b6cae6fcb",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "413dd09b-5949-41f1-a558-e6f2af18a7a4",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.034
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "34ba7bfd-a1bb-421d-80cd-e50791d550e2",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.043
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "c526ecad-621e-455f-9aa4-0d0fc77bc810",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "23be5ec9-0f33-48bf-a098-658d53f9b835",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.037
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "23ff9ad8-a1c3-4687-b438-56ce8cc98308",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "8b77dd4a-056d-4e3f-b694-1a79facfaeff",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.035
+    },
+    {
+      "name": "active_job_discoverable",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "afbd302c-ccef-4c43-b5e2-3079744ebce7",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.04
+    },
+    {
+      "name": "poll_success",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "96464ee1-1785-4ca5-ba9b-b3958a0e7141",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    },
+    {
+      "name": "artifacts",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "4f464ffe-407d-4e29-a407-ca28f239e17f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.059
+    },
+    {
+      "name": "terminal_replay",
+      "gateway": "10.1.201.70",
+      "status": 202,
+      "passed": true,
+      "request_id": "83e0006f-1d54-4f24-9cb9-a2e5a6d9f369",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "successful_job_cancel_is_noop",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "874d092f-58fe-4bc1-b348-fefd1dd35f15",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "terminal_not_active",
+      "gateway": "10.1.201.70",
+      "status": 200,
+      "passed": true,
+      "request_id": "c85b1322-eb74-4923-8874-43c41227073f",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.036
+    },
+    {
+      "name": "artifacts",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "76e122c2-8f67-476e-8e94-06f2ce33c202",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.042
+    },
+    {
+      "name": "terminal_replay",
+      "gateway": "10.1.201.71",
+      "status": 202,
+      "passed": true,
+      "request_id": "62a2034d-dd2c-4ce1-81cd-0ba6a3bb6a5c",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.033
+    },
+    {
+      "name": "successful_job_cancel_is_noop",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "32fb2204-268b-4afa-9bbd-65b5d563b5d2",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.044
+    },
+    {
+      "name": "terminal_not_active",
+      "gateway": "10.1.201.71",
+      "status": 200,
+      "passed": true,
+      "request_id": "b847287b-a0e6-49ed-acf7-781d4d05ae70",
+      "content_type": "application/json",
+      "elapsed_seconds": 0.039
+    }
+  ],
+  "failures": [],
+  "production_gate_evidence": false,
+  "concurrent_idempotency_replay": {
+    "requests": 4,
+    "distinct_jobs": 1,
+    "passed": true
+  },
+  "canceled_worker_recovery": {
+    "worker": "6ba8cfdd-862d-5d95-8448-62e3f0b39749",
+    "fresh_positive_capacity": true
+  },
+  "cancellation": {
+    "billable": true,
+    "cancellation_id": "431b7719-1e46-4f15-be2b-8f7e5b812e3c",
+    "charge": {
+      "amount_minor": 100,
+      "charge_id": "981c661b-c851-4cd9-a088-08cfa5ece5c7",
+      "currency": "CNY",
+      "posted_at": "2026-09-17T15:16:36.772711Z",
+      "reason": "CUSTOMER_CANCELLATION"
+    },
+    "decided_at": "2026-09-17T15:16:36.772711Z",
+    "decision": "CANCELING",
+    "job_id": "73bb2ca8-ab3a-4749-9c7f-3d9f755a57b6",
+    "job_version": 4,
+    "state": "CANCELING"
+  },
+  "progress_observations": [
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "RUNNING",
+      "phase": "GENERATING"
+    },
+    {
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "state": "SUCCEEDED"
+    }
+  ],
+  "success_job": {
+    "attempts_started": 1,
+    "created_at": "2026-09-17T15:14:53.857351Z",
+    "job_expires_at": "2026-09-17T17:24:53.774049Z",
+    "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+    "model": "minimax-h3",
+    "pricing": {
+      "currency": "CNY",
+      "quantity": 1,
+      "quoted_amount_minor": 100,
+      "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+      "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+      "unit_amount_minor": 100
+    },
+    "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+    "state": "SUCCEEDED"
+  },
+  "downloads": [
+    {
+      "gateway": "10.1.201.70",
+      "artifact_id": "95f109b6-ca8b-56ec-acea-d0f02b239592",
+      "content_type": "video/mp4",
+      "kind": "VIDEO",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      },
+      "object_version_id": "b27389c8-c6c5-4ca5-936f-aca70f69446b",
+      "ordinal": 0,
+      "sha256": "0b1ff93c1572e0b0a046131ba18dd1b8e57fbc2bb5067144716bfd254e34bb88",
+      "size_bytes": 1314876
+    },
+    {
+      "gateway": "10.1.201.70",
+      "artifact_id": "898e5907-1abb-57e4-9756-9294b008b086",
+      "content_type": "image/webp",
+      "kind": "THUMBNAIL",
+      "object_version_id": "9d4b669a-fe1f-4f0c-be9c-f3703a8b76a9",
+      "ordinal": 0,
+      "sha256": "3cb17cd757266b9996e678d587e45353347fa229405475eb132fa3d5e4309815",
+      "size_bytes": 7056
+    },
+    {
+      "gateway": "10.1.201.71",
+      "artifact_id": "95f109b6-ca8b-56ec-acea-d0f02b239592",
+      "content_type": "video/mp4",
+      "kind": "VIDEO",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      },
+      "object_version_id": "b27389c8-c6c5-4ca5-936f-aca70f69446b",
+      "ordinal": 0,
+      "sha256": "0b1ff93c1572e0b0a046131ba18dd1b8e57fbc2bb5067144716bfd254e34bb88",
+      "size_bytes": 1314876
+    },
+    {
+      "gateway": "10.1.201.71",
+      "artifact_id": "898e5907-1abb-57e4-9756-9294b008b086",
+      "content_type": "image/webp",
+      "kind": "THUMBNAIL",
+      "object_version_id": "9d4b669a-fe1f-4f0c-be9c-f3703a8b76a9",
+      "ordinal": 0,
+      "sha256": "3cb17cd757266b9996e678d587e45353347fa229405475eb132fa3d5e4309815",
+      "size_bytes": 7056
+    }
+  ],
+  "billing": {
+    "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+    "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+    "state": "SUCCEEDED",
+    "billable_started_at": "2026-09-17T15:14:54.571186+00:00",
+    "charge_count": 1,
+    "charge": {
+      "id": "963c1e7a-1458-49ef-81d1-0aae11bef953",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+      "credit_reservation_id": "a32054ac-e03a-48da-8047-99f459fd3ae6",
+      "cancellation_id": null,
+      "reason": "VISIBLE_COMPLETION",
+      "amount_minor": 100,
+      "currency": "CNY",
+      "state": "POSTED",
+      "posted_at": "2026-09-17T15:22:16.706456+00:00",
+      "created_at": "2026-09-17T15:22:16.734844+00:00",
+      "artifact_set_id": "9118dd5d-6054-4b8c-bfe3-4cc45b880893"
+    },
+    "visible_completion_count": 1,
+    "artifact_set_count": 1,
+    "artifact_set_id": "9118dd5d-6054-4b8c-bfe3-4cc45b880893",
+    "idempotency_count": 1,
+    "reservation_state": "CONSUMED",
+    "reservation_amount_minor": 100,
+    "account_reserved_minor": 0,
+    "sum_reserved_minor": 0
+  },
+  "canceled_billing": {
+    "job_id": "73bb2ca8-ab3a-4749-9c7f-3d9f755a57b6",
+    "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+    "state": "CANCELED",
+    "billable_started_at": "2026-09-17T15:16:31.02193+00:00",
+    "charge_count": 1,
+    "charge": {
+      "id": "981c661b-c851-4cd9-a088-08cfa5ece5c7",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "job_id": "73bb2ca8-ab3a-4749-9c7f-3d9f755a57b6",
+      "credit_reservation_id": "e3fc7807-eb4d-4783-8c83-0e9d37e81de7",
+      "cancellation_id": "431b7719-1e46-4f15-be2b-8f7e5b812e3c",
+      "reason": "CUSTOMER_CANCELLATION",
+      "amount_minor": 100,
+      "currency": "CNY",
+      "state": "POSTED",
+      "posted_at": "2026-09-17T15:16:36.772711+00:00",
+      "created_at": "2026-09-17T15:16:36.792176+00:00",
+      "artifact_set_id": null
+    },
+    "visible_completion_count": 0,
+    "artifact_set_count": 0,
+    "artifact_set_id": null,
+    "idempotency_count": 1,
+    "reservation_state": "CONSUMED",
+    "reservation_amount_minor": 100,
+    "account_reserved_minor": 0,
+    "sum_reserved_minor": 0
+  },
+  "finished_at": "2026-09-17T15:22:31.132457+00:00"
+}

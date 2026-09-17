@@ -1,0 +1,95 @@
+=== RUN   TestAdmissionRetriesConfirmedTransactionAbortWithoutDuplicateEffects
+=== RUN   TestAdmissionRetriesConfirmedTransactionAbortWithoutDuplicateEffects/40P01
+=== RUN   TestAdmissionRetriesConfirmedTransactionAbortWithoutDuplicateEffects/40001
+--- PASS: TestAdmissionRetriesConfirmedTransactionAbortWithoutDuplicateEffects (6.07s)
+=== RUN   TestAdmissionTransactionRetryIsBoundedAndRequiresConfirmedAbort
+=== RUN   TestAdmissionTransactionRetryIsBoundedAndRequiresConfirmedAbort/persistent-deadlock
+=== RUN   TestAdmissionTransactionRetryIsBoundedAndRequiresConfirmedAbort/constraint-error
+--- PASS: TestAdmissionTransactionRetryIsBoundedAndRequiresConfirmedAbort (5.39s)
+=== RUN   TestQueuedJobCancellationReleasesCreditWithoutCharge
+--- PASS: TestQueuedJobCancellationReleasesCreditWithoutCharge (2.65s)
+=== RUN   TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed
+=== RUN   TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed/scope_removed
+=== RUN   TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed/credential_revoked
+=== RUN   TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed/credential_expired
+--- PASS: TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed (7.86s)
+=== RUN   TestCancellationHTTPAuthorizationAndVisibilityFailClosed
+--- PASS: TestCancellationHTTPAuthorizationAndVisibilityFailClosed (2.63s)
+=== RUN   TestSucceededStageGraphCancellationReturnsTerminalWithoutDecisionHistory
+--- PASS: TestSucceededStageGraphCancellationReturnsTerminalWithoutDecisionHistory (3.11s)
+=== RUN   TestConcurrentQueuedCancellationReplaysOneDecision
+--- PASS: TestConcurrentQueuedCancellationReplaysOneDecision (2.55s)
+=== RUN   TestProjectJobListPreservesRequestRoleBoundary
+--- PASS: TestProjectJobListPreservesRequestRoleBoundary (2.39s)
+=== RUN   TestProjectJobListFiltersPaginationAndIsolation
+--- PASS: TestProjectJobListFiltersPaginationAndIsolation (2.74s)
+=== RUN   TestBillingAdminReadsExactOrganizationCreditSummary
+--- PASS: TestBillingAdminReadsExactOrganizationCreditSummary (2.36s)
+=== RUN   TestBillingAdminListsChargeWithAvailableInvoiceReference
+--- PASS: TestBillingAdminListsChargeWithAvailableInvoiceReference (2.98s)
+PASS
+ok  	github.com/vivym/vela/internal/integration	41.909s
+=== RUN   TestIdempotencyKeyReplaysOriginalJobAndRejectsDifferentRequest
+--- PASS: TestIdempotencyKeyReplaysOriginalJobAndRejectsDifferentRequest (3.34s)
+=== RUN   TestIdempotencyDistinguishesLargeMetadataIntegers
+--- PASS: TestIdempotencyDistinguishesLargeMetadataIntegers (2.63s)
+=== RUN   TestAdmissionRejectionsHaveNoDurableEffects
+=== RUN   TestAdmissionRejectionsHaveNoDurableEffects/credit_limit
+=== RUN   TestAdmissionRejectionsHaveNoDurableEffects/Project_queue_bound
+--- PASS: TestAdmissionRejectionsHaveNoDurableEffects (5.11s)
+=== RUN   TestConcurrentAdmissionsCannotExceedProjectBound
+--- PASS: TestConcurrentAdmissionsCannotExceedProjectBound (2.70s)
+=== RUN   TestConcurrentAdmissionsCannotExceedStageCapacityBound
+--- PASS: TestConcurrentAdmissionsCannotExceedStageCapacityBound (2.77s)
+=== RUN   TestConcurrentProjectsCannotExceedOrganizationCredit
+--- PASS: TestConcurrentProjectsCannotExceedOrganizationCredit (2.81s)
+=== RUN   TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys
+--- PASS: TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys (2.72s)
+=== RUN   TestRequestContextRejectsWrongCredentialProof
+--- PASS: TestRequestContextRejectsWrongCredentialProof (2.43s)
+=== RUN   TestRequestContextCannotChangeIdentityWithinTransaction
+--- PASS: TestRequestContextCannotChangeIdentityWithinTransaction (2.48s)
+=== RUN   TestRequestContextCannotChangeScopeWithinTransaction
+--- PASS: TestRequestContextCannotChangeScopeWithinTransaction (2.45s)
+=== RUN   TestRequestContextRejectsInactiveCredentials
+=== RUN   TestRequestContextRejectsInactiveCredentials/revoked
+=== RUN   TestRequestContextRejectsInactiveCredentials/expired
+--- PASS: TestRequestContextRejectsInactiveCredentials (4.77s)
+=== RUN   TestScopeRemovalAfterAuthenticationFailsClosedAtRequestTransaction
+--- PASS: TestScopeRemovalAfterAuthenticationFailsClosedAtRequestTransaction (2.41s)
+=== RUN   TestReadScopeRequestContextCannotMutateAdmissionState
+--- PASS: TestReadScopeRequestContextCannotMutateAdmissionState (2.52s)
+=== RUN   TestRequestContextCleansRowsForTerminatedBackends
+--- PASS: TestRequestContextCleansRowsForTerminatedBackends (2.40s)
+=== RUN   TestCredentialLookupScopeAndRevocationFailClosed
+--- PASS: TestCredentialLookupScopeAndRevocationFailClosed (2.44s)
+=== RUN   TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath
+--- PASS: TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath (2.49s)
+=== RUN   TestProjectAdminIssuesCredentialThatAuthenticatesAndListsWithoutSecret
+--- PASS: TestProjectAdminIssuesCredentialThatAuthenticatesAndListsWithoutSecret (2.53s)
+=== RUN   TestCredentialRotationRevocationAndServicePrincipalDisableArePermanent
+--- PASS: TestCredentialRotationRevocationAndServicePrincipalDisableArePermanent (2.52s)
+=== RUN   TestOrganizationReportingProductionHTTPPath
+--- PASS: TestOrganizationReportingProductionHTTPPath (3.20s)
+=== RUN   TestPlatformProvisionedNonExpiringCredentialCanAuthenticateListAndRevoke
+--- PASS: TestPlatformProvisionedNonExpiringCredentialCanAuthenticateListAndRevoke (2.60s)
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/live
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/expired-lease
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/revoked-lease
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/withdrawn
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/disconnected
+=== RUN   TestStageAdmissionQueuesBehindLiveBusyWorker/full-queue
+--- PASS: TestStageAdmissionQueuesBehindLiveBusyWorker (19.08s)
+=== RUN   TestWebhookHTTPCreateAndListUseExplicitScopes
+--- PASS: TestWebhookHTTPCreateAndListUseExplicitScopes (2.45s)
+=== RUN   TestWebhookHTTPCreateRejectsEndpointResolvingToNonPublicAddress
+--- PASS: TestWebhookHTTPCreateRejectsEndpointResolvingToNonPublicAddress (2.40s)
+=== RUN   TestWebhookHTTPCreateRejectsZonedLinkLocalEndpoint
+--- PASS: TestWebhookHTTPCreateRejectsZonedLinkLocalEndpoint (2.51s)
+=== RUN   TestWebhookHTTPManagementCommandsAndDeliveryVisibility
+--- PASS: TestWebhookHTTPManagementCommandsAndDeliveryVisibility (2.72s)
+=== RUN   TestWebhookHTTPReplayIdentifiesMissingDelivery
+--- PASS: TestWebhookHTTPReplayIdentifiesMissingDelivery (2.60s)
+PASS
+ok  	github.com/vivym/vela/internal/integration	91.208s

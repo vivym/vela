@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "cleanup": "normal API cancellation of initial interrupted campaign only",
+  "jobs": [
+    {
+      "id": "a678519f-b066-4dcc-a6ac-ad3e5a956113",
+      "state": "CANCELED",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "charge_count": 1,
+      "amount_minor": 100
+    },
+    {
+      "id": "7d7c12bc-4703-4431-b098-f6a2fde45df7",
+      "state": "CANCELED",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "charge_count": 1,
+      "amount_minor": 100
+    }
+  ],
+  "at": "2026-09-17T15:46:53.786301+00:00"
+}

@@ -1,10 +1,31 @@
 # Vela 视频生成 API 接入指南
 
-面向通过后端中转接入 Vela 的团队。接口版本：`v1`；文档核对日期：2026-09-17。
+面向通过后端中转接入 Vela 的团队。接口版本：`v1`；文档核对日期：2026-09-18。
 
 我们提供 API Key 和 Project 配置；中转服务负责调用 Vela，并将任务状态和视频结果交付给自己的用户。API 使用 HTTPS、Bearer 认证和 JSON，视频生成采用异步任务模式。
 
+最新平台侧全流程、真实中转 Key 和成本对账结果见[中转 API 全流程验证](relay-api-full-validation-2026-09-17.md)。
+
 配套文件：[中转接口 OpenAPI](api-integration.openapi.json)，可导入 Postman、Apifox 或 Swagger Editor。文件中的服务器地址是示例，导入后替换为交付地址。
+
+### 当前正式模型与旧调用迁移
+
+**新任务使用 `model: "minimax-h3"`。** 中转站现有永久 API Key 和 Project ID 无须更换；API 根地址仍为 `https://vela.marslab.ic/api`。
+
+| 配置 | 当前已验收组合 |
+| --- | --- |
+| `model` | `minimax-h3` |
+| `generation_preset` | `fast`，生成质量与速度档位 |
+| `service_class` | `standard`，排队、重试与任务时限等服务策略 |
+| `output_spec` | `h3-native-av-1344x768-5s-24fps` |
+| `generation_count` | `1`；多个视频分别提交 Job |
+| `h3.task` | `t2va`，文本生成完整音视频 |
+| `h3.target` | `short_edge=768`、`aspect_ratio=16:9`、`duration_seconds=5`；可省略以使用这组默认值 |
+| `h3.sampling` | 必须显式传 `num_inference_steps=20`、`quality=lossless` |
+
+`fast` 和 `standard` 属于不同字段，当前要同时填写。`standard` 不是 `generation_preset` 的合法值；`fast` 也不是 `service_class` 的合法值。生成档位不赋予排队优先权，完成时间仍受队列和实际推理耗时影响。
+
+旧名称 `minimax-h3-live-validation` 保留独立路由，已有任务继续按原 `job_id` 查询。切换只影响之后创建的新业务任务：**重试旧提交时必须保留原模型名、完整请求体和幂等键**，不能把旧请求的模型名替换成 `minimax-h3` 后沿用旧键，否则会返回 `409 idempotency_conflict`。只有确实需要新生成时，才创建新业务任务及新幂等键。
 
 ## 1. 接入前拿到这些配置
 
@@ -73,15 +94,15 @@ Content-Type: application/json
 
 ### 3.1 最小可用示例
 
-以下示例使用 2026-09-16 已核验的 Marslab 组合：`model=minimax-h3-live-validation`、`generation_preset=fast`、`service_class=standard`、`output_spec=h3-native-av-1344x768-5s-24fps`，文本生成 5 秒、768 短边、`16:9` 音视频。当前价格表为 ¥1.00/条，实际报价以受理响应为准。
+以下示例使用 2026-09-18 已核验的 Marslab 正式组合：`model=minimax-h3`、`generation_preset=fast`、`service_class=standard`、`output_spec=h3-native-av-1344x768-5s-24fps`，文本生成 5 秒、768 短边、`16:9` 音视频。当前价格表为 ¥1.00/条，实际报价以受理响应为准。
 
-`minimax-h3` 不是当前环境的模型标识；`balanced`、`quality`、10 秒及纯视频规格也未开通。不能用 Schema 支持的枚举推断当前可购买组合。`h3.sampling` 必须显式传入 `num_inference_steps=20`、`quality=lossless`。
+新接入使用 `minimax-h3`；旧名 `minimax-h3-live-validation` 保留独立路由。`balanced`、`quality`、10 秒及纯视频规格未开通。不能用 Schema 支持的枚举推断当前可购买组合。`h3.sampling` 必须显式传入 `num_inference_steps=20`、`quality=lossless`。
 
-配置环境变量；密钥通过自己的 Secret 管理方式注入 `VELA_API_KEY`，不要写入源代码：
+配置环境变量；下方 Project ID 为现有 `relay-station` 项目，其他项目使用各自与 Key 绑定的 ID。密钥通过自己的 Secret 管理方式注入 `VELA_API_KEY`，不要写入源代码：
 
 ```bash
-export VELA_BASE_URL='https://vela-api.example.com/api'
-export VELA_PROJECT_ID='11111111-1111-4111-8111-111111111111'
+export VELA_BASE_URL='https://vela.marslab.ic/api'
+export VELA_PROJECT_ID='62275ddc-ae83-4ca1-b80c-313161264836'
 # VELA_API_KEY 已由运行环境注入。
 # Marslab 域名入口设置 CURL_CA_BUNDLE=/path/to/marslab-root-ca.crt。
 ```
@@ -90,14 +111,14 @@ export VELA_PROJECT_ID='11111111-1111-4111-8111-111111111111'
 
 ```json
 {
-  "model": "minimax-h3-live-validation",
+  "model": "minimax-h3",
   "generation_preset": "fast",
   "service_class": "standard",
   "output_spec": "h3-native-av-1344x768-5s-24fps",
   "generation_count": 1,
   "prompt": "清晨的海边，镜头缓慢向前推进，海浪轻拍沙滩，伴随自然海浪声。",
   "client_metadata": {
-    "business_task_id": "video-demo-20260916-0001"
+    "business_task_id": "video-demo-20260918-0001"
   },
   "h3": {
     "sampling": {"num_inference_steps": 20, "quality": "lossless"},
@@ -115,7 +136,7 @@ export VELA_PROJECT_ID='11111111-1111-4111-8111-111111111111'
 为这一个业务任务分配并持久化唯一幂等键。以下固定值仅用于演示一个任务；新任务必须换新值，重试同一个任务保持原值：
 
 ```bash
-export VELA_IDEMPOTENCY_KEY='relay-video-demo-20260916-0001'
+export VELA_IDEMPOTENCY_KEY='relay-video-demo-20260918-0001'
 
 curl --silent --show-error --fail-with-body \
   --connect-timeout 10 --max-time 30 \
@@ -133,7 +154,8 @@ curl --silent --show-error --fail-with-body \
 ```json
 {
   "job_id": "22222222-2222-4222-8222-222222222222",
-  "project_id": "11111111-1111-4111-8111-111111111111",
+  "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+  "model": "minimax-h3",
   "state": "QUEUED",
   "attempts_started": 0,
   "pricing": {
@@ -144,8 +166,8 @@ curl --silent --show-error --fail-with-body \
     "quoted_amount_minor": 100,
     "currency": "CNY"
   },
-  "job_expires_at": "2026-09-16T06:00:00Z",
-  "created_at": "2026-09-16T04:00:00Z"
+  "job_expires_at": "2026-09-18T06:10:00Z",
+  "created_at": "2026-09-18T04:00:00Z"
 }
 ```
 
@@ -159,22 +181,24 @@ curl --silent --show-error --fail-with-body \
 | `generation_preset` | 是 | Schema 支持 `quality`、`balanced`、`fast`；当前 Marslab 仅开通 `fast` |
 | `service_class` | 是 | 当前只接受 `standard` |
 | `output_spec` | 是 | 我方交付的输出规格标识；非空，最多 100 字节 |
-| `generation_count` | 是 | 整数，Schema 范围 1–16；初次联调使用 1，批量能力以交付配置为准 |
+| `generation_count` | 是 | 整数，Schema 范围 1–16；当前原生 H3 发布只支持 1。多个视频请分别提交 Job，每条使用独立幂等键 |
 | `prompt` | 是 | 1–20,000 个 Unicode 字符 |
 | `client_metadata` | 否 | JSON 对象；用于业务标识。其内容参与幂等比较，重试时保持不变 |
-| `h3` | 否 | H3 参数对象；省略时使用以下默认值 |
+| `h3` | 当前组合必填 | Schema 可省略，但当前原生 H3 必须通过此对象显式提供 `sampling`；其余字段可使用默认值 |
 
 | H3 字段 | 默认值 | 约束与含义 |
 | --- | --- | --- |
-| `h3.task` | `t2va` | `t2va` 文本生成；Schema 另接受 `ref2va`、`fl2va` 条件生成 |
+| `h3.task` | `t2va` | 当前已验收文本生成；Schema 中的 `ref2va`、`fl2va` 条件生成须另行交付和验收，不能从枚举推断已开通 |
 | `h3.seed` | 服务端派生 | 非负 int64。省略时根据幂等键和规范化生成参数派生；相同 seed 不代表不同环境下输出文件逐字节一致 |
 | `h3.target.short_edge` | `768` | 当前只接受 `768` |
-| `h3.target.aspect_ratio` | `16:9` | 与交付的输出规格匹配，不据此自行推导任意分辨率 |
-| `h3.target.duration_seconds` | `5` | 正数，与输出规格一致；H3 原生音视频规格的当前媒体契约为 4–15 秒、24fps，但仍需逐个开通规格 |
+| `h3.target.aspect_ratio` | `16:9` | 当前规格只接受 `16:9`，不据此自行推导任意分辨率 |
+| `h3.target.duration_seconds` | `5` | 当前规格只接受 `5`；其他时长须有对应已开通的规格 |
 | `h3.conditions` | 空 | `t2va` 必须为空；其他两种任务必须有条件输入，最多 64 项 |
 | `h3.sampling` | 随档位确定 | 当前原生音视频发布必须显式传 20 步、`lossless`，见下文 |
 
 当前 `h3-native-av-1344x768-5s-24fps` 使用固定的 20 步原生模型发布，请传 `"sampling":{"num_inference_steps":20,"quality":"lossless"}`。缺失或不匹配时返回 `400 invalid_request`，不会创建任务、占用额度或启动 Worker。已受理任务仍按原幂等记录重放。
+
+当前规格要求 `generation_count=1`、`short_edge=768`、`aspect_ratio=16:9`、`duration_seconds=5`；省略 target 时使用上述默认值。与规格不符时同样在受理前返回 `400 invalid_request`，不会静默改写参数或裁剪输出。不要把“批量提交多个 Job”实现为 `generation_count>1`。
 
 默认采样配置：`quality` 为 50 步/`lossless`，`balanced` 为 30 步/`high`，`fast` 为 20 步/`high`。Schema 允许显式传 `num_inference_steps`（1–10,000）、`quality`（`high`/`lossless`）及两种条件噪声参数（0–1 或 null）；这些是接口约束，不是任意采样配置的质量、耗时或容量承诺。
 
@@ -216,7 +240,8 @@ curl --silent --show-error --fail-with-body \
 
 按 `created_at DESC, job_id DESC` 排序。同一时间创建的任务也有确定顺序。
 翻页时保持项目、`active` 和 `state` 筛选条件不变；可以调整 `limit`。游标只表示
-翻页位置，不授予权限，每一页仍验证 `jobs:read` 和项目隔离。跨项目调用返回 `403`。
+翻页位置，不授予权限，每一页仍验证 `jobs:read` 和项目隔离。跨项目列表调用返回 `403`；任务详情和产物查询
+可以返回 `404` 隐藏资源存在性，不能因状态码不同就推断已授权。
 
 这是实时列表，不是冻结快照：翻页期间任务可能结束、重试或发生状态变化。
 新创建的任务需从不带游标的第一页刷新查看。仪表盘刷新时重新从第一页加载，
@@ -476,6 +501,21 @@ Vela-Signature: v1=<digest>
 6. 在约定的测试额度内验证执行前/执行后取消，核对 `billable`；执行后取消可能产生全额费用。
 7. 部署时让本地状态、任务映射和重试队列可恢复；给中转自己的用户实施任务归属校验、限流和配额。
 8. 如启用 Webhook，另验证签名、重复通知、重试和轮换，保留查询补偿。
+
+### 外部中转主机的只读预检
+
+两台入口均为内网 IP。部署在外部的中转服务需要已配置的内网连通路径和 `vela.marslab.ic` 域名解析；管理节点上的指定 IP 验收不能代替中转主机的实际连通测试。
+
+下载[接入预检脚本](../hack/verify-relay-external-access.py)，在中转服务实际运行的主机或容器中执行。沿用前文的 `VELA_BASE_URL`、`VELA_PROJECT_ID`、`VELA_API_KEY` 配置，另设置 CA 文件路径：
+
+```bash
+export VELA_CA_FILE='/path/to/marslab-root-ca.crt'
+python3 verify-relay-external-access.py --output vela-external-preflight.json
+```
+
+脚本只检查 DNS、严格 TLS、身份认证与 Jobs 列表，不创建任务或产生费用。需要核验一个已成功任务的完整文件时，可追加 `--job-id <JOB_ID> --download-directory ./vela-media-check`。用服务实际使用的 HTTP 客户端再完成联调；Python 预检通过不代表其他运行时也已验证。
+
+现有 CA 在 Python 3.14 默认严格 TLS 下会因缺少 Key Usage 被拒绝，macOS 原生验证还存在叶证书有效期过长的问题。遇到这些错误请联系平台处理证书重签；不要用 `verify=False` 或 `curl -k` 作为正式接入配置。证书与网络问题的证据见[最新验收报告](relay-api-full-validation-2026-09-17.md)。
 
 ## 附录：地址与契约依据
 

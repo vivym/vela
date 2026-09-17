@@ -1,7 +1,13 @@
 # 中转站项目接入与对账（2026-09-16）
 
+最后更新：2026-09-18。开发者接入使用[API 接入指南](api-integration.md)及其 OpenAPI；本文补充本项目配置与管理员对账操作。
+
+**当前正式模型名为 `minimax-h3`。现有永久 Key、Project ID 和 API 地址均可继续使用。** 旧名 `minimax-h3-live-validation` 保留独立路由；旧提交重试必须保留原模型名、完整请求体和幂等键，新业务任务才切换到正式名称。
+
 中转站使用独立的 Organization 和 Project。初始可用合同额度为 **¥1,000,000.00**，
 API Key 不自动过期，可由管理员撤销。创建及鉴权检查未产生新 Job 或 Charge。
+
+2026-09-17、2026-09-18 的两轮完整链路验收均使用本项目永久 Key，完成真实生成、完整音视频下载和账单 CSV 对账，各新增唯一 ¥1 成本，重试未重复收费。最新证据与外部接入边界见[全流程验证](relay-api-full-validation-2026-09-17.md)。
 
 ## 项目配置
 
@@ -9,6 +15,7 @@ API Key 不自动过期，可由管理员撤销。创建及鉴权检查未产生
 | --- | --- |
 | 项目名称 | `relay-station` |
 | API 地址 | `https://vela.marslab.ic/api` |
+| 正式模型名 | `minimax-h3` |
 | 两台入口 | `10.1.201.70:443`、`10.1.201.71:443`，以域名 SNI/Host 访问 |
 | Organization ID | `40f37967-d2e0-4028-a6ab-1c75eb243289` |
 | Project ID | `62275ddc-ae83-4ca1-b80c-313161264836` |
@@ -26,7 +33,7 @@ Charge 为准。结算通过财务核销流程回写，不删除历史 Charge �
 排队额度由本项目的所有 API Key、所有模型共同使用；不是每个 Key 各有 64 个。
 当前 H3 路由对应的每个阶段池队列上限为 128，不能将各阶段的数字相加作为任务容量。
 排队扩容不延长任务有效期：当前 `standard` 组合从受理起约 2 小时 10 分钟过期。
-批量请求使用 `minimax-h3`，收到 `429` 或 `503` 时按 `Retry-After` 退避并保留原幂等键。
+批量请求使用 `minimax-h3`，每个视频分别提交一个 `generation_count=1` 的 Job，并使用独立幂等键。收到 `429` 或 `503` 时按 `Retry-After` 退避，同一任务重试保留原幂等键。
 扩容配置、验证范围与回滚方法见[队列容量记录](h3-queue-capacity-2026-09-17.md)。
 
 实际 Key 不进入文档或 Git。私有交付文件：
@@ -57,7 +64,11 @@ Charge 为准。结算通过财务核销流程回写，不删除历史 Charge �
   "output_spec": "h3-native-av-1344x768-5s-24fps",
   "generation_count": 1,
   "prompt": "A cinematic view of a mountain lake at sunrise, with gentle water sounds.",
-  "h3": {"sampling": {"num_inference_steps": 20, "quality": "lossless"}},
+  "h3": {
+    "task": "t2va",
+    "target": {"short_edge": 768, "aspect_ratio": "16:9", "duration_seconds": 5},
+    "sampling": {"num_inference_steps": 20, "quality": "lossless"}
+  },
   "client_metadata": {"relay_order_id": "your-durable-order-id"}
 }
 ```
@@ -66,6 +77,8 @@ Charge 为准。结算通过财务核销流程回写，不删除历史 Charge �
 加上 API 根地址；请求头需要 `Authorization: Bearer …` 和持久化的 `Idempotency-Key`。
 收到 `202` 后保存 `job_id` 和完整报价，并按 [API 接入指南](api-integration.md) 查询和下载。
 当前示例组合报价为 ¥1.00/条，实际以每次受理返回的 PricingSnapshot 为准。
+
+当前规格仅接受单结果、768 短边、16:9、5 秒和显式 20 步/lossless 采样。target 可省略并采用这组默认值；`h3.sampling` 必须传。数量、时长或画幅不匹配时返回 `400 invalid_request`，不创建 Job 或占用额度。不要从通用 Schema 范围推断其他组合已开通。
 
 API 与新签名下载地址均使用 `https://vela.marslab.ic`；DNS 由用户配置到 `.70/.71`。
 域名入口已通过指定 IP 的双节点验收。客户端需信任 MARSLAB Root CA；现有泛域名
@@ -112,7 +125,7 @@ sudo python3 /opt/vela-cluster/relay-station-20260916/export-reconciliation.py \
 这不是开票系统：外部 Invoice 自动导出和结算回写尚未接入，当前可用 CSV 与中转账单核对。
 
 仓库脚本：[export-project-reconciliation.py](../hack/export-project-reconciliation.py)。
-已验证新项目导出 0 笔，以及既有验收项目导出唯一一笔 100 minor CNY；后者不计入中转项目。
+2026-09-16 创建时验证过本项目空账单及独立验收项目账单。2026-09-18 最新真实中转任务 `3278edc6-0b5a-49e4-aa26-38d86097786d` 已导出唯一一笔 `100` minor CNY，计入本中转项目；[逐笔对账回执](evidence/relay-api-native-contract-20260918/relay-reconciliation.json)包含 Job/Charge/ArtifactSet 的对应关系。初始空账单不代表当前无消费。
 
 ## 永久 Key 的实现与验证
 

@@ -1,0 +1,235 @@
+diff --git a/cmd/vela-fleet-retire-unstarted/main.go b/cmd/vela-fleet-retire-unstarted/main.go
+index 858c584..49d9d25 100644
+--- a/cmd/vela-fleet-retire-unstarted/main.go
++++ b/cmd/vela-fleet-retire-unstarted/main.go
+@@ -120,13 +120,13 @@ func validateUnstarted(live, desired corev1.Pod, uid types.UID) error {
+ 		len(live.Status.EphemeralContainerStatuses) != 0 ||
+ 		!slices.Equal(live.Spec.SchedulingGates, []corev1.PodSchedulingGate{{Name: runtimelaunch.Gate}}) ||
+ 		!slices.Equal(live.Finalizers, []string{fleetcontract.ProtectionFinalizer}) {
+-		return fmt.Errorf("Pod %s is not the pinned, protected, unstarted instance", live.Name)
++		return fmt.Errorf("pod %s is not the pinned, protected, unstarted instance", live.Name)
+ 	}
+ 	// A prior accepted DELETE may have left only the protected finalizer.
+ 	live.DeletionTimestamp = nil
+ 	live.DeletionGracePeriodSeconds = nil
+ 	if !fleetcontroller.WorkerInstancePodMatches(live, desired) {
+-		return fmt.Errorf("Pod %s differs from the withdrawn plan", live.Name)
++		return fmt.Errorf("pod %s differs from the withdrawn plan", live.Name)
+ 	}
+ 	return nil
+ }
+@@ -142,7 +142,7 @@ func retire(ctx context.Context, pods typedcore.PodInterface, desired corev1.Pod
+ 	if live.DeletionTimestamp == nil {
+ 		rv := live.ResourceVersion
+ 		if err := pods.Delete(ctx, desired.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid, ResourceVersion: &rv}}); err != nil {
+-			return fmt.Errorf("Registry-authorized DELETE: %w", err)
++			return fmt.Errorf("registry-authorized DELETE: %w", err)
+ 		}
+ 	}
+ 	live, err = pods.Get(ctx, desired.Name, metav1.GetOptions{})
+@@ -164,7 +164,7 @@ func retire(ctx context.Context, pods typedcore.PodInterface, desired corev1.Pod
+ 		return err
+ 	}
+ 	if _, err := pods.Patch(ctx, desired.Name, types.JSONPatchType, patch, metav1.PatchOptions{}); err != nil {
+-		return fmt.Errorf("Registry-authorized finalizer removal: %w", err)
++		return fmt.Errorf("registry-authorized finalizer removal: %w", err)
+ 	}
+ 	for {
+ 		_, err := pods.Get(ctx, desired.Name, metav1.GetOptions{})
+diff --git a/cmd/vela-stage-worker-agent/runtime_journal.go b/cmd/vela-stage-worker-agent/runtime_journal.go
+index 8db6c02..f4ab48f 100644
+--- a/cmd/vela-stage-worker-agent/runtime_journal.go
++++ b/cmd/vela-stage-worker-agent/runtime_journal.go
+@@ -1,3 +1,5 @@
++//go:build linux
++
+ package main
+ 
+ import (
+diff --git a/cmd/vela-stage-worker-agent/runtime_journal_other.go b/cmd/vela-stage-worker-agent/runtime_journal_other.go
+index a8cdf68..e14590b 100644
+--- a/cmd/vela-stage-worker-agent/runtime_journal_other.go
++++ b/cmd/vela-stage-worker-agent/runtime_journal_other.go
+@@ -9,5 +9,5 @@ import (
+ )
+ 
+ func newRuntimeJournalWriter(config, *durableWorkerLaunch) (modelruntime.JournalCommandWriter, error) {
+-	return nil, errors.New("Node-owned Runtime journal transport requires Linux")
++	return nil, errors.New("node-owned Runtime journal transport requires Linux")
+ }
+diff --git a/internal/admission/native_h3_test.go b/internal/admission/native_h3_test.go
+index 1f8458e..d006a6d 100644
+--- a/internal/admission/native_h3_test.go
++++ b/internal/admission/native_h3_test.go
+@@ -29,3 +29,31 @@ func TestNativeH3RejectsUnsupportedSamplingBeforeWorkerAssignment(t *testing.T)
+ 		})
+ 	}
+ }
++
++func TestNativeH3RejectsOutputContractMismatch(t *testing.T) {
++	for _, test := range []struct {
++		name     string
++		count    int32
++		duration float64
++		aspect   string
++		valid    bool
++	}{
++		{"certified", 1, 5, "16:9", true},
++		{"multiple outputs", 2, 5, "16:9", false},
++		{"longer duration", 1, 10, "16:9", false},
++		{"shorter duration", 1, 4, "16:9", false},
++		{"portrait", 1, 5, "9:16", false},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			request := Request{Model: "minimax-h3", GenerationPreset: "fast", ServiceClass: "standard", OutputSpec: "h3-native-av-1344x768-5s-24fps", GenerationCount: test.count, Prompt: "lake", H3: &h3request.Request{Target: h3request.Target{AspectRatio: test.aspect, DurationSeconds: &test.duration}, Sampling: h3request.Sampling{NumInferenceSteps: 20, Quality: "lossless"}}}
++			content, _, err := canonicalRequest(request, "native-contract-test")
++			if err != nil {
++				t.Fatal(err)
++			}
++			err = validateNativeH3Request(request, content)
++			if (err == nil) != test.valid {
++				t.Fatalf("validation=%v, want valid=%v", err, test.valid)
++			}
++		})
++	}
++}
+diff --git a/internal/admission/service.go b/internal/admission/service.go
+index e46f68b..c634e03 100644
+--- a/internal/admission/service.go
++++ b/internal/admission/service.go
+@@ -692,6 +692,19 @@ func validateNativeH3Request(request Request, content []byte) error {
+ 	if err := json.Unmarshal(content, &frozen); err != nil {
+ 		return err
+ 	}
++	// This certified release has one video/thumbnail output pair. The frozen
++	// target must match its OutputSpec; passing through other values would
++	// accept work that cannot satisfy Visible Completion.
++	if request.GenerationCount != 1 {
++		return failure(FailureCodeInvalidRequest,
++			"this native H3 release requires generation_count=1; submit separate jobs for multiple videos", 0)
++	}
++	target := frozen.H3.Parameters.CanonicalRequest.Target
++	if target.ShortEdge != 768 || target.AspectRatio != "16:9" ||
++		target.DurationSeconds == nil || *target.DurationSeconds != 5 {
++		return failure(FailureCodeInvalidRequest,
++			"this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5", 0)
++	}
+ 	sampling := frozen.H3.Parameters.Sampling
+ 	if sampling.NumInferenceSteps != 20 || sampling.Quality != "lossless" {
+ 		return failure(FailureCodeInvalidRequest,
+diff --git a/internal/integration/native_h3_admission_test.go b/internal/integration/native_h3_admission_test.go
+index fe5d4d3..efa9264 100644
+--- a/internal/integration/native_h3_admission_test.go
++++ b/internal/integration/native_h3_admission_test.go
+@@ -3,6 +3,7 @@
+ package integration_test
+ 
+ import (
++	"fmt"
+ 	"net/http"
+ 	"strings"
+ 	"testing"
+@@ -22,3 +23,51 @@ func TestAdmissionRejectsUnsupportedNativeSamplingWithoutEffects(t *testing.T) {
+ 		t.Fatalf("rejected request left jobs/reservations/idempotency=%d/%d/%d", jobs, reservations, idempotency)
+ 	}
+ }
++
++func TestNativeH3OutputContractRejectsWithoutEffectsAndAcceptsDefaults(t *testing.T) {
++	server, admin := newAdmissionServer(t)
++	// Add a real native SKU so invalid_sku cannot mask a missing request guard.
++	if _, err := admin.Exec(`
++ INSERT INTO output_specs(id,stable_id,revision,state,width,height,duration_milliseconds,frame_rate_milli,codec,media_contract)
++ VALUES ('99000000-0000-0000-0000-000000000001','h3-native-av-1344x768-5s-24fps',1,'ACTIVE',1344,768,5000,24000,'h264','h3-native-av-v1');
++ INSERT INTO rate_card_lines(id,rate_card_revision_id,model_revision_id,generation_preset_revision_id,service_class_revision_id,output_spec_id,unit_amount_minor,currency)
++ SELECT '99000000-0000-0000-0000-000000000002',rate_card_revision_id,model_revision_id,generation_preset_revision_id,service_class_revision_id,'99000000-0000-0000-0000-000000000001',unit_amount_minor,currency FROM rate_card_lines WHERE id='00000000-0000-0000-0000-000000000017';
++ INSERT INTO profile_certifications(id,model_revision_id,generation_preset_revision_id,output_spec_id,execution_profile_revision_id,state,evidence_digest,certified_at)
++ SELECT '99000000-0000-0000-0000-000000000003',model_revision_id,generation_preset_revision_id,'99000000-0000-0000-0000-000000000001',execution_profile_revision_id,'ACTIVE',evidence_digest,certified_at FROM profile_certifications WHERE state='ACTIVE' LIMIT 1;
++ `); err != nil {
++		t.Fatal(err)
++	}
++	for _, test := range []struct {
++		name    string
++		count   int
++		target  string
++		message string
++	}{
++		{"batch", 2, `{}`, "generation_count=1"},
++		{"ten-seconds", 1, `{"duration_seconds":10}`, "duration_seconds=5"},
++		{"four-seconds", 1, `{"duration_seconds":4}`, "duration_seconds=5"},
++		{"portrait", 1, `{"aspect_ratio":"9:16"}`, "aspect_ratio=16:9"},
++	} {
++		t.Run(test.name, func(t *testing.T) {
++			body := []byte(fmt.Sprintf(`{"model":"minimax-h3","generation_preset":"balanced","service_class":"standard","output_spec":"h3-native-av-1344x768-5s-24fps","generation_count":%d,"prompt":"lake","h3":{"target":%s,"sampling":{"num_inference_steps":20,"quality":"lossless"}}}`, test.count, test.target))
++			response := submitJob(t, server.URL, "native-contract-"+test.name, body)
++			if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(response.Body), `"invalid_request"`) || !strings.Contains(string(response.Body), test.message) {
++				t.Fatalf("response=%d %s", response.StatusCode, response.Body)
++			}
++			assertNoAdmissionEffects(t, admin)
++			var keys int
++			if err := admin.QueryRow(`SELECT count(*) FROM idempotency_results`).Scan(&keys); err != nil || keys != 0 {
++				t.Fatalf("idempotency=%d err=%v", keys, err)
++			}
++		})
++	}
++	body := []byte(`{"model":"minimax-h3","generation_preset":"balanced","service_class":"standard","output_spec":"h3-native-av-1344x768-5s-24fps","generation_count":1,"prompt":"lake","h3":{"sampling":{"num_inference_steps":20,"quality":"lossless"}}}`)
++	accepted := submitJob(t, server.URL, "native-valid", body)
++	if accepted.StatusCode != http.StatusAccepted {
++		t.Fatalf("valid native request=%d %s", accepted.StatusCode, accepted.Body)
++	}
++	replay := submitJob(t, server.URL, "native-valid", body)
++	if replay.StatusCode != http.StatusAccepted || string(replay.Body) != string(accepted.Body) {
++		t.Fatalf("replay=%d %s accepted=%s", replay.StatusCode, replay.Body, accepted.Body)
++	}
++}
+diff --git a/internal/modelruntime/journal_floor_replay_test.go b/internal/modelruntime/journal_floor_replay_test.go
+index 2cc12c4..2400bd6 100644
+--- a/internal/modelruntime/journal_floor_replay_test.go
++++ b/internal/modelruntime/journal_floor_replay_test.go
+@@ -45,7 +45,11 @@ func TestJournalOwnerFloorRefreshedRecovery(t *testing.T) {
+ 				if err != nil {
+ 					t.Fatal(err)
+ 				}
+-				defer owner.Close()
++				t.Cleanup(func() {
++					if err := owner.Close(); err != nil {
++						t.Error(err)
++					}
++				})
+ 			}
+ 			f.clock.Advance(time.Second)
+ 			refreshed := proto.Clone(d).(*velav1.StageTerminalDisposition)
+diff --git a/internal/modelruntime/journal_worker_client.go b/internal/modelruntime/journal_worker_client.go
+index 779aa45..261cda4 100644
+--- a/internal/modelruntime/journal_worker_client.go
++++ b/internal/modelruntime/journal_worker_client.go
+@@ -53,7 +53,7 @@ func (client *journalWorkerClient) CheckpointStageNonAdmission(ctx context.Conte
+ 			// definite rejection into a transport failure that blocks real drain.
+ 			// Inspection validates the scope and supplies only persisted proof;
+ 			// uncertainty (including mixed errors) must still stop recovery.
+-			read, readErr := client.ModelRuntimeServiceClient.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: request.GetScope()}, opts...)
++			read, readErr := client.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+ 			if readErr != nil {
+ 				return nil, readErr
+ 			}
+@@ -78,7 +78,7 @@ func (client *journalWorkerClient) CheckpointStageTerminalNonAdmission(ctx conte
+ 	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, TerminalNonAdmission: &JournalTerminalNonAdmissionCommand{
+ 		Disposition: wire, Allocation: request.GetScope().GetStageAllocationId()}}); err != nil {
+ 		if err == ErrJournalRejected {
+-			read, readErr := client.ModelRuntimeServiceClient.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: request.GetScope()}, opts...)
++			read, readErr := client.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+ 			if readErr != nil {
+ 				return nil, readErr
+ 			}
+diff --git a/internal/workerbootstrap/bootstrap.go b/internal/workerbootstrap/bootstrap.go
+index 00c654e..a03e3dc 100644
+--- a/internal/workerbootstrap/bootstrap.go
++++ b/internal/workerbootstrap/bootstrap.go
+@@ -210,7 +210,7 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
+ 
+ func bind(config Config) (preparation, error) {
+ 	if config.Bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol && config.MaxRecords != runtimelaunch.AssignmentMaxRecords {
+-		return preparation{}, fmt.Errorf("Kubernetes worker journal record limit must be %d", runtimelaunch.AssignmentMaxRecords)
++		return preparation{}, fmt.Errorf("kubernetes worker journal record limit must be %d", runtimelaunch.AssignmentMaxRecords)
+ 	}
+ 
+ 	if config.Validator == nil || config.MaxRecords < 1 || config.MaxRecords > 64 ||

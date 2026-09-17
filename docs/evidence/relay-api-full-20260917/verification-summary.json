@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "at": "2026-09-17T15:46:52.289245+00:00",
+  "platform_business_flow_passed": true,
+  "external_relay_host_validated": false,
+  "modern_strict_ca_compatibility_passed": false,
+  "local_checks": {
+    "go_test_all": 0,
+    "go_build_all": 0,
+    "make_lint": 0,
+    "linux_amd64_worker_build": 0,
+    "integration_tests": 37,
+    "python_flow_tests": 8,
+    "installed_driver_contract_tests": 3,
+    "openapi_export_check": 0
+  },
+  "runtime_build": "deployed V10 images unchanged; local lint-only fixes were not deployed",
+  "external_dependencies": [
+    "relay host network, DNS and trusted CA",
+    "MARSLAB CA correction for Python 3.14 default strict validation"
+  ],
+  "notes": [
+    "First full surface campaign 173 HTTP checks, resumed terminal campaign 127; includes polling.",
+    "Relay real Key one successful new Job and one CNY 100 minor charge; retail billing owned by external relay is not tested."
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "python": "3.12.11",
+  "openssl": "OpenSSL 3.0.16 11 Feb 2025",
+  "verify_flags": 32768,
+  "hostname": "vela.marslab.ic",
+  "transport": "SSH TCP forwarding to .70:443",
+  "response_status": "HTTP/1.1 401 Unauthorized",
+  "tls_verified": true
+}

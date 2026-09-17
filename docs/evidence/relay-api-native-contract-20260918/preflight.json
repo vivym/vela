@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-17T16:00:09.311774+00:00",
+  "base_image": "10.1.201.70:5005/vela-control@sha256:d3be381e273ec2b6dceaec4d5529c3fb6b050ce7a081f7b599d9e0d303c0ba33",
+  "replicas": 2,
+  "available": 2,
+  "strategy": {
+    "rollingUpdate": {
+      "maxSurge": 0,
+      "maxUnavailable": 1
+    },
+    "type": "RollingUpdate"
+  },
+  "schema": 111,
+  "nonterminal_jobs": 0,
+  "base_binary_sha256": "2758948ae5b42bbe68e6ff7e05409a027348f13ee09b5b7344e89f49fece8c1e"
+}

@@ -1,0 +1,67 @@
+{
+  "at": "2026-09-17T15:37:48.202029+00:00",
+  "passed": true,
+  "credential_metadata": [
+    {
+      "id": "3cf54270-5349-462b-b206-d57bcdb67ee2",
+      "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "scopes": [
+        "artifacts:read",
+        "jobs:cancel",
+        "jobs:read",
+        "jobs:submit"
+      ],
+      "expires_at": "infinity",
+      "revoked_at": null
+    }
+  ],
+  "project": [
+    {
+      "id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "queued_limit": 64,
+      "running_limit": 8
+    }
+  ],
+  "management_denied": [
+    {
+      "gateway": "10.1.201.70",
+      "path": "/v1/projects/62275ddc-ae83-4ca1-b80c-313161264836/service-principals",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.70",
+      "path": "/v1/projects/62275ddc-ae83-4ca1-b80c-313161264836/webhook-subscriptions",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.70",
+      "path": "/v1/organizations/40f37967-d2e0-4028-a6ab-1c75eb243289/billing/credit",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.70",
+      "path": "/v1/organizations/40f37967-d2e0-4028-a6ab-1c75eb243289/billing/charges",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.71",
+      "path": "/v1/projects/62275ddc-ae83-4ca1-b80c-313161264836/service-principals",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.71",
+      "path": "/v1/projects/62275ddc-ae83-4ca1-b80c-313161264836/webhook-subscriptions",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.71",
+      "path": "/v1/organizations/40f37967-d2e0-4028-a6ab-1c75eb243289/billing/credit",
+      "status": 403
+    },
+    {
+      "gateway": "10.1.201.71",
+      "path": "/v1/organizations/40f37967-d2e0-4028-a6ab-1c75eb243289/billing/charges",
+      "status": 403
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "relay_order_id": "relay-integration-20260917-full",
+  "job_id": "be2f655f-0027-4171-95cd-2124bf59655f",
+  "charge": {
+    "charge_id": "677b6c00-679e-47e3-bb7a-3daf48031523",
+    "job_id": "be2f655f-0027-4171-95cd-2124bf59655f",
+    "artifact_set_id": "c66d912f-cbca-429f-82a0-9948f56b921c",
+    "reason": "VISIBLE_COMPLETION",
+    "state": "POSTED",
+    "currency": "CNY",
+    "amount_minor": "100",
+    "posted_at": "2026-09-17T15:36:22.291795+00:00"
+  },
+  "campaign_amount_minor": 100,
+  "currency": "CNY",
+  "export_charge_count": 1,
+  "export_total_amount_minor": 100,
+  "export_csv_sha256": "2d4636698890f671c20910416084795691a6bf05e8f39b6a0ed920825ddb5f2f",
+  "available_credit_minor": 99999300,
+  "interval_start": "2026-09-17T15:29:02.967216Z",
+  "interval_end_exclusive": "2026-09-17T15:40:08.250632+00:00"
+}

@@ -1,0 +1,66 @@
+{
+  "project": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+  "request_sha256": "9a7354d9aa63f47d531c887ae1893729bc5f7bb13f5cf7890dd6c6596f93b919",
+  "keys": {
+    "success": "api-surface-success-2d081909-3838-4dd4-ada5-49cec5e4e26c",
+    "cancel": "api-surface-cancel-7ff138c6-b937-46d9-9a55-9ed0007bef77"
+  },
+  "success": {
+    "job_id": "b8b243c4-6d18-450d-8cbc-77ef09c699b8",
+    "request": {
+      "model": "minimax-h3",
+      "generation_preset": "fast",
+      "service_class": "standard",
+      "output_spec": "h3-native-av-1344x768-5s-24fps",
+      "generation_count": 1,
+      "prompt": "A blue sailboat glides across a calm lake at sunrise, with gentle water sounds and birds singing. Cinematic wide shot. Unique campaign c5e4e26c.",
+      "h3": {
+        "sampling": {
+          "num_inference_steps": 20,
+          "quality": "lossless"
+        }
+      },
+      "client_metadata": {
+        "campaign": "api-surface",
+        "scenario": "success"
+      }
+    },
+    "pricing": {
+      "currency": "CNY",
+      "quantity": 1,
+      "quoted_amount_minor": 100,
+      "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+      "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+      "unit_amount_minor": 100
+    }
+  },
+  "cancel": {
+    "job_id": "73bb2ca8-ab3a-4749-9c7f-3d9f755a57b6",
+    "request": {
+      "model": "minimax-h3",
+      "generation_preset": "fast",
+      "service_class": "standard",
+      "output_spec": "h3-native-av-1344x768-5s-24fps",
+      "generation_count": 1,
+      "prompt": "A blue sailboat glides across a calm lake at sunrise, with gentle water sounds and birds singing. Cinematic wide shot. Unique campaign 007bef77.",
+      "h3": {
+        "sampling": {
+          "num_inference_steps": 20,
+          "quality": "lossless"
+        }
+      },
+      "client_metadata": {
+        "campaign": "api-surface",
+        "scenario": "cancel"
+      }
+    },
+    "pricing": {
+      "currency": "CNY",
+      "quantity": 1,
+      "quoted_amount_minor": 100,
+      "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+      "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+      "unit_amount_minor": 100
+    }
+  }
+}

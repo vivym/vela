@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "production_gate_evidence": false,
+  "checks": [
+    "anonymous_api_denied",
+    "idempotent_submission",
+    "complete_video_and_audio_download",
+    "one_durable_charge",
+    "no_duplicate_charge_on_replay"
+  ],
+  "scope": "real-job-video-and-durable-charge",
+  "submission": {
+    "http_status": 202,
+    "response": {
+      "attempts_started": 1,
+      "created_at": "2026-09-17T16:07:53.309985Z",
+      "job_expires_at": "2026-09-17T18:17:53.219293Z",
+      "job_id": "3278edc6-0b5a-49e4-aa26-38d86097786d",
+      "model": "minimax-h3",
+      "phase": "QUEUED",
+      "pricing": {
+        "currency": "CNY",
+        "quantity": 1,
+        "quoted_amount_minor": 100,
+        "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+        "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+        "unit_amount_minor": 100
+      },
+      "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "state": "QUEUED"
+    }
+  },
+  "job_id": "3278edc6-0b5a-49e4-aa26-38d86097786d",
+  "artifacts": [
+    {
+      "artifact_id": "5b0072fa-9782-567c-91ce-2e76115c33a7",
+      "content_type": "video/mp4",
+      "kind": "VIDEO",
+      "media": {
+        "audio": {
+          "channels": 2,
+          "codec": "aac",
+          "duration_milliseconds": 5175,
+          "sample_rate": 32000
+        },
+        "container_duration_milliseconds": 5175,
+        "duration_milliseconds": 5167,
+        "frame_count": 124,
+        "frame_rate_milli": 24000,
+        "requested_duration_milliseconds": 5000
+      },
+      "object_version_id": "edcf50f8-2135-4572-9591-c739af17c8f6",
+      "ordinal": 0,
+      "sha256": "7abd7a111f4e7063b460019c0f07b21b7341579eea15924705bed17c06c0f08a",
+      "size_bytes": 929222
+    },
+    {
+      "artifact_id": "86e284c7-dc77-557d-934f-c7240336a1ca",
+      "content_type": "image/webp",
+      "kind": "THUMBNAIL",
+      "object_version_id": "b40a889c-b128-4680-ac71-82e97fa30811",
+      "ordinal": 0,
+      "sha256": "a87105fbc3b7a5c40034466f15316e91af7331fa122653e2b0a01e7de3ca7b78",
+      "size_bytes": 6106
+    }
+  ],
+  "billing": {
+    "job_id": "3278edc6-0b5a-49e4-aa26-38d86097786d",
+    "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+    "state": "SUCCEEDED",
+    "billable_started_at": "2026-09-17T16:07:58.438125+00:00",
+    "charge_count": 1,
+    "charge": {
+      "id": "25fc787e-8b45-4896-bfc1-3b2b9a01e5d8",
+      "organization_id": "40f37967-d2e0-4028-a6ab-1c75eb243289",
+      "project_id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "job_id": "3278edc6-0b5a-49e4-aa26-38d86097786d",
+      "credit_reservation_id": "e04c06b0-d40c-40e6-8254-31c5c9e36cfc",
+      "cancellation_id": null,
+      "reason": "VISIBLE_COMPLETION",
+      "amount_minor": 100,
+      "currency": "CNY",
+      "state": "POSTED",
+      "posted_at": "2026-09-17T16:15:16.61662+00:00",
+      "created_at": "2026-09-17T16:15:16.633342+00:00",
+      "artifact_set_id": "e1e47176-e2b8-4ac6-9552-6bd88ab78195"
+    },
+    "visible_completion_count": 1,
+    "artifact_set_count": 1,
+    "artifact_set_id": "e1e47176-e2b8-4ac6-9552-6bd88ab78195",
+    "idempotency_count": 1,
+    "reservation_state": "CONSUMED",
+    "reservation_amount_minor": 100,
+    "account_reserved_minor": 0,
+    "sum_reserved_minor": 0
+  }
+}

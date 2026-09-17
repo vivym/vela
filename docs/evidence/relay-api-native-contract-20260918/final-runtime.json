@@ -1,0 +1,275 @@
+{
+  "at": "2026-09-17T16:18:31.545617+00:00",
+  "passed": true,
+  "workers": [
+    {
+      "worker": "30e2c90c-6a29-577b-9160-725241c989e5",
+      "role": "encoder",
+      "node": "server-31",
+      "ip": "10.1.201.13",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c",
+      "role": "dit",
+      "node": "server-41",
+      "ip": "10.1.201.14",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "b52d0da1-9959-5463-b90a-a77ede47dac3",
+      "role": "dit",
+      "node": "server-34",
+      "ip": "10.1.201.15",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "07e0208a-3b4c-5e91-aae2-303ec11f80a7",
+      "role": "dit",
+      "node": "server-39",
+      "ip": "10.1.201.16",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "3cf714c1-fb47-5782-abc2-ddaf3634df82",
+      "role": "dit",
+      "node": "server-10",
+      "ip": "10.1.201.17",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "6ba8cfdd-862d-5d95-8448-62e3f0b39749",
+      "role": "dit",
+      "node": "server-38",
+      "ip": "10.1.201.18",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "328bb68e-a10d-5dd0-9310-ebe2fb78cb33",
+      "role": "dit",
+      "node": "server-42",
+      "ip": "10.1.201.20",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "a058c5e3-387f-5e30-b29e-fb320b9fb14a",
+      "role": "dit",
+      "node": "server-14",
+      "ip": "10.1.201.21",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "5c968d7d-44c7-58fd-92b2-4df571d9ae66",
+      "role": "dit",
+      "node": "server-28",
+      "ip": "10.1.201.22",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "634d5f09-fbd5-557e-9489-cc123e7afdf2",
+      "role": "vae",
+      "node": "server-33",
+      "ip": "10.1.201.23",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    },
+    {
+      "worker": "05600818-79e0-51d1-badf-8ccafd71c5c1",
+      "role": "vae",
+      "node": "server-29",
+      "ip": "10.1.201.24",
+      "actual_import": {
+        "file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/driver.py",
+        "sha256": "4c3df85e0e2bf14556d635e1a3bc5539e0a8be8731fe1f2f0f2e40a6dbaa859e"
+      },
+      "binary_sha256": "177d5598a863beefc514105b978a13634e6f35a78114658c8259ac8c76c75833",
+      "service": "NRestarts=0\nActiveState=active\nUnitFileState=enabled\n",
+      "images": {
+        "model-runtime": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95",
+        "stage-worker-agent": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+      }
+    }
+  ],
+  "registry": [
+    {
+      "id": "5c968d7d-44c7-58fd-92b2-4df571d9ae66",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "3cf714c1-fb47-5782-abc2-ddaf3634df82",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "a058c5e3-387f-5e30-b29e-fb320b9fb14a",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "05600818-79e0-51d1-badf-8ccafd71c5c1",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "328bb68e-a10d-5dd0-9310-ebe2fb78cb33",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "634d5f09-fbd5-557e-9489-cc123e7afdf2",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "6ba8cfdd-862d-5d95-8448-62e3f0b39749",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "b52d0da1-9959-5463-b90a-a77ede47dac3",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "30e2c90c-6a29-577b-9160-725241c989e5",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    },
+    {
+      "id": "07e0208a-3b4c-5e91-aae2-303ec11f80a7",
+      "lifecycle_state": "READY",
+      "reachability_state": "CONNECTED"
+    }
+  ],
+  "pools": [
+    {
+      "id": "ac0ce78c-2c4d-5c2c-810b-b5df4f05b40c",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+      "max_ready_queue_depth": 128
+    }
+  ],
+  "relay_project": [
+    {
+      "id": "62275ddc-ae83-4ca1-b80c-313161264836",
+      "queued_limit": 64,
+      "queued_count": 0,
+      "retry_wait_count": 0,
+      "running_limit": 8,
+      "running_count": 0
+    }
+  ],
+  "routes": [
+    {
+      "model_revision_id": "ef0ee53d-4dd7-5f64-9fb8-b9e5f5c4cfc5",
+      "cutover_revision_id": "9eee563b-c970-5ef7-a594-3745967f5a12"
+    },
+    {
+      "model_revision_id": "217c75f1-2f5e-547f-be1d-4e117da9e7e2",
+      "cutover_revision_id": "150668d8-0575-556c-ac8a-94e241833664"
+    }
+  ],
+  "nonterminal_jobs": [],
+  "active_allocations": []
+}

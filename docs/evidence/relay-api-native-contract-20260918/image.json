@@ -1,0 +1,6 @@
+{
+  "image": "10.1.201.70:5005/vela-control@sha256:1d37a552afd346ae4db373ef392edb195ce4c558e2f20a50e532e4abcfe13664",
+  "index_image": "10.1.201.70:5005/vela-control@sha256:3266e44ea825e2dfcfe80a2ada5fcbbff1457e8101ebbb6c1fabf2bc41222526",
+  "base_image": "10.1.201.70:5005/vela-control@sha256:d3be381e273ec2b6dceaec4d5529c3fb6b050ce7a081f7b599d9e0d303c0ba33",
+  "binary_sha256": "5c6d7d854329e656663176ddca66a0226336044a954f5e57f8fac1964444c928"
+}

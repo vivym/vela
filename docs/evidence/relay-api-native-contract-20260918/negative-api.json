@@ -1,0 +1,246 @@
+{
+  "at": "2026-09-17T16:07:04.376712+00:00",
+  "passed": true,
+  "before": {
+    "jobs": 9,
+    "keys": 9,
+    "reservations": 9,
+    "charges": 9
+  },
+  "checks": [
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-2229d4cd-8a6f-4f20-9525-51ac7322968b"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "max-batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-841941f7-b398-4ec9-a065-a79326f74e7c"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "long",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-4e2f2b9d-053b-45dd-9c00-604944751717"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "short",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-3e48e001-6eb2-448d-ac82-56c5805a10fe"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "near-duration",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-1f1deda1-4f63-4b05-90c2-772b5d0b9fd4"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3",
+      "case": "portrait",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-d568e2bc-bf16-4bca-8197-95b9338bf44a"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-fe09d5fc-e30f-4527-8025-6ff36643d0fa"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "max-batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-c29ee926-8f3b-4640-a149-31170349f9c8"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "long",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-39bfb897-d3f3-446f-aa0d-978b2ab25799"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "short",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-fd9b0577-5cc9-49cb-bd53-cc29860da94a"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "near-duration",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-4f85a9e9-ea5a-4246-87a2-0d54c8aefd23"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "model": "minimax-h3-live-validation",
+      "case": "portrait",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-074fca5b-368c-4c7b-bcea-cdf713c1bbb6"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-42043259-737d-4e7f-9b65-b2adfd7fd83f"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "max-batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-f6a63922-16d5-4805-aff0-b7aef3559acb"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "long",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-9f4689a0-963b-4999-ba1a-2d1b1e070fcc"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "short",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-15da0fdc-624f-4725-aaed-ff891467405d"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "near-duration",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-3e3b7a2f-daa7-48fe-9ee5-35529f662652"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3",
+      "case": "portrait",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-7482d76e-db20-4e46-b092-705779b477f8"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-723c1291-1d68-4b48-b313-287160ea79ed"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "max-batch",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires generation_count=1; submit separate jobs for multiple videos",
+      "idempotency_key": "native-negative-2ee0a2c6-6ef3-4baa-ade3-91daa1ac7fe4"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "long",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-6a6a4c4b-0bc8-4ac7-a0b0-7c045e2f06af"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "short",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-bf0e4b60-5886-4b17-94ea-c8bd93ac82b4"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "near-duration",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-0cf12735-6bd6-4320-ac43-104198eb3e0c"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "model": "minimax-h3-live-validation",
+      "case": "portrait",
+      "status": 400,
+      "code": "invalid_request",
+      "message": "this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5",
+      "idempotency_key": "native-negative-cdfdc384-c9e1-4e8c-8106-a45987fb98e2"
+    },
+    {
+      "gateway": "10.1.201.70",
+      "case": "historical-relay-replay",
+      "status": 202,
+      "job_id": "be2f655f-0027-4171-95cd-2124bf59655f"
+    },
+    {
+      "gateway": "10.1.201.71",
+      "case": "historical-relay-replay",
+      "status": 202,
+      "job_id": "be2f655f-0027-4171-95cd-2124bf59655f"
+    }
+  ],
+  "after": {
+    "jobs": 9,
+    "keys": 9,
+    "reservations": 9,
+    "charges": 9
+  }
+}

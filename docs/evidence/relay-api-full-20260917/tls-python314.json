@@ -1,0 +1,9 @@
+{
+  "python": "3.14.7",
+  "openssl": "OpenSSL 3.6.4 25 Aug 2026",
+  "verify_flags": 557088,
+  "hostname": "vela.marslab.ic",
+  "transport": "SSH TCP forwarding to .70:443",
+  "tls_verified": false,
+  "error": "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: CA cert does not include key usage extension (_ssl.c:1082)"
+}
