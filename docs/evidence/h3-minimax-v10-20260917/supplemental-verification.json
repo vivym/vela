@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "checks": [
+    "anonymous_access_401",
+    "canceled_job_one_exact_frozen_price_charge_no_completion",
+    "second_complete_video_audio_thumbnail",
+    "second_same_key_replay_no_duplicate_charge",
+    "second_different_payload_409",
+    "third_complete_video_audio_thumbnail",
+    "third_same_key_replay_no_duplicate_charge",
+    "third_different_payload_409"
+  ]
+}

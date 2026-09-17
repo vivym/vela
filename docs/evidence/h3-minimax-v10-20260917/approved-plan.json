@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "id": "3c1181d1-e09a-5780-864b-7bacb42a8cd4",
+  "stable_id": "minimax-h3-repair-v10-20260917",
+  "revision": 1,
+  "content_digest": "16b28c5b97b2d7ea7f03bd3bf72446a42fa39a1f26c2f99f19266fe9e0c14c85",
+  "approval_evidence_digest": "153e2e5b4f42b984be0ba266c562025e955c4e08b38bcba0a654d2fb73bef1f3",
+  "approved_at": "2026-09-17T13:03:39.861444Z",
+  "approved_by": "platform-admin/minimax-h3-latest-fixes-20260917",
+  "capacity_pools": [
+    {
+      "id": "ac0ce78c-2c4d-5c2c-810b-b5df4f05b40c",
+      "stable_id": "minimax-h3-encoder-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "stage_profile_revision_id": "a02bf454-4f8e-57f5-9601-f22b89cfd4b5",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "stable_id": "minimax-h3-dit-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 128
+    },
+    {
+      "id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+      "stable_id": "minimax-h3-decoder-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "stage_profile_revision_id": "51dad1bb-08d7-5603-8c14-f7d860c6025f",
+      "resource_class": "GPU",
+      "security_class": "INTERNAL",
+      "region": "marslab",
+      "max_ready_queue_depth": 128
+    }
+  ],
+  "worker_bundles": [
+    {
+      "id": "5d7a615e-6ef8-511c-b5ec-cc502fcf0553",
+      "stable_id": "minimax-h3-encoder-1-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "f223554c18ec28ad65412dd2b7c13d05b749b7e58d70ec9fcac0e7b8f7ab26f0"
+    },
+    {
+      "id": "a613c5a3-4eb7-5716-8a60-9048ae9cae6a",
+      "stable_id": "minimax-h3-dit-2-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "ff0ea7a13054637ddb5db93583a398c69f664503694e609090d38275b913cc77"
+    },
+    {
+      "id": "52ac56da-211c-5970-b877-ab3cf8dbda00",
+      "stable_id": "minimax-h3-dit-3-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "b31883f840f82206ed9a72a66c6df92532671cfc29f75deb4ec1f88ba0cd89a2"
+    },
+    {
+      "id": "81be29c3-060e-5604-9126-38a129c829e9",
+      "stable_id": "minimax-h3-dit-4-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "daab8262c3a5f09acdadb4286a3eddcbcc4d9c2c0732efab5fbffcdffac04772"
+    },
+    {
+      "id": "21044797-4b31-5c04-9ee8-75b17e0be0cf",
+      "stable_id": "minimax-h3-dit-5-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "02e0ba1bd674b120a28a178d2e8005082a08ccce30b8d5e9f3b3d67c16c1800b"
+    },
+    {
+      "id": "b6e5577d-de13-5700-90fd-a1593921367b",
+      "stable_id": "minimax-h3-dit-6-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "b7209fe235390768257679e9c91daee6fff69ed32af10db8d7f34731a922d341"
+    },
+    {
+      "id": "b78f9af9-6367-5423-abce-3dba8f7ffa13",
+      "stable_id": "minimax-h3-dit-7-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "df4ed6417189500853e0748e0fc83515046b8c48b81e78a77301f2062fd2a933"
+    },
+    {
+      "id": "8de98958-2c6a-50b3-81b0-30b4cc44cc57",
+      "stable_id": "minimax-h3-dit-8-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "bc3c0a00f29f9a50ed06119ca611862be10ed9483b60ac83cd6719cd2ba094a2"
+    },
+    {
+      "id": "56565550-ab99-5067-be4d-bde8e6cad2a8",
+      "stable_id": "minimax-h3-dit-9-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "e1601e6b858eecfa13cb4dede80499eb8c7fbb2908ba128bfe96f20ecc81b79e"
+    },
+    {
+      "id": "f45d9d87-41dc-5b0f-876b-00c0a365fb15",
+      "stable_id": "minimax-h3-decoder-10-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "dae08b545b47df048e003b71e2619a793426b7f1fd2a228ff841366d63508c2a"
+    },
+    {
+      "id": "793db3a7-10f0-5ac0-8b86-9f7f01bc05af",
+      "stable_id": "minimax-h3-decoder-11-v5-skew-v7-exact-v8-profiles-v9-repair-v10",
+      "desired_generation": 1,
+      "layout_digest": "09c1ab47ab9b576fca90271c04025d294a219365e9037430042c8f2b97143673"
+    }
+  ],
+  "worker_instances": [
+    {
+      "id": "30e2c90c-6a29-577b-9160-725241c989e5",
+      "worker_profile_revision_id": "c17e7c08-e0c8-59bf-b7ab-178b5e1d342e",
+      "capacity_pool_id": "ac0ce78c-2c4d-5c2c-810b-b5df4f05b40c",
+      "worker_bundle_id": "5d7a615e-6ef8-511c-b5ec-cc502fcf0553",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "dc1a94e9-df30-5d9a-9877-947e13bc0e55",
+          "capacity_pool_id": "ac0ce78c-2c4d-5c2c-810b-b5df4f05b40c",
+          "stage_profile_revision_id": "a02bf454-4f8e-57f5-9601-f22b89cfd4b5"
+        }
+      ]
+    },
+    {
+      "id": "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "a613c5a3-4eb7-5716-8a60-9048ae9cae6a",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "dde29868-1229-58ff-b376-1e3a8636877a",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "b52d0da1-9959-5463-b90a-a77ede47dac3",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "52ac56da-211c-5970-b877-ab3cf8dbda00",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "da29eb55-5194-5244-b99f-c7745ebded05",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "07e0208a-3b4c-5e91-aae2-303ec11f80a7",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "81be29c3-060e-5604-9126-38a129c829e9",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "1c7c2ff0-2e64-580e-9c37-5cc304bb90ac",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "3cf714c1-fb47-5782-abc2-ddaf3634df82",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "21044797-4b31-5c04-9ee8-75b17e0be0cf",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "e15c698b-34cc-577a-83ed-252f052fbd8b",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "6ba8cfdd-862d-5d95-8448-62e3f0b39749",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "b6e5577d-de13-5700-90fd-a1593921367b",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "d4db09ed-81c3-51c1-892a-b76e22659149",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "328bb68e-a10d-5dd0-9310-ebe2fb78cb33",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "b78f9af9-6367-5423-abce-3dba8f7ffa13",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "e9d8dfa7-47e6-5e0c-b2f8-40a1b56b4245",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "a058c5e3-387f-5e30-b29e-fb320b9fb14a",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "8de98958-2c6a-50b3-81b0-30b4cc44cc57",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "d6a31fb8-d8c6-5394-b76b-ae591ee99561",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "5c968d7d-44c7-58fd-92b2-4df571d9ae66",
+      "worker_profile_revision_id": "f64c18e9-b03d-58f8-bf6f-1fa510c1d686",
+      "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+      "worker_bundle_id": "56565550-ab99-5067-be4d-bde8e6cad2a8",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "68e65b9e-7be9-530e-a983-370530367034",
+          "capacity_pool_id": "cebe0481-d5f9-5354-af6d-1285f45282e3",
+          "stage_profile_revision_id": "57dbe8f8-d103-5a50-ba1f-ed5f7636b08a"
+        }
+      ]
+    },
+    {
+      "id": "634d5f09-fbd5-557e-9489-cc123e7afdf2",
+      "worker_profile_revision_id": "8739e917-f310-5d73-be71-e8777515cf87",
+      "capacity_pool_id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+      "worker_bundle_id": "f45d9d87-41dc-5b0f-876b-00c0a365fb15",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "7fd9d1e2-f1e4-5b51-87ba-c09a98dec34b",
+          "capacity_pool_id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+          "stage_profile_revision_id": "51dad1bb-08d7-5603-8c14-f7d860c6025f"
+        }
+      ]
+    },
+    {
+      "id": "05600818-79e0-51d1-badf-8ccafd71c5c1",
+      "worker_profile_revision_id": "8739e917-f310-5d73-be71-e8777515cf87",
+      "capacity_pool_id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+      "worker_bundle_id": "793db3a7-10f0-5ac0-8b86-9f7f01bc05af",
+      "desired_member_count": 1,
+      "desired_device_count": 1,
+      "model_runtime_routes": [
+        {
+          "model_residency_id": "633a3d71-389d-5b6e-9aa9-03a449ea41ee",
+          "capacity_pool_id": "0e5cbe0a-decb-5eb7-bf68-40aa876fe97a",
+          "stage_profile_revision_id": "51dad1bb-08d7-5603-8c14-f7d860c6025f"
+        }
+      ]
+    }
+  ]
+}

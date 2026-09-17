@@ -1,0 +1,559 @@
+{
+  "passed": true,
+  "checks": [
+    "dit_running_beyond_idle_capacity_ttl",
+    "second_submission_202_while_dit_busy",
+    "cancellation_reached_terminal",
+    "exact_canceled_dit_worker_restores_fresh_free_capacity",
+    "post_cancel_submission_202_without_restart",
+    "second_complete_av_and_one_charge",
+    "third_complete_av_and_one_charge",
+    "identical_container_ids_and_restart_counts"
+  ],
+  "runtime_before": {
+    "30e2c90c-6a29-577b-9160-725241c989e5": {
+      "pod_uid": "b113041f-0a29-46a2-b61a-20256480b3aa",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://bf78aeac34e7f710ca636e12b6f608dd2716cdd9ee6560836fd9244365a32b4c",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://55b68cb39445fd602565233904667aaa49398c92c58bfcce2eabe03f9bba0024",
+          "restart_count": 0
+        }
+      }
+    },
+    "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c": {
+      "pod_uid": "957ed49b-7673-4cba-81fc-0a1c56f2e229",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://18db508e52ed2fd7b65156961a0eada2ad7fdc61a5d1ff128169ba02c3d1423c",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://2a79227b70a19c0b52df93b537785c4f69022680fdb7e28ff1d59f4ecaa5fa6f",
+          "restart_count": 0
+        }
+      }
+    },
+    "b52d0da1-9959-5463-b90a-a77ede47dac3": {
+      "pod_uid": "24707f6b-6b66-4fcb-811a-fd18e6797ebc",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://5e583805446a059821126a92d82b0cbaf24266f25d8f6a3a63d2894d4b7b42b2",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://ffb217bb25bf5877b3aeff4b913b6f03cb2488c9ec25f0d9df0340702120b4f0",
+          "restart_count": 0
+        }
+      }
+    },
+    "07e0208a-3b4c-5e91-aae2-303ec11f80a7": {
+      "pod_uid": "320a5cb7-ffc1-4912-a778-155d3984c95b",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://677683a06e5fefb9eb89a1f92ab448045c46f78f3470f1f46153312d6f148f83",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://fcfbe822fb5e6926a3b8dfb4cf05f816d4808ea009c056c447ab3754b9efb1d1",
+          "restart_count": 0
+        }
+      }
+    },
+    "3cf714c1-fb47-5782-abc2-ddaf3634df82": {
+      "pod_uid": "cc6161c2-2143-4b3e-85cb-677d733c4e13",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://ceeca1374e54ecd36022bdab9f69da5f2cc65ea2b9946f5ec61ce8551dae4456",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://e51a7a15277eb749e2954ca6272c073916a48d394f6881cfbc2b062435fe1deb",
+          "restart_count": 0
+        }
+      }
+    },
+    "6ba8cfdd-862d-5d95-8448-62e3f0b39749": {
+      "pod_uid": "6687be11-577f-4ab5-8e48-86671ccfce7e",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://a4d4792a79b2ac6aac9b0c9a063c97b1f6e91bb39a0acce15d538c7983c58f4b",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://506976865b1f08cbf98955eb9810af6503f651230e365d8d59a1c82fc2d2e5ca",
+          "restart_count": 0
+        }
+      }
+    },
+    "328bb68e-a10d-5dd0-9310-ebe2fb78cb33": {
+      "pod_uid": "f79dcbce-0a75-43ba-bcc9-02ec35a8facc",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://aa48897f3b70c1c9be85d458f4ab82eeb3b226db7d1ce56410e9abc0dcb1721b",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://c0d1541ed9a2aeb7d8ff423b88c02b25ceebaef5e02e7b766da69084d692d5f5",
+          "restart_count": 0
+        }
+      }
+    },
+    "a058c5e3-387f-5e30-b29e-fb320b9fb14a": {
+      "pod_uid": "dee190fe-a0ac-47f0-9755-87c20fc1cb71",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://5083689ba42d8d3111228ab1b856693eeefc7bc7302b6ed04f10539071e8f1e4",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://fe8277aa7b32b59b478bae23b37a217a969f2f3c3e6deeb68e986df8487509dc",
+          "restart_count": 0
+        }
+      }
+    },
+    "5c968d7d-44c7-58fd-92b2-4df571d9ae66": {
+      "pod_uid": "835d8260-993e-43f6-a97e-df1516f96ac4",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://3e820607b3689e185523071286a463dc2ae8c1b90030e7b03935796e473c1079",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://6749f926155820c6444f95b465083c1b3918eaebb20280bf24a8a257720a6a5d",
+          "restart_count": 0
+        }
+      }
+    },
+    "634d5f09-fbd5-557e-9489-cc123e7afdf2": {
+      "pod_uid": "3a226f58-a067-4669-b7ec-8bc792d5f708",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://1da749d0d4a3bc1c2e569f80d989404ebb91eabaaa9845a4c79db0a6c56a76e9",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://e0cc8b6d09928661747ac53a4ed735c76ffbd3a59ee0f5ef5bc08b1e5d9bd1c1",
+          "restart_count": 0
+        }
+      }
+    },
+    "05600818-79e0-51d1-badf-8ccafd71c5c1": {
+      "pod_uid": "fa87de84-5cfc-430e-870f-fa3a258dd45f",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://af4f80f44337eaf09bc81e9e243e3a25e7797dda8bc3e07d85edbcb7b29c2a2f",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://6b426d9c73c11a096aefbb02e87d118a8a1c3a2677a6b64a85b356eea99ec36b",
+          "restart_count": 0
+        }
+      }
+    },
+    "979d6984-9d1f-5e5f-be19-732d18824d42": {
+      "pod_uid": "c5b4773b-1c07-479c-a8d8-d8d22c728d3f",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://cbbbdb889e20a9a2dde870b7776d6551c3c380e3a73dd8e353c1b5d3535ab1cf",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://bcc342f6bcbc3e56c2a8bea455c51537d73606b7786015955c4b092ff6de2cfd",
+          "restart_count": 0
+        }
+      }
+    }
+  },
+  "canceled_dit_worker": "b52d0da1-9959-5463-b90a-a77ede47dac3",
+  "cancellation_at": "2026-09-17 13:56:23.226645+00",
+  "cancel": {
+    "billable": true,
+    "cancellation_id": "29083e4a-0fea-4a29-9ed3-8a9e83259261",
+    "charge": {
+      "amount_minor": 100,
+      "charge_id": "74073ed3-8981-4ca8-9f72-50446bbaa51f",
+      "currency": "CNY",
+      "posted_at": "2026-09-17T13:56:23.266937Z",
+      "reason": "CUSTOMER_CANCELLATION"
+    },
+    "decided_at": "2026-09-17T13:56:23.266937Z",
+    "decision": "CANCELING",
+    "job_id": "a84e1c6d-7642-449d-aece-012cf4f35069",
+    "job_version": 4,
+    "state": "CANCELING"
+  },
+  "canceled_worker_recovery": {
+    "id": "b52d0da1-9959-5463-b90a-a77ede47dac3",
+    "lifecycle_state": "READY",
+    "reachability_state": "CONNECTED",
+    "observation_sequence": 4294967304,
+    "capacity_vector": {
+      "gpu_count": 1,
+      "concurrency": 1,
+      "active_stage_slots": 1
+    },
+    "observed_at": "2026-09-17T13:57:01.07865+00:00",
+    "expires_at": "2026-09-17T14:00:02.565798+00:00",
+    "active_allocations": 0
+  },
+  "second": {
+    "job": {
+      "attempts_started": 1,
+      "created_at": "2026-09-17T13:56:22.569015Z",
+      "job_expires_at": "2026-09-17T16:06:22.468431Z",
+      "job_id": "9c17441f-61a9-4232-8443-9983857b827e",
+      "model": "minimax-h3",
+      "pricing": {
+        "currency": "CNY",
+        "quantity": 1,
+        "quoted_amount_minor": 100,
+        "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+        "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+        "unit_amount_minor": 100
+      },
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "state": "SUCCEEDED"
+    },
+    "billing": {
+      "job_id": "9c17441f-61a9-4232-8443-9983857b827e",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "state": "SUCCEEDED",
+      "billable_started_at": "2026-09-17T13:56:26.58539+00:00",
+      "charge_count": 1,
+      "charge": {
+        "id": "f7fe7c6a-2be0-44e6-8da2-13f02ada471b",
+        "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+        "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+        "job_id": "9c17441f-61a9-4232-8443-9983857b827e",
+        "credit_reservation_id": "be08d459-73d1-4487-ad37-0271a55d23f1",
+        "cancellation_id": null,
+        "reason": "VISIBLE_COMPLETION",
+        "amount_minor": 100,
+        "currency": "CNY",
+        "state": "POSTED",
+        "posted_at": "2026-09-17T14:03:48.493578+00:00",
+        "created_at": "2026-09-17T14:03:48.511218+00:00",
+        "artifact_set_id": "2b9a981c-af97-4ebc-9f42-bb5d2277d4f1"
+      },
+      "visible_completion_count": 1,
+      "artifact_set_count": 1,
+      "artifact_set_id": "2b9a981c-af97-4ebc-9f42-bb5d2277d4f1",
+      "idempotency_count": 1,
+      "reservation_state": "CONSUMED",
+      "reservation_amount_minor": 100,
+      "account_reserved_minor": 100,
+      "sum_reserved_minor": 100
+    },
+    "artifacts": [
+      {
+        "artifact_id": "241f9428-ef49-5b6b-98de-e13a22bf0184",
+        "content_type": "video/mp4",
+        "download_url_expires_at": "2026-09-17T14:18:48.844697301Z",
+        "kind": "VIDEO",
+        "media": {
+          "audio": {
+            "channels": 2,
+            "codec": "aac",
+            "duration_milliseconds": 5175,
+            "sample_rate": 32000
+          },
+          "container_duration_milliseconds": 5175,
+          "duration_milliseconds": 5167,
+          "frame_count": 124,
+          "frame_rate_milli": 24000,
+          "requested_duration_milliseconds": 5000
+        },
+        "object_version_id": "91e9cbe8-d010-4b63-a8b1-437d670c9c42",
+        "ordinal": 0,
+        "sha256": "0ba02e326f0edd40bb5974f2e91eb31d0e0962c032a9971535a04b976d415916",
+        "size_bytes": 2990481
+      },
+      {
+        "artifact_id": "84599c5c-6a23-56c9-8230-5abf74da4cb0",
+        "content_type": "image/webp",
+        "download_url_expires_at": "2026-09-17T14:18:48.845508824Z",
+        "kind": "THUMBNAIL",
+        "object_version_id": "196bc33d-a314-431e-b95e-89280993c054",
+        "ordinal": 0,
+        "sha256": "7ddd4590c58bce8dddc9f757bfe0e1bb3bd0dec9e43a6e266a2793b38a0c8c33",
+        "size_bytes": 14270
+      }
+    ]
+  },
+  "third": {
+    "job": {
+      "attempts_started": 1,
+      "created_at": "2026-09-17T13:58:11.050501Z",
+      "job_expires_at": "2026-09-17T16:08:10.972145Z",
+      "job_id": "b0bbc56f-129e-4ac1-a098-92b42c277495",
+      "model": "minimax-h3",
+      "pricing": {
+        "currency": "CNY",
+        "quantity": 1,
+        "quoted_amount_minor": 100,
+        "rate_card_revision_id": "a7a6a73c-5b75-5d1d-aab2-6a65e7fc9701",
+        "rate_line_id": "62041216-991f-5d93-befa-0d57fd4cffc3",
+        "unit_amount_minor": 100
+      },
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "state": "SUCCEEDED"
+    },
+    "billing": {
+      "job_id": "b0bbc56f-129e-4ac1-a098-92b42c277495",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "state": "SUCCEEDED",
+      "billable_started_at": "2026-09-17T13:58:16.035806+00:00",
+      "charge_count": 1,
+      "charge": {
+        "id": "9289460f-dc7d-4c54-a700-c5a365422026",
+        "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+        "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+        "job_id": "b0bbc56f-129e-4ac1-a098-92b42c277495",
+        "credit_reservation_id": "a0e27424-dfd6-4a00-93b3-b9817c8105ff",
+        "cancellation_id": null,
+        "reason": "VISIBLE_COMPLETION",
+        "amount_minor": 100,
+        "currency": "CNY",
+        "state": "POSTED",
+        "posted_at": "2026-09-17T14:05:33.359121+00:00",
+        "created_at": "2026-09-17T14:05:33.387432+00:00",
+        "artifact_set_id": "252a35c9-77ff-42a4-bd62-f0c59fa555e4"
+      },
+      "visible_completion_count": 1,
+      "artifact_set_count": 1,
+      "artifact_set_id": "252a35c9-77ff-42a4-bd62-f0c59fa555e4",
+      "idempotency_count": 1,
+      "reservation_state": "CONSUMED",
+      "reservation_amount_minor": 100,
+      "account_reserved_minor": 0,
+      "sum_reserved_minor": 0
+    },
+    "artifacts": [
+      {
+        "artifact_id": "1f2f576a-a0ae-5d96-8a2f-c27bfb6aeb76",
+        "content_type": "video/mp4",
+        "download_url_expires_at": "2026-09-17T14:20:36.083452774Z",
+        "kind": "VIDEO",
+        "media": {
+          "audio": {
+            "channels": 2,
+            "codec": "aac",
+            "duration_milliseconds": 5175,
+            "sample_rate": 32000
+          },
+          "container_duration_milliseconds": 5175,
+          "duration_milliseconds": 5167,
+          "frame_count": 124,
+          "frame_rate_milli": 24000,
+          "requested_duration_milliseconds": 5000
+        },
+        "object_version_id": "02effc0f-d20a-4509-b722-9be037e9838e",
+        "ordinal": 0,
+        "sha256": "a8a3ebc656051315335e1387ae51d6b09c6d6b29a15258bfe9dde941b72fc38d",
+        "size_bytes": 2660336
+      },
+      {
+        "artifact_id": "1353e2ab-4640-5b69-a25c-ce5150bca5c6",
+        "content_type": "image/webp",
+        "download_url_expires_at": "2026-09-17T14:20:36.084330195Z",
+        "kind": "THUMBNAIL",
+        "object_version_id": "ff15e28f-755f-4480-8147-69dacd3cf1ee",
+        "ordinal": 0,
+        "sha256": "f6bca93af7fe65d6e71d854658892a0f695ac6a0d728c010b3ffc6086a8da27a",
+        "size_bytes": 16044
+      }
+    ]
+  },
+  "canceled_billing": {
+    "job_id": "a84e1c6d-7642-449d-aece-012cf4f35069",
+    "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+    "state": "CANCELED",
+    "billable_started_at": "2026-09-17T13:53:46.212968+00:00",
+    "charge_count": 1,
+    "charge": {
+      "id": "74073ed3-8981-4ca8-9f72-50446bbaa51f",
+      "organization_id": "7a3e1e58-c9ea-40d3-b52f-e9446b203641",
+      "project_id": "eb8f032a-1228-5dc6-8ea6-bd0c6d75ddb7",
+      "job_id": "a84e1c6d-7642-449d-aece-012cf4f35069",
+      "credit_reservation_id": "75417498-bb41-4cc0-8994-177e91abbf29",
+      "cancellation_id": "29083e4a-0fea-4a29-9ed3-8a9e83259261",
+      "reason": "CUSTOMER_CANCELLATION",
+      "amount_minor": 100,
+      "currency": "CNY",
+      "state": "POSTED",
+      "posted_at": "2026-09-17T13:56:23.266937+00:00",
+      "created_at": "2026-09-17T13:56:23.304999+00:00",
+      "artifact_set_id": null
+    },
+    "visible_completion_count": 0,
+    "artifact_set_count": 0,
+    "artifact_set_id": null,
+    "idempotency_count": 1,
+    "reservation_state": "CONSUMED",
+    "reservation_amount_minor": 100,
+    "account_reserved_minor": 0,
+    "sum_reserved_minor": 0
+  },
+  "runtime_after": {
+    "30e2c90c-6a29-577b-9160-725241c989e5": {
+      "pod_uid": "b113041f-0a29-46a2-b61a-20256480b3aa",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://bf78aeac34e7f710ca636e12b6f608dd2716cdd9ee6560836fd9244365a32b4c",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://55b68cb39445fd602565233904667aaa49398c92c58bfcce2eabe03f9bba0024",
+          "restart_count": 0
+        }
+      }
+    },
+    "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c": {
+      "pod_uid": "957ed49b-7673-4cba-81fc-0a1c56f2e229",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://18db508e52ed2fd7b65156961a0eada2ad7fdc61a5d1ff128169ba02c3d1423c",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://2a79227b70a19c0b52df93b537785c4f69022680fdb7e28ff1d59f4ecaa5fa6f",
+          "restart_count": 0
+        }
+      }
+    },
+    "b52d0da1-9959-5463-b90a-a77ede47dac3": {
+      "pod_uid": "24707f6b-6b66-4fcb-811a-fd18e6797ebc",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://5e583805446a059821126a92d82b0cbaf24266f25d8f6a3a63d2894d4b7b42b2",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://ffb217bb25bf5877b3aeff4b913b6f03cb2488c9ec25f0d9df0340702120b4f0",
+          "restart_count": 0
+        }
+      }
+    },
+    "07e0208a-3b4c-5e91-aae2-303ec11f80a7": {
+      "pod_uid": "320a5cb7-ffc1-4912-a778-155d3984c95b",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://677683a06e5fefb9eb89a1f92ab448045c46f78f3470f1f46153312d6f148f83",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://fcfbe822fb5e6926a3b8dfb4cf05f816d4808ea009c056c447ab3754b9efb1d1",
+          "restart_count": 0
+        }
+      }
+    },
+    "3cf714c1-fb47-5782-abc2-ddaf3634df82": {
+      "pod_uid": "cc6161c2-2143-4b3e-85cb-677d733c4e13",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://ceeca1374e54ecd36022bdab9f69da5f2cc65ea2b9946f5ec61ce8551dae4456",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://e51a7a15277eb749e2954ca6272c073916a48d394f6881cfbc2b062435fe1deb",
+          "restart_count": 0
+        }
+      }
+    },
+    "6ba8cfdd-862d-5d95-8448-62e3f0b39749": {
+      "pod_uid": "6687be11-577f-4ab5-8e48-86671ccfce7e",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://a4d4792a79b2ac6aac9b0c9a063c97b1f6e91bb39a0acce15d538c7983c58f4b",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://506976865b1f08cbf98955eb9810af6503f651230e365d8d59a1c82fc2d2e5ca",
+          "restart_count": 0
+        }
+      }
+    },
+    "328bb68e-a10d-5dd0-9310-ebe2fb78cb33": {
+      "pod_uid": "f79dcbce-0a75-43ba-bcc9-02ec35a8facc",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://aa48897f3b70c1c9be85d458f4ab82eeb3b226db7d1ce56410e9abc0dcb1721b",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://c0d1541ed9a2aeb7d8ff423b88c02b25ceebaef5e02e7b766da69084d692d5f5",
+          "restart_count": 0
+        }
+      }
+    },
+    "a058c5e3-387f-5e30-b29e-fb320b9fb14a": {
+      "pod_uid": "dee190fe-a0ac-47f0-9755-87c20fc1cb71",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://5083689ba42d8d3111228ab1b856693eeefc7bc7302b6ed04f10539071e8f1e4",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://fe8277aa7b32b59b478bae23b37a217a969f2f3c3e6deeb68e986df8487509dc",
+          "restart_count": 0
+        }
+      }
+    },
+    "5c968d7d-44c7-58fd-92b2-4df571d9ae66": {
+      "pod_uid": "835d8260-993e-43f6-a97e-df1516f96ac4",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://3e820607b3689e185523071286a463dc2ae8c1b90030e7b03935796e473c1079",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://6749f926155820c6444f95b465083c1b3918eaebb20280bf24a8a257720a6a5d",
+          "restart_count": 0
+        }
+      }
+    },
+    "634d5f09-fbd5-557e-9489-cc123e7afdf2": {
+      "pod_uid": "3a226f58-a067-4669-b7ec-8bc792d5f708",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://1da749d0d4a3bc1c2e569f80d989404ebb91eabaaa9845a4c79db0a6c56a76e9",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://e0cc8b6d09928661747ac53a4ed735c76ffbd3a59ee0f5ef5bc08b1e5d9bd1c1",
+          "restart_count": 0
+        }
+      }
+    },
+    "05600818-79e0-51d1-badf-8ccafd71c5c1": {
+      "pod_uid": "fa87de84-5cfc-430e-870f-fa3a258dd45f",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://af4f80f44337eaf09bc81e9e243e3a25e7797dda8bc3e07d85edbcb7b29c2a2f",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://6b426d9c73c11a096aefbb02e87d118a8a1c3a2677a6b64a85b356eea99ec36b",
+          "restart_count": 0
+        }
+      }
+    },
+    "979d6984-9d1f-5e5f-be19-732d18824d42": {
+      "pod_uid": "c5b4773b-1c07-479c-a8d8-d8d22c728d3f",
+      "containers": {
+        "model-runtime": {
+          "id": "containerd://cbbbdb889e20a9a2dde870b7776d6551c3c380e3a73dd8e353c1b5d3535ab1cf",
+          "restart_count": 0
+        },
+        "stage-worker-agent": {
+          "id": "containerd://bcc342f6bcbc3e56c2a8bea455c51537d73606b7786015955c4b092ff6de2cfd",
+          "restart_count": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "at": "2026-09-17T13:23:26.802637+00:00",
+  "workers": [
+    "30e2c90c-6a29-577b-9160-725241c989e5",
+    "5bd5a716-8d4f-591f-bc9a-4bb9b983d08c",
+    "b52d0da1-9959-5463-b90a-a77ede47dac3",
+    "07e0208a-3b4c-5e91-aae2-303ec11f80a7",
+    "3cf714c1-fb47-5782-abc2-ddaf3634df82",
+    "6ba8cfdd-862d-5d95-8448-62e3f0b39749",
+    "328bb68e-a10d-5dd0-9310-ebe2fb78cb33",
+    "a058c5e3-387f-5e30-b29e-fb320b9fb14a",
+    "5c968d7d-44c7-58fd-92b2-4df571d9ae66",
+    "634d5f09-fbd5-557e-9489-cc123e7afdf2",
+    "05600818-79e0-51d1-badf-8ccafd71c5c1"
+  ],
+  "pods": [
+    {
+      "name": "wi-0560081879e051d1badf8ccafd71c5c1-ba3790e0",
+      "node": "server-29",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-07e0208a3b4c5e91aae2303ec11f80a7-ba3790e0",
+      "node": "server-39",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-30e2c90c6a29577b9160725241c989e5-ba3790e0",
+      "node": "server-31",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-328bb68ea10d5dd09310ebe2fb78cb33-ba3790e0",
+      "node": "server-42",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-3cf714c1fb475782abc2ddaf3634df82-ba3790e0",
+      "node": "server-10",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-5bd5a7168d4f591fbc9a4bb9b983d08c-ba3790e0",
+      "node": "server-41",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-5c968d7d44c758fd92b24df571d9ae66-ba3790e0",
+      "node": "server-28",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-634d5f09fbd5557e9489cc123e7afdf2-ba3790e0",
+      "node": "server-33",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-6ba8cfdd862d5d95844862e3f0b39749-ba3790e0",
+      "node": "server-38",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-a058c5e3387f5e30b29efb320b9fb14a-ba3790e0",
+      "node": "server-14",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    },
+    {
+      "name": "wi-b52d0da199595463b90aa77ede47dac3-ba3790e0",
+      "node": "server-34",
+      "phase": "Running",
+      "containers": [
+        {
+          "name": "model-runtime",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:71bd111548526028064af17ed575b04dfb4a8b733a0306ec433208e52f6b3f95"
+        },
+        {
+          "name": "stage-worker-agent",
+          "ready": true,
+          "restartCount": 0,
+          "imageID": "10.1.201.70:5005/vela-stage-worker-agent@sha256:a4896ac14b7280bd2bb203e915e66c9708f10eb6e8ac261ea3aed22dc56834f2"
+        }
+      ]
+    }
+  ]
+}
