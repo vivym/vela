@@ -47,7 +47,10 @@ func TestStageSuccessfulStorageReservationPermitsQuiescenceAndPreservesEvidence(
 }
 
 func TestStageSuccessfulStorageReservationMigrationBackfillsWithoutReactivation(t *testing.T) {
-	outcome := runCPUMediaH3GraphAtSchema(t, "storage-reservation-backfill", 81)
+	var queuedAttempt uuid.UUID
+	outcome := runCPUMediaH3GraphAtSchema(t, "storage-reservation-backfill", 81, func(database testDatabase, serverURL string) {
+		_, queuedAttempt = instantiateH3IntegrationGraph(t, database, serverURL, "storage-backfill-live-job")
+	})
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	var oldDefinition, functionIdentity string
 	if err := outcome.database.Admin.QueryRow(`SELECT pg_get_functiondef(oid),
@@ -56,13 +59,18 @@ func TestStageSuccessfulStorageReservationMigrationBackfillsWithoutReactivation(
 		Scan(&oldDefinition, &functionIdentity); err != nil {
 		t.Fatal(err)
 	}
+	// The current Go finalizer reads the additive schema-99 media contract column.
+	// Supply its legacy default without changing the schema-81 storage completion
+	// function under test or applying the schema-82 reservation repair early.
+	if _, err := outcome.database.Admin.Exec(`ALTER TABLE output_specs
+		ADD COLUMN media_contract text NOT NULL DEFAULT 'exact-video-v1'`); err != nil {
+		t.Fatal(err)
+	}
 	before := readStageStorageCompletionEvidence(t, outcome)
 	completeStorageReservationGraph(t, outcome)
 	if got := readStageStorageCompletionEvidence(t, outcome); got.state != "RESERVED" {
 		t.Fatalf("schema 81 did not reproduce the successful reservation leak: %+v", got)
 	}
-	_, queuedAttempt := instantiateH3IntegrationGraph(t, outcome.database,
-		admissionServerForDatabase(t, outcome.database).URL, "storage-backfill-live-job")
 	for cycle := 0; cycle < 2; cycle++ {
 		if err := goose.UpTo(outcome.database.Admin, migrations, 82); err != nil {
 			t.Fatal(err)

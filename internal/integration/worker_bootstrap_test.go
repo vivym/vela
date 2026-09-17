@@ -358,7 +358,11 @@ func TestWorkerBootstrapParticipatesInRecoveryQuiescence(t *testing.T) {
 		t.Fatal(err)
 	}
 	completed, err := recovery.Quiesce(t.Context(), connection, operationID, time.Millisecond)
-	if err != nil || completed.SchemaVersion != 95 || completed.Inventory["worker_bootstrap_claims"] != 0 {
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil {
+		t.Fatal(versionErr)
+	}
+	if err != nil || completed.SchemaVersion != version || completed.Inventory["worker_bootstrap_claims"] != 0 {
 		t.Fatalf("completed first use did not release quiescence: %+v %v", completed, err)
 	}
 }

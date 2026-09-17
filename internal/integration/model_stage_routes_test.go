@@ -26,7 +26,7 @@ func TestModelStageRoutesPreservePreviousModelAdmission(t *testing.T) {
 	activateH3StageGraph(t, database)
 	// Upgrade must retain an already published model.
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	if err := goose.UpTo(database.Admin, migrations, 109); err != nil {
+	if err := goose.Up(database.Admin, migrations); err != nil {
 		t.Fatal(err)
 	}
 	graph, profile := cloneRouteModelFixture(t, database.Admin)
@@ -52,6 +52,11 @@ func TestModelStageRoutesPreservePreviousModelAdmission(t *testing.T) {
 	}
 	if err := goose.DownTo(database.Admin, migrations, 107); err == nil || !strings.Contains(err.Error(), "additional model routes") {
 		t.Fatalf("unsafe downgrade: %v", err)
+	}
+	// Newer independent migrations may have rolled back before the route guard rejected Down.
+	// Restore the current HTTP read projection before making further API requests.
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatal(err)
 	}
 	// A new revision of an existing model replaces only that model's pointer.
 	replacement := uuid.New()

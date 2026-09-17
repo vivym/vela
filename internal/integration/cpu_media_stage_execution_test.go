@@ -301,14 +301,9 @@ func runCPUMediaH3GraphWithKey(t *testing.T, idempotencyKey string) cpuMediaGrap
 	return runCPUMediaH3GraphAtSchema(t, idempotencyKey, 0)
 }
 
-func runCPUMediaH3GraphAtSchema(t *testing.T, idempotencyKey string, schema int64) cpuMediaGraphOutcome {
+func runCPUMediaH3GraphAtSchema(t *testing.T, idempotencyKey string, schema int64, beforeDowngrade ...func(testDatabase, string)) cpuMediaGraphOutcome {
 	t.Helper()
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
-	if schema > 0 {
-		if err := goose.DownTo(database.Admin, filepath.Join(repositoryRoot(t), "db", "migrations"), schema); err != nil {
-			t.Fatal(err)
-		}
-	}
 	seedCPUMediaExecutionGraph(t, database)
 	seedCPUMediaAdmissionCapacityPath(t, database)
 	activateStageCutoverRevision(
@@ -335,6 +330,15 @@ func runCPUMediaH3GraphAtSchema(t *testing.T, idempotencyKey string, schema int6
 	jobID, err := uuid.Parse(job.JobID)
 	if err != nil {
 		t.Fatalf("parse CPU media Job ID: %v", err)
+	}
+	// Admit with the current API schema before exercising historical stage execution.
+	for _, prepare := range beforeDowngrade {
+		prepare(database, serverURL)
+	}
+	if schema > 0 {
+		if err := goose.DownTo(database.Admin, filepath.Join(repositoryRoot(t), "db", "migrations"), schema); err != nil {
+			t.Fatal(err)
+		}
 	}
 	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := instantiation.AttemptID

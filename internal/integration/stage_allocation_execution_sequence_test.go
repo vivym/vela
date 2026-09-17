@@ -21,6 +21,10 @@ import (
 
 func TestStageAllocationExecutionSequenceAssignedByDatabase(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "allocation-execution-sequence")
+	// Isolate the version-88 downgrade guard before newer migrations add their own guards.
+	if err := goose.DownTo(fixture.database.Admin, filepath.Join(repositoryRoot(t), "db", "migrations"), 88); err != nil {
+		t.Fatal(err)
+	}
 	service, err := stagescheduler.NewService(fixture.repository, fixture.coordinator, stagescheduler.Config{
 		SchedulerID: "allocation-execution-sequence", ClaimTTL: 30 * time.Second,
 		LeaseTTL: time.Minute, LocalDeadlineTTL: 50 * time.Second, SigningKeyID: "stage-authority-key-v1",
