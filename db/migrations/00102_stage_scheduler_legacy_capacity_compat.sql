@@ -227,3 +227,56 @@ GRANT EXECUTE ON FUNCTION vela_capture_stage_scheduler_snapshot(jsonb) TO vela_s
 
 
 -- +goose StatementEnd
+
+-- +goose Down
+-- Restore the exact pre-compatibility body, including route authority.
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION public.vela_capture_stage_scheduler_snapshot(p_authority jsonb)
+ RETURNS TABLE(snapshot_id uuid, snapshot jsonb)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE
+    v_snapshot_id uuid;
+    v_snapshot jsonb;
+BEGIN
+    IF p_authority IS NULL OR jsonb_typeof(p_authority) <> 'object'
+       OR (p_authority ->> 'schema_version')::integer <> 1 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'StageScheduler authority is invalid';
+    END IF;
+    -- Preserve migration 80's parent-before-counter order for durable capture.
+    PERFORM 1 FROM public.capacity_pools AS pool
+    WHERE pool.id = (p_authority ->> 'capacity_pool_id')::uuid
+    FOR KEY SHARE OF pool;
+    PERFORM 1 FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = (p_authority ->> 'capacity_pool_id')::uuid
+    FOR SHARE;
+    SELECT captured.snapshot_id, captured.snapshot INTO STRICT v_snapshot_id, v_snapshot
+    FROM public.vela_read_stage_scheduler_snapshot(p_authority) AS captured;
+    INSERT INTO public.stage_scheduler_snapshot_traces (
+        id, algorithm_revision, evaluated_at, valid_until, capacity_pool_id,
+        capacity_pool_version,
+        worker_instance_id, worker_instance_epoch, device_set_digest,
+        membership_digest, model_residency_id, model_runtime_epoch,
+        observation_sequence, capacity_vector, snapshot
+    ) VALUES (
+        v_snapshot_id, v_snapshot ->> 'algorithm_revision',
+        (v_snapshot ->> 'evaluated_at')::timestamptz,
+        (v_snapshot ->> 'valid_until')::timestamptz,
+        (v_snapshot ->> 'capacity_pool_id')::uuid,
+        (v_snapshot ->> 'capacity_pool_version')::bigint,
+        (v_snapshot ->> 'worker_instance_id')::uuid,
+        (v_snapshot ->> 'worker_instance_epoch')::bigint,
+        decode(p_authority ->> 'device_set_digest', 'hex'),
+        decode(p_authority ->> 'membership_digest', 'hex'),
+        (p_authority ->> 'model_residency_id')::uuid,
+        (p_authority ->> 'model_runtime_epoch')::bigint,
+        (v_snapshot ->> 'observation_sequence')::bigint,
+        p_authority -> 'capacity_vector', v_snapshot
+    );
+    RETURN QUERY SELECT v_snapshot_id, v_snapshot;
+END
+$function$
+
+-- +goose StatementEnd
