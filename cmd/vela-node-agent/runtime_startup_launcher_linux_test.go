@@ -92,7 +92,7 @@ func TestRuntimeLauncherReplyRejectsValidationOnlyHelper(t *testing.T) {
 		t.Fatalf("valid production handoff: %v", err)
 	}
 	reply.ValidationOnly = true
-	if err := reply.validate(3); err == nil || !strings.Contains(err.Error(), "validation-only") {
+	if err := reply.validate(4); err == nil || !strings.Contains(err.Error(), "validation-only") {
 		t.Fatalf("validation-only helper was not rejected: %v", err)
 	}
 }

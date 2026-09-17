@@ -50,6 +50,9 @@ func setValidationPlanCredentials(plan *nodeagent.RuntimeLaunchPlan, uid, gid ui
 }
 
 func TestLoadRuntimeStartupResourcesWithFactoryAssemblesAndClosesDependencies(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root-owned startup ledger; exercised by protected_provisioning CI")
+	}
 	setValidNodeAgentEnv(t)
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {

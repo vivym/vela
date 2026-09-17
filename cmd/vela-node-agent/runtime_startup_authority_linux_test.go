@@ -408,7 +408,7 @@ func TestComposeRuntimeStartupAuthorityFailsClosedBeforeLauncherWithoutFleetKey(
 	})
 	resources := &runtimeStartupResources{plan: &nodeagent.RuntimeLaunchPlan{}, observer: &nodeagent.RuntimeContainerObserver{}, socket: socket, authorizationPolicy: compositionNoopPolicy{}}
 	_, err = composeRuntimeStartupAuthority(context.Background(), configuration, resources, launcher)
-	if err == nil || !strings.Contains(err.Error(), "Fleet authorization public key") {
+	if err == nil || !strings.Contains(err.Error(), "fleet authorization public key") {
 		t.Fatalf("missing Fleet key was accepted: %v", err)
 	}
 	if called {

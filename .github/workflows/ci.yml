@@ -148,6 +148,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          go test -c -o "${RUNNER_TEMP}/vela-node-agent.test" ./cmd/vela-node-agent
+          sudo "${RUNNER_TEMP}/vela-node-agent.test" \
+            -test.run '^TestLoadRuntimeStartupResourcesWithFactoryAssemblesAndClosesDependencies$' -test.v
           go test -race -tags=integration ./internal/workerbootstrap \
             -run '^TestProtectedProvisioningSandbox$' -count=1 -timeout=6m -v
           go test -race -tags=integration ./internal/integration \
