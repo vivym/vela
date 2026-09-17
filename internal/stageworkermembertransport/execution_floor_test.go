@@ -77,7 +77,7 @@ func TestMemberFloorServerRejectsUntrustedScopeBeforeRuntime(t *testing.T) {
 			case "expired", "future":
 				now := campaignNow().Add(2 * time.Minute)
 				if mutation == "future" {
-					now = campaignNow().Add(-time.Second)
+					now = campaignNow().Add(-2 * time.Second)
 				}
 				f.server.validator = floorValidatorAt(t, now)
 			case "unauthenticated":

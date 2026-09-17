@@ -19,8 +19,13 @@ import (
 const (
 	TerminalDispositionSchemaVersion = 1
 	MaxTerminalDispositionValidity   = 5 * time.Minute
-	maxTerminalDispositionBytes      = 3 << 20
-	terminalDispositionDomain        = "vela-stage-terminal-disposition-v1\x00"
+	// Terminal observations cross the database, Control and Worker clocks.
+	// This narrow future bound applies only to signed restrictive history. It
+	// never extends an execution lease or the disposition's expiry, and cannot
+	// establish writer drain. Larger clock errors remain fail-closed.
+	MaxTerminalObservationSkew  = time.Second
+	maxTerminalDispositionBytes = 3 << 20
+	terminalDispositionDomain   = "vela-stage-terminal-disposition-v1\x00"
 )
 
 var ErrInvalidTerminalDisposition = errors.New("stage terminal disposition is invalid")
@@ -65,20 +70,21 @@ func (validator *Validator) ValidateTerminalDispositionEnvelope(value *velav1.St
 		return VerifiedTerminalDisposition{}, err
 	}
 	now := validator.now().UTC()
-	if now.Before(verified.Disposition.GetObservedAt().AsTime()) || !now.Before(verified.Disposition.GetExpiresAt().AsTime()) {
+	if now.Add(MaxTerminalObservationSkew).Before(verified.Disposition.GetObservedAt().AsTime()) || !now.Before(verified.Disposition.GetExpiresAt().AsTime()) {
 		return VerifiedTerminalDisposition{}, ErrStale
 	}
 	return verified, nil
 }
 
 // ValidateTerminalDispositionForReplay accepts expired historical facts but
-// rejects future observations. It grants no new floor, execution or drain.
+// rejects observations beyond the bounded clock skew. It grants no new floor,
+// execution or drain.
 func (validator *Validator) ValidateTerminalDispositionForReplay(value *velav1.StageTerminalDisposition) (VerifiedTerminalDisposition, error) {
 	verified, err := validator.ValidateTerminalDispositionSignature(value)
 	if err != nil {
 		return verified, err
 	}
-	if validator.now().UTC().Before(verified.Disposition.GetObservedAt().AsTime()) {
+	if validator.now().UTC().Add(MaxTerminalObservationSkew).Before(verified.Disposition.GetObservedAt().AsTime()) {
 		return VerifiedTerminalDisposition{}, ErrStale
 	}
 	return verified, nil

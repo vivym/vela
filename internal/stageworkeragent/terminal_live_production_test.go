@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -19,13 +20,21 @@ import (
 
 func TestTerminalLiveProductionRecoversBeforeAdvertisingCapacity(t *testing.T) {
 	for _, applied := range []bool{false, true} {
-		for _, fault := range []string{"complete", "discovery-malformed", "cancel-malformed", "drain-malformed", "drain-lost", "stop-inspection"} {
+		for _, fault := range []string{"complete", "journal-rejection", "discovery-malformed", "cancel-malformed", "drain-malformed", "drain-lost", "stop-inspection"} {
 			t.Run(map[bool]string{false: "not-applied", true: "applied"}[applied]+"/"+fault, func(t *testing.T) {
 				f := terminalMaterializationFixture(t)
 				gate := f.open(t)
 				completeAdmissionInputs(t, beginAdmission(t, gate, f.assignment, f.acquireID))
 				group := startFloorCollectorRuntimes(t, f, t.TempDir(), true, false)
 				client, backend := group.clients[0], group.activeBackends[0]
+				if fault == "journal-rejection" {
+					var err error
+					client, err = modelruntime.NewJournalWorkerClient(client, admittedTerminalJournalWriter{allocationID: f.assignment.Authority.StageAllocationId})
+					if err != nil {
+						t.Fatal(err)
+					}
+					fault = "complete"
+				}
 				first := f.assignment.Authority
 				if response, err := client.PrepareStage(t.Context(), &velav1.ModelRuntimeServicePrepareStageRequest{Authority: first, ExecutionSpec: f.assignment.ExecutionSpec}); err != nil || response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
 					t.Fatalf("prepare: %v %v", response, err)
@@ -149,6 +158,19 @@ func TestTerminalLiveProductionRecoversBeforeAdvertisingCapacity(t *testing.T) {
 			})
 		}
 	}
+}
+
+// The real owner rejection is tested in modelruntime. Here the production
+// recovery loop must continue from that rejection to observed stop, durable
+// drain, retirement and a genuinely usable slot. The local Runtime fixture
+// owns its floor journal, so its floor RPC still performs the real write.
+type admittedTerminalJournalWriter struct{ allocationID string }
+
+func (w admittedTerminalJournalWriter) Apply(_ context.Context, command modelruntime.JournalCommand) (modelruntime.JournalMutationReceipt, error) {
+	if command.NonAdmission != nil || (command.TerminalNonAdmission != nil && command.TerminalNonAdmission.Allocation == w.allocationID) {
+		return modelruntime.JournalMutationReceipt{}, modelruntime.ErrJournalRejected
+	}
+	return modelruntime.JournalMutationReceipt{}, nil
 }
 
 type terminalLiveFaultClient struct {

@@ -99,7 +99,7 @@ func ValidateTerminalNonAdmissionResult(validator *stageauthority.Validator, sco
 		return err
 	}
 	if !proto.Equal(verified.Disposition, checkpoint.GetDisposition()) || !bytes.Equal(verified.Digest[:], checkpoint.GetDispositionDigest()) ||
-		checkpoint.GetObservedAt().AsTime().Before(verified.Disposition.GetObservedAt().AsTime()) ||
+		checkpoint.GetObservedAt().AsTime().Add(stageauthority.MaxTerminalObservationSkew).Before(verified.Disposition.GetObservedAt().AsTime()) ||
 		stageauthority.ValidateSameTerminalAllocation(verified.Disposition, scope.GetDisposition(), scope.GetStageAllocationId()) != nil {
 		return invalid
 	}

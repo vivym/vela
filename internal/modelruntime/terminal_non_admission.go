@@ -188,7 +188,7 @@ func (store *executionJournal) validateTerminalNonAdmissions() error {
 		if allocation == nil || record.ExecutionSequence <= previous || record.ExecutionSequence != allocation.GetExecutionSequence() ||
 			record.DispositionDigest != original.Digest || record.InstalledCutoff < record.ExecutionSequence || record.InstalledCutoff > store.state.Floor ||
 			record.Contract != TerminalNonAdmissionContract || record.ObservedAt.IsZero() || record.ObservedAt.Location() != time.UTC ||
-			record.ObservedAt.Before(original.Disposition.GetObservedAt().AsTime()) {
+			record.ObservedAt.Add(stageauthority.MaxTerminalObservationSkew).Before(original.Disposition.GetObservedAt().AsTime()) {
 			return ErrExecutionNonAdmissionUnproven
 		}
 		if err := store.requireUnadmittedSequence(record.ExecutionSequence); err != nil {

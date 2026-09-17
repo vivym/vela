@@ -215,3 +215,35 @@ func (agent *StreamAgent) hasUnretiredClosedAdmission(ctx context.Context, stage
 	}
 	return false, nil
 }
+
+// An expired grant cannot be used to reattach or renew. Keep its original
+// admission/Acquire evidence and close only local admission; Control history,
+// Runtime drain and retirement must still independently authorize reuse.
+func (agent *StreamAgent) closeExpiredAdmission(ctx context.Context, stageRunID uuid.UUID) error {
+	if agent.terminalHistory == nil || agent.admission == nil {
+		return nil
+	}
+	agent.runtimeMu.Lock()
+	defer agent.runtimeMu.Unlock()
+	snapshot, err := agent.admission.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	record := snapshot.Latest
+	if record == nil || record.Phase != AssignmentRuntimeEntered || record.Latest.GetStageRunId() != stageRunID.String() {
+		return nil
+	}
+	// Use the newest durable envelope, even if a renewal reply was lost before
+	// StreamAgent updated its in-memory pointer. Future/invalid authorities are
+	// not expiry evidence and must not be converted into this recovery path.
+	if _, err := agent.admission.validator.ValidateEnvelopeForReplay(record.Latest, agent.admission.maxSkew); err != nil {
+		return err
+	}
+	if _, err := agent.admission.validator.ValidateEnvelopeWithClockSkew(record.Latest, agent.admission.maxSkew); err != nil {
+		if !errors.Is(err, stageauthority.ErrStale) {
+			return err
+		}
+		return agent.admission.CloseExecution(ctx, record.Latest)
+	}
+	return nil
+}

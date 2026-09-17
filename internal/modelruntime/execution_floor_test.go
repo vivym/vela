@@ -226,7 +226,7 @@ func TestExecutionFloorRejectsUnconfiguredInvalidAndCanceledInstallation(t *test
 		t.Fatalf("canceled installation: %v", err)
 	}
 	future := fixture.disposition(t)
-	future.ObservedAt, future.ExpiresAt = timestamppb.New(fixture.clock.Now().Add(time.Second)), timestamppb.New(fixture.clock.Now().Add(time.Minute))
+	future.ObservedAt, future.ExpiresAt = timestamppb.New(fixture.clock.Now().Add(stageauthority.MaxTerminalObservationSkew+time.Nanosecond)), timestamppb.New(fixture.clock.Now().Add(time.Minute))
 	future, err := fixture.signer.SignTerminalDisposition(future)
 	if err != nil {
 		t.Fatal(err)

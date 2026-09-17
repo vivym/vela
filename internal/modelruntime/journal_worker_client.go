@@ -2,6 +2,7 @@ package modelruntime
 
 import (
 	"context"
+	"errors"
 
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -42,17 +43,32 @@ func (client *journalWorkerClient) InstallStageExecutionFloor(ctx context.Contex
 }
 
 func (client *journalWorkerClient) CheckpointStageNonAdmission(ctx context.Context, request *velav1.ModelRuntimeServiceCheckpointStageNonAdmissionRequest, opts ...grpc.CallOption) (*velav1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse, error) {
-	if request == nil || request.GetScope().GetAuthority() == nil {
+	if request == nil || len(request.ProtoReflect().GetUnknown()) != 0 || request.GetScope().GetAuthority() == nil {
 		return nil, ErrJournalCommand
 	}
 	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, NonAdmission: &JournalAuthorityCommand{Authority: journalAuthorityWire(request.GetScope().GetAuthority())}}); err != nil {
+		if err == ErrJournalRejected {
+			// A previously admitted execution cannot acquire non-admission proof.
+			// Inspect through the authenticated Runtime instead of turning this
+			// definite rejection into a transport failure that blocks real drain.
+			// Inspection validates the scope and supplies only persisted proof;
+			// uncertainty (including mixed errors) must still stop recovery.
+			read, readErr := client.ModelRuntimeServiceClient.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+			if readErr != nil {
+				return nil, readErr
+			}
+			if read == nil || len(read.ProtoReflect().GetUnknown()) != 0 {
+				return nil, errors.New("invalid non-admission inspection wrapper")
+			}
+			return &velav1.ModelRuntimeServiceCheckpointStageNonAdmissionResponse{Result: read.GetResult()}, nil
+		}
 		return nil, err
 	}
 	return client.ModelRuntimeServiceClient.CheckpointStageNonAdmission(ctx, request, opts...)
 }
 
 func (client *journalWorkerClient) CheckpointStageTerminalNonAdmission(ctx context.Context, request *velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest, opts ...grpc.CallOption) (*velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse, error) {
-	if request == nil || request.GetScope().GetDisposition() == nil {
+	if request == nil || len(request.ProtoReflect().GetUnknown()) != 0 || request.GetScope().GetDisposition() == nil {
 		return nil, ErrJournalCommand
 	}
 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(request.GetScope().GetDisposition())
@@ -61,6 +77,16 @@ func (client *journalWorkerClient) CheckpointStageTerminalNonAdmission(ctx conte
 	}
 	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, TerminalNonAdmission: &JournalTerminalNonAdmissionCommand{
 		Disposition: wire, Allocation: request.GetScope().GetStageAllocationId()}}); err != nil {
+		if err == ErrJournalRejected {
+			read, readErr := client.ModelRuntimeServiceClient.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+			if readErr != nil {
+				return nil, readErr
+			}
+			if read == nil || len(read.ProtoReflect().GetUnknown()) != 0 {
+				return nil, errors.New("invalid terminal non-admission inspection wrapper")
+			}
+			return &velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionResponse{Result: read.GetResult()}, nil
+		}
 		return nil, err
 	}
 	return client.ModelRuntimeServiceClient.CheckpointStageTerminalNonAdmission(ctx, request, opts...)

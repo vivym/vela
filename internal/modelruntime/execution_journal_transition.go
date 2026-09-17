@@ -115,7 +115,11 @@ func (store *executionJournalDraft) installFloor(disposition *velav1.StageTermin
 	}
 	state := store.state
 	if disposition.GetCutoff() <= state.Floor {
-		return errors.New("ModelRuntime execution floor cannot regress")
+		// Control refreshes signed terminal history when retirement retries.
+		// A valid restriction already covered by our durable floor is a no-op,
+		// just as at the Supervisor boundary. Preserve the original checkpoint;
+		// this acknowledges only the floor, never backend drain or retirement.
+		return nil
 	}
 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(disposition)
 	if err != nil {

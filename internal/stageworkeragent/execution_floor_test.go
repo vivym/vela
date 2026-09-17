@@ -243,7 +243,7 @@ func TestExecutionFloorCollectionValidatesCompleteHistoryBeforeAnyRPC(t *testing
 			case "expired":
 				f.clock.Add(int64(2 * time.Minute))
 			case "future":
-				f.clock.Add(-int64(time.Second))
+				f.clock.Add(-int64(stageauthority.MaxTerminalObservationSkew + time.Nanosecond))
 			case "unknown":
 				f.disposition.ProtoReflect().SetUnknown([]byte{0x78, 1})
 				sign = false

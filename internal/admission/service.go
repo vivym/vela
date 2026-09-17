@@ -140,6 +140,36 @@ func (s *Service) Submit(
 	idempotencyKey string,
 	request Request,
 ) (Job, error) {
+	for attempt := range 3 {
+		job, err := s.submitOnce(ctx, principal, projectID, idempotencyKey, request)
+		var postgresError *pgconn.PgError
+		if !errors.As(err, &postgresError) || (postgresError.Code != "40P01" && postgresError.Code != "40001") {
+			return job, err
+		}
+		// These PostgreSQL errors confirm that the whole transaction aborted.
+		// Re-enter with the original idempotency key only after submitOnce has
+		// rolled back. Transport errors and uncertain commit replies never retry.
+		if attempt == 2 {
+			return Job{}, failure(FailureCodeCapacityUnavailable, "Admission capacity changed concurrently; retry with the same Idempotency-Key", 1)
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 20 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return Job{}, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	panic("unreachable Admission retry loop")
+}
+
+func (s *Service) submitOnce(
+	ctx context.Context,
+	principal identity.Principal,
+	projectID uuid.UUID,
+	idempotencyKey string,
+	request Request,
+) (Job, error) {
 	if s == nil || s.pool == nil {
 		return Job{}, errors.New("admission service is not configured")
 	}

@@ -418,83 +418,92 @@ func TestProductionAgentSynchronizesControlSessionBeforeSealedOutputReplay(t *te
 }
 
 func TestProductionAgentReattachesAfterControlReconnectWithoutRerunning(t *testing.T) {
-	fixture := newSingleMemberMaterializationFixture(t)
-	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
-		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
-	})
-	if err != nil {
-		t.Fatalf("New Agent: %v", err)
-	}
-	materialization := newMaterializingStreamControl(t, fixture.authority)
-	commands := make(chan *velav1.StageWorkerControlServiceConnectResponse)
-	control := &productionExecutionControl{
-		materializingStreamControl: materialization,
-		identity:                   runtimeIdentityFromAuthority(fixture.authority),
-		assignment:                 fixture.assignment,
-		commands:                   commands,
-		heartbeatFailures:          1,
-	}
-	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
-	if err != nil {
-		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
-	}
-	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
-	if err != nil {
-		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
-	}
-	stream, err := stageworkeragent.NewMaterializingStreamAgent(
-		runtimeAgent,
-		control,
-		stageworkeragent.MaterializationConfig{
-			Validator: materialization.validator, Source: source,
-			Publisher: &outageOncePublisher{objectVersion: "reattached-l2-version"}, Journal: journal,
-			SourceLossEvidence: testSourceLossEvidenceProvider(),
-		},
-	)
-	if err != nil {
-		t.Fatalf("NewMaterializingStreamAgent: %v", err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var waits []time.Duration
-	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
-		Control: control, Runtime: fixture.client, Stream: stream,
-		RuntimeIdentity: control.identity,
-		Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
-		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
-		HeartbeatInterval: 10 * time.Second,
-		RetryMinimum:      time.Second, RetryMaximum: 8 * time.Second,
-		ObservationSequenceSource: &capacitySequenceSource{values: []int64{61, 72, 95, 106, 117, 118}},
-		Now:                       time.Now,
-		Wait: func(_ context.Context, delay time.Duration) error {
-			waits = append(waits, delay)
-			switch delay {
-			case 10 * time.Second:
-				fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
-			case 250 * time.Millisecond:
-				cancel()
+	for _, reattachFailures := range []int{0, 1} {
+		t.Run(fmt.Sprint(reattachFailures), func(t *testing.T) {
+			fixture := newSingleMemberMaterializationFixture(t)
+			runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+				Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+			})
+			if err != nil {
+				t.Fatalf("New Agent: %v", err)
 			}
-			return nil
-		},
-	})
-	if err != nil {
-		t.Fatalf("NewProductionAgent: %v", err)
-	}
+			materialization := newMaterializingStreamControl(t, fixture.authority)
+			commands := make(chan *velav1.StageWorkerControlServiceConnectResponse)
+			control := &productionExecutionControl{
+				materializingStreamControl: materialization,
+				identity:                   runtimeIdentityFromAuthority(fixture.authority),
+				assignment:                 fixture.assignment,
+				commands:                   commands,
+				heartbeatFailures:          1,
+				reattachFailures:           reattachFailures,
+			}
+			source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+			if err != nil {
+				t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+			}
+			journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+			if err != nil {
+				t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+			}
+			stream, err := stageworkeragent.NewMaterializingStreamAgent(
+				runtimeAgent,
+				control,
+				stageworkeragent.MaterializationConfig{
+					Validator: materialization.validator, Source: source,
+					Publisher: &outageOncePublisher{objectVersion: "reattached-l2-version"}, Journal: journal,
+					SourceLossEvidence: testSourceLossEvidenceProvider(),
+				},
+			)
+			if err != nil {
+				t.Fatalf("NewMaterializingStreamAgent: %v", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var waits []time.Duration
+			agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+				Control: control, Runtime: fixture.client, Stream: stream,
+				RuntimeIdentity: control.identity,
+				Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
+				CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
+				HeartbeatInterval: 10 * time.Second,
+				RetryMinimum:      time.Second, RetryMaximum: 8 * time.Second,
+				ObservationSequenceSource: &capacitySequenceSource{values: []int64{61, 72, 95, 106, 117, 118}},
+				Now:                       time.Now,
+				Wait: func(_ context.Context, delay time.Duration) error {
+					waits = append(waits, delay)
+					switch delay {
+					case 10 * time.Second:
+						fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+					case 250 * time.Millisecond:
+						cancel()
+					}
+					return nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewProductionAgent: %v", err)
+			}
 
-	if err := agent.Run(ctx); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	close(commands)
-	if control.acquireCalls != 2 || control.startCalls != 1 || control.reattachCalls != 1 ||
-		control.commitCalls != 1 || !reflect.DeepEqual(
-		waits,
-		[]time.Duration{time.Second, 10 * time.Second, 250 * time.Millisecond},
-	) {
-		t.Fatalf(
-			"acquire=%d start=%d reattach=%d commit=%d waits=%v",
-			control.acquireCalls, control.startCalls, control.reattachCalls,
-			control.commitCalls, waits,
-		)
+			if err := agent.Run(ctx); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			close(commands)
+			wantWaits := []time.Duration{time.Second, 10 * time.Second, 250 * time.Millisecond}
+			if reattachFailures > 0 {
+				wantWaits = []time.Duration{time.Second, 2 * time.Second, 10 * time.Second, 250 * time.Millisecond}
+			}
+			if control.acquireCalls != 2 || control.startCalls != 1 || control.reattachCalls != 1+reattachFailures ||
+				control.commitCalls != 1 || !reflect.DeepEqual(
+				waits,
+				wantWaits,
+			) {
+				t.Fatalf(
+					"acquire=%d start=%d reattach=%d commit=%d waits=%v",
+					control.acquireCalls, control.startCalls, control.reattachCalls,
+					control.commitCalls, waits,
+				)
+			}
+		})
 	}
 }
 
@@ -1251,6 +1260,7 @@ type productionExecutionControl struct {
 	observationSequences []int64
 	failCalls            int
 	failure              *velav1.FailStageRequest
+	reattachFailures     int
 }
 
 type sealedReplaySessionControl struct {
@@ -1366,6 +1376,10 @@ func (control *productionExecutionControl) Exchange(
 		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_ReattachStage:
 		control.reattachCalls++
+		if control.reattachFailures > 0 {
+			control.reattachFailures--
+			return nil, errors.New("injected transient reattach failure")
+		}
 		return commandResultResponse(
 			velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE,
 			velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,

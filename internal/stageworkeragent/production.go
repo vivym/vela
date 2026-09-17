@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/journalbinding"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -498,7 +499,8 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			backoff = nextBackoff(backoff, agent.retryMaximum)
 			leader, _, refreshErr := agent.refreshEvidence(ctx, 0)
 			if refreshErr != nil {
-				err = refreshErr
+				agent.observeRetry("refresh-active-control-session", refreshErr)
+				err = errors.Join(errControlReconnect, refreshErr)
 				continue
 			}
 			if !leader {
@@ -506,6 +508,11 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 				continue
 			}
 			if err = agent.reattachActive(ctx); err != nil {
+				if errors.Is(err, stageauthority.ErrStale) || errors.Is(err, ErrAdmissionClosed) {
+					break
+				}
+				agent.observeRetry("reattach-active-assignment", err)
+				err = errors.Join(errControlReconnect, err)
 				continue
 			}
 			backoff = agent.retryMinimum
@@ -521,6 +528,9 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			stageRunID, parseErr := uuid.Parse(discovery.Assignment.GetAuthority().GetStageRunId())
 			if parseErr != nil {
 				return err
+			}
+			if recoveryErr := agent.stream.closeExpiredAdmission(ctx, stageRunID); recoveryErr != nil {
+				return errors.Join(err, recoveryErr)
 			}
 			pending, recoveryErr := agent.stream.hasUnretiredClosedAdmission(ctx, stageRunID)
 			if recoveryErr != nil {

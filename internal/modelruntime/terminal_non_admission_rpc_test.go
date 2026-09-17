@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -35,7 +36,7 @@ func TestTerminalNonAdmissionRPCRejectsInvalidScopes(t *testing.T) {
 			case "signature":
 				scope.Disposition.Signature[0] ^= 1
 			case "future":
-				scope.Disposition.ObservedAt = timestamppb.New(f.clock.Now().Add(time.Second))
+				scope.Disposition.ObservedAt = timestamppb.New(f.clock.Now().Add(stageauthority.MaxTerminalObservationSkew + time.Nanosecond))
 				scope.Disposition = signTerminalNonAdmission(t, f, scope.Disposition)
 			case "size":
 				scope.Disposition.Signature = make([]byte, 65<<10)
@@ -103,5 +104,28 @@ func TestTerminalNonAdmissionRPCSeparatesCurrentReaderFromOriginalResidency(t *t
 	read, err = client.InspectStageTerminalNonAdmission(t.Context(), &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: fresh})
 	if err != nil || !proto.Equal(read.GetResult().GetCheckpoint(), created.GetResult().GetCheckpoint()) {
 		t.Fatalf("fresh query replaced historical witness: %v %v", read, err)
+	}
+}
+
+func TestTerminalNonAdmissionRPCBoundedClockSkew(t *testing.T) {
+	f := durableExecutionFixture(t, privateExecutionStateDirectory(t), true, "", 9, time.Time{})
+	client := dialExecutionFloorServer(t, f.supervisor)
+	disposition := unsignedTerminalAllocation(t, f)
+	disposition.ObservedAt = timestamppb.New(f.clock.Now().Add(30 * time.Millisecond))
+	disposition = signTerminalNonAdmission(t, f, disposition)
+	scope := &velav1.ModelRuntimeTerminalAllocationScope{SchemaVersion: 1, Identity: discoverExecutionFloorIdentity(t, client, f.bindings[1]), Disposition: disposition, StageAllocationId: disposition.Allocations[1].StageAllocationId}
+	if _, err := client.InstallExecutionFloor(t.Context(), f.validator, scope.Identity, disposition); err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.CheckpointStageTerminalNonAdmission(t.Context(), &velav1.ModelRuntimeServiceCheckpointStageTerminalNonAdmissionRequest{Scope: scope})
+	if err != nil || created.GetResult().GetCheckpoint() == nil {
+		t.Fatalf("small clock skew blocked durable never-admitted proof: %v %v", created, err)
+	}
+	if !created.GetResult().GetCheckpoint().GetObservedAt().AsTime().Equal(f.clock.Now()) {
+		t.Fatal("checkpoint fabricated a future local observation")
+	}
+	read, err := client.InspectStageTerminalNonAdmission(t.Context(), &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: scope})
+	if err != nil || !proto.Equal(read.GetResult().GetCheckpoint(), created.GetResult().GetCheckpoint()) {
+		t.Fatalf("retained skewed proof failed validation: %v %v", read, err)
 	}
 }

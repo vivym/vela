@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -208,7 +209,7 @@ func TestTerminalNonAdmissionRejectsInvalidOrMismatchedEvidence(t *testing.T) {
 		"residency":     func(d *velav1.StageTerminalDisposition) { d.Allocations[1].ModelResidencyId = uuid.NewString() },
 		"profile":       func(d *velav1.StageTerminalDisposition) { d.Allocations[1].StageProfileRevisionId = uuid.NewString() },
 		"future": func(d *velav1.StageTerminalDisposition) {
-			d.ObservedAt = timestamppb.New(d.GetObservedAt().AsTime().Add(time.Second))
+			d.ObservedAt = timestamppb.New(d.GetObservedAt().AsTime().Add(stageauthority.MaxTerminalObservationSkew + time.Nanosecond))
 		},
 	}
 	f := durableExecutionFixture(t, privateExecutionStateDirectory(t), true, "", 9, time.Time{})
@@ -400,7 +401,7 @@ func TestTerminalNonAdmissionRecoveryRejectsCorruptProofs(t *testing.T) {
 			case "contract":
 				records[0].Contract = modelruntime.ExecutionDrainContract
 			case "time":
-				records[0].ObservedAt = disposition.GetObservedAt().AsTime().Add(-time.Second)
+				records[0].ObservedAt = disposition.GetObservedAt().AsTime().Add(-stageauthority.MaxTerminalObservationSkew - time.Nanosecond)
 			case "duplicate":
 				records = append(records, records[0])
 			case "schema3":

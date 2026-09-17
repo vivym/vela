@@ -118,7 +118,7 @@ func (draft *executionJournalDraft) recordTerminalNonAdmission(disposition *vela
 	if len(draft.state.TerminalNonAdmissions) >= maxNonAdmissionCheckpoints {
 		return ErrExecutionNonAdmissionHistoryFull
 	}
-	if observed.IsZero() || observed.Location() != time.UTC || observed.Before(verified.Disposition.GetObservedAt().AsTime()) {
+	if observed.IsZero() || observed.Location() != time.UTC || observed.Add(stageauthority.MaxTerminalObservationSkew).Before(verified.Disposition.GetObservedAt().AsTime()) {
 		return ErrExecutionNonAdmissionUnproven
 	}
 	wire, err := proto.MarshalOptions{Deterministic: true}.Marshal(verified.Disposition)

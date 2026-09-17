@@ -56,7 +56,7 @@ func TestTerminalDispositionAuthenticatesCompleteHistoricalScope(t *testing.T) {
 	if _, err := verifier.ValidateTerminalDisposition(signed, changedOriginal, value.GetWorkerMemberId(), 7); err == nil {
 		t.Fatal("accepted substituted validly signed original")
 	}
-	for _, instant := range []time.Time{now.Add(-time.Nanosecond), now.Add(time.Minute), now.Add(time.Hour)} {
+	for _, instant := range []time.Time{now.Add(-stageauthority.MaxTerminalObservationSkew - time.Nanosecond), now.Add(time.Minute), now.Add(time.Hour)} {
 		validator, err := stageauthority.NewValidator(map[string][]byte{"stage-key-7": bytes.Repeat([]byte{0x42}, 32)}, func() time.Time { return instant })
 		if err != nil {
 			t.Fatal(err)
@@ -330,4 +330,35 @@ func terminalDispositionFixture(t *testing.T) (*stageauthority.Signer, *stageaut
 	}
 	d.Allocations = []*velav1.StageTerminalAllocation{allocation, retry}
 	return signer, verifier, original, d, now
+}
+
+func TestTerminalDispositionBoundedObservationClockSkew(t *testing.T) {
+	signer, _, original, value, now := terminalDispositionFixture(t)
+	signed, err := signer.SignTerminalDisposition(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, offset := range []time.Duration{-30 * time.Millisecond, -time.Second, -time.Second - time.Nanosecond, time.Minute} {
+		t.Run(offset.String(), func(t *testing.T) {
+			validator, err := stageauthority.NewValidator(map[string][]byte{"stage-key-7": bytes.Repeat([]byte{0x42}, 32)}, func() time.Time { return now.Add(offset) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = validator.ValidateTerminalDisposition(signed, original, value.GetWorkerMemberId(), 7)
+			wantStale := offset < -time.Second || offset >= time.Minute
+			if wantStale && !errors.Is(err, stageauthority.ErrStale) {
+				t.Fatalf("out of bound observation or expiry accepted: %v", err)
+			}
+			if !wantStale && err != nil {
+				t.Fatalf("small inter-node observation skew stalled terminal recovery: %v", err)
+			}
+			_, replayErr := validator.ValidateTerminalDispositionForReplay(signed)
+			if offset < -time.Second && !errors.Is(replayErr, stageauthority.ErrStale) {
+				t.Fatalf("future replay accepted: %v", replayErr)
+			}
+			if offset >= -time.Second && replayErr != nil {
+				t.Fatalf("restrictive history replay rejected: %v", replayErr)
+			}
+		})
+	}
 }

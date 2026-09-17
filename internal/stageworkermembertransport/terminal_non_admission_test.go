@@ -128,7 +128,7 @@ func TestMemberTerminalNonAdmissionRejectsMalformedProofAtBothHops(t *testing.T)
 					case "timestamp":
 						result.Checkpoint.ObservedAt = nil
 					case "early-time":
-						result.Checkpoint.ObservedAt.Seconds--
+						result.Checkpoint.ObservedAt.Seconds -= 2
 					case "rejected":
 						result.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 					case "decision":
