@@ -1,0 +1,206 @@
+{
+  "deployment": {
+    "at": "2026-09-17T07:05:23.461412+00:00",
+    "migration": 111,
+    "migration_sha256": "1ca375f6482ce6fa097aed468aaa21c6416ee7b6fabd4d7c34b9601ad1b80b1b",
+    "image": {
+      "base_image": "10.1.201.70:5005/vela-control@sha256:89d808880bca5604ac04f9f9e12b32be22e72493e2586654e0dbfe6361ce20bd",
+      "image": "10.1.201.70:5005/vela-control@sha256:517aed8b54ea1f2226693240cfa2d01e4ace1353e4d60b959d2df20aaf95ba49",
+      "binary_sha256": "f5fd6f05553900c872a3a9a5c45fef98657e1130f5421fe32ef941c17ca41e75"
+    },
+    "replicas": 2,
+    "available_replicas": 2,
+    "generation": 35
+  },
+  "verification": {
+    "at": "2026-09-17T07:06:01.131946+00:00",
+    "passed": true,
+    "created_jobs": 0,
+    "checks": [
+      {
+        "host": "10.1.201.70",
+        "project": "relay",
+        "query": "?active=true",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "relay",
+        "query": "?state=QUEUED",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "relay",
+        "query": "?state=RUNNING",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "relay",
+        "query": "?limit=100",
+        "status": 200,
+        "count": 3
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "acceptance",
+        "query": "?active=true",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "acceptance",
+        "query": "?state=QUEUED",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "acceptance",
+        "query": "?state=RUNNING",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "acceptance",
+        "query": "?limit=100",
+        "status": 200,
+        "count": 2
+      },
+      {
+        "host": "10.1.201.70",
+        "project": "acceptance",
+        "pagination_distinct_jobs": [
+          "8957b56d-3495-47eb-b5be-55fadd091c03",
+          "dac13805-1337-471f-9047-b755d8794335"
+        ],
+        "single_job_matches_list": true,
+        "filter_bound_cursor": true,
+        "anonymous_denied": true,
+        "cross_project_denied": true,
+        "invalid_parameters_denied": true
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "relay",
+        "query": "?active=true",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "relay",
+        "query": "?state=QUEUED",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "relay",
+        "query": "?state=RUNNING",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "relay",
+        "query": "?limit=100",
+        "status": 200,
+        "count": 3
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "acceptance",
+        "query": "?active=true",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "acceptance",
+        "query": "?state=QUEUED",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "acceptance",
+        "query": "?state=RUNNING",
+        "status": 200,
+        "count": 0
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "acceptance",
+        "query": "?limit=100",
+        "status": 200,
+        "count": 2
+      },
+      {
+        "host": "10.1.201.71",
+        "project": "acceptance",
+        "pagination_distinct_jobs": [
+          "8957b56d-3495-47eb-b5be-55fadd091c03",
+          "dac13805-1337-471f-9047-b755d8794335"
+        ],
+        "single_job_matches_list": true,
+        "filter_bound_cursor": true,
+        "anonymous_denied": true,
+        "cross_project_denied": true,
+        "invalid_parameters_denied": true
+      }
+    ]
+  },
+  "source": {
+    "base_commit": "883eca112ca08eebdda27bda5f8b586749146c1e",
+    "files": {
+      "api/openapi/vela.yaml": "3079f826bbc35c0b03149261d3bf5d0ad673766e2599389d71a91d9256a39e81",
+      "api/gen/vela.gen.go": "bc689dfd4dc0e8ba2d6aa2ecbe6f831c352a1a2e621965ad78c9c08621ae767b",
+      "db/queries/admission.sql": "ce8776c33eb8ebf17d4c0c0f78dd6fb9dbac2b8248699ebbe9adb102489b7c43",
+      "db/migrations/00110_project_job_listing.sql": "91f927f8ec9e30c029a4a29de1a0492d2c604ef3eabf55e4a67accef6766156e",
+      "internal/admission/service.go": "98cabd8cbec4d1e8a9b182a6133d008f81a301432b00f19be26ac8cee342eb67",
+      "internal/admission/list.go": "42d9ed67c244d6fd2d13e1ebd463caafb3e14cdd84382e3125c1dbac2f719c50",
+      "internal/httpapi/server.go": "0af7f6e41e1f4972b1fd7de92cbecd4cd0b47946381cfc4aed34cc7f5ee17dd4",
+      "internal/httpapi/jobs_list.go": "65b0889e0f50b6a5ad178ddfa5ec69c4998598a6b05dfc8216a94bfa36ef8204",
+      "internal/store/sqlc/admission.sql.go": "9f873a4623528fb3212cf667965c37bdf47ab1b939bbcb0bcd92f22978efcec7",
+      "internal/store/sqlc/querier.go": "f9b2065dd4ebecb8ef7bb1bd5bbcc4321f7804828bfa4da955a6fd0ae43e3589",
+      "internal/store/sqlc/models.go": "07cae1950273cb662ffb43f5d6bba70b9bdf6ae5050ea437f4644bf38c4f89e7",
+      "internal/integration/job_list_test.go": "c66dffcf37bc6d5739d90c784c59da6de4e50da352d8cfe16891cc7b11184a75",
+      "internal/modelruntime/execution_journal_non_admission.go": "7e20f28bd9f907612466ef43927dbce5f0a0cd956d1da7e1580de7d0e4af487e",
+      "internal/modelruntime/execution_journal_transition.go": "1bac9d89df40ba0995bf4fcf84d2f113cd9c325794d9654d624d80020fd0dd72",
+      "internal/modelruntime/terminal_non_admission.go": "3e06215d60af13381a760754fcb28303233f28d27bf3ac451c5abfb27acb2e2f",
+      "internal/modelruntimetransport/terminal_non_admission.go": "f6d8591c8d0bf30fbace68c6f094681c39c0d0c6c7339d60ed40ef095a20f270",
+      "internal/stageauthority/terminal_disposition.go": "8d2ac95e8613635548c49fa93f59618d62f9787494467c32bd88c35a7e2294c3",
+      "db/migrations/00108_stage_busy_queue_admission.sql": "28e2ed1c2c4b60c5b868d492d2417b13b1b5750f5ed8bc4e4649c4c5fa65cf64",
+      "db/migrations/00111_job_list_model_projection.sql": "1ca375f6482ce6fa097aed468aaa21c6416ee7b6fabd4d7c34b9601ad1b80b1b",
+      "internal/integration/job_list_role_test.go": "523adb297293edc61f489332a48df1a542956bc7ecbb57eb996e16edded97490"
+    },
+    "existing_recovery_fixes": [
+      "internal/modelruntime/execution_journal_non_admission.go",
+      "internal/modelruntime/execution_journal_transition.go",
+      "internal/modelruntime/terminal_non_admission.go",
+      "internal/modelruntimetransport/terminal_non_admission.go",
+      "internal/stageauthority/terminal_disposition.go",
+      "db/migrations/00108_stage_busy_queue_admission.sql"
+    ]
+  },
+  "initial_rollback": {
+    "at": "2026-09-17T06:58:02.747557+00:00",
+    "reason": "Startup privilege verifier disallows direct catalog column grants. Reverted grant and image; retained harmless indexes.",
+    "image": "10.1.201.70:5005/vela-control@sha256:89d808880bca5604ac04f9f9e12b32be22e72493e2586654e0dbfe6361ce20bd"
+  },
+  "database": {
+    "schema_version": 111,
+    "request_has_catalog_columns": false,
+    "indexes": [
+      "jobs_project_created_id_idx",
+      "jobs_project_active_created_id_idx"
+    ]
+  }
+}

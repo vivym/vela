@@ -67,6 +67,19 @@ API 与新签名下载地址均使用 `https://vela.marslab.ic`；DNS 由用户�
 本机 Python 3.14 默认严格验证也会拒绝，见[域名接入记录](vela-domain-https-2026-09-16.md)。
 下载请求不携带 API Key。完整输出为 1344×768、124 帧视频与 AAC 音轨及缩略图。
 
+## 查询正在进行的任务
+
+使用现有永久 Key 调用：
+
+```http
+GET /api/v1/projects/62275ddc-ae83-4ca1-b80c-313161264836/jobs?active=true&limit=50
+Authorization: Bearer <API_KEY>
+```
+
+返回本项目的全部非终态任务，包括排队和生成中。只查排队用 `state=QUEUED`，
+只查生成用 `state=RUNNING`。响应中的 `next_cursor` 用于下一页；轮询刷新时从
+不带游标的第一页重新查询。完整参数和实时分页语义见 [API 接入指南](api-integration.md#41-列出排队中生成中及其他未结束任务)。
+
 ## 中转站如何对账
 
 中转站保存自己的 `relay_order_id → project_id / job_id` 映射、幂等键、Vela 报价、

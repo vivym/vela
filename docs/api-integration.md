@@ -1,6 +1,6 @@
 # Vela 视频生成 API 接入指南
 
-面向通过后端中转接入 Vela 的团队。接口版本：`v1`；文档核对日期：2026-09-16。
+面向通过后端中转接入 Vela 的团队。接口版本：`v1`；文档核对日期：2026-09-17。
 
 我们提供 API Key 和 Project 配置；中转服务负责调用 Vela，并将任务状态和视频结果交付给自己的用户。API 使用 HTTPS、Bearer 认证和 JSON，视频生成采用异步任务模式。
 
@@ -52,6 +52,7 @@ sequenceDiagram
 | 操作 | 方法与路径 | 成功 HTTP 状态 | Key 权限 |
 | --- | --- | --- | --- |
 | 提交任务 | `POST /v1/projects/{project_id}/jobs` | `202` | `jobs:submit` |
+| 列出任务 | `GET /v1/projects/{project_id}/jobs` | `200` | `jobs:read` |
 | 查询任务 | `GET /v1/projects/{project_id}/jobs/{job_id}` | `200` | `jobs:read` |
 | 取消任务 | `POST /v1/projects/{project_id}/jobs/{job_id}/cancel` | `200` | `jobs:cancel` |
 | 获取产物和下载链接 | `GET /v1/projects/{project_id}/jobs/{job_id}/artifacts` | `200` | `artifacts:read` |
@@ -148,13 +149,13 @@ curl --silent --show-error --fail-with-body \
 }
 ```
 
-立即持久化 `job_id`、`project_id`、幂等键、原请求体和 `pricing`。查询接口不返回原始 prompt 或 `client_metadata`，也没有任务列表接口供中转恢复丢失的本地映射。
+立即持久化 `job_id`、`project_id`、幂等键、原请求体和 `pricing`。查询和列表接口不返回原始 prompt 或 `client_metadata`。列表可以找回项目内的 Job ID 和状态，但不能恢复丢失的本地用户/订单归属映射。
 
 ### 3.2 请求字段
 
 | 字段 | 必填 | 约束与含义 |
 | --- | --- | --- |
-| `model` | 是 | 我方交付的模型标识；当前 Marslab 为 `minimax-h3-live-validation`；非空，最多 100 字节 |
+| `model` | 是 | 我方交付的模型标识；当前 Marslab 新调用使用 `minimax-h3`，旧名 `minimax-h3-live-validation` 保留；非空，最多 100 字节 |
 | `generation_preset` | 是 | Schema 支持 `quality`、`balanced`、`fast`；当前 Marslab 仅开通 `fast` |
 | `service_class` | 是 | 当前只接受 `standard` |
 | `output_spec` | 是 | 我方交付的输出规格标识；非空，最多 100 字节 |
@@ -190,6 +191,38 @@ curl --silent --show-error --fail-with-body \
 - 新业务任务必须用新幂等键；不要在历史记录保留期结束后复用旧键。API 不承诺永久保留幂等记录。
 
 ## 4. 查询任务与轮询
+
+### 4.1 列出排队中、生成中及其他未结束任务
+
+```bash
+curl --silent --show-error --fail-with-body \
+  --connect-timeout 10 --max-time 30 \
+  "$VELA_BASE_URL/v1/projects/$VELA_PROJECT_ID/jobs?active=true&limit=50" \
+  -H "Authorization: Bearer $VELA_API_KEY"
+```
+
+| 参数 | 语义 |
+| --- | --- |
+| `active=true` | 包含 `QUEUED`、`ASSIGNED`、`RUNNING`、`FINALIZING`、`RETRY_WAIT`、`CANCELING` |
+| `active=false` 或省略 | 包含所有状态，包括已结束任务 |
+| `state=QUEUED` | 只查排队任务；也可指定任一其他 Job state，例如 `RUNNING` |
+| `limit` | 每页 1–100 条，默认 50 |
+| `cursor` | 上一页返回的 `next_cursor`；原样 URL 编码后传入 |
+
+`active=true` 与终态 `state` 组合返回 `400`。非法状态、参数或游标也返回 `400`。
+成功返回 `200`，结构为 `{"jobs":[...],"next_cursor":"..."}`；每个元素与单任务
+查询的 Job 结构一致，包含 `model`、状态、阶段、创建时间、报价和可用的进度字段。
+最后一页省略 `next_cursor`；没有匹配任务时返回 `{"jobs":[]}`。
+
+按 `created_at DESC, job_id DESC` 排序。同一时间创建的任务也有确定顺序。
+翻页时保持项目、`active` 和 `state` 筛选条件不变；可以调整 `limit`。游标只表示
+翻页位置，不授予权限，每一页仍验证 `jobs:read` 和项目隔离。跨项目调用返回 `403`。
+
+这是实时列表，不是冻结快照：翻页期间任务可能结束、重试或发生状态变化。
+新创建的任务需从不带游标的第一页刷新查看。仪表盘刷新时重新从第一页加载，
+按 `job_id` 合并；不要使用列表顺序推断 GPU 调度顺序或预计等待时间。
+
+### 4.2 查询单个任务
 
 ```bash
 export VELA_JOB_ID='22222222-2222-4222-8222-222222222222'

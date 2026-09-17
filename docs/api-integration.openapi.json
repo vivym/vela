@@ -639,6 +639,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "model": {
+            "description": "Stable model name associated with the admitted model revision",
+            "type": "string"
+          },
           "next_retry_at": {
             "format": "date-time",
             "type": "string"
@@ -676,6 +680,24 @@
           "pricing",
           "job_expires_at",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "JobList": {
+        "additionalProperties": false,
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobs"
         ],
         "type": "object"
       },
@@ -1059,6 +1081,71 @@
   "openapi": "3.0.3",
   "paths": {
     "/v1/projects/{project_id}/jobs": {
+      "get": {
+        "description": "Requires jobs:read. active=true includes all nonterminal states; false or omitted includes all states. state optionally narrows the result. Cursor pagination is a live view, not a frozen snapshot; restart without a cursor to refresh. Cursors are bound to the Project and filters.",
+        "operationId": "listJobs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProjectId"
+          },
+          {
+            "in": "query",
+            "name": "active",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "$ref": "#/components/schemas/JobState"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
+            },
+            "description": "Jobs visible in this Project; next_cursor is omitted on the last page"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "summary": "List Project Jobs, newest first"
+      },
       "post": {
         "operationId": "submitJob",
         "parameters": [
@@ -1570,5 +1657,5 @@
     }
   ],
   "x-vela-source": "api/openapi/vela.yaml",
-  "x-vela-source-sha256": "8c9aa0dc4f955ee46cf3fc76d0725da00b9ddf4c96828ffe35e0acdc1086c771"
+  "x-vela-source-sha256": "3079f826bbc35c0b03149261d3bf5d0ad673766e2599389d71a91d9256a39e81"
 }
