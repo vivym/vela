@@ -692,6 +692,19 @@ func validateNativeH3Request(request Request, content []byte) error {
 	if err := json.Unmarshal(content, &frozen); err != nil {
 		return err
 	}
+	// This certified release has one video/thumbnail output pair. The frozen
+	// target must match its OutputSpec; passing through other values would
+	// accept work that cannot satisfy Visible Completion.
+	if request.GenerationCount != 1 {
+		return failure(FailureCodeInvalidRequest,
+			"this native H3 release requires generation_count=1; submit separate jobs for multiple videos", 0)
+	}
+	target := frozen.H3.Parameters.CanonicalRequest.Target
+	if target.ShortEdge != 768 || target.AspectRatio != "16:9" ||
+		target.DurationSeconds == nil || *target.DurationSeconds != 5 {
+		return failure(FailureCodeInvalidRequest,
+			"this native H3 release requires h3.target.short_edge=768, aspect_ratio=16:9 and duration_seconds=5", 0)
+	}
 	sampling := frozen.H3.Parameters.Sampling
 	if sampling.NumInferenceSteps != 20 || sampling.Quality != "lossless" {
 		return failure(FailureCodeInvalidRequest,
