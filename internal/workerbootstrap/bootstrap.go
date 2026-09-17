@@ -210,7 +210,7 @@ func prepare(ctx context.Context, config Config, authority Authority, boundary f
 
 func bind(config Config) (preparation, error) {
 	if config.Bundle.RuntimeLaunchProtocol == runtimelaunch.Protocol && config.MaxRecords != runtimelaunch.AssignmentMaxRecords {
-		return preparation{}, fmt.Errorf("Kubernetes worker journal record limit must be %d", runtimelaunch.AssignmentMaxRecords)
+		return preparation{}, fmt.Errorf("kubernetes worker journal record limit must be %d", runtimelaunch.AssignmentMaxRecords)
 	}
 
 	if config.Validator == nil || config.MaxRecords < 1 || config.MaxRecords > 64 ||

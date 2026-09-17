@@ -9,5 +9,5 @@ import (
 )
 
 func newRuntimeJournalWriter(config, *durableWorkerLaunch) (modelruntime.JournalCommandWriter, error) {
-	return nil, errors.New("Node-owned Runtime journal transport requires Linux")
+	return nil, errors.New("node-owned Runtime journal transport requires Linux")
 }

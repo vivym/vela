@@ -45,7 +45,11 @@ func TestJournalOwnerFloorRefreshedRecovery(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer owner.Close()
+				t.Cleanup(func() {
+					if err := owner.Close(); err != nil {
+						t.Error(err)
+					}
+				})
 			}
 			f.clock.Advance(time.Second)
 			refreshed := proto.Clone(d).(*velav1.StageTerminalDisposition)

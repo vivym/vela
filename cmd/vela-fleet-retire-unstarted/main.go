@@ -120,13 +120,13 @@ func validateUnstarted(live, desired corev1.Pod, uid types.UID) error {
 		len(live.Status.EphemeralContainerStatuses) != 0 ||
 		!slices.Equal(live.Spec.SchedulingGates, []corev1.PodSchedulingGate{{Name: runtimelaunch.Gate}}) ||
 		!slices.Equal(live.Finalizers, []string{fleetcontract.ProtectionFinalizer}) {
-		return fmt.Errorf("Pod %s is not the pinned, protected, unstarted instance", live.Name)
+		return fmt.Errorf("pod %s is not the pinned, protected, unstarted instance", live.Name)
 	}
 	// A prior accepted DELETE may have left only the protected finalizer.
 	live.DeletionTimestamp = nil
 	live.DeletionGracePeriodSeconds = nil
 	if !fleetcontroller.WorkerInstancePodMatches(live, desired) {
-		return fmt.Errorf("Pod %s differs from the withdrawn plan", live.Name)
+		return fmt.Errorf("pod %s differs from the withdrawn plan", live.Name)
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func retire(ctx context.Context, pods typedcore.PodInterface, desired corev1.Pod
 	if live.DeletionTimestamp == nil {
 		rv := live.ResourceVersion
 		if err := pods.Delete(ctx, desired.Name, metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &uid, ResourceVersion: &rv}}); err != nil {
-			return fmt.Errorf("Registry-authorized DELETE: %w", err)
+			return fmt.Errorf("registry-authorized DELETE: %w", err)
 		}
 	}
 	live, err = pods.Get(ctx, desired.Name, metav1.GetOptions{})
@@ -164,7 +164,7 @@ func retire(ctx context.Context, pods typedcore.PodInterface, desired corev1.Pod
 		return err
 	}
 	if _, err := pods.Patch(ctx, desired.Name, types.JSONPatchType, patch, metav1.PatchOptions{}); err != nil {
-		return fmt.Errorf("Registry-authorized finalizer removal: %w", err)
+		return fmt.Errorf("registry-authorized finalizer removal: %w", err)
 	}
 	for {
 		_, err := pods.Get(ctx, desired.Name, metav1.GetOptions{})

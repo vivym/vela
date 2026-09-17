@@ -53,7 +53,7 @@ func (client *journalWorkerClient) CheckpointStageNonAdmission(ctx context.Conte
 			// definite rejection into a transport failure that blocks real drain.
 			// Inspection validates the scope and supplies only persisted proof;
 			// uncertainty (including mixed errors) must still stop recovery.
-			read, readErr := client.ModelRuntimeServiceClient.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+			read, readErr := client.InspectStageNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageNonAdmissionRequest{Scope: request.GetScope()}, opts...)
 			if readErr != nil {
 				return nil, readErr
 			}
@@ -78,7 +78,7 @@ func (client *journalWorkerClient) CheckpointStageTerminalNonAdmission(ctx conte
 	if _, err := client.writer.Apply(ctx, JournalCommand{SchemaVersion: 1, TerminalNonAdmission: &JournalTerminalNonAdmissionCommand{
 		Disposition: wire, Allocation: request.GetScope().GetStageAllocationId()}}); err != nil {
 		if err == ErrJournalRejected {
-			read, readErr := client.ModelRuntimeServiceClient.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: request.GetScope()}, opts...)
+			read, readErr := client.InspectStageTerminalNonAdmission(ctx, &velav1.ModelRuntimeServiceInspectStageTerminalNonAdmissionRequest{Scope: request.GetScope()}, opts...)
 			if readErr != nil {
 				return nil, readErr
 			}
