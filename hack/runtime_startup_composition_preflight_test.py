@@ -133,7 +133,6 @@ class CompositionPreflightTest(unittest.TestCase):
             "unknown-record": json.dumps(header) + "\n{}\n",
             "active": "\n".join(map(json.dumps, [header, startup])) + "\n",
             "orphan-exit": "\n".join(map(json.dumps, [header, exited])) + "\n",
-            "consumed": "\n".join(map(json.dumps, [header, startup, exited])) + "\n",
             "truncated": json.dumps(header) + "\n{",
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -144,6 +143,21 @@ class CompositionPreflightTest(unittest.TestCase):
                     checks = MODULE.state_machine_checks({"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": directory})
                     check = next(item for item in checks if item["name"] == "runtime_startup_ledger")
                     self.assertNotEqual(check["status"], "ready")
+
+            path.write_text("\n".join(map(json.dumps, [header, startup, exited])) + "\n", encoding="utf-8")
+            checks = MODULE.state_machine_checks({"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": directory})
+            check = next(item for item in checks if item["name"] == "runtime_startup_ledger")
+            self.assertEqual(check["status"], "ready")
+
+    def test_initialized_header_only_ledger_is_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pathlib.Path(directory, "runtime-startups.jsonl").write_text(
+                json.dumps({"schema_version": 3, "ledger_id": "ledger", "node_identity": "cpu-node"}) + "\n",
+                encoding="utf-8",
+            )
+            checks = MODULE.state_machine_checks({"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": directory})
+            check = next(item for item in checks if item["name"] == "runtime_startup_ledger")
+            self.assertEqual(check, {"name": "runtime_startup_ledger", "status": "ready", "active_startups": 0})
 
     def test_nonobject_journal_is_rejected_without_crashing(self):
         with tempfile.TemporaryDirectory() as directory:

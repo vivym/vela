@@ -1184,10 +1184,6 @@ func (resources *runtimeStartupResources) Close() error {
 		closeErr = errors.Join(closeErr, resources.runtimeBootstrap.Remove(context.Background(), resources.runtimePublication.Directory))
 		resources.runtimeBootstrap = nil
 	}
-	if resources.runtimeOwner != nil {
-		closeErr = errors.Join(closeErr, resources.runtimeOwner.Close())
-		resources.runtimeOwner = nil
-	}
 	if resources.workerJournalEndpoint != nil {
 		closeErr = errors.Join(closeErr, resources.workerJournalEndpoint.Close())
 		resources.workerJournalEndpoint = nil
@@ -1235,6 +1231,14 @@ func (resources *runtimeStartupResources) Close() error {
 		closeErr = errors.Join(closeErr, resources.ledger.RetireBackendIncarnation(retireCtx, resources.retirementJournalID, resources.journal))
 		cancel()
 		resources.retirementJournalID = uuid.Nil
+	}
+	// The ledger retains the same RuntimeNamespaceOwner pointer used during
+	// startup enrollment. Keep that pidfd alive until retirement has consumed
+	// the exact-owner exit observation; closing it earlier makes every cleanup
+	// path look like a lost owner and leaves the journal UNRESOLVED.
+	if resources.runtimeOwner != nil {
+		closeErr = errors.Join(closeErr, resources.runtimeOwner.Close())
+		resources.runtimeOwner = nil
 	}
 	if resources.image != nil {
 		closeErr = errors.Join(closeErr, resources.image.Images.Close())

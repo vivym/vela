@@ -211,7 +211,7 @@ def validate_startup_ledger(path: pathlib.Path) -> tuple[str, int]:
         if not lines:
             return "requires-reprovision", -1
         header = json.loads(lines[0])
-        if not isinstance(header, dict) or not isinstance(header.get("schema_version"), int) or not header.get("id") or not header.get("node_identity"):
+        if not isinstance(header, dict) or not isinstance(header.get("schema_version"), int) or not header.get("ledger_id") or not header.get("node_identity"):
             return "requires-reprovision", -1
         starts: set[str] = set()
         exits: set[str] = set()
