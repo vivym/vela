@@ -15,6 +15,7 @@ type BackendLifecycleState string
 const (
 	BackendLifecycleUnstarted     BackendLifecycleState = "UNSTARTED"
 	BackendLifecycleUnresolved    BackendLifecycleState = "UNRESOLVED"
+	BackendLifecycleRetired       BackendLifecycleState = "RETIRED"
 	BackendLifecycleLegacyUnknown BackendLifecycleState = "LEGACY_UNKNOWN"
 )
 
@@ -26,6 +27,18 @@ type BackendLifecycleStatus struct {
 	IncarnationID uuid.UUID             `json:"incarnation_id"`
 	LaunchDigest  [sha256.Size]byte     `json:"launch_digest"`
 	RecordedAt    time.Time             `json:"recorded_at"`
+	RetiredAt     time.Time             `json:"retired_at,omitempty"`
+	ExitDigest    [sha256.Size]byte     `json:"exit_digest,omitempty"`
+}
+
+// BackendRetirementProof binds retirement to the exact startup intent. The
+// exit digest is produced by the Node's retained kernel owner observation;
+// deleting files or restarting a process cannot manufacture this proof.
+type BackendRetirementProof struct {
+	IncarnationID uuid.UUID
+	LaunchDigest  [sha256.Size]byte
+	ExitDigest    [sha256.Size]byte
+	RetiredAt     time.Time
 }
 
 func (store *executionJournal) validateBackendLifecycle() error {
@@ -48,6 +61,11 @@ func (store *executionJournal) validateBackendLifecycle() error {
 		if lifecycle.IncarnationID == uuid.Nil || lifecycle.IncarnationID.Version() != 4 || lifecycle.IncarnationID.Variant() != uuid.RFC4122 ||
 			lifecycle.LaunchDigest == ([sha256.Size]byte{}) || lifecycle.RecordedAt.IsZero() || lifecycle.RecordedAt.Location() != time.UTC {
 			return errors.New("runtime backend incarnation evidence is invalid")
+		}
+	case BackendLifecycleRetired:
+		if lifecycle.IncarnationID == uuid.Nil || lifecycle.IncarnationID.Version() != 4 || lifecycle.IncarnationID.Variant() != uuid.RFC4122 ||
+			lifecycle.LaunchDigest == ([sha256.Size]byte{}) || lifecycle.ExitDigest == ([sha256.Size]byte{}) || lifecycle.RecordedAt.IsZero() || lifecycle.RecordedAt.Location() != time.UTC || lifecycle.RetiredAt.IsZero() || lifecycle.RetiredAt.Location() != time.UTC || lifecycle.RetiredAt.Before(lifecycle.RecordedAt) {
+			return errors.New("runtime retired backend evidence is invalid")
 		}
 	default:
 		return errors.New("runtime backend lifecycle state is invalid")
@@ -74,7 +92,7 @@ func (draft *executionJournalDraft) recordBackendStartup(manifest LaunchManifest
 	if err := draft.workerHealthError(); err != nil {
 		return err
 	}
-	if draft.state.BackendLifecycle == nil || draft.state.BackendLifecycle.State != BackendLifecycleUnstarted {
+	if draft.state.BackendLifecycle == nil || (draft.state.BackendLifecycle.State != BackendLifecycleUnstarted && draft.state.BackendLifecycle.State != BackendLifecycleRetired) {
 		return ErrBackendIncarnationUnproven
 	}
 	document, err := EncodeLaunchManifest(manifest)
@@ -96,6 +114,20 @@ func (draft *executionJournalDraft) recordBackendStartup(manifest LaunchManifest
 	next.BackendLifecycle = &BackendLifecycleStatus{State: BackendLifecycleUnresolved,
 		IncarnationID: incarnation, LaunchDigest: sha256.Sum256(document), RecordedAt: observed}
 	return draft.replace(next)
+}
+
+func (draft *executionJournalDraft) retireBackend(proof BackendRetirementProof) error {
+	current := draft.state.BackendLifecycle
+	if current == nil || current.State != BackendLifecycleUnresolved || current.IncarnationID != proof.IncarnationID || current.LaunchDigest != proof.LaunchDigest ||
+		proof.IncarnationID == uuid.Nil || proof.IncarnationID.Version() != 4 || proof.IncarnationID.Variant() != uuid.RFC4122 || proof.LaunchDigest == ([sha256.Size]byte{}) || proof.ExitDigest == ([sha256.Size]byte{}) || proof.RetiredAt.IsZero() || proof.RetiredAt.Location() != time.UTC || proof.RetiredAt.Before(current.RecordedAt) {
+		return ErrBackendIncarnationUnproven
+	}
+	next := *current
+	next.State = BackendLifecycleRetired
+	next.RetiredAt = proof.RetiredAt
+	next.ExitDigest = proof.ExitDigest
+	draft.state.BackendLifecycle = &next
+	return draft.replace(draft.state)
 }
 
 func (store *executionStateFile) recoveryError() error {

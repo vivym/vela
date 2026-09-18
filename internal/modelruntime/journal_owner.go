@@ -114,6 +114,25 @@ func (owner *ExecutionJournalOwner) RecordBackendStartupIntent(ctx context.Conte
 	return *owner.store.state.BackendLifecycle, context.Cause(ctx)
 }
 
+// RetireBackendIncarnation records an independently observed exit of the exact
+// backend startup incarnation. It is the only transition that permits a later
+// startup on the same durable journal; a missing or mismatched proof remains
+// permanently recovery-only.
+func (owner *ExecutionJournalOwner) RetireBackendIncarnation(ctx context.Context, proof BackendRetirementProof) (BackendLifecycleStatus, error) {
+	if owner == nil || ctx == nil {
+		return BackendLifecycleStatus{}, ErrJournalCommand
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if err := owner.check(ctx); err != nil {
+		return BackendLifecycleStatus{}, err
+	}
+	if err := owner.store.transition(func(draft *executionJournalDraft) error { return draft.retireBackend(proof) }); err != nil {
+		return BackendLifecycleStatus{}, owner.mutationError(err)
+	}
+	return *owner.store.state.BackendLifecycle, context.Cause(ctx)
+}
+
 func (owner *ExecutionJournalOwner) Status(ctx context.Context) (ExecutionJournalStatus, error) {
 	if owner == nil || ctx == nil {
 		return ExecutionJournalStatus{}, ErrJournalCommand

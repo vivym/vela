@@ -117,6 +117,36 @@ func TestJournalOwnerAPIWorkflowAndLostReplyReplay(t *testing.T) {
 	}
 }
 
+func TestJournalOwnerRetiresExactBackendIncarnationBeforeRestart(t *testing.T) {
+	_, owner, config := journalOwnerFixture(t)
+	startup, err := owner.RecordBackendStartupIntent(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	exitDigest := sha256.Sum256([]byte("retained kernel exit observation"))
+	proof := modelruntime.BackendRetirementProof{IncarnationID: startup.IncarnationID, LaunchDigest: startup.LaunchDigest, ExitDigest: exitDigest, RetiredAt: startup.RecordedAt.Add(time.Second)}
+	retired, err := owner.RetireBackendIncarnation(t.Context(), proof)
+	if err != nil || retired.State != modelruntime.BackendLifecycleRetired {
+		t.Fatalf("retire backend incarnation: %+v %v", retired, err)
+	}
+	if _, err := owner.RetireBackendIncarnation(t.Context(), proof); err == nil {
+		t.Fatal("duplicate retirement unexpectedly succeeded")
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	config.State.Initialize = false
+	reopened, err := modelruntime.OpenExecutionJournalOwner(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reopened.Close() }()
+	second, err := reopened.RecordBackendStartupIntent(t.Context())
+	if err != nil || second.State != modelruntime.BackendLifecycleUnresolved || second.IncarnationID == startup.IncarnationID {
+		t.Fatalf("retired journal did not permit a fresh intent: %+v %v", second, err)
+	}
+}
+
 func TestJournalOwnerAPIWorkerCheckpoints(t *testing.T) {
 	f, owner, _ := journalOwnerFixture(t)
 	disposition := unsignedTerminalAllocation(t, f)

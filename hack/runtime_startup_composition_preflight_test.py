@@ -1,6 +1,8 @@
 import importlib.util
+import json
 import os
 import pathlib
+import tempfile
 import unittest
 
 
@@ -101,6 +103,55 @@ class CompositionPreflightTest(unittest.TestCase):
         finally:
             directory.chmod(0o700)
             directory.rmdir()
+
+    def test_unresolved_runtime_state_requires_reprovision(self):
+        root = pathlib.Path("/tmp/vela-preflight-unresolved")
+        root.mkdir(mode=0o700, exist_ok=True)
+        for child in root.iterdir():
+            if child.is_file():
+                child.unlink()
+        (root / "execution-admission.json").write_text(json.dumps({"backend_lifecycle": {"state": "UNRESOLVED"}}), encoding="utf-8")
+        try:
+            environment = {name: str(root / name.lower()) for name in MODULE.REQUIRED_PATH_ENV}
+            environment["VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY"] = str(root)
+            _, report = MODULE.run(environment)
+            check = next(item for item in report["checks"] if item["name"] == "runtime_journal_backend_lifecycle")
+            self.assertEqual(check["status"], "requires-reprovision")
+            self.assertIn("runtime_journal_backend_lifecycle", report["failed_checks"])
+        finally:
+            (root / "execution-admission.json").unlink(missing_ok=True)
+            root.rmdir()
+
+    def test_corrupt_or_consumed_ledger_never_passes(self):
+        header = {"schema_version": 3, "ledger_id": "ledger", "node_identity": "cpu-node"}
+        startup = {"startup": {"operation_id": "operation", "request": {"journal_id": "journal"}, "owner": {"pid": 1}}}
+        exited = {"exit": {"operation_id": "operation", "journal_id": "journal", "observation": {"owner": {"pid": 1}}}}
+        cases = {
+            "empty": "",
+            "bad-header": "{}\n",
+            "wrong-json-type": "[]\n",
+            "unknown-record": json.dumps(header) + "\n{}\n",
+            "active": "\n".join(map(json.dumps, [header, startup])) + "\n",
+            "orphan-exit": "\n".join(map(json.dumps, [header, exited])) + "\n",
+            "consumed": "\n".join(map(json.dumps, [header, startup, exited])) + "\n",
+            "truncated": json.dumps(header) + "\n{",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "runtime-startups.jsonl"
+            for name, wire in cases.items():
+                with self.subTest(name=name):
+                    path.write_text(wire, encoding="utf-8")
+                    checks = MODULE.state_machine_checks({"VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY": directory})
+                    check = next(item for item in checks if item["name"] == "runtime_startup_ledger")
+                    self.assertNotEqual(check["status"], "ready")
+
+    def test_nonobject_journal_is_rejected_without_crashing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "execution-admission.json"
+            for value in ([], None, {"backend_lifecycle": []}):
+                path.write_text(json.dumps(value), encoding="utf-8")
+                checks = MODULE.state_machine_checks({"VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY": directory})
+                self.assertEqual(checks[0]["status"], "requires-reprovision")
 
 
 if __name__ == "__main__":

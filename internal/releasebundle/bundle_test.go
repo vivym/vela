@@ -1238,6 +1238,8 @@ func newBundleFixture(t *testing.T) *bundleFixture {
 Description=Vela host remediation Node Agent
 Wants=network-online.target
 After=network-online.target
+StartLimitIntervalSec=5min
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -1245,6 +1247,7 @@ ExecStart=/usr/local/bin/vela-node-agent
 EnvironmentFile=/etc/vela/node-agent.env
 Restart=on-failure
 RestartSec=5s
+RestartPreventExitStatus=78
 UMask=0077
 RuntimeDirectory=vela-node-agent
 RuntimeDirectoryMode=0755

@@ -33,7 +33,6 @@ const (
 )
 
 var (
-	ErrRuntimeStartupLedger   = errors.New("runtime startup ledger is unavailable, changed or incomplete")
 	ErrRuntimeStartupRecorded = errors.New("runtime journal already has a recorded startup; no new owner may register")
 )
 
@@ -312,6 +311,9 @@ func (ledger *RuntimeStartupLedger) RecordExit(ctx context.Context, journalID uu
 		return exit, nil
 	}
 	owner := ledger.owners[journalID]
+	if owner == nil {
+		return RuntimeStartupExit{}, ErrRuntimeStartupLedger
+	}
 	observed, err := owner.ObserveExit(ctx)
 	if err != nil {
 		return RuntimeStartupExit{}, err
@@ -323,6 +325,73 @@ func (ledger *RuntimeStartupLedger) RecordExit(ctx context.Context, journalID uu
 	_ = owner.Close()
 	delete(ledger.owners, journalID)
 	return exit, nil
+}
+
+// RetireBackendIncarnation joins the retained exact-owner exit observation to
+// the Runtime journal. It retries only while the retained pidfd is still live;
+// no numeric PID, CRI disappearance or process restart can satisfy this path.
+func (ledger *RuntimeStartupLedger) RetireBackendIncarnation(ctx context.Context, journalID uuid.UUID, journal *modelruntime.ExecutionJournalOwner) error {
+	if ledger == nil || journalID == uuid.Nil || journal == nil {
+		return ErrRuntimeStartupLedger
+	}
+	startup, err := ledger.Inspect(ctx, journalID)
+	if err != nil {
+		return err
+	}
+	status, err := journal.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if status.BackendLifecycle.State == modelruntime.BackendLifecycleUnstarted {
+		// A composition can fail after the Node has enrolled the owner but before
+		// the journal startup intent is durable. Drain that exact owner, then
+		// leave the journal UNSTARTED; there is no incarnation to retire.
+		_, err = ledger.recordExitWithRetry(ctx, journalID)
+		return err
+	}
+	// The durable journal may have advanced to a new backend incarnation after
+	// the same Runtime owner was reused. An old pidfd exit can retire only the
+	// exact startup intent that retained it; taking the current journal fields
+	// without this comparison would let a prior process authorize its successor.
+	if startup.Request.JournalID != journalID || startup.Request.IncarnationID != status.BackendLifecycle.IncarnationID || startup.Request.LaunchDigest != status.BackendLifecycle.LaunchDigest {
+		return ErrRuntimeStartupLedger
+	}
+	exit, err := ledger.recordExitWithRetry(ctx, journalID)
+	if err != nil {
+		return err
+	}
+	if status.BackendLifecycle.State == modelruntime.BackendLifecycleRetired {
+		return nil
+	}
+	wire, err := json.Marshal(exit.Observation)
+	if err != nil {
+		return err
+	}
+	_, err = journal.RetireBackendIncarnation(ctx, modelruntime.BackendRetirementProof{
+		IncarnationID: status.BackendLifecycle.IncarnationID,
+		LaunchDigest:  status.BackendLifecycle.LaunchDigest,
+		ExitDigest:    sha256.Sum256(wire),
+		RetiredAt:     exit.Observation.ObservedAt,
+	})
+	return err
+}
+
+func (ledger *RuntimeStartupLedger) recordExitWithRetry(ctx context.Context, journalID uuid.UUID) (RuntimeStartupExit, error) {
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		exit, err := ledger.RecordExit(ctx, journalID)
+		if err == nil {
+			return exit, nil
+		}
+		if !errors.Is(err, ErrRuntimeNamespaceOwnerLive) || time.Now().After(deadline) {
+			return RuntimeStartupExit{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return RuntimeStartupExit{}, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func cloneRuntimeStartup(record RuntimeStartupRecord) RuntimeStartupRecord {

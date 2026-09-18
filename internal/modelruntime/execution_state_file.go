@@ -203,7 +203,9 @@ func openExecutionState(config ExecutionFloorStateConfig, journalScope execution
 			return nil, fmt.Errorf("upgrade ModelRuntime execution state: %w", err)
 		}
 	}
-	store.recoveryBackend = store.state.BackendLifecycle.State != BackendLifecycleUnstarted
+	// RETIRED is a safe, process-free handoff state. It is not readiness, but it
+	// deliberately permits the next authenticated startup intent to be recorded.
+	store.recoveryBackend = store.state.BackendLifecycle.State == BackendLifecycleUnresolved || store.state.BackendLifecycle.State == BackendLifecycleLegacyUnknown
 	success = true
 	return store, nil
 }

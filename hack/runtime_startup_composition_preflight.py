@@ -166,6 +166,81 @@ def kernel_pidfd_checks() -> list[dict[str, object]]:
     return checks
 
 
+def state_machine_checks(environment: dict[str, str]) -> list[dict[str, object]]:
+    """Reject known poisoned local state before a rollout consumes authority."""
+    checks: list[dict[str, object]] = []
+    journal_root = pathlib.Path(environment.get("VELA_NODE_AGENT_RUNTIME_JOURNAL_STATE_DIRECTORY", ""))
+    state_file = journal_root / "execution-admission.json"
+    if state_file.is_file() and not state_file.is_symlink():
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                raise ValueError("journal state is not an object")
+            lifecycle = state.get("backend_lifecycle") or {}
+            if not isinstance(lifecycle, dict):
+                raise ValueError("backend lifecycle is not an object")
+            lifecycle_state = lifecycle.get("state")
+        except (OSError, ValueError, TypeError):
+            lifecycle_state = "invalid"
+        status = "ready" if lifecycle_state in {"UNSTARTED", "RETIRED"} else "requires-reprovision"
+        checks.append({"name": "runtime_journal_backend_lifecycle", "status": status, "state": lifecycle_state})
+
+    ledger_root = pathlib.Path(environment.get("VELA_NODE_AGENT_RUNTIME_STARTUP_LEDGER_DIRECTORY", ""))
+    ledger_file = ledger_root / "runtime-startups.jsonl"
+    if ledger_file.is_file() and not ledger_file.is_symlink():
+        status, active = validate_startup_ledger(ledger_file)
+        checks.append({"name": "runtime_startup_ledger", "status": status, "active_startups": active})
+
+    socket_root = pathlib.Path(environment.get("VELA_NODE_AGENT_RUNTIME_STARTUP_SOCKET", "")).parent
+    for name in ("launch", "worker-bootstrap", "runtime-bootstrap"):
+        path = socket_root / name
+        if path.exists() or path.is_symlink():
+            checks.append({"name": f"startup_directory:{name}", "status": "must-be-absent"})
+    return checks
+
+
+def validate_startup_ledger(path: pathlib.Path) -> tuple[str, int]:
+    """Validate the durable ledger's minimum association invariants.
+
+    Preflight is not the authoritative Go parser, but it must never turn
+    malformed or partially written state into a rollout permit. A header-only
+    initialized ledger is valid; every exit must refer to one unique startup.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if not lines:
+            return "requires-reprovision", -1
+        header = json.loads(lines[0])
+        if not isinstance(header, dict) or not isinstance(header.get("schema_version"), int) or not header.get("id") or not header.get("node_identity"):
+            return "requires-reprovision", -1
+        starts: set[str] = set()
+        exits: set[str] = set()
+        for line in lines[1:]:
+            entry = json.loads(line)
+            if not isinstance(entry, dict):
+                return "requires-reprovision", -1
+            kinds = [name for name in ("startup", "exit", "reservation", "grant_attempt") if name in entry]
+            if len(kinds) != 1 or not isinstance(entry[kinds[0]], dict):
+                return "requires-reprovision", -1
+            kind = kinds[0]
+            value = entry[kind]
+            if kind == "startup":
+                request = value.get("request")
+                journal_id = request.get("journal_id") if isinstance(request, dict) else None
+                if not isinstance(journal_id, str) or not journal_id or journal_id in starts:
+                    return "requires-reprovision", -1
+                starts.add(journal_id)
+            elif kind == "exit":
+                journal_id = value.get("journal_id")
+                if not isinstance(journal_id, str) or not journal_id or journal_id not in starts or journal_id in exits:
+                    return "requires-reprovision", -1
+                exits.add(journal_id)
+        active = len(starts - exits)
+        return ("ready" if active == 0 else "requires-reprovision"), active
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return "requires-reprovision", -1
+
+
 def run(environment: dict[str, str]) -> tuple[int, dict[str, object]]:
     checks: list[dict[str, object]] = []
     if platform.system().lower() != "linux":
@@ -179,7 +254,8 @@ def run(environment: dict[str, str]) -> tuple[int, dict[str, object]]:
         checks.append({"name": "euid", "status": "present"})
     for name in REQUIRED_PATH_ENV:
         checks.append(check_path(name, environment.get(name, "")))
-    failed = [item for item in checks if item["status"] in {"missing", "unavailable", "noncanonical", "wrong_type", "symlink", "untrusted", "unsupported", "requires_root", "parent_missing", "parent_wrong_type", "parent_untrusted"}]
+    checks.extend(state_machine_checks(environment))
+    failed = [item for item in checks if item["status"] in {"missing", "unavailable", "noncanonical", "wrong_type", "symlink", "untrusted", "unsupported", "requires_root", "parent_missing", "parent_wrong_type", "parent_untrusted", "requires-reprovision", "must-be-absent"}]
     report = {
         "schema_version": 1,
         "mode": "preflight-only",

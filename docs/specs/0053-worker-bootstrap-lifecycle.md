@@ -127,11 +127,17 @@ preserves validated evidence and adds `LEGACY_UNKNOWN`, including for empty
 history. No upgrade infers a first-use grant.
 
 The UUID and launch digest identify startup intent within the journal; they do
-not prove a container identity, device quiescence or physical containment. No
-retirement or reset operation exists yet. Consequently, a durable Runtime that
-has attempted model startup remains recovery-only on subsequent process starts,
-even after externally observed PID 1 exit. Normal durable restart availability
-is not complete.
+not prove a container identity, device quiescence or physical containment. The
+implementation now adds a narrow `RETIRED` transition. It is accepted only
+when the same Node startup ledger retains the original namespace pidfd, observes
+that exact owner exit, persists the exit observation, and binds its digest to the
+journal incarnation and launch digest. A retired journal remains process-free
+and does not release a GPU, device binding, WorkerInstance or Fleet authority;
+it only permits the next authenticated startup intent to be recorded. If Node
+restarts before the exit observation is persisted, the handle cannot be
+reconstructed and the journal remains recovery-only. The operator must then
+provision a new WorkerInstance/journal or perform a separately authorized
+retirement workflow.
 
 The remaining durable lifecycle implementation must satisfy these obligations:
 

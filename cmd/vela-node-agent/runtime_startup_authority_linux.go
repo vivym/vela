@@ -101,6 +101,7 @@ type runtimeStartupResources struct {
 	workerJournalSocket          *runtimeStartupSocket
 	workerJournalServeDone       chan error
 	launcherCleanupVerify        func(context.Context) error
+	retirementJournalID          uuid.UUID
 	runtimeTarget                nodeagent.RuntimeContainerTarget
 	workerTarget                 nodeagent.RuntimeContainerTarget
 	runtimeOwner                 *nodeagent.RuntimeNamespaceOwner
@@ -648,6 +649,7 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 	orchestration, record, err := authority.Prepare(ctx, caller)
 	if err != nil {
 		_ = caller.Close()
+		resources.retirementJournalID = record.JournalID
 		return nil, &runtimeStartupCompositionError{record: record, err: err}
 	}
 	expectedRequest, err := orchestration.ExpectedBackendStartupRequest()
@@ -656,6 +658,7 @@ func composeRuntimeStartupAuthority(ctx context.Context, configuration config, r
 		_ = caller.Close()
 		return nil, err
 	}
+	resources.retirementJournalID = record.JournalID
 	return &runtimeStartupLifecycle{orchestration: orchestration, resources: resources, reservation: record, expected: expectedRequest}, nil
 }
 
@@ -1226,6 +1229,12 @@ func (resources *runtimeStartupResources) Close() error {
 		closeErr = errors.Join(closeErr, resources.launcherCleanupVerify(checkCtx))
 		cancel()
 		resources.launcherCleanupVerify = nil
+	}
+	if resources.retirementJournalID != uuid.Nil && resources.ledger != nil && resources.journal != nil {
+		retireCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		closeErr = errors.Join(closeErr, resources.ledger.RetireBackendIncarnation(retireCtx, resources.retirementJournalID, resources.journal))
+		cancel()
+		resources.retirementJournalID = uuid.Nil
 	}
 	if resources.image != nil {
 		closeErr = errors.Join(closeErr, resources.image.Images.Close())

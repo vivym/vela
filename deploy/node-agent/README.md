@@ -6,6 +6,11 @@ command allowlist. It does not connect to PostgreSQL, NATS, Kubernetes, or the
 customer API. The control plane calls it over mutually authenticated gRPC and
 persists the authoritative operation completion after the response.
 
+An unresolved Runtime incarnation or a corrupted startup ledger exits with
+`EX_CONFIG` (78). The packaged systemd unit prevents automatic restart for
+this class of error, so an operator sees one actionable failure and runs the
+recovery preflight instead of creating a restart storm.
+
 ## Release bundle boundary
 
 Production assembly must include the `node-agent` package and strict package

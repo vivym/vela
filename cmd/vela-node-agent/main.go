@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/securefile"
@@ -187,6 +188,12 @@ type workerCapacityTemplateConfig struct {
 func main() {
 	if err := runCommand(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "vela-node-agent stopped: %v\n", err)
+		// Configuration/state errors that require operator reprovision must not
+		// create an endless systemd restart loop. 78 is EX_CONFIG and is marked
+		// as a restart-preventing status in the packaged unit.
+		if errors.Is(err, modelruntime.ErrBackendIncarnationUnproven) || errors.Is(err, nodeagent.ErrRuntimeStartupLedger) {
+			os.Exit(78)
+		}
 		os.Exit(1)
 	}
 }
