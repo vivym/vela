@@ -312,7 +312,10 @@ func (ledger *RuntimeStartupLedger) RecordExit(ctx context.Context, journalID uu
 	}
 	owner := ledger.owners[journalID]
 	if owner == nil {
-		return RuntimeStartupExit{}, ErrRuntimeStartupLedger
+		// Recovery intentionally does not reconstruct a pidfd from serialized
+		// process metadata. Callers need the specific lost-owner classification
+		// to enter recovery-only handling rather than retrying the same startup.
+		return RuntimeStartupExit{}, ErrRuntimeNamespaceOwnerLost
 	}
 	observed, err := owner.ObserveExit(ctx)
 	if err != nil {
