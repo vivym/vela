@@ -1,0 +1,82 @@
+{
+  "captured_at": "2026-09-17T17:54:45.909999+00:00",
+  "phases": {
+    "pilot": {
+      "service": {
+        "Result": "success",
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "UnitFileState": "disabled"
+      },
+      "passed": true,
+      "counts": {
+        "VERIFIED": 1
+      },
+      "nodes": {
+        "10.1.201.25": {
+          "state": "VERIFIED",
+          "node": "server-43",
+          "attempt": 1,
+          "receipt": {
+            "model_root": "/var/lib/vela/models/df458abdc238abf3e891e123be1e93b05104614d4768b7472f5d85275653fa4c",
+            "reused": false,
+            "verified_bytes": 59510503638,
+            "node": "server-43",
+            "address": "10.1.201.25",
+            "boot_id": "677cc3e5-5a49-450e-b436-320642e29673",
+            "finished_at": "2026-09-17T17:51:07.145790+00:00",
+            "manifest_sha256": "9cfdd65b1768f678860c21de08f86b3f4e09c427903930aa02796fdcc88f5d04",
+            "passed": true
+          }
+        }
+      }
+    },
+    "batch": {
+      "service": {
+        "Result": "success",
+        "ActiveState": "activating",
+        "SubState": "start",
+        "UnitFileState": "enabled"
+      },
+      "passed": null,
+      "counts": {
+        "COPYING_OR_VERIFYING": 4
+      },
+      "nodes": {
+        "10.1.201.19": {
+          "state": "COPYING_OR_VERIFYING",
+          "node": "server-36",
+          "attempt": 1
+        },
+        "10.1.201.26": {
+          "state": "COPYING_OR_VERIFYING",
+          "node": "server-17",
+          "attempt": 1
+        },
+        "10.1.201.27": {
+          "state": "COPYING_OR_VERIFYING",
+          "node": "server-21",
+          "attempt": 1
+        },
+        "10.1.201.28": {
+          "state": "COPYING_OR_VERIFYING",
+          "node": "server-47",
+          "attempt": 1
+        }
+      }
+    }
+  },
+  "sources": {
+    "10.1.201.66": {
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "UnitFileState": "disabled"
+    },
+    "10.1.201.25": {
+      "ActiveState": "active",
+      "SubState": "running",
+      "UnitFileState": "disabled"
+    }
+  },
+  "pilot_published_root": "555 \u76ee\u5f55"
+}

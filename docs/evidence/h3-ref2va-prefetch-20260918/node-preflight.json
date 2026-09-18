@@ -1,0 +1,635 @@
+{
+  "nodes": [
+    {
+      "address": "10.1.201.13",
+      "expected_node": "server-31",
+      "result": {
+        "node": "server-31",
+        "free_bytes": 595888508928,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957496,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.14",
+      "expected_node": "server-41",
+      "result": {
+        "node": "server-41",
+        "free_bytes": 586755997696,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953520,
+        "cached": [
+          "qualification",
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.15",
+      "expected_node": "server-34",
+      "result": {
+        "node": "server-34",
+        "free_bytes": 586916397056,
+        "total_bytes": 940744544256,
+        "mem_kib": 263957464,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.16",
+      "expected_node": "server-39",
+      "result": {
+        "node": "server-39",
+        "free_bytes": 587047415808,
+        "total_bytes": 940744544256,
+        "mem_kib": 263957472,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.11",
+      "expected_node": "server-22",
+      "result": {
+        "node": "server-22",
+        "free_bytes": 585694801920,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957468,
+        "cached": [
+          "qualification",
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.12",
+      "expected_node": "server-23",
+      "result": {
+        "node": "server-23",
+        "free_bytes": 594928947200,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957496,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.17",
+      "expected_node": "server-10",
+      "result": {
+        "node": "server-10",
+        "free_bytes": 595902578688,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957500,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.18",
+      "expected_node": "server-38",
+      "result": {
+        "node": "server-38",
+        "free_bytes": 587152281600,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953924,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.20",
+      "expected_node": "server-42",
+      "result": {
+        "node": "server-42",
+        "free_bytes": 587157733376,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953916,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.21",
+      "expected_node": "server-14",
+      "result": {
+        "node": "server-14",
+        "free_bytes": 596225785856,
+        "total_bytes": 941289119744,
+        "mem_kib": 263908476,
+        "cached": [
+          "qualification",
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.22",
+      "expected_node": "server-28",
+      "result": {
+        "node": "server-28",
+        "free_bytes": 596089155584,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957492,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.23",
+      "expected_node": "server-33",
+      "result": {
+        "node": "server-33",
+        "free_bytes": 596220727296,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957216,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.24",
+      "expected_node": "server-29",
+      "result": {
+        "node": "server-29",
+        "free_bytes": 596082696192,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957492,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1",
+          "qualification"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.25",
+      "expected_node": "server-43",
+      "result": {
+        "node": "server-43",
+        "free_bytes": 809345380352,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953948,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.26",
+      "expected_node": "server-17",
+      "result": {
+        "node": "server-17",
+        "free_bytes": 715391995904,
+        "total_bytes": 835603464192,
+        "mem_kib": 263957496,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.27",
+      "expected_node": "server-21",
+      "result": {
+        "node": "server-21",
+        "free_bytes": 818392510464,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957508,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.28",
+      "expected_node": "server-47",
+      "result": {
+        "node": "server-47",
+        "free_bytes": 808947822592,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953964,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.29",
+      "expected_node": "server-16",
+      "result": {
+        "node": "server-16",
+        "free_bytes": 716973387776,
+        "total_bytes": 835603464192,
+        "mem_kib": 263957652,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.30",
+      "expected_node": "server-12",
+      "result": {
+        "node": "server-12",
+        "free_bytes": 818108354560,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957500,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.31",
+      "expected_node": "server-18",
+      "result": {
+        "node": "server-18",
+        "free_bytes": 818405187584,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957516,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.32",
+      "expected_node": "server-30",
+      "result": {
+        "node": "server-30",
+        "free_bytes": 818395873280,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957492,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.33",
+      "expected_node": "server-25",
+      "result": {
+        "node": "server-25",
+        "free_bytes": 818252931072,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957500,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.34",
+      "expected_node": "server-45",
+      "result": {
+        "node": "server-45",
+        "free_bytes": 809207824384,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953968,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.35",
+      "expected_node": "server-40",
+      "result": {
+        "node": "server-40",
+        "free_bytes": 809356353536,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953956,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.36",
+      "expected_node": "server-46",
+      "result": {
+        "node": "server-46",
+        "free_bytes": 809218363392,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953524,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.37",
+      "expected_node": "servser-24",
+      "result": {
+        "node": "servser-24",
+        "free_bytes": 818392281088,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957492,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.38",
+      "expected_node": "server-37",
+      "result": {
+        "node": "server-37",
+        "free_bytes": 809337942016,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953556,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.39",
+      "expected_node": "server-11",
+      "result": {
+        "node": "server-11",
+        "free_bytes": 818388312064,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957488,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.40",
+      "expected_node": "server-44",
+      "result": {
+        "node": "server-44",
+        "free_bytes": 809320468480,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953880,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.41",
+      "expected_node": "server-13",
+      "result": {
+        "node": "server-13",
+        "free_bytes": 717002596352,
+        "total_bytes": 835603464192,
+        "mem_kib": 263957484,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.42",
+      "expected_node": "server-19",
+      "result": {
+        "node": "server-19",
+        "free_bytes": 818403852288,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957476,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.43",
+      "expected_node": "server-26",
+      "result": {
+        "node": "server-26",
+        "free_bytes": 818401984512,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957500,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.45",
+      "expected_node": "server-35",
+      "result": {
+        "node": "server-35",
+        "free_bytes": 808928092160,
+        "total_bytes": 940744544256,
+        "mem_kib": 263957220,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.46",
+      "expected_node": "server-15",
+      "result": {
+        "node": "server-15",
+        "free_bytes": 818276900864,
+        "total_bytes": 941289119744,
+        "mem_kib": 263957492,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.47",
+      "expected_node": "server-52",
+      "result": {
+        "node": "server-52",
+        "free_bytes": 809065242624,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953948,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.48",
+      "expected_node": "server-48",
+      "result": {
+        "node": "server-48",
+        "free_bytes": 809556877312,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953960,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.49",
+      "expected_node": "server-51",
+      "result": {
+        "node": "server-51",
+        "free_bytes": 809064636416,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953552,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.50",
+      "expected_node": "server-20",
+      "result": {
+        "node": "server-20",
+        "free_bytes": 717000052736,
+        "total_bytes": 835603464192,
+        "mem_kib": 247442396,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.51",
+      "expected_node": "server-27",
+      "result": {
+        "node": "server-27",
+        "free_bytes": 818264514560,
+        "total_bytes": 941289119744,
+        "mem_kib": 247442200,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.52",
+      "expected_node": "server-50",
+      "result": {
+        "node": "server-50",
+        "free_bytes": 809335230464,
+        "total_bytes": 940744544256,
+        "mem_kib": 263957512,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.53",
+      "expected_node": "server-54",
+      "result": {
+        "node": "server-54",
+        "free_bytes": 809303740416,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953864,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.54",
+      "expected_node": "server-53",
+      "result": {
+        "node": "server-53",
+        "free_bytes": 749475233792,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953556,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.55",
+      "expected_node": "server-49",
+      "result": {
+        "node": "server-49",
+        "free_bytes": 807684259840,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953496,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    },
+    {
+      "address": "10.1.201.19",
+      "expected_node": "server-36",
+      "result": {
+        "node": "server-36",
+        "free_bytes": 810434260992,
+        "total_bytes": 940744544256,
+        "mem_kib": 263953040,
+        "cached": [
+          "dad0bd33673dee603d107fda712ee22e1e6dca2268748f2b3d723f93c74d5aa1"
+        ]
+      },
+      "error": ""
+    }
+  ],
+  "shared_bytes": 38185908455,
+  "new_bytes": 21324595183
+}

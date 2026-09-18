@@ -1,0 +1,7 @@
+{
+  "errors": [],
+  "manifest_content_sha256": "sha256:df458abdc238abf3e891e123be1e93b05104614d4768b7472f5d85275653fa4c",
+  "root": "/srv/models",
+  "schema": "h3-production-model-manifest-v1",
+  "verified": true
+}

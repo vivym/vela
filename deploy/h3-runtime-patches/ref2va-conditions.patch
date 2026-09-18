@@ -1,0 +1,88 @@
+--- a/fast_h3/vela/sglang_native.py
++++ b/fast_h3/vela/sglang_native.py
+@@ -42,8 +42,9 @@
+     identity = json.loads(raw)
+     if identity.get("schema") != "h3-production-model-manifest-v1":
+         raise ValueError("unsupported model manifest schema")
+-    if environment.get("FAST_H3_MODEL_VARIANT") != "fl2va":
+-        raise ValueError("the native H3 boundary currently supports FL2VA t2va only")
++    model_variant = environment.get("FAST_H3_MODEL_VARIANT")
++    if model_variant not in {"fl2va", "ref2va"}:
++        raise ValueError("the native H3 boundary supports only FL2VA and Ref2VA")
+     return {
+         "transformer_weights_path": paths["FAST_H3_DIT_PATH"],
+         "component_paths": {"text_encoder": paths["FAST_H3_ENCODER_PATH"]},
+@@ -141,11 +142,13 @@
+                 "the native dense release requires 20 sigma points and lossless quality"
+             )
+         request = prepare_request(server_args, sampling)
+-        bind_materials(request, [])
+-        # The native Head normally resolves these fields before scheduling.
+-        # Vela constructs each role request independently, so every role must
+-        # derive its dimensions and seed before restoring a durable boundary.
+-        minimax_h3_prepare_for_queue(request)
++        canonical = request.extra[MINIMAX_H3_CANONICAL_REQUEST_EXTRA_KEY]
++        # The encoder receives the verified root materials after this request
++        # is constructed.  Defer media probing until bind_materials has seeded
++        # the request-local URI -> regular-file cache.  Text-only t2va has no
++        # material dependency and can be resolved at the same boundary.
++        if initialization.component != "ENCODER" and canonical.get("task") == "t2va":
++            minimax_h3_prepare_for_queue(request)
+         if initialization.component != "ENCODER":
+             # Encoder runs this as its first pipeline stage. Durable consumers
+             # reconstruct its non-tensor state (notably seeded generators).
+@@ -156,7 +159,43 @@
+     def bind_materials(request, materials):
+         canonical = request.extra[MINIMAX_H3_CANONICAL_REQUEST_EXTRA_KEY]
+-        if materials or canonical.get("conditions") or canonical.get("task") != "t2va":
+-            raise ValueError("native H3 boundary accepts text-only t2va")
++        task = canonical.get("task")
++        conditions = canonical.get("conditions") or []
++        if task == "t2va":
++            if materials or conditions:
++                raise ValueError("native H3 t2va boundary accepts no conditions")
++            return
++        if task not in {"fl2va", "ref2va"}:
++            raise ValueError(f"native H3 boundary does not support task {task!r}")
++        if not isinstance(materials, list) or len(materials) != len(conditions):
++            raise ValueError(
++                "native H3 condition materials must match canonical conditions"
++            )
++        cache = request.extra.setdefault("minimax_h3_material_localization", {})
++        seen: set[int] = set()
++        for material in materials:
++            if not isinstance(material, Mapping):
++                raise ValueError("native H3 condition material is invalid")
++            index = material.get("condition_index")
++            uri = material.get("uri")
++            local_path = material.get("local_path")
++            if type(index) is not int or index < 0 or index >= len(conditions):
++                raise ValueError("native H3 condition material index is invalid")
++            if index in seen or uri != conditions[index].get("uri"):
++                raise ValueError(
++                    "native H3 condition material identity disagrees with canonical request"
++                )
++            if not isinstance(local_path, str) or not Path(local_path).is_absolute():
++                raise ValueError("native H3 condition material path must be absolute")
++            path = Path(local_path)
++            if not path.is_file() or path.is_symlink():
++                raise ValueError(
++                    "native H3 condition material must be a regular local file"
++                )
++            cache[uri] = str(path)
++            seen.add(index)
++        if seen != set(range(len(conditions))):
++            raise ValueError("native H3 condition materials are incomplete")
++
+     return SimpleNamespace(
+         server_args_from_kwargs=make_args,
+         set_global_server_args=set_global_server_args,
+@@ -166,7 +205,7 @@
+         sampling_params_cls=MiniMaxH3SamplingParams,
+         prepare_request=make_request,
+         bind_local_materials=bind_materials,
+-        prepare_encoder_request=lambda request: None,  # Resolved by make_request.
++        prepare_encoder_request=minimax_h3_prepare_for_queue,
+         import_encoder_artifact=binding.import_encoder,
+         import_dit_artifact=binding.import_dit,
+         export_encoder_artifact=binding.export_encoder,

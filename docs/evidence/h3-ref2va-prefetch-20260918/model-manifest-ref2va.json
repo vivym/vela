@@ -1,0 +1,465 @@
+{
+  "artifacts": {
+    "adaln": {
+      "content_sha256": "sha256:6783fe5c6b56bb6abb60eb3489fd40a4b0475392296f09d914f40bee03425b2d",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "MiniMax-H3-adaln-table-ref2va-convrot/steps20.safetensors",
+          "sha256": "sha256:26f8c1a9938bb4eb9a27e4c01c98fc86454efb0dcdf08cc67967dbdb55763892",
+          "size_bytes": 378238756
+        }
+      ],
+      "relative_path": "MiniMax-H3-adaln-table-ref2va-convrot/steps20.safetensors",
+      "size_bytes": 378238756
+    },
+    "audio_vae": {
+      "content_sha256": "sha256:70e8b4ce0ca98cfe0fd770103c440c9840afec8b666f849f502841c19461fb54",
+      "file_count": 13,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/config.json",
+          "sha256": "sha256:d8f3bcc62e23c7e9806970fa63cca6139c06faa3797cf9c94034f60db8512771",
+          "size_bytes": 1973
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/config.yaml",
+          "sha256": "sha256:259f675c9f71eedc24ca4f23965cd32a1b3878fc894f56664c40328d99831a5e",
+          "size_bytes": 91
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_activations.py",
+          "sha256": "sha256:74ca8bb9e8039f1ff362ca4219eee5240a7df9502f3dbdc3161d4e86fbd6dc04",
+          "size_bytes": 2189
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_alias_free_act.py",
+          "sha256": "sha256:db8761e66c0eaf9fce2dcccb59162d52b22ca0de9f699cf7d21ec7cd507e86fd",
+          "size_bytes": 835
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_alias_free_filter.py",
+          "sha256": "sha256:a369523cd7f14f4f299d8e2e47f3c473da76ed1910e6e9134fd7a9fce02537e8",
+          "size_bytes": 3300
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_alias_free_resample.py",
+          "sha256": "sha256:fe35055893833c563e42adc5e5882cbe7628c82d48d33c300fcf0a9576997910",
+          "size_bytes": 1740
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_attn_proj.py",
+          "sha256": "sha256:0e04556fa5fd38d4a71e62fcf4d3242fd9a2464fd72ed62baef2ec0980d910c6",
+          "size_bytes": 3317
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_audio_vae.py",
+          "sha256": "sha256:ec04939602d4710d039e83f558a7572547669652f7fa967e3de0a3b6c48cfd48",
+          "size_bytes": 7266
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_bigvgan.py",
+          "sha256": "sha256:f5df4e6f633e74da479549ef7a6d2684964e4b65ac42c6765be42f9c7fcb7bd2",
+          "size_bytes": 7102
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/dac_utils.py",
+          "sha256": "sha256:74ef0ba2c2a11ca35a7c0cc166fe88e564de01230000a0bcc8429103312ad9f0",
+          "size_bytes": 362
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/metadata.json",
+          "sha256": "sha256:755d0529d43b2b5c83590f6f44ca659bc68e6a21b01d5669c93e8b2965749bff",
+          "size_bytes": 440
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/minimax_h3_audio_vae.py",
+          "sha256": "sha256:63bc0dab6def69480cfd77ea820f9a9a84fc4bd6e56868e4f45ec1e1e200578f",
+          "size_bytes": 3532
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae/model.safetensors",
+          "sha256": "sha256:37dddc2f3e6d5d5139d823d5ea283bbf304dadcb885b1ccda818aa13dade5ea2",
+          "size_bytes": 605429308
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/audio_vae",
+      "size_bytes": 605461455
+    },
+    "dit": {
+      "content_sha256": "sha256:119d61031dd0473ace3ffa6a980d6de0f7f236b12d3125d6fa09baf4512084ed",
+      "file_count": 15,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/config.json",
+          "sha256": "sha256:4074e9652504984324789053899a5616f9377751fcec762e715b37a39e180358",
+          "size_bytes": 960
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00001-of-00013.safetensors",
+          "sha256": "sha256:dbd9df6abd1bc22a4ee0d4626be49825a92058f16cdb7856761edc60e0dda571",
+          "size_bytes": 2665267544
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00002-of-00013.safetensors",
+          "sha256": "sha256:1e63cee36f617299803b58ac5726032ac8a6deb352a42aeb897f6563fe862552",
+          "size_bytes": 1542474312
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00003-of-00013.safetensors",
+          "sha256": "sha256:04dd481080686adcb0902655233c77ea3f486487336afa51b80ac8d408db78d4",
+          "size_bytes": 1542474328
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00004-of-00013.safetensors",
+          "sha256": "sha256:8e7514c47d22c39f4763a6cc18f7592dece22db90e5aef605e4c59ba77927125",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00005-of-00013.safetensors",
+          "sha256": "sha256:744ade58fe5ca04db5115810984c59a5bc6e186aed945daa5edec91af9e8af77",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00006-of-00013.safetensors",
+          "sha256": "sha256:ad7f20d347345551bce83aa7eff517041a1683d83d320f4390b9ebc741952c18",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00007-of-00013.safetensors",
+          "sha256": "sha256:4bc1217dc8252ef6d35f88e64b0373ba867b58d2215b4c82250429eaef5c2bec",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00008-of-00013.safetensors",
+          "sha256": "sha256:374864c450c36eead7bd4a38cc21ed3a43483e481a2fcf2ab0702d84edd7513b",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00009-of-00013.safetensors",
+          "sha256": "sha256:875bbc7ca5b14b3e452cb1ac18c2f0920bd3ffca9cf1e04fabf55552ab4bd962",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00010-of-00013.safetensors",
+          "sha256": "sha256:2a8a6ee9de1db00142f2b91e5366be72cc6241d679e65dd71d5a979b1705bc24",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00011-of-00013.safetensors",
+          "sha256": "sha256:b51a8a9298ffb5345e44b72fb485b7198b8f72c55a7dd51fbb561d2a7087b9ec",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00012-of-00013.safetensors",
+          "sha256": "sha256:0fabcb46f2b4eaf502cdf1e6582f8be9a6931e2e1c3b107334afe694051403b2",
+          "size_bytes": 1542474360
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model-00013-of-00013.safetensors",
+          "sha256": "sha256:30a30f77173de6ac02581564c694f9a22056d131224c69d59ac1a4fbbe429aaa",
+          "size_bytes": 1313869336
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer/model.safetensors.index.json",
+          "sha256": "sha256:c14bcb5960c0e005fa37b5c3a74f71e23bee1f91236994006faddd91ad8047fa",
+          "size_bytes": 45845
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3-int8-ref2va-convrot/transformer",
+      "size_bytes": 20946401565
+    },
+    "encoder": {
+      "content_sha256": "sha256:182d52766b234250f151eefa62ebfdd16efc48fb0aad7fb7606f6be9b5ca09f6",
+      "file_count": 16,
+      "files": [
+        {
+          "path": "MiniMax-H3-encoder-int8/config.json",
+          "sha256": "sha256:dffeb3215f5ef825b00c413db34ff053a0137541782b3d59c7e2d84d9149318a",
+          "size_bytes": 1553
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00001-of-00014.safetensors",
+          "sha256": "sha256:8560f55410601f8a8c8ee551a465dc454ac1a2e02bd15c87e2721d5dd1e78998",
+          "size_bytes": 3245148744
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00002-of-00014.safetensors",
+          "sha256": "sha256:009033b4c433e88979fb9a83dffb469a22047ee138bcd1d02f660d097409d3f9",
+          "size_bytes": 2439489088
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00003-of-00014.safetensors",
+          "sha256": "sha256:ae7d4c398782d26ab65a0f8ecf2d2e5df528e8135d03fbfa8999ed14118edfd3",
+          "size_bytes": 2439489144
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00004-of-00014.safetensors",
+          "sha256": "sha256:2fb369cc5706455c30454a753858da1fad187492feeeb907b2650ae4e6a33b2a",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00005-of-00014.safetensors",
+          "sha256": "sha256:dabb13ce8c40184fb5c35758520ea7f866fb64fcdbb1d4b516f3d8689c16d257",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00006-of-00014.safetensors",
+          "sha256": "sha256:5916052ee9881b3a7418398d2869c4bc188e9547133c6adb33a1fd9267fc9a47",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00007-of-00014.safetensors",
+          "sha256": "sha256:07cffda36497c9e6c7ab24d7b8e09f5be9d20294a86e4c7908b0a4a7d8726abb",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00008-of-00014.safetensors",
+          "sha256": "sha256:bb8251dc8cc6f09951883a05caff86485271e3dc1b61e40a958cb196d27e39ef",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00009-of-00014.safetensors",
+          "sha256": "sha256:10e5698f886daf8bc1dd06cd02246853b3d80d82f05dfca6ee7b6d8726871c2f",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00010-of-00014.safetensors",
+          "sha256": "sha256:c5f55c1737ec8821cb002d26d2f342b18e166f9fb883be65a66e41f2d4bb95aa",
+          "size_bytes": 2439489176
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00011-of-00014.safetensors",
+          "sha256": "sha256:e6b3b9481ecd19f9f8a15b2737dbb52a465b35891e2104a383bc9994215ffab5",
+          "size_bytes": 750251104
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00012-of-00014.safetensors",
+          "sha256": "sha256:456bb85cc4e2d0abae4d4b8ce6ba1b8075ad04d696ee7f1ba0931918a848d834",
+          "size_bytes": 107360
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00013-of-00014.safetensors",
+          "sha256": "sha256:bad8002dba9143ea08d549afb1cab65cab43bfb60622736bf87fd179fa7dc961",
+          "size_bytes": 107360
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model-00014-of-00014.safetensors",
+          "sha256": "sha256:89b52e5b441c28487c7fbcd305a7b61f03dfb50a6928023bc57e89003d5ae991",
+          "size_bytes": 1190572880
+        },
+        {
+          "path": "MiniMax-H3-encoder-int8/model.safetensors.index.json",
+          "sha256": "sha256:d02fd9af9a2e80e87f5db4245f33b3b59380ce2c0c37dd1f32ec39e843921d89",
+          "size_bytes": 124027
+        }
+      ],
+      "relative_path": "MiniMax-H3-encoder-int8",
+      "size_bytes": 27141715492
+    },
+    "ref2va_model_index": {
+      "content_sha256": "sha256:94e6c319da07877154c00102d9d432850c0df22ac2f7567714bfcf93c66a998f",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/model_index.json",
+          "sha256": "sha256:b160b13700bf08aea7fce1bc3dd0d3a49ea15036298c50082ec107f87843b90c",
+          "size_bytes": 707
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/model_index.json",
+      "size_bytes": 707
+    },
+    "ref2va_processor": {
+      "content_sha256": "sha256:9601fe3236cc5cea0fe10511e7eba6ed44e21188397e7c10731bee6e3261fa5b",
+      "file_count": 7,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/chat_template.json",
+          "sha256": "sha256:5c72a170d2a4a1a3bc5adad2e689ae28138a9700e5b8c96c0266331e86c0acce",
+          "size_bytes": 5499
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/merges.txt",
+          "sha256": "sha256:599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "size_bytes": 1671839
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/preprocessor_config.json",
+          "sha256": "sha256:27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+          "size_bytes": 390
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/tokenizer.json",
+          "sha256": "sha256:a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+          "size_bytes": 7032403
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/tokenizer_config.json",
+          "sha256": "sha256:a07e942ac874baa13758de8d1fbdb186683cc03416b5589e1b6671c6b3057c68",
+          "size_bytes": 11003
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/video_preprocessor_config.json",
+          "sha256": "sha256:7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+          "size_bytes": 385
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor/vocab.json",
+          "sha256": "sha256:ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size_bytes": 2776833
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/processor",
+      "size_bytes": 11498352
+    },
+    "ref2va_tokenizer": {
+      "content_sha256": "sha256:9d4ddd239f3cb247c5291081cfff8570935f6efd4fab176eb1676b312a19a31b",
+      "file_count": 4,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/tokenizer/merges.txt",
+          "sha256": "sha256:599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "size_bytes": 1671839
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/tokenizer/tokenizer.json",
+          "sha256": "sha256:a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+          "size_bytes": 7032403
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/tokenizer/tokenizer_config.json",
+          "sha256": "sha256:a07e942ac874baa13758de8d1fbdb186683cc03416b5589e1b6671c6b3057c68",
+          "size_bytes": 11003
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/tokenizer/vocab.json",
+          "sha256": "sha256:ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size_bytes": 2776833
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/tokenizer",
+      "size_bytes": 11492078
+    },
+    "ref2va_transformer_config": {
+      "content_sha256": "sha256:630fcd3c23172ab6f885428973b54c1c5b854492ec41b4b804622429157c87bc",
+      "file_count": 1,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/transformer/config.json",
+          "sha256": "sha256:f619093a231fcfbcc3d035bec26c50ad864e7331a500d5c519f5045dc1e50458",
+          "size_bytes": 604
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/transformer/config.json",
+      "size_bytes": 604
+    },
+    "video_vae": {
+      "content_sha256": "sha256:ca1ee403eabf8482090792a593269f6490f6ab99c49ee462076798f85fcb10f7",
+      "file_count": 18,
+      "files": [
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/attention.py",
+          "sha256": "sha256:c9db8465c57f0bfb40c0194227be6e34b2c1ff7c5b5d63abca9964eed6283767",
+          "size_bytes": 5785
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/base_module.py",
+          "sha256": "sha256:0e7ddf5086179a306298693ac461ffcbc27ccb28dbc786b1a05060de7a3357c0",
+          "size_bytes": 9520
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/config.json",
+          "sha256": "sha256:3edd2cdd1ebc823c868be55ef917e1b3b8a398fde4d3150dae44a3bf05d9f627",
+          "size_bytes": 1807
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/conv.py",
+          "sha256": "sha256:b3adee35f27e5d372543242aa86ce5e0138f13b794b6c81f919001e3e2346723",
+          "size_bytes": 4487
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/flash.py",
+          "sha256": "sha256:c1918463d303a16f278a670bb4f33d3f8d6f7653b0d473313ff5835699b86d04",
+          "size_bytes": 5763
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/func.py",
+          "sha256": "sha256:0612c26a65f095699cc7acd51937cd153584fa5a0476956e46a4679aa575c22d",
+          "size_bytes": 5840
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/klvae.py",
+          "sha256": "sha256:d05a22b4918ad303f147d6b0d0ae9038bd1af1f810a5553b04f3542ab9bcff96",
+          "size_bytes": 48594
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/minimax_h3_video_vae.py",
+          "sha256": "sha256:77fdea69a48485b5434f65d08096657b5d78b78b7cdf24e1241038f237720138",
+          "size_bytes": 5123
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/norm.py",
+          "sha256": "sha256:258b120ca8d9a16366d7b811fe93eebf98fe1564db0995e8b7747229c651919a",
+          "size_bytes": 10686
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/normalize.py",
+          "sha256": "sha256:8db651acb9eb551c906a2850bbca8e9d851f00d07b30ccf66ceb6057da687a13",
+          "size_bytes": 1200
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/parallel.py",
+          "sha256": "sha256:7193522beafd65bc3dbe40b9843e360ab8da3a0bb211e9bfb67bb0d5d0e66919",
+          "size_bytes": 12997
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/source/config.json",
+          "sha256": "sha256:66c68f541e6578ce613ce7a0fc985eb59097038829e49f7535e6d08e6d95ab12",
+          "size_bytes": 1164
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/source/model.safetensors",
+          "sha256": "sha256:5f0c2e161d895a9fee7645ca32d4a7e3a22b90cacfcbeba62ec999cdbbefe0d3",
+          "size_bytes": 10415548320
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/utils.py",
+          "sha256": "sha256:309e45e9d9e33cd5516a10eac2d207eb9f940079a6d9bbe0ee80aaaf7eb42dcd",
+          "size_bytes": 764
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/vae_cnn.py",
+          "sha256": "sha256:3949b701e6893bd2ea070cd5b18ed8135a7c21d884290df449b1997212d65b11",
+          "size_bytes": 8836
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/vae_module.py",
+          "sha256": "sha256:9558fb302e10a619f198e12e04701c68988e897d0b627f958f33d27fd2a30d94",
+          "size_bytes": 1884
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/vae_processor.py",
+          "sha256": "sha256:32870580a1802d9163104a4d68170e35a4772106867181e1bd343dff11f87d2e",
+          "size_bytes": 8369
+        },
+        {
+          "path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae/vae_vit.py",
+          "sha256": "sha256:a372c28441b56ec2dbc6041dbd6ce2766c64c0e61b2c69a16594a97a11da3f58",
+          "size_bytes": 13490
+        }
+      ],
+      "relative_path": "MiniMaxAI/MiniMax-H3/Ref2VA/video_vae",
+      "size_bytes": 10415694629
+    }
+  },
+  "content_sha256": "sha256:df458abdc238abf3e891e123be1e93b05104614d4768b7472f5d85275653fa4c",
+  "created_at_utc": "2026-09-17T04:33:50.964118+00:00",
+  "file_count": 76,
+  "required_runtime_directories": [
+    "MiniMaxAI/MiniMax-H3/Ref2VA/text_encoder"
+  ],
+  "schema": "h3-production-model-manifest-v1",
+  "size_bytes": 59510503638,
+  "source_root": "/srv/models"
+}

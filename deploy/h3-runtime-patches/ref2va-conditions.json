@@ -1,0 +1,10 @@
+{
+  "base_runtime_image": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:decd97ab73b93793062e9c4c1f07b1e71f5feade9171047847b92edc0bc53519",
+  "installed_file": "/opt/venv/lib/python3.12/site-packages/fast_h3/vela/sglang_native.py",
+  "before_sha256": "786a285e3dc152febd54ee379e1816fd46ca5b8a127adefcf27acb8bf4082a2d",
+  "after_sha256": "8cc55e4927fdcb8c084e3ada54e71540fbe8719d988ba5f7666f0f0355d8d3e0",
+  "sglang_commit": "2748ac0644cb5ec92e2fed91a102d369f309a15e",
+  "sglang_overlay_tar_sha256": "7ea126ddf321224f5ce7774724805a2190c41e9a7bcebe4a32ab8ce5048e14e5",
+  "runtime_image_index": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:814869f6f0f783fcab5ad337d0dadd6f40ae3185bf38eeddb44cc1990bd23956",
+  "runtime_image_linux_amd64": "10.1.201.70:5005/vela-h3-stage-runtime@sha256:1b4558f31ecaee3e4c47a3146aacf5a06042e79d5f69a291c7668148a3978a96"
+}
