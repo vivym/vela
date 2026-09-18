@@ -110,9 +110,12 @@ env = dict(os.environ, PYTHONPATH=str(root / 'src'), PYTHONDONTWRITEBYTECODE='1'
            RSYNC_PASSWORD=d['password'])
 before = pathlib.Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 try:
-    p = run_group(['/usr/bin/python3', str(root / 'scripts/prefetch_vela_h3_models.py'),
+    command = ['/usr/bin/python3', str(root / 'scripts/prefetch_vela_h3_models.py'),
         '--manifest', str(root / 'model-manifest.json'), '--manifest-sha256', d['manifest_sha256'],
-        '--source', d['source'], '--cache-root', str(cache)], env=env, timeout=21600)
+        '--source', d['source'], '--cache-root', str(cache)]
+    if 'reuse-manifest.json' in d['assets']:
+        command += ['--reuse-manifest', str(root / 'reuse-manifest.json')]
+    p = run_group(command, env=env, timeout=21600)
     if p.returncode:
         raise RuntimeError((p.stderr or p.stdout)[-3000:].replace(d['password'], '<redacted>'))
     receipt = json.loads(p.stdout)
@@ -169,11 +172,11 @@ def atomic_json(path, value):
     temporary.replace(path)
 
 
-def ssh_command(address):
+def ssh_command(address, password_required=False):
     return ["sudo", "-u", "user", "ssh", "-o", "BatchMode=yes", "-o",
             "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=15", "-o",
             "ServerAliveInterval=20", "-o", "ServerAliveCountMax=6",
-            "user@" + address, "sudo -n python3 -"]
+            "user@" + address, "sudo -k -S -p '' python3 -" if password_required else "sudo -n python3 -"]
 
 
 def execute_target(config, target, assets, password):
@@ -183,11 +186,19 @@ def execute_target(config, target, assets, password):
                    manifest_sha256=config["manifest_sha256"],
                    content_sha256=config["content_sha256"], expected_bytes=config["expected_bytes"])
     encoded = base64.b64encode(json.dumps(payload).encode()).decode()
-    result = subprocess.run(ssh_command(target["address"]),
-                            input="PAYLOAD = " + repr(encoded) + "\n" + REMOTE,
+    sudo_password = (Path(target["sudo_password_file"]).read_text().strip()
+                     if target.get("sudo_password_file") else None)
+    remote_input = "PAYLOAD = " + repr(encoded) + "\n" + REMOTE
+    if sudo_password is not None:
+        remote_input = sudo_password + "\n" + remote_input
+    result = subprocess.run(ssh_command(target["address"], sudo_password is not None),
+                            input=remote_input,
                             text=True, capture_output=True, timeout=22000)
     if result.returncode:
-        raise RuntimeError((result.stderr or result.stdout)[-3500:].replace(password, "<redacted>"))
+        message = (result.stderr or result.stdout)[-3500:].replace(password, "<redacted>")
+        if sudo_password is not None:
+            message = message.replace(sudo_password, "<redacted>")
+        raise RuntimeError(message)
     receipt = json.loads(result.stdout)
     if not receipt.get("passed") or receipt["address"] != target["address"]:
         raise ValueError("remote receipt does not match target")

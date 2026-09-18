@@ -120,6 +120,23 @@ class DistributionScopeTests(unittest.TestCase):
             with mock.patch.object(distribute.subprocess, "run", return_value=done), self.assertRaises(SystemExit):
                 distribute.wait_for_predecessor(predecessor)
 
+    def test_password_sudo_is_scoped_and_redacted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            secret = Path(directory) / "sudo-password"
+            secret.write_text("test-sudo-secret\n")
+            target = dict(self.target(), sudo_password_file=str(secret))
+            config = dict(remote_tools_root="/opt/vela/test", source="rsync://source/h3/",
+                          bandwidth_kib=64, manifest_sha256="a" * 64,
+                          content_sha256="b" * 64, expected_bytes=10)
+            failed = subprocess.CompletedProcess([], 1, "", "test-sudo-secret test-rsync-secret")
+            with mock.patch.object(distribute.subprocess, "run", return_value=failed) as run:
+                with self.assertRaisesRegex(RuntimeError, "<redacted> <redacted>"):
+                    distribute.execute_target(config, target, {}, "test-rsync-secret")
+            args, kwargs = run.call_args
+            self.assertEqual(args[0][-1], "sudo -k -S -p '' python3 -")
+            self.assertTrue(kwargs["input"].startswith("test-sudo-secret\nPAYLOAD = "))
+            self.assertEqual(distribute.ssh_command(target["address"])[-1], "sudo -n python3 -")
+
 
 if __name__ == "__main__":
     unittest.main()
