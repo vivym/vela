@@ -889,14 +889,8 @@ func loadWorkerInstanceTemplates(
 	if err := strictjson.RejectDuplicateKeys(content); err != nil {
 		return nil, fmt.Errorf("decode WorkerInstance templates: %w", err)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
-	var configured []workerInstanceTemplateConfig
-	if err := decoder.Decode(&configured); err != nil {
-		return nil, errors.New("WorkerInstance template file is invalid")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) ||
-		len(configured) == 0 || len(configured) > maxWorkerInstances {
+	configured, err := decodeWorkerInstanceTemplateConfig(content)
+	if err != nil || len(configured) == 0 || len(configured) > maxWorkerInstances {
 		return nil, errors.New("WorkerInstance template file is invalid")
 	}
 	templates := make([]nodeagent.WorkerInstanceEvidenceTemplate, 0, len(configured))
@@ -944,6 +938,34 @@ func loadWorkerInstanceTemplates(
 		templates = append(templates, template)
 	}
 	return templates, nil
+}
+
+// decodeWorkerInstanceTemplateConfig accepts the canonical array form and the
+// legacy single-object form emitted by early host provisioning.  Both forms
+// still go through the same strict decoder and duplicate-key check; accepting
+// the object form is only a wire-compatibility shim and does not relax the
+// template validation below.
+func decodeWorkerInstanceTemplateConfig(content []byte) ([]workerInstanceTemplateConfig, error) {
+	decode := func(dst any) error {
+		decoder := json.NewDecoder(bytes.NewReader(content))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(dst); err != nil {
+			return err
+		}
+		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+			return err
+		}
+		return nil
+	}
+	var configured []workerInstanceTemplateConfig
+	if err := decode(&configured); err == nil {
+		return configured, nil
+	}
+	var single workerInstanceTemplateConfig
+	if err := decode(&single); err != nil {
+		return nil, err
+	}
+	return []workerInstanceTemplateConfig{single}, nil
 }
 
 func workerInstanceTemplate(

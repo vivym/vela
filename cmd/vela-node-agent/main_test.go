@@ -321,6 +321,27 @@ func TestLoadWorkerInstanceTemplatesInjectsCanonicalNodeAgentIdentity(t *testing
 	}
 }
 
+func TestLoadWorkerInstanceTemplatesAcceptsLegacySingleObject(t *testing.T) {
+	canonical := validWorkerInstanceTemplatesJSON()
+	legacy := strings.TrimSuffix(strings.TrimPrefix(canonical, "["), "]")
+	path := filepath.Join(t.TempDir(), "worker-instances.json")
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("write WorkerInstance template: %v", err)
+	}
+	identity := nodeagent.NodeAgentIdentity{
+		NodeIdentity: "node-1",
+		AgentID:      uuid.MustParse("83000000-0000-0000-0000-000000000001"),
+		AgentEpoch:   7,
+	}
+	templates, err := loadWorkerInstanceTemplates(path, identity)
+	if err != nil {
+		t.Fatalf("load legacy WorkerInstance template: %v", err)
+	}
+	if len(templates) != 1 || templates[0].Evidence.WorkerInstanceID.String() != "49440000-0000-0000-0000-000000000001" {
+		t.Fatalf("unexpected templates: %#v", templates)
+	}
+}
+
 func TestLoadWorkerInstanceTemplatesAllowsUnobservedCPUSlots(t *testing.T) {
 	var templates []workerInstanceTemplateConfig
 	if err := json.Unmarshal([]byte(validWorkerInstanceTemplatesJSON()), &templates); err != nil {
