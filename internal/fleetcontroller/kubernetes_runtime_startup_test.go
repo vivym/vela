@@ -136,6 +136,20 @@ func TestKubernetesStartupRenderingAndOnlyGateRemovalMatch(t *testing.T) {
 				}
 			}
 		}
+		wantProvision := "/var/lib/vela/worker-instances/" + pod.Labels["vela.ai/worker-instance-id"] + "/member-0/provision/scratch/"
+		for _, child := range []string{"worker-admission", "inputs", "outputs"} {
+			want := wantProvision + child
+			var found *corev1.Volume
+			for i := range pod.Spec.Volumes {
+				if pod.Spec.Volumes[i].Name == "durable-"+child {
+					found = &pod.Spec.Volumes[i]
+					break
+				}
+			}
+			if found == nil || found.HostPath == nil || found.HostPath.Path != want {
+				t.Fatalf("durable %s volume = %#v, want HostPath %s", child, found, want)
+			}
+		}
 		live := pod.DeepCopy()
 		live.APIVersion, live.Kind = "", ""
 		live.Spec.SchedulingGates = nil

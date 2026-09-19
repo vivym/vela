@@ -163,6 +163,68 @@ func TestRuntimeStartupResourcesCloseVerifiesLauncherCleanup(t *testing.T) {
 	}
 }
 
+func TestRequireUnusedRuntimeStartupDirectoryClassifiesStalePublication(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "missing")
+	if err := requireUnusedRuntimeStartupDirectory(missing); err != nil {
+		t.Fatalf("missing startup directory rejected: %v", err)
+	}
+	occupied := filepath.Join(root, "occupied")
+	if err := os.Mkdir(occupied, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := requireUnusedRuntimeStartupDirectory(occupied)
+	if !errors.Is(err, errRuntimeStartupDirectoryOccupied) {
+		t.Fatalf("occupied startup directory error = %v, want sentinel", err)
+	}
+}
+
+func TestRemoveKubernetesWorkerBootstrapOnlyRemovesOwnedFiles(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "worker-bootstrap")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"binding.json", "verifier.json"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o400); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := removeKubernetesWorkerBootstrap(root); err != nil {
+		t.Fatalf("remove owned Worker bootstrap: %v", err)
+	}
+	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Worker bootstrap root still exists: %v", err)
+	}
+
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "unexpected"), []byte("x"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeKubernetesWorkerBootstrap(root); err == nil {
+		t.Fatal("unexpected Worker bootstrap entry was removed")
+	}
+}
+
+func TestRemoveRuntimeBootstrapDirectoryHandlesPartialPublication(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime-bootstrap")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"bootstrap.pending", "publication.json"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := removeRuntimeBootstrapDirectory(root); err != nil {
+		t.Fatalf("remove partial Runtime bootstrap: %v", err)
+	}
+	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Runtime bootstrap root still exists: %v", err)
+	}
+}
+
 func TestRuntimeStartupGateSnapshotsPermitBeforeShutdownFailure(t *testing.T) {
 	setValidNodeAgentEnv(t)
 	directory := t.TempDir()

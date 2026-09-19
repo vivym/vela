@@ -47,7 +47,10 @@ const (
 )
 
 var (
-	workerInstanceGPUUUIDPattern = regexp.MustCompile(
+	// A protected one-shot publication cannot be safely reused after a failed
+	// startup; systemd must stop and let Fleet issue a fresh Worker identity.
+	errRuntimeStartupDirectoryOccupied = errors.New("runtime startup directory is occupied")
+	workerInstanceGPUUUIDPattern       = regexp.MustCompile(
 		`^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`,
 	)
 	workerInstancePCIBDFPattern = regexp.MustCompile(`^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}[.][0-7]$`)
@@ -191,7 +194,7 @@ func main() {
 		// Configuration/state errors that require operator reprovision must not
 		// create an endless systemd restart loop. 78 is EX_CONFIG and is marked
 		// as a restart-preventing status in the packaged unit.
-		if errors.Is(err, modelruntime.ErrBackendIncarnationUnproven) || errors.Is(err, nodeagent.ErrRuntimeStartupLedger) {
+		if errors.Is(err, modelruntime.ErrBackendIncarnationUnproven) || errors.Is(err, nodeagent.ErrRuntimeStartupLedger) || errors.Is(err, errRuntimeStartupDirectoryOccupied) {
 			os.Exit(78)
 		}
 		os.Exit(1)

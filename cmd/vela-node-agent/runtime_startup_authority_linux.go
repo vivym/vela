@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -34,6 +35,13 @@ type runtimeStartupSocket struct {
 	listener *net.UnixListener
 	path     string
 	identity os.FileInfo
+}
+
+func requireUnusedRuntimeStartupDirectory(path string) error {
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %s: %v", errRuntimeStartupDirectoryOccupied, path, errors.Join(errors.New("path already exists or cannot be inspected"), err))
+	}
+	return nil
 }
 
 // runtimeStartupResourceFactory contains only construction seams for external
@@ -732,8 +740,8 @@ func publishRuntimeBootstrapBeforeLaunch(ctx context.Context, configuration conf
 		}
 		for _, name := range []string{"launch", "worker-bootstrap"} {
 			path := filepath.Join(filepath.Dir(configuration.runtimeStartupSocket), name)
-			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("preflight requires unused startup directory %s: %w", path, errors.Join(errors.New("path already exists or cannot be inspected"), err))
+			if err := requireUnusedRuntimeStartupDirectory(path); err != nil {
+				return fmt.Errorf("preflight requires unused startup directory %s: %w", path, err)
 			}
 		}
 	}
@@ -813,6 +821,50 @@ func publishKubernetesWorkerBootstrap(configuration config, resources *runtimeSt
 		return err
 	}
 	return os.Chmod(root, 0o750)
+}
+
+func removeKubernetesWorkerBootstrap(root string) error {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return errors.New("Worker bootstrap cleanup path is invalid")
+	}
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || (entry.Name() != "binding.json" && entry.Name() != "verifier.json") {
+			return fmt.Errorf("Worker bootstrap cleanup found unexpected entry %s", entry.Name())
+		}
+		if err := os.Remove(filepath.Join(root, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return os.Remove(root)
+}
+
+func removeRuntimeBootstrapDirectory(root string) error {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return errors.New("Runtime bootstrap cleanup path is invalid")
+	}
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !slices.Contains([]string{"bootstrap.json", "bootstrap.pending", "publication.json"}, entry.Name()) {
+			return fmt.Errorf("Runtime bootstrap cleanup found unexpected entry %s", entry.Name())
+		}
+		if err := os.Remove(filepath.Join(root, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return os.Remove(root)
 }
 
 // runtimeContainerBootstrapPath validates the effective OCI argv. Kubernetes
@@ -1183,6 +1235,16 @@ func (resources *runtimeStartupResources) Close() error {
 	if resources.runtimeBootstrap != nil && resources.runtimePublication != nil {
 		closeErr = errors.Join(closeErr, resources.runtimeBootstrap.Remove(context.Background(), resources.runtimePublication.Directory))
 		resources.runtimeBootstrap = nil
+	}
+	// The Worker bootstrap publication is a one-shot handoff directory. It is
+	// intentionally outside durable journals and must not survive a failed or
+	// completed startup, otherwise the next strict preflight will reject the
+	// member forever. Remove only the two files this process is allowed to
+	// publish, then remove the directory itself; unexpected entries fail closed.
+	if resources.runtimePublication != nil {
+		memberRoot := filepath.Dir(resources.runtimePublication.Directory)
+		closeErr = errors.Join(closeErr, removeKubernetesWorkerBootstrap(filepath.Join(memberRoot, "worker-bootstrap")))
+		closeErr = errors.Join(closeErr, removeRuntimeBootstrapDirectory(resources.runtimePublication.Directory))
 	}
 	if resources.workerJournalEndpoint != nil {
 		closeErr = errors.Join(closeErr, resources.workerJournalEndpoint.Close())
