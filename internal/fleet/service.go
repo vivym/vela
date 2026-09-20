@@ -51,6 +51,7 @@ type MutationAuthorizationRequest struct {
 	ResidencyPlanRevisionID uuid.UUID
 	WorkerBundleID          uuid.UUID
 	WorkerMemberID          uuid.UUID
+	WorkerMemberKey         string
 	RequestDigest           []byte
 }
 
@@ -94,17 +95,13 @@ func (service *Service) AuthorizeMutation(
 		return MutationAuthorizationResult{}, &Failure{Code: FailureInvalid, Message: err.Error()}
 	}
 	var result MutationAuthorizationResult
-	err := service.registryPool.QueryRow(ctx, `
-		SELECT request_uid, replayed, authorized
-		FROM vela_authorize_worker_instance_pod_mutation(
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-		)
-	`, request.RequestUID, request.ActorIdentity, request.Operation,
-		request.KubernetesUID, request.Namespace, request.Name,
-		request.WorkerInstanceID, request.WorkerInstanceEpoch,
-		request.ResidencyPlanRevisionID, request.WorkerBundleID,
-		request.WorkerMemberID, request.RequestDigest,
-	).Scan(&result.RequestUID, &result.Replayed, &result.Authorized)
+	query := `SELECT request_uid, replayed, authorized FROM vela_authorize_worker_instance_pod_mutation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`
+	args := []any{request.RequestUID, request.ActorIdentity, request.Operation, request.KubernetesUID, request.Namespace, request.Name, request.WorkerInstanceID, request.WorkerInstanceEpoch, request.ResidencyPlanRevisionID, request.WorkerBundleID, request.WorkerMemberID, request.RequestDigest}
+	if request.WorkerMemberKey != "" {
+		query = `SELECT request_uid, replayed, authorized FROM vela_authorize_unstarted_worker_instance_pod_mutation($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`
+		args = append(args[:11], append([]any{request.WorkerMemberKey}, args[11:]...)...)
+	}
+	err := service.registryPool.QueryRow(ctx, query, args...).Scan(&result.RequestUID, &result.Replayed, &result.Authorized)
 	if err != nil {
 		return MutationAuthorizationResult{}, mapDatabaseError(
 			"authorize WorkerInstance Pod mutation", err,

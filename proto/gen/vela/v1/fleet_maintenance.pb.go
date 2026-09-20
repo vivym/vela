@@ -1558,6 +1558,7 @@ type AuthorizeMutationRequest struct {
 	ResidencyPlanRevisionId string                 `protobuf:"bytes,14,opt,name=residency_plan_revision_id,json=residencyPlanRevisionId,proto3" json:"residency_plan_revision_id,omitempty"`
 	WorkerBundleId          string                 `protobuf:"bytes,15,opt,name=worker_bundle_id,json=workerBundleId,proto3" json:"worker_bundle_id,omitempty"`
 	WorkerMemberId          string                 `protobuf:"bytes,16,opt,name=worker_member_id,json=workerMemberId,proto3" json:"worker_member_id,omitempty"`
+	WorkerMemberKey         string                 `protobuf:"bytes,17,opt,name=worker_member_key,json=workerMemberKey,proto3" json:"worker_member_key,omitempty"`
 	unknownFields           protoimpl.UnknownFields
 	sizeCache               protoimpl.SizeCache
 }
@@ -1665,6 +1666,13 @@ func (x *AuthorizeMutationRequest) GetWorkerBundleId() string {
 func (x *AuthorizeMutationRequest) GetWorkerMemberId() string {
 	if x != nil {
 		return x.WorkerMemberId
+	}
+	return ""
+}
+
+func (x *AuthorizeMutationRequest) GetWorkerMemberKey() string {
+	if x != nil {
+		return x.WorkerMemberKey
 	}
 	return ""
 }
@@ -1844,7 +1852,7 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x0einstance_epoch\x18\x02 \x01(\x03R\rinstanceEpoch\x122\n" +
 	"\x15control_session_epoch\x18\x03 \x01(\x03R\x13controlSessionEpoch\x12.\n" +
 	"\x13model_runtime_epoch\x18\x04 \x01(\x03R\x11modelRuntimeEpoch\x12\x1c\n" +
-	"\treadiness\x18\x05 \x01(\tR\treadiness\"\x8b\x04\n" +
+	"\treadiness\x18\x05 \x01(\tR\treadiness\"\xb7\x04\n" +
 	"\x18AuthorizeMutationRequest\x12\x1f\n" +
 	"\vrequest_uid\x18\x01 \x01(\tR\n" +
 	"requestUid\x12=\n" +
@@ -1857,7 +1865,8 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x15worker_instance_epoch\x18\r \x01(\x03R\x13workerInstanceEpoch\x12;\n" +
 	"\x1aresidency_plan_revision_id\x18\x0e \x01(\tR\x17residencyPlanRevisionId\x12(\n" +
 	"\x10worker_bundle_id\x18\x0f \x01(\tR\x0eworkerBundleId\x12(\n" +
-	"\x10worker_member_id\x18\x10 \x01(\tR\x0eworkerMemberIdJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"\x10worker_member_id\x18\x10 \x01(\tR\x0eworkerMemberId\x12*\n" +
+	"\x11worker_member_key\x18\x11 \x01(\tR\x0fworkerMemberKeyJ\x04\b\x02\x10\x03J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"J\x04\b\n" +
 	"\x10\v\"x\n" +
 	"\x19AuthorizeMutationResponse\x12\x1f\n" +

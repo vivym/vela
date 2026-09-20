@@ -149,7 +149,7 @@ func (client *Client) AuthorizeMutation(
 		!validText(request.Namespace, maximumNameBytes) || !validText(request.Name, maximumNameBytes) ||
 		request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 ||
 		request.ResidencyPlanRevisionID == uuid.Nil || request.WorkerBundleID == uuid.Nil ||
-		request.WorkerMemberID == uuid.Nil || len(request.RequestDigest) != 32 {
+		request.WorkerMemberID == uuid.Nil || (request.WorkerMemberKey != "" && !validText(request.WorkerMemberKey, 200)) || len(request.RequestDigest) != 32 {
 		return fleet.MutationAuthorizationResult{}, errors.New(
 			"WorkerInstance Pod mutation authorization request is invalid",
 		)
@@ -162,6 +162,7 @@ func (client *Client) AuthorizeMutation(
 		WorkerInstanceEpoch:     request.WorkerInstanceEpoch,
 		ResidencyPlanRevisionId: request.ResidencyPlanRevisionID.String(),
 		WorkerBundleId:          request.WorkerBundleID.String(), WorkerMemberId: request.WorkerMemberID.String(),
+		WorkerMemberKey: request.WorkerMemberKey,
 	})
 	if err != nil {
 		return fleet.MutationAuthorizationResult{}, err

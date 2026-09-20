@@ -207,6 +207,7 @@ message AuthorizeMutationRequest {
   string residency_plan_revision_id = 14;
   string worker_bundle_id = 15;
   string worker_member_id = 16;
+  string worker_member_key = 17;
 }
 
 message AuthorizeMutationResponse {

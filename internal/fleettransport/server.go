@@ -204,14 +204,15 @@ func (server *Server) AuthorizeMutation(
 		WorkerInstanceID:        workerInstanceID,
 		WorkerInstanceEpoch:     request.GetWorkerInstanceEpoch(),
 		ResidencyPlanRevisionID: residencyPlanID, WorkerBundleID: workerBundleID,
-		WorkerMemberID: workerMemberID,
-		RequestDigest:  append([]byte(nil), request.GetRequestDigest()...),
+		WorkerMemberID: workerMemberID, WorkerMemberKey: request.GetWorkerMemberKey(),
+		RequestDigest: append([]byte(nil), request.GetRequestDigest()...),
 	}
 	if !operationOK || instanceErr != nil || planErr != nil || bundleErr != nil ||
 		memberErr != nil || !validText(parsed.RequestUID, maximumRequestUIDBytes) ||
 		!validText(parsed.KubernetesUID, maximumRequestUIDBytes) ||
 		!validText(parsed.Namespace, maximumNameBytes) ||
 		!validText(parsed.Name, maximumNameBytes) || parsed.WorkerInstanceEpoch <= 0 ||
+		(parsed.WorkerMemberKey != "" && !validText(parsed.WorkerMemberKey, maximumNameBytes)) ||
 		len(parsed.RequestDigest) != 32 {
 		return nil, invalidRequest("WorkerInstance Pod mutation authorization")
 	}

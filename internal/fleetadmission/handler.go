@@ -100,6 +100,7 @@ type normalizedMutation struct {
 	ResidencyPlanRevisionID uuid.UUID               `json:"residency_plan_revision_id"`
 	WorkerBundleID          uuid.UUID               `json:"worker_bundle_id"`
 	WorkerMemberID          uuid.UUID               `json:"worker_member_id"`
+	WorkerMemberKey         string                  `json:"worker_member_key"`
 	Target                  any                     `json:"target"`
 }
 
@@ -363,7 +364,8 @@ func protectedWorkerInstancePodMutationRequest(
 		Namespace: object.Metadata.Namespace, Name: object.Metadata.Name,
 		WorkerInstanceID: workerInstanceID, WorkerInstanceEpoch: workerInstanceEpoch,
 		ResidencyPlanRevisionID: planID, WorkerBundleID: bundleID, WorkerMemberID: memberID,
-		Target: target,
+		WorkerMemberKey: object.Metadata.Labels[fleetcontract.WorkerMemberKeyLabel],
+		Target:          target,
 	}
 	encoded, err := json.Marshal(normalized)
 	if err != nil {
@@ -378,7 +380,8 @@ func protectedWorkerInstancePodMutationRequest(
 		Namespace: object.Metadata.Namespace, Name: object.Metadata.Name,
 		WorkerInstanceID: workerInstanceID, WorkerInstanceEpoch: workerInstanceEpoch,
 		ResidencyPlanRevisionID: planID, WorkerBundleID: bundleID, WorkerMemberID: memberID,
-		RequestDigest: digest[:],
+		WorkerMemberKey: object.Metadata.Labels[fleetcontract.WorkerMemberKeyLabel],
+		RequestDigest:   digest[:],
 	}, nil
 }
 

@@ -641,6 +641,7 @@ func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser
 			"vela_approve_model_residency_release(uuid,uuid,bigint,model_residency_release_reason,text,text,bigint,bigint,bytea)",
 			"vela_complete_model_residency_release(uuid,bigint,bytea,text)",
 			"vela_authorize_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,bytea)",
+			"vela_authorize_unstarted_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,text,bytea)",
 			"vela_claim_worker_bootstrap(uuid,uuid,bigint,uuid,bytea,text)",
 			"vela_record_worker_bootstrap_receipt(uuid,uuid,bytea,uuid,bytea,text)",
 			"vela_lookup_worker_bootstrap(uuid,text,text)",
