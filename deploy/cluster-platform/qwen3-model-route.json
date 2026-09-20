@@ -12,6 +12,12 @@
       "header": "X-API-Key",
       "hide_credentials": true
     },
+    "serverless-pre-function": {
+      "phase": "rewrite",
+      "functions": [
+        "return function(conf, ctx) local auth = ngx.var.http_authorization; if auth then local token = string.match(auth, '^[Bb][Ee][Aa][Rr][Ee][Rr]%s+(%S+)%s*$'); if token then ngx.req.set_header('X-API-Key', token) end end end"
+      ]
+    },
     "proxy-rewrite": {
       "regex_uri": ["^/qwen3/?(.*)$", "/$1"]
     },

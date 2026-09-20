@@ -7,7 +7,8 @@
 - Pod：`llm-models/qwen3-model-worker`，固定在 `server-53`（256 GiB GPU 节点），申请 2 张 GPU。
 - `/v1/models` 由 Worker 代理统一返回：`qwen3-embedding-4b`、`qwen3-reranker-4b`。
 - APISIX 路由：`qwen3-public`，公开前缀 `/qwen3/*`，转发到 Worker 的 `:8080`。
-- 认证：独立 APISIX `key-auth` Consumer `vela-qwen3-relay`，请求头为 `X-API-Key`。
+- 认证：独立 APISIX `key-auth` Consumer `vela-qwen3-relay`；支持标准
+  `Authorization: Bearer <key>`，并继续兼容 `X-API-Key: <key>`。
 - 限流：每个 APISIX 实例每个 Consumer 600 次/分钟，超限返回 `429`。
 - Nginx：`.70`、`.71` 均已安装 `vela.marslab.ic` 虚拟主机并平滑 reload；未重启主机。
 
@@ -23,7 +24,7 @@
 
 ```text
 Base URL: https://vela.marslab.ic/qwen3/v1
-Header:   X-API-Key: <从 .70 受保护文件读取的密钥>
+Header:   Authorization: Bearer <从 .70 受保护文件读取的密钥>
 ```
 
 接口包括：
@@ -31,6 +32,9 @@ Header:   X-API-Key: <从 .70 受保护文件读取的密钥>
 - `GET /qwen3/v1/models`
 - `POST /qwen3/v1/embeddings`
 - `POST /qwen3/v1/rerank`
+
+`X-API-Key` 仍可用于旧客户端；OpenAI-compatible 客户端应使用
+`Authorization: Bearer <key>`。
 
 Worker Service 仍为 `ClusterIP`，没有新增 NodePort；外部流量始终经过
 `Nginx TLS → APISIX → Worker`。
