@@ -89,6 +89,7 @@ func loadProductionFleetRegistry(ctx context.Context, configuration config) (nod
 // assembly. It intentionally stops short of constructing RuntimeStartupAuthority
 // until journal ownership, observer custody and worker ownership are present.
 type runtimeStartupResources struct {
+	templates                    []nodeagent.WorkerInstanceEvidenceTemplate
 	plan                         *nodeagent.RuntimeLaunchPlan
 	validator                    *stageauthority.Validator
 	ledger                       *nodeagent.RuntimeStartupLedger
@@ -1046,10 +1047,23 @@ func loadRuntimeJournalOwner(configuration config, plan *nodeagent.RuntimeLaunch
 }
 
 func loadRuntimeStartupResources(ctx context.Context, configuration config) (*runtimeStartupResources, error) {
+	// Validate reporting inputs before creating any runtime ownership or
+	// releasing a Pod gate. A reporting configuration error must not start a Pod.
+	templates, err := loadWorkerInstanceTemplates(configuration.workerInstancesFile, nodeagent.NodeAgentIdentity{
+		NodeIdentity: configuration.nodeIdentity, AgentID: configuration.agentID, AgentEpoch: configuration.agentEpoch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("preflight WorkerInstance templates: %w", err)
+	}
 	resources, err := loadRuntimeStartupResourcesWithFactory(ctx, configuration, runtimeStartupProductionResourceFactory())
 	if err != nil {
 		return nil, err
 	}
+	claim := resources.plan.RegistryBinding().GetClaim()
+	if len(templates) != 1 || templates[0].Evidence.WorkerInstanceID.String() != claim.WorkerInstanceId {
+		return nil, errors.Join(errors.New("startup reporter requires exactly the current WorkerInstance template"), resources.Close())
+	}
+	resources.templates = templates
 	if resources.plan.ExpectedPod().Annotations[runtimelaunch.ProtocolAnnotation] == runtimelaunch.Protocol {
 		resources.image, err = loadRuntimeStartupImage(ctx, configuration)
 		if err != nil {

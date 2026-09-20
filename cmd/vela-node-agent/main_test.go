@@ -391,6 +391,7 @@ func TestLoadWorkerInstanceTemplatesRejectsRuntimeFieldsDuplicateKeysAndCrossNod
 		AgentEpoch:   7,
 	}
 	cases := map[string]string{
+		"trailing object after legacy object": strings.TrimSuffix(strings.TrimPrefix(validWorkerInstanceTemplatesJSON(), "["), "]") + `{}`,
 		"top-level runtime field": strings.Replace(
 			validWorkerInstanceTemplatesJSON(),
 			`"capacity":`,

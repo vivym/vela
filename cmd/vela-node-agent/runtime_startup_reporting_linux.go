@@ -17,13 +17,9 @@ func waitRuntimeStartupWithReporting(ctx context.Context, configuration config, 
 	if resources == nil || resources.runtimeOwner == nil || resources.plan == nil {
 		return nodeagent.ErrRuntimeStartupAuthority
 	}
-	templates, err := loadWorkerInstanceTemplates(configuration.workerInstancesFile, nodeagent.NodeAgentIdentity{NodeIdentity: configuration.nodeIdentity, AgentID: configuration.agentID, AgentEpoch: configuration.agentEpoch})
-	if err != nil {
-		return err
-	}
-	claim := resources.plan.RegistryBinding().GetClaim()
-	if len(templates) != 1 || templates[0].Evidence.WorkerInstanceID.String() != claim.WorkerInstanceId {
-		return errors.New("startup reporter requires exactly the current WorkerInstance template")
+	templates := resources.templates
+	if len(templates) != 1 {
+		return errors.New("startup reporter requires preflight-validated WorkerInstance templates")
 	}
 	epochs, err := nodeagent.NewFileWorkerInstanceEpochStore(nodeagent.FileWorkerInstanceEpochStoreConfig{Directory: configuration.workerInstanceStateDirectory, NodeIdentity: configuration.nodeIdentity, BootIDPath: configuration.bootIDPath})
 	if err != nil {

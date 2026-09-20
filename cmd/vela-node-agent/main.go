@@ -953,7 +953,7 @@ func decodeWorkerInstanceTemplateConfig(content []byte) ([]workerInstanceTemplat
 			return err
 		}
 		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return err
+			return errors.New("WorkerInstance templates require exactly one JSON document")
 		}
 		return nil
 	}
