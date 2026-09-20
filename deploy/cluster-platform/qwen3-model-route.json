@@ -1,0 +1,26 @@
+{
+  "name": "qwen3-public",
+  "uris": ["/qwen3", "/qwen3/*"],
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "qwen3-model-worker.llm-models.svc.cluster.local:8080": 1
+    }
+  },
+  "plugins": {
+    "key-auth": {
+      "header": "X-API-Key",
+      "hide_credentials": true
+    },
+    "proxy-rewrite": {
+      "regex_uri": ["^/qwen3/?(.*)$", "/$1"]
+    },
+    "limit-count": {
+      "count": 60,
+      "time_window": 60,
+      "rejected_code": 429,
+      "key": "consumer_name",
+      "policy": "local"
+    }
+  }
+}

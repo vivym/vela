@@ -50,7 +50,7 @@ spec:
       terminationGracePeriodSeconds: 120
       containers:
         - name: qwen3
-          image: 10.1.201.70:5005/llm-models/qwen3-model-worker:0.2.0@sha256:b74ef4445b1d65e819d3be1aff55259d1131ba4375312f137c12237b3c322f4f
+          image: 10.1.201.70:5005/llm-models/qwen3-model-worker:0.3.0@sha256:e0b295f87a84f23cacebbd587fab5d4ef7b448c297e0aa9c5d974df120e73b05
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

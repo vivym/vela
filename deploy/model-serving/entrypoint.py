@@ -29,6 +29,37 @@ EMBED_GPU_UTIL = os.getenv("EMBED_GPU_MEMORY_UTILIZATION", "0.36")
 RERANK_GPU_UTIL = os.getenv("RERANK_GPU_MEMORY_UTILIZATION", "0.36")
 
 
+def model_catalog() -> dict[str, object]:
+    """Return the complete public catalog for the combined worker.
+
+    The embedding engine exposes an OpenAI ``/v1/models`` endpoint, while the
+    reranker is served by the local adapter and therefore does not appear in
+    vLLM's catalog.  The proxy owns the combined API surface, so advertise both
+    models here.  RAGFlow and OpenAI-compatible clients can then discover the
+    reranker without requiring a second private endpoint or manual model entry.
+    """
+    created = int(time.time())
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": "qwen3-embedding-4b",
+                "object": "model",
+                "created": created,
+                "owned_by": "vela",
+                "root": EMBED_MODEL,
+            },
+            {
+                "id": "qwen3-reranker-4b",
+                "object": "model",
+                "created": created,
+                "owned_by": "vela",
+                "root": RERANK_MODEL,
+            },
+        ],
+    }
+
+
 def vllm_args(model: str, task: str, port: int, name: str, util: str) -> list[str]:
     return [
         sys.executable,
@@ -92,6 +123,14 @@ class Proxy(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"ready": ok}).encode())
+            return
+        if self.path in ("/v1/models", "/v1/models/"):
+            payload = json.dumps(model_catalog()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
             return
         if self.path == "/metrics":
             self._forward(EMBED_PORT, "/metrics")

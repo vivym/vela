@@ -60,6 +60,14 @@ Vela 仅开放 `/api/` 和产物 GET；其余路径返回 404，产物写请求�
 Host、路径、查询参数。新站点 access log 不记录查询参数或 Authorization；
 上游日志和异常日志仍应按敏感运维日志管理，不能对外公开。
 
+模型 API 使用同一域名的 `/qwen3/v1` 前缀。Nginx 只把该前缀转发到本机
+APISIX；API Key 校验、限流和审计由 APISIX 完成，不能把 Worker Service 直接
+暴露到 NodePort。模型 API 的路由定义见
+[`qwen3-model-route.json`](../qwen3-model-route.json)。客户端发送
+`X-API-Key`，例如 `GET /qwen3/v1/models`、`POST /qwen3/v1/embeddings`
+和 `POST /qwen3/v1/rerank`。该入口使用独立的模型 API Key，不复用 Vela
+业务 Bearer Key。
+
 APISIX 原有 API 限流仍为每来源地址、每实例 120 次/分钟，经过 Nginx 后来源
 可能聚合为管理节点地址；这不是按 API Key 的业务配额。当前没有进行负载验收。
 
