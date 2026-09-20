@@ -23,7 +23,7 @@ No host reboot was performed for this rollout.
 
 ## Build and apply
 
-The deployed `0.2.0` release uses `Dockerfile.release`, which copies the two
+The deployed `0.3.0` release uses `Dockerfile.release`, which copies the two
 current adapters over the already mirrored runtime image at a pinned digest.
 `Dockerfile` is the alternative clean runtime build from pinned upstream
 vLLM. A clean build can have a different digest and must be verified before
@@ -31,15 +31,15 @@ updating the workload. From a management node with registry access:
 
 ```sh
 docker build -f deploy/model-serving/Dockerfile.release -t \
-  10.1.201.70:5005/llm-models/qwen3-model-worker:0.2.0 deploy/model-serving
-docker push 10.1.201.70:5005/llm-models/qwen3-model-worker:0.2.0
+  10.1.201.70:5005/llm-models/qwen3-model-worker:0.3.0 deploy/model-serving
+docker push 10.1.201.70:5005/llm-models/qwen3-model-worker:0.3.0
 docker inspect --format '{{index .RepoDigests 0}}' \
-  10.1.201.70:5005/llm-models/qwen3-model-worker:0.2.0
+  10.1.201.70:5005/llm-models/qwen3-model-worker:0.3.0
 ```
 
 Use a new version tag for future changes. Record the pushed digest in
 `deployment.yaml` before rollout; the manifest already pins the verified
-`0.2.0` digest. This task does not establish vulnerability-scan clearance.
+`0.3.0` digest. This task does not establish vulnerability-scan clearance.
 
 ```sh
 kubectl apply -k deploy/model-serving
