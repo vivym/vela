@@ -8,7 +8,7 @@
 - `/v1/models` 由 Worker 代理统一返回：`qwen3-embedding-4b`、`qwen3-reranker-4b`。
 - APISIX 路由：`qwen3-public`，公开前缀 `/qwen3/*`，转发到 Worker 的 `:8080`。
 - 认证：独立 APISIX `key-auth` Consumer `vela-qwen3-relay`，请求头为 `X-API-Key`。
-- 限流：每个 APISIX 实例每个 Consumer 60 次/分钟，超限返回 `429`。
+- 限流：每个 APISIX 实例每个 Consumer 600 次/分钟，超限返回 `429`。
 - Nginx：`.70`、`.71` 均已安装 `vela.marslab.ic` 虚拟主机并平滑 reload；未重启主机。
 
 模型 API Key 没有过期时间，值只保存于 `.70`：
@@ -47,9 +47,10 @@ Worker Service 仍为 `ClusterIP`，没有新增 NodePort；外部流量始终�
 | `/v1/embeddings` | 200 | 200 |
 | `/v1/rerank` | 200 | 200 |
 
-在 `.70` 入口连续发送 140 个轻量 `/v1/models` 请求，得到 91 个 `429`。由于
-`limit-count` 使用 `policy=local` 且 APISIX 有两个副本，单入口测试的聚合阈值会
-随请求在副本间分配；业务配额不能把这个实例级限流结果当作全局精确配额。
+初始配置的 60 次/分钟限流在验证中过于严格，已调整为 600 次/分钟。由于
+`limit-count` 使用 `policy=local` 且 APISIX 有两个副本，实际聚合阈值会随请求
+在副本间分配；业务配额不能把这个实例级限流结果当作全局精确配额。
+更新后在 `.70` 入口连续发送 650 个轻量请求，未触发 `429`。
 
 Worker 更新前后均未修改模型本地缓存；启动日志确认两个 vLLM 子服务完成加载并且
 `/readyz` 返回 200。Nginx 安装脚本在两台节点上完成 `nginx -t`，并验证现有

@@ -16,7 +16,7 @@
       "regex_uri": ["^/qwen3/?(.*)$", "/$1"]
     },
     "limit-count": {
-      "count": 60,
+      "count": 600,
       "time_window": 60,
       "rejected_code": 429,
       "key": "consumer_name",
